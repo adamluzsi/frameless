@@ -207,7 +207,7 @@ func ExampleLast() {
 	_ = n  // 10
 }
 
-func TestLast1(t *testing.T) {
+func TestLast(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("smoke", func(t *testcase.T) {
@@ -5555,5 +5555,45 @@ func TestMapToSeq2(t *testing.T) {
 		})
 		got := iterkit.Collect2KV(out)
 		assert.Equal(t, exp, got)
+	})
+}
+
+func ExampleFind() {
+	itr := iterkit.IntRange(0, 10)
+
+	n, ok := iterkit.Find(itr, func(n int) bool {
+		return n == 5
+	})
+	_ = ok // true
+	_ = n  // 5
+}
+
+func TestFind(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("found in non-empty", func(t *testcase.T) {
+		var expected int = 42
+		i := iterkit.FromSlice([]int{4, expected, 2})
+		actually, found := iterkit.Find(i, func(n int) bool {
+			return n == expected
+		})
+		assert.True(t, found)
+		assert.Equal(t, expected, actually)
+	})
+
+	s.Test("not-found in empty", func(t *testcase.T) {
+		_, found := iterkit.Find(iterkit.Empty[Entity](), func(n Entity) bool {
+			return n.Text == "foo"
+		})
+		assert.False(t, found)
+	})
+
+	s.Test("not-found in non-empty", func(t *testcase.T) {
+		i := iterkit.FromSlice([]int{4, 42, 2})
+		actually, found := iterkit.Find(i, func(n int) bool {
+			return n == 24
+		})
+		assert.False(t, found)
+		assert.Empty(t, actually)
 	})
 }

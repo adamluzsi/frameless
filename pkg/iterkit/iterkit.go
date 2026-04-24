@@ -1532,3 +1532,13 @@ func ToV[K, V any](i iter.Seq2[K, V]) iter.Seq[V] {
 		}
 	}
 }
+
+func Find[T any](i iter.Seq[T], by func(T) bool) (T, bool) {
+	for v := range i {
+		if by(v) {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
+}
