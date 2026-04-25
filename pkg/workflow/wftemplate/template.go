@@ -10,6 +10,7 @@ import (
 	"text/template"
 
 	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/workflow"
 )
@@ -77,6 +78,8 @@ func (tmpl Condition) templateNew(ctx context.Context) (*template.Template, erro
 	const conditionTextTemplateFormat = `{{if %s }}1{{else}}0{{end}}`
 	return t.Parse(fmt.Sprintf(conditionTextTemplateFormat, tmpl))
 }
+
+var _ = jsonkit.RegisterTypeID[Condition]("workflow::condition-template")
 
 func (tmpl Condition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(tmpl))

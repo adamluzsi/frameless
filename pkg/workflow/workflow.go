@@ -119,7 +119,7 @@ type VariableKey string
 
 var _ ds.ReadOnlyMap[VariableKey, any] = Variables{}
 var _ ds.Map[VariableKey, any] = (*Variables)(nil)
-var _ ds.MapConveratble[VariableKey, any] = (*Variables)(nil)
+var _ ds.MapConvertible[VariableKey, any] = (*Variables)(nil)
 
 func (vs Variables) Lookup(key VariableKey) (any, bool) { return vs.vs.Lookup(key) }
 func (vs Variables) Get(key VariableKey) any            { return vs.vs.Get(key) }

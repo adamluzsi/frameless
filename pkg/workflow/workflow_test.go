@@ -6,9 +6,42 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
+
+func Example() {
+	rt := workflow.Runtime{
+		Participants: workflow.Participants{
+			"foo": func(ctx context.Context) error {
+				return nil
+			},
+			"bar": func(ctx context.Context) error {
+				return nil
+			},
+
+			"then": func(ctx context.Context) error {
+				return nil
+			},
+			"else": func(ctx context.Context) error {
+				return nil
+			},
+		},
+	}
+
+	userDefinedWorkflowDefinition := &workflow.Sequence{
+		workflow.ExecuteParticipant{ID: "foo"},
+		workflow.ExecuteParticipant{ID: "bar"},
+		&workflow.If{
+			Cond: wftemplate.Condition(".foo <= .bar"),
+			Then: workflow.ExecuteParticipant{ID: "then"},
+			Else: workflow.ExecuteParticipant{ID: "else"},
+		},
+	}
+
+	_ = rt.Execute(context.Background(), userDefinedWorkflowDefinition, &workflow.Process{})
+}
 
 func Test_e2e(tt *testing.T) {
 	s := testcase.NewSpec(tt)
@@ -139,44 +172,6 @@ func Test_e2e(tt *testing.T) {
 		assert.Equal(t, ranCount["flaky"], 2)
 	})
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// func Example() {
-
-// 	rt := workflow.Runtime{
-// 		Participants: workflow.ParticipantMapping{
-// 			"foo": func(ctx context.Context, s *workflow.State) error {
-// 				s.Variables.Set("foo", 42)
-// 				return nil
-// 			},
-// 			"bar": func(ctx context.Context, s *workflow.State) error {
-// 				s.Variables.Set("bar", 24)
-// 				return nil
-// 			},
-
-// 			"then": func(ctx context.Context, s *workflow.State) error {
-// 				return nil
-// 			},
-// 			"else": func(ctx context.Context, s *workflow.State) error {
-// 				return nil
-// 			},
-// 		},
-// 	}
-
-// 	userDefinedWorkflowDefinition := &workflow.Sequence{
-// 		workflow.PID("foo"),
-// 		workflow.PID("bar"),
-// 		&workflow.If{
-// 			Cond: workflow.NewConditionTemplate(".foo <= .bar"),
-// 			Then: workflow.PID("then"),
-// 			Else: workflow.PID("else"),
-// 		},
-// 		&workflow.Concurrence{},
-// 	}
-
-// 	_ = userDefinedWorkflowDefinition.Execute(context.Background(), rt, &workflow.State{})
-// }
 
 func TestContextWithParticipants(t *testing.T) {
 	execFoo := workflow.ExecuteParticipant{ID: "foo"}
