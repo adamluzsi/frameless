@@ -46,7 +46,7 @@ var _ ds.ReadOnlyMap[string, int] = (Map[string, int])(nil)
 var _ ds.Keys[string] = (Map[string, int])(nil)
 var _ ds.Values[int] = (Map[string, int])(nil)
 var _ ds.All[string, int] = (Map[string, int])(nil)
-var _ ds.MapConveratble[string, int] = (Map[string, int])(nil)
+var _ ds.MapConvertible[string, int] = (Map[string, int])(nil)
 
 func (m Map[K, V]) Lookup(key K) (V, bool) {
 	val, ok := m[key]

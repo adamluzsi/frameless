@@ -384,7 +384,7 @@ func Sequence[T any](make contract.Make[ds.Sequence[T]], opts ...SequenceOption[
 
 					assert.Equal(t, exp, iterkit.Collect(seq.Get(t).Values()))
 
-					if cts, ok := seq.Get(t).(ds.SliceConveratble[T]); ok {
+					if cts, ok := seq.Get(t).(ds.SliceConvertible[T]); ok {
 						assert.Equal(t, exp, cts.ToSlice())
 					}
 				})

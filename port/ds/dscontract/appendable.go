@@ -41,7 +41,7 @@ func Appendable[T any, Subject ds.Appendable[T]](mk func(tb testing.TB) Subject,
 			})
 		}
 
-		if sub, ok := testcase.Implements[ds.SliceConveratble[T]](subject); ok {
+		if sub, ok := testcase.Implements[ds.SliceConvertible[T]](subject); ok {
 			s.Then("appended values retrievable through #ToSlice()", func(t *testcase.T) {
 				act(t)
 

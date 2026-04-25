@@ -61,10 +61,10 @@ type All[K, V any] interface {
 	All() iter.Seq2[K, V]
 }
 
-type MapConveratble[K comparable, V any] interface {
+type MapConvertible[K comparable, V any] interface {
 	ToMap() map[K]V
 }
 
-type SliceConveratble[T any] interface {
+type SliceConvertible[T any] interface {
 	ToSlice() []T
 }

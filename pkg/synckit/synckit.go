@@ -202,7 +202,7 @@ type Map[K comparable, V any] struct {
 
 var _ ds.Map[string, int] = (*Map[string, int])(nil)
 var _ ds.ReadOnlyMap[string, int] = (*Map[string, int])(nil)
-var _ ds.MapConveratble[string, int] = (*Map[string, int])(nil)
+var _ ds.MapConvertible[string, int] = (*Map[string, int])(nil)
 var _ ds.Len = (*Map[string, int])(nil)
 
 func (m *Map[K, V]) Set(key K, val V) {
@@ -454,7 +454,7 @@ type Slice[T any] struct {
 
 var _ ds.ReadOnlyList[string] = (*Slice[string])(nil)
 var _ ds.List[string] = (*Slice[string])(nil)
-var _ ds.SliceConveratble[string] = (*Slice[string])(nil)
+var _ ds.SliceConvertible[string] = (*Slice[string])(nil)
 var _ ds.Len = (*Slice[string])(nil)
 
 func (s *Slice[T]) Lookup(index int) (T, bool) {

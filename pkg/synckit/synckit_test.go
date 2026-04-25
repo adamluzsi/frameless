@@ -1641,7 +1641,7 @@ func letExampleSliceValues(s *testcase.Spec, min, max int) testcase.Var[[]string
 
 var _ ds.List[string] = (*synckit.Slice[string])(nil)
 var _ ds.Sequence[string] = (*synckit.Slice[string])(nil)
-var _ ds.SliceConveratble[string] = (*synckit.Slice[string])(nil)
+var _ ds.SliceConvertible[string] = (*synckit.Slice[string])(nil)
 
 func TestSlice(t *testing.T) {
 	s := testcase.NewSpec(t)

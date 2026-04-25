@@ -68,7 +68,7 @@ func OrderedList[T any, Subject ds.List[T]](mk func(tb testing.TB) Subject, opts
 			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) }, random.UniqueValues)
 		)
 		list.Append(expected...)
-		if ts, ok := any(list).(ds.SliceConveratble[T]); ok {
+		if ts, ok := any(list).(ds.SliceConvertible[T]); ok {
 			assert.Equal(t, expected, ts.ToSlice())
 		}
 		assert.Equal(t, expected, iterkit.Collect(list.Values()))
@@ -109,7 +109,7 @@ func List[T any, Subject ds.List[T]](mk func(tb testing.TB) Subject, opts ...Lis
 		assert.Equal(t, len(expected), dslist.Len(list))
 		assert.ContainsExactly(t, expected, iterkit.Collect(list.Values()))
 
-		if cts, ok := any(list).(ds.SliceConveratble[T]); ok {
+		if cts, ok := any(list).(ds.SliceConvertible[T]); ok {
 			assert.ContainsExactly(t, expected, cts.ToSlice())
 		}
 	})

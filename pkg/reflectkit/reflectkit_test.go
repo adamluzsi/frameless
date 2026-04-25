@@ -155,13 +155,13 @@ func MustCast[T any](tb testing.TB, exp T, val any) {
 }
 
 func TestCast(t *testing.T) {
-	t.Run("when it is convertable", func(t *testing.T) {
+	t.Run("when it is convertible", func(t *testing.T) {
 		got, ok := reflectkit.Cast[int64](int32(42))
 		assert.True(t, ok)
 		assert.Equal[int64](t, 42, got)
 	})
 
-	t.Run("when it is not convertable", func(t *testing.T) {
+	t.Run("when it is not convertible", func(t *testing.T) {
 		got, ok := reflectkit.Cast[int64]("42")
 		assert.False(t, ok)
 		assert.Equal[int64](t, 0, got)
