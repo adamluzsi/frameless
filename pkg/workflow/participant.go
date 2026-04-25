@@ -67,7 +67,7 @@ func (d ExecuteParticipant) execute(ctx context.Context, input []any) (_output [
 		return nil, ErrParticipantNotFound{ID: d.ID}
 	}
 
-	fn, err := participant.rfn(ctx)
+	fn, err := participant.rFunc()
 	if err != nil {
 		return nil, err
 	}

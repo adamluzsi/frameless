@@ -107,7 +107,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 	var (
 		mEvents    []Event
 		matchingEE executionEvent[ID]
-		mindex     int = -1
+		mIndex     int = -1
 		found      bool
 	)
 	for _, event := range p.Events {
@@ -124,10 +124,10 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 		}
 
 		if ee.ID == ie.ID {
-			mindex++
+			mIndex++
 		}
 
-		if ee.ID == ie.ID && mindex == index {
+		if ee.ID == ie.ID && mIndex == index {
 			found = true
 			matchingEE = ee
 			mEvents = slicekit.Clone(events)
@@ -137,15 +137,14 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 
 	if found {
 		var mProcess = Process{
-			Variables: p.Variables, // this won't be needed after variables became part of the events
-			Events:    mEvents,
+			Events: mEvents,
 		}
 
 		if len(ie.Input) == len(matchingEE.Input) {
 			for i, key := range ie.Input {
 				// invalidate on input value mismatch
 				// it is idempotent olny if input arguments the same too.
-				if !reflectkit.Equal(mProcess.Variables.Get(key), matchingEE.Input[i]) {
+				if !reflectkit.Equal(mProcess.Var().Get(key), matchingEE.Input[i]) {
 					found = false
 					break
 				}
@@ -160,17 +159,15 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 	}
 
 	if found {
-		for i, key := range ie.Output {
-			// TODO: remove me when variables are event log based
-			// this won't be needed after Variables became part of the Events
-			p.Variables.Set(key, matchingEE.Output[i])
-		}
+		// since as part of normal execution,
+		// the event history is updated with variable mutation already
+		// we are good to just return with the result here
 		return slicekit.Clone(matchingEE.Result), nil
 	}
 
 	var input []any = make([]any, len(ie.Input))
 	for i, key := range ie.Input {
-		value, ok := p.Variables.Lookup(key)
+		value, ok := p.Var().Lookup(key)
 		if !ok { // validate this at process definition level too as static validation
 			return nil, ErrFatal.F("missing input argument: input argument of #%d -> %s", i, key)
 		}
@@ -182,10 +179,6 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 		return nil, err
 	}
 
-	for i, key := range ie.Output {
-		p.Variables.Set(key, output[i])
-	}
-
 	newEvent := ie.NewEvent(ie.ID, input, output)
 	{
 		// memorise the call event, and make it idempotent for the next occurence
@@ -193,6 +186,11 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 		// but to pull it off sciencifically correctly requires some thinking.
 		incCallIndex(ei, ie.ID)
 		p.Events = append(p.Events, newEvent)
+	}
+
+	// add new variables as well to the event history
+	for i, key := range ie.Output {
+		p.Var().Set(key, output[i])
 	}
 
 	return slicekit.Clone(output), nil

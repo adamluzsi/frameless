@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"maps"
 	"reflect"
 	"strings"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -70,8 +72,7 @@ func (r Runtime) Execute(ctx context.Context, def Definition, p *Process) error 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
-	Definition Definition `json:"pdef"`
-	Variables  Variables  `json:"var"` // TODO: turn this into a method that act as a proxy to get and set variables using the Events event source table.
+	Definition Definition `json:"def"`
 	Events     Events     `json:"events"`
 }
 
@@ -96,10 +97,171 @@ type Event interface {
 
 type EventType string
 
+type Vars interface {
+	ds.Map[VariableKey, any]
+	ds.MapConvertible[VariableKey, any]
+}
+
+func (p *Process) Var() Vars {
+	return varProcessProxy{Process: p}
+}
+
+type varProcessProxy struct {
+	Process *Process
+}
+
+var _ ds.ReadOnlyMap[VariableKey, any] = varProcessProxy{}
+var _ ds.Map[VariableKey, any] = (*varProcessProxy)(nil)
+var _ ds.MapConvertible[VariableKey, any] = (*varProcessProxy)(nil)
+
+const typeIDVariableEvent = "workflow::variable-event"
+
+var _ = jsonkit.RegisterTypeID[VariableEvent](typeIDVariableEvent)
+
+type VariableEvent struct {
+	Operation VariableEventOperation `json:"op"`
+	Key       VariableKey            `json:"var-key"`
+	Value     any                    `json:"value,omitempty"`
+}
+
+func (ve VariableEvent) Validate(ctx context.Context) error {
+	if err := enum.Validate(ve.Operation); err != nil {
+		return fmt.Errorf("invalid variable event operation: %w", err)
+	}
+	return nil
+}
+
+type VariableEventOperation string
+
+const (
+	SetVariableEventOperation VariableEventOperation = "set"
+	DelVariableEventOperation VariableEventOperation = "del"
+)
+
+var _ = enum.Register[VariableEventOperation](SetVariableEventOperation, DelVariableEventOperation)
+
+func (ve VariableEvent) Type() EventType {
+	return typeIDVariableEvent
+}
+
+func (vs varProcessProxy) event(e Event) (VariableEvent, bool) {
+	if e == nil {
+		return VariableEvent{}, false
+	}
+	if e.Type() != typeIDVariableEvent {
+		return VariableEvent{}, false
+	}
+	var event, ok = e.(VariableEvent)
+	return event, ok
+}
+
+func (vs varProcessProxy) Lookup(key VariableKey) (any, bool) {
+	var (
+		value any
+		found bool
+	)
+	for _, e := range vs.Process.Events {
+		event, ok := vs.event(e)
+		if !ok {
+			continue
+		}
+		if event.Key != key {
+			continue
+		}
+		switch event.Operation {
+		case SetVariableEventOperation:
+			found = true
+			value = event.Value
+		case DelVariableEventOperation:
+			found = false
+			value = nil
+		}
+	}
+	// TODO: deep copy for value
+	return value, found
+}
+
+func (vs varProcessProxy) ToMap() map[VariableKey]any {
+	var m = map[VariableKey]any{}
+	for _, e := range vs.Process.Events {
+		event, ok := vs.event(e)
+		if !ok {
+			continue
+		}
+		switch event.Operation {
+		case SetVariableEventOperation:
+			m[event.Key] = event.Value
+		case DelVariableEventOperation:
+			delete(m, event.Key)
+		}
+	}
+	// TODO: deep copy each value
+	return m
+}
+
+func (vs varProcessProxy) All() iter.Seq2[VariableKey, any] {
+	return maps.All(vs.ToMap())
+}
+
+func (vs varProcessProxy) Get(key VariableKey) any {
+	var value, _ = vs.Lookup(key)
+	return value
+}
+
+func (vs varProcessProxy) Set(key VariableKey, val any) {
+	vs.Process.Events = append(vs.Process.Events, VariableEvent{
+		Operation: SetVariableEventOperation,
+		Key:       key,
+		Value:     val,
+	})
+}
+
+func (vs varProcessProxy) Delete(key VariableKey) {
+	vs.Process.Events = append(vs.Process.Events, VariableEvent{
+		Operation: DelVariableEventOperation,
+		Key:       key,
+	})
+}
+
+func (vs varProcessProxy) Validate(ctx context.Context) error {
+	return vs.validateVariables(ctx)
+}
+
+func (vs varProcessProxy) Merge(oth Vars) {
+	if oth == nil {
+		return
+	}
+	for k, v := range oth.All() {
+		if og, ok := vs.Lookup(k); ok { // to avoid polluting the
+			if reflectkit.Equal(og, v) {
+				continue
+			}
+		}
+		vs.Set(k, v)
+	}
+}
+
+func (s varProcessProxy) validateVariables(context.Context) error {
+	m := s.ToMap()
+	data, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("workflow variables are not valid because the values must be json encodable")
+	}
+	var got dsmap.Map[VariableKey, any]
+	if err := json.Unmarshal(data, &got); err != nil {
+		return fmt.Errorf("workflow variables are not valid because the json encoded values should be okay to unmarshal")
+	}
+	if !reflectkit.Equal(m, got) {
+		return fmt.Errorf("workflow variables are not valid because json encoding should not affect its values")
+	}
+	return nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Variables struct {
-	vs dsmap.Map[VariableKey, any]
+	Process *Process
+	vs      dsmap.Map[VariableKey, any]
 }
 
 func (vs Variables) MarshalJSON() ([]byte, error) {
@@ -119,14 +281,14 @@ type VariableKey string
 
 var _ ds.ReadOnlyMap[VariableKey, any] = Variables{}
 var _ ds.Map[VariableKey, any] = (*Variables)(nil)
-var _ ds.MapConveratble[VariableKey, any] = (*Variables)(nil)
+var _ ds.MapConvertible[VariableKey, any] = (*Variables)(nil)
 
 func (vs Variables) Lookup(key VariableKey) (any, bool) { return vs.vs.Lookup(key) }
 func (vs Variables) Get(key VariableKey) any            { return vs.vs.Get(key) }
 func (vs Variables) All() iter.Seq2[VariableKey, any]   { return vs.vs.All() }
 func (cs *Variables) Set(key VariableKey, val any)      { cs.vs.Set(key, val) }
 func (cs *Variables) Delete(key VariableKey)            { cs.vs.Delete(key) }
-func (cs *Variables) ToMap() map[VariableKey]any        { return mapkit.Clone(cs.ToMap()) }
+func (cs *Variables) ToMap() map[VariableKey]any        { return mapkit.Clone(cs.vs.ToMap()) }
 
 func (vs Variables) Validate(ctx context.Context) error {
 	return vs.validateVariables(ctx)
@@ -171,7 +333,7 @@ type Participant struct {
 //
 // TODO: repalce with OpenAPI definition
 func (p Participant) funcSignature(ctx context.Context) string {
-	var fn, err = p.rfn(ctx)
+	var fn, err = p.rFunc()
 	if err != nil {
 		return ""
 	}
@@ -209,7 +371,7 @@ var reflectContextType = reflectkit.TypeOf[context.Context]()
 
 var reflectErrorType = reflectkit.TypeOf[error]()
 
-func (p Participant) rfn(ctx context.Context) (reflect.Value, error) {
+func (p Participant) rFunc() (reflect.Value, error) {
 	rfunc := reflect.ValueOf(p.Func)
 	if rfunc.Kind() != reflect.Func {
 		return rfunc, ErrInvalidParicipantFunc.F("invalid value for participant func")
@@ -235,7 +397,7 @@ func (p Participant) rfn(ctx context.Context) (reflect.Value, error) {
 }
 
 func (p Participant) Validate(ctx context.Context) error {
-	_, err := p.rfn(ctx)
+	_, err := p.rFunc()
 	return err
 }
 

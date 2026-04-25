@@ -206,7 +206,7 @@ func TestArray_json(t *testing.T) {
 	})
 }
 
-func ExampleRegister() {
+func ExampleRegisterTypeID() {
 	type MyDTO struct {
 		V string `json:"v"`
 	}

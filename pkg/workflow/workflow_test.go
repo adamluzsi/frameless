@@ -4,11 +4,49 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftemplate"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dscontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 )
+
+func Example() {
+	rt := workflow.Runtime{
+		Participants: workflow.Participants{
+			"foo": func(ctx context.Context) (int, error) {
+				return 42, nil
+			},
+			"bar": func(ctx context.Context) (int, error) {
+				return 24, nil
+			},
+			"baz": func(ctx context.Context) error {
+				return nil
+			},
+			"qux": func(ctx context.Context) error {
+				return nil
+			},
+		},
+	}
+
+	userDefinedWorkflowDefinition := &workflow.Sequence{
+		workflow.ExecuteParticipant{ID: "foo",
+			Output: []workflow.VariableKey{"foo"}},
+		workflow.ExecuteParticipant{ID: "bar",
+			Output: []workflow.VariableKey{"bar"}},
+		&workflow.If{
+			Cond: wftemplate.Condition(".foo <= .bar"),   // (42 < 24) == false
+			Then: workflow.ExecuteParticipant{ID: "baz"}, //
+			Else: workflow.ExecuteParticipant{ID: "qux"}, // will run
+		},
+	}
+
+	_ = rt.Execute(context.Background(), userDefinedWorkflowDefinition, &workflow.Process{})
+}
 
 func Test_e2e(tt *testing.T) {
 	s := testcase.NewSpec(tt)
@@ -57,8 +95,8 @@ func Test_e2e(tt *testing.T) {
 		var p workflow.Process
 
 		assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
-		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
-		assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
+		assert.Equal[any](t, p.Var().Get("foo-val"), fooOut)
+		assert.Equal[any](t, p.Var().Get("bar-val"), barOut)
 
 	})
 
@@ -101,21 +139,21 @@ func Test_e2e(tt *testing.T) {
 			},
 		}
 
-		var pdef workflow.Definition = &workflow.Sequence{
-			&workflow.ExecuteParticipant{
+		var def workflow.Definition = &workflow.Sequence{
+			workflow.ExecuteParticipant{
 				ID:     "foo",
 				Output: []workflow.VariableKey{"foo-val"},
 			},
-			&workflow.ExecuteParticipant{
+			workflow.ExecuteParticipant{
 				ID:     "bar",
 				Input:  []workflow.VariableKey{"foo-val"},
 				Output: []workflow.VariableKey{"bar-val"},
 			},
-			&workflow.ExecuteParticipant{
+			workflow.ExecuteParticipant{
 				ID:    "baz",
 				Input: []workflow.VariableKey{"foo-val", "bar-val"},
 			},
-			&workflow.ExecuteParticipant{
+			workflow.ExecuteParticipant{
 				ID: "flaky",
 				//TODO: retry integration maybe?
 			},
@@ -126,13 +164,12 @@ func Test_e2e(tt *testing.T) {
 		}
 
 		var p workflow.Process
-
-		assert.ErrorIs(t, expectedFlakyErr, pdef.Execute(r.Context(t.Context()), &p))
+		assert.ErrorIs(t, expectedFlakyErr, def.Execute(r.Context(t.Context()), &p))
 		assert.NotEmpty(t, p.Events)
 
-		assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
-		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
-		assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
+		assert.NoError(t, def.Execute(r.Context(t.Context()), &p))
+		assert.Equal[any](t, p.Var().Get("foo-val"), fooOut)
+		assert.Equal[any](t, p.Var().Get("bar-val"), barOut)
 		assert.Equal(t, ranCount["foo"], 1)
 		assert.Equal(t, ranCount["bar"], 1)
 		assert.Equal(t, ranCount["baz"], 1)
@@ -140,43 +177,43 @@ func Test_e2e(tt *testing.T) {
 	})
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+func TestProcess(t *testing.T) {
+	s := testcase.NewSpec(t)
 
-// func Example() {
+	process := let.Var(s, func(t *testcase.T) *workflow.Process {
+		return &workflow.Process{}
+	})
 
-// 	rt := workflow.Runtime{
-// 		Participants: workflow.ParticipantMapping{
-// 			"foo": func(ctx context.Context, s *workflow.State) error {
-// 				s.Variables.Set("foo", 42)
-// 				return nil
-// 			},
-// 			"bar": func(ctx context.Context, s *workflow.State) error {
-// 				s.Variables.Set("bar", 24)
-// 				return nil
-// 			},
+	s.Describe("Var", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) workflow.Vars {
+			return process.Get(t).Var()
+		})
 
-// 			"then": func(ctx context.Context, s *workflow.State) error {
-// 				return nil
-// 			},
-// 			"else": func(ctx context.Context, s *workflow.State) error {
-// 				return nil
-// 			},
-// 		},
-// 	}
+		s.Context("implements ds.Map",
+			dscontract.Map(func(tb testing.TB) ds.Map[workflow.VariableKey, any] {
+				return act(tb.(*testcase.T))
+			}).Spec)
 
-// 	userDefinedWorkflowDefinition := &workflow.Sequence{
-// 		workflow.PID("foo"),
-// 		workflow.PID("bar"),
-// 		&workflow.If{
-// 			Cond: workflow.NewConditionTemplate(".foo <= .bar"),
-// 			Then: workflow.PID("then"),
-// 			Else: workflow.PID("else"),
-// 		},
-// 		&workflow.Concurrence{},
-// 	}
+		s.When("value is assigned with #Set", func(s *testcase.Spec) {
+			key := let.As[workflow.VariableKey](let.String(s))
+			value := let.Int(s)
 
-// 	_ = userDefinedWorkflowDefinition.Execute(context.Background(), rt, &workflow.State{})
-// }
+			s.Before(func(t *testcase.T) {
+				act(t).Set(key.Get(t), value.Get(t))
+			})
+
+			s.Then("the assigned value can be retrieved by its key with #Get", func(t *testcase.T) {
+				assert.Equal[any](t, value.Get(t), act(t).Get(key.Get(t)))
+			})
+
+			s.Then("Process events used as a backing storage for recording variable states", func(t *testcase.T) {
+				assert.NotEmpty(t, process.Get(t).Events)
+			})
+		})
+
+		_ = act
+	})
+}
 
 func TestContextWithParticipants(t *testing.T) {
 	execFoo := workflow.ExecuteParticipant{ID: "foo"}
@@ -196,4 +233,85 @@ func TestContextWithParticipants(t *testing.T) {
 	assert.NoError(t, execFoo.Execute(ctx2, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
 	assert.NoError(t, execBar.Execute(ctx2, &workflow.Process{}))
+}
+
+func Test_pauseAndContinue(t *testing.T) {
+	t.Skip("WIP")
+	s := testcase.NewSpec(t)
+
+	var counter = let.Var(s, func(t *testcase.T) map[string]int {
+		return map[string]int{}
+	})
+
+	var inc = func(t *testcase.T, name string) {
+		counter.Get(t)[name] = counter.Get(t)[name] + 1
+	}
+
+	var foo = let.Var(s, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			inc(t, "foo")
+			return ctx.Err()
+		}
+	})
+	var bar = let.Var(s, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			inc(t, "bar")
+			return ctx.Err()
+		}
+	})
+
+	var baz = let.Var(s, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			inc(t, "baz")
+			return ctx.Err()
+		}
+	})
+
+	rt := let.Var(s, func(t *testcase.T) workflow.Runtime {
+		return workflow.Runtime{
+			Participants: workflow.Participants{
+				"foo": foo.Get(t),
+				"bar": bar.Get(t),
+				"baz": baz.Get(t),
+			},
+		}
+	})
+
+	pdef := let.Var(s, func(t *testcase.T) workflow.Definition {
+		return workflow.Sequence{
+			workflow.ExecuteParticipant{ID: "foo"},
+			workflow.ExecuteParticipant{ID: "bar"},
+			workflow.ExecuteParticipant{ID: "baz"},
+		}
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		assert.NoError(t, rt.Get(t).Execute(t.Context(), pdef.Get(t), &workflow.Process{}))
+	})
+
+	s.When("definition execution is interrupted midterm", func(s *testcase.Spec) {
+		bar.Let(s, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				<-ctx.Done() // will block until cancellation
+				return ctx.Err()
+			}
+		})
+
+		s.Then("workflow process can be recovered from a context cancellation", func(t *testcase.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+
+			var p workflow.Process
+			var gotErr error
+			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+				gotErr = rt.Get(t).Execute(ctx, pdef.Get(t), &p)
+			})
+
+			cancel()
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.ErrorIs(t, gotErr, ctx.Err())
+		})
+	})
 }

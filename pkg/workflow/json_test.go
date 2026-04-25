@@ -47,8 +47,8 @@ func TestProcess_json_smoke(tt *testing.T) {
 	assert.NoError(tt, pdef.Execute(r.Context(context.Background()), &p))
 
 	// Verify initial state before JSON round-trip
-	assert.Equal[any](tt, p.Variables.Get("foo-val"), fooOut)
-	assert.Equal[any](tt, p.Variables.Get("bar-val"), barOut)
+	assert.Equal[any](tt, p.Var().Get("foo-val"), fooOut)
+	assert.Equal[any](tt, p.Var().Get("bar-val"), barOut)
 	assert.NotEmpty(tt, p.Events)
 
 	// Encode to JSON
@@ -62,9 +62,9 @@ func TestProcess_json_smoke(tt *testing.T) {
 
 	// Verify data is preserved after round-trip
 	// Note: JSON decodes numbers as float64 by default
-	assert.Equal[any](tt, decoded.Variables.Get("foo-val"), fooOut)
+	assert.Equal[any](tt, decoded.Var().Get("foo-val"), fooOut)
 	// TODO: it should keep the base type if possible
-	assert.Equal(tt, barOut, int(decoded.Variables.Get("bar-val").(float64)))
+	assert.Equal(tt, barOut, int(decoded.Var().Get("bar-val").(float64)))
 }
 
 func TestDefinition_json_smoke(tt *testing.T) {

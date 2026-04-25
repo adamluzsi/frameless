@@ -17,7 +17,7 @@ func ErrIsFatal(err error) bool {
 		errors.Is(err, ErrFatal)
 }
 
-const ErrFatal errorkitlite.Error = "WFFATALERROR"
+const ErrFatal errorkitlite.Error = "WORKFLOW_FATAL_ERROR"
 
 // ErrInvalidDefinition is an error raised for invalid definition composition.
 const ErrInvalidDefinition errorkitlite.Error = "ErrInvalidDefinition"

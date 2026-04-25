@@ -83,6 +83,9 @@ const ifJSONType jsonkit.TypeID = "workflow::if"
 var _ = jsonkit.RegisterTypeID[If]("workflow::if")
 
 func (d If) Execute(ctx context.Context, p *Process) error {
+	if d.Cond == nil {
+		return ErrFatal.F("missing %s condition", ifJSONType)
+	}
 	var ok, err = d.Cond.Evaluate(ctx, p)
 	if err != nil {
 		return err

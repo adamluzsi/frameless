@@ -60,7 +60,7 @@ func TestExecuteParticipant(t *testing.T) {
 			ctx     = let.Context(s)
 			process = c.Process.Let(s, func(t *testcase.T) *workflow.Process {
 				p := c.Process.Super(t)
-				p.Variables.Set(inKey.Get(t), inVal.Get(t))
+				p.Var().Set(inKey.Get(t), inVal.Get(t))
 				return p
 			})
 		)
@@ -111,7 +111,7 @@ func TestExecuteParticipant(t *testing.T) {
 
 			s.Before(func(t *testcase.T) {
 				assert.NoError(t, act(t))
-				firstOut.Set(t, c.Process.Get(t).Variables.Get(outKey.Get(t)).(string))
+				firstOut.Set(t, c.Process.Get(t).Var().Get(outKey.Get(t)).(string))
 				assert.Equal(t, callCount.Get(t), 1)
 			})
 
@@ -139,23 +139,57 @@ func TestExecuteParticipant(t *testing.T) {
 				s.Then("the execution remains idempotent and the result don't change", func(t *testcase.T) {
 					t.Random.Repeat(1, 7, func() {
 						assert.NoError(t, act(t))
-						gotOut := c.Process.Get(t).Variables.Get(outKey.Get(t)).(string)
+						gotOut := process.Get(t).Var().Get(outKey.Get(t)).(string)
 						assert.Equal(t, firstOut.Get(t), gotOut)
 						assert.Equal(t, 1, callCount.Get(t))
 					})
 				})
 
-				s.Context("but if the input argument changes since the last execution", func(s *testcase.Spec) {
+				s.Context("but if the input argument changes AFTER the last execution", func(s *testcase.Spec) {
 					var newIn = let.UUID(s)
 					s.Before(func(t *testcase.T) {
-						c.Process.Get(t).Variables.Set(inKey.Get(t), newIn.Get(t))
+						process.Get(t).Var().Set(inKey.Get(t), newIn.Get(t))
+
+						event, ok := slicekit.Last(process.Get(t).Events)
+						assert.True(t, ok)
+						ve, ok := event.(workflow.VariableEvent)
+						assert.True(t, ok)
+
+						assert.Equal(t, ve.Key, inKey.Get(t))
+						assert.Equal[any](t, ve.Value, newIn.Get(t))
 					})
 
-					s.Then("the execution will occur once again but with the new input", func(t *testcase.T) {
+					s.Then("the execution won't reoccur, because historically, at the position of the original execution, the variables are still the same", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+
+						assert.Equal(t, 1, callCount.Get(t), "expected that execution count remained the same")
+					})
+				})
+
+				s.Context("but if the original input argument modified", func(s *testcase.Spec) {
+					var newIn = let.UUID(s)
+					s.Before(func(t *testcase.T) {
+						process.Get(t).Var().Set(inKey.Get(t), newIn.Get(t))
+
+						// history rewrite
+						for i, e := range process.Get(t).Events {
+							ve, ok := e.(workflow.VariableEvent)
+							if !ok {
+								continue
+							}
+							if ve.Key == inKey.Get(t) && ve.Operation == workflow.SetVariableEventOperation {
+								ve.Value = newIn.Get(t)
+								process.Get(t).Events[i] = ve
+								break
+							}
+						}
+					})
+
+					s.Then("the due to this change, the execution gets repeated", func(t *testcase.T) {
 						assert.NoError(t, act(t))
 
 						assert.Equal(t, 2, callCount.Get(t))
-						assert.Equal(t, lastOut.Get(t), c.Process.Get(t).Variables.Get(outKey.Get(t)).(string))
+						assert.Equal(t, lastOut.Get(t), process.Get(t).Var().Get(outKey.Get(t)).(string))
 						assert.Equal(t, lastIn.Get(t), newIn.Get(t))
 					})
 				})
@@ -165,7 +199,7 @@ func TestExecuteParticipant(t *testing.T) {
 
 	s.Context("smoke", func(s *testcase.Spec) {
 		s.Context("idempotency", func(s *testcase.Spec) {
-			s.Test("same repeation don't execute participants twice", func(t *testcase.T) {
+			s.Test("same repetition don't execute participants twice", func(t *testcase.T) {
 
 				var (
 					fooOut = t.Random.String()
@@ -223,15 +257,16 @@ func TestExecuteParticipant(t *testing.T) {
 
 				t.Random.Repeat(3, 7, func() {
 					assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
-					assert.Equal(t, p.Events, eventsAfterTheFirstExecution)
 
-					assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
-					assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
 					assert.Equal(t, ranCount["foo"], 1)
 					assert.Equal(t, ranCount["bar"], 1)
 					assert.Equal(t, ranCount["baz"], 1)
-				})
 
+					assert.Equal[any](t, p.Var().Get("foo-val"), fooOut)
+					assert.Equal[any](t, p.Var().Get("bar-val"), barOut)
+
+					assert.Equal(t, p.Events, eventsAfterTheFirstExecution)
+				})
 			})
 
 			s.Test("repeating the same participant execution at definition level is supported", func(t *testcase.T) {
@@ -244,7 +279,7 @@ func TestExecuteParticipant(t *testing.T) {
 					},
 				}
 
-				var pdef workflow.Definition = &workflow.Sequence{
+				var def workflow.Definition = &workflow.Sequence{
 					&workflow.ExecuteParticipant{ID: "foo"},
 					&workflow.ExecuteParticipant{ID: "foo"},
 					&workflow.ExecuteParticipant{ID: "foo"},
@@ -256,14 +291,14 @@ func TestExecuteParticipant(t *testing.T) {
 
 				var p workflow.Process
 
-				assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
+				assert.NoError(t, def.Execute(r.Context(t.Context()), &p))
 				assert.NotEmpty(t, p.Events)
 				eventsAfterTheFirstExecution := slicekit.Clone(p.Events)
 
 				assert.Equal(t, ran, 3, "expected that the 3 individiual foo participant call will all execute, since they are referenced multiple times in the definition")
 
 				t.Random.Repeat(3, 7, func() {
-					assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
+					assert.NoError(t, def.Execute(r.Context(t.Context()), &p))
 					assert.Equal(t, p.Events, eventsAfterTheFirstExecution)
 					assert.Equal(t, ran, 3, "after the initial call, the execution should remain idempotent")
 				})
@@ -338,8 +373,8 @@ func TestExecuteParticipant(t *testing.T) {
 				assert.NotEmpty(t, p.Events)
 
 				assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
-				assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
-				assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
+				assert.Equal[any](t, p.Var().Get("foo-val"), fooOut)
+				assert.Equal[any](t, p.Var().Get("bar-val"), barOut)
 				assert.Equal(t, ranCount["foo"], 1)
 				assert.Equal(t, ranCount["bar"], 1)
 				assert.Equal(t, ranCount["baz"], 1)

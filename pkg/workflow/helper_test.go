@@ -72,6 +72,12 @@ func LetParticipant[Func any](s *testcase.Spec, c C, pid testcase.Var[workflow.P
 	return p
 }
 
+func (c *C) LetContext(s *testcase.Spec) testcase.Var[context.Context] {
+	return let.Var(s, func(t *testcase.T) context.Context {
+		return c.Runtime.Get(t).Context(t.Context())
+	})
+}
+
 func (c *C) LetStub(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
 	s.H().Helper()
 
@@ -91,7 +97,16 @@ func (c *C) LetStub(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) 
 	return stub
 }
 
+func LetProcess(s *testcase.Spec) testcase.Var[*workflow.Process] {
+	s.H().Helper()
+	return let.Var(s, func(t *testcase.T) *workflow.Process {
+		return NewRandomState(t)
+	})
+}
+
 func letC(s *testcase.Spec) C {
+	s.H().Helper()
+
 	var c C
 
 	c.Participants = let.Var(s, func(t *testcase.T) workflow.Participants {
@@ -117,9 +132,7 @@ func letC(s *testcase.Spec) C {
 		}
 	})
 
-	c.Process = let.Var(s, func(t *testcase.T) *workflow.Process {
-		return NewRandomState(t)
-	})
+	c.Process = LetProcess(s)
 
 	return c
 }
@@ -127,7 +140,7 @@ func letC(s *testcase.Spec) C {
 func NewRandomState(t *testcase.T) *workflow.Process {
 	var s = workflow.Process{}
 	t.Random.Repeat(1, 3, func() {
-		s.Variables.Set(workflow.VariableKey(t.Random.String()), t.Random.Int())
+		s.Var().Set(workflow.VariableKey(t.Random.String()), t.Random.Int())
 	})
 	return &s
 }
