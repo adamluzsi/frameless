@@ -80,8 +80,7 @@ func (r Runtime) Execute(ctx context.Context, def Definition, p *Process) error 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
-	Definition Definition `json:"def"`
-	Events     Events     `json:"events"`
+	Events Events `json:"events"`
 }
 
 type Events []Event
