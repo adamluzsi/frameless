@@ -30,14 +30,14 @@ type Condition interface {
 
 type ConditionID string
 
-type ConditionConveratble interface {
+type ConditionConvertible interface {
 	ToCondition(ctx context.Context, p *Process) (Condition, bool)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Runtime is the default runtime to execute process definitons.
-// It can be extended or reimplemented if it doesn't fit your workflow realted use-cases.
+// Runtime is the default runtime to execute process definitions.
+// It can be extended or reimplemented if it doesn't fit your workflow related use-cases.
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
@@ -323,7 +323,7 @@ func (s *Variables) validateVariables(context.Context) error {
 // Participant is a logical unit implemented at workflow engine-level.
 //
 // If ParticipantRepository is supplied to the workflow runtime context,
-// then registered particpants can be used from within workflow definitions.
+// then registered participants can be used from within workflow definitions.
 type Participant struct {
 	ID   ParticipantID
 	Func any // func(context.Context, ...) (..., error)
@@ -331,8 +331,8 @@ type Participant struct {
 
 // funcSignature
 //
-// TODO: repalce with OpenAPI definition
-func (p Participant) funcSignature(ctx context.Context) string {
+// TODO: replace with OpenAPI definition
+func (p Participant) funcSignature() string {
 	var fn, err = p.rFunc()
 	if err != nil {
 		return ""

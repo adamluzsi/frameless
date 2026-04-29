@@ -38,7 +38,7 @@ func Example() {
 			Output: []workflow.VariableKey{"foo"}},
 		workflow.ExecuteParticipant{ID: "bar",
 			Output: []workflow.VariableKey{"bar"}},
-		&workflow.If{
+		workflow.If{
 			Cond: wftemplate.Condition(".foo <= .bar"),   // (42 < 24) == false
 			Then: workflow.ExecuteParticipant{ID: "baz"}, //
 			Else: workflow.ExecuteParticipant{ID: "qux"}, // will run
@@ -236,7 +236,6 @@ func TestContextWithParticipants(t *testing.T) {
 }
 
 func Test_pauseAndContinue(t *testing.T) {
-	t.Skip("WIP")
 	s := testcase.NewSpec(t)
 
 	var counter = let.Var(s, func(t *testcase.T) map[string]int {
@@ -277,7 +276,7 @@ func Test_pauseAndContinue(t *testing.T) {
 		}
 	})
 
-	pdef := let.Var(s, func(t *testcase.T) workflow.Definition {
+	def := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
 			workflow.ExecuteParticipant{ID: "foo"},
 			workflow.ExecuteParticipant{ID: "bar"},
@@ -286,13 +285,23 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
-		assert.NoError(t, rt.Get(t).Execute(t.Context(), pdef.Get(t), &workflow.Process{}))
+		assert.NoError(t, rt.Get(t).Execute(t.Context(), def.Get(t), &workflow.Process{}))
+
+		assert.Equal(t, counter.Get(t)["foo"], 1)
+		assert.Equal(t, counter.Get(t)["bar"], 1)
+		assert.Equal(t, counter.Get(t)["baz"], 1)
 	})
 
 	s.When("definition execution is interrupted midterm", func(s *testcase.Spec) {
+		phaser := let.Phaser(s)
+
 		bar.Let(s, func(t *testcase.T) func(ctx context.Context) error {
+			fn := bar.Super(t)
 			return func(ctx context.Context) error {
-				<-ctx.Done() // will block until cancellation
+				if err := fn(ctx); err != nil {
+					return err
+				}
+				phaser.Get(t).Wait()
 				return ctx.Err()
 			}
 		})
@@ -302,16 +311,34 @@ func Test_pauseAndContinue(t *testing.T) {
 
 			var p workflow.Process
 			var gotErr error
+
 			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
-				gotErr = rt.Get(t).Execute(ctx, pdef.Get(t), &p)
+				gotErr = rt.Get(t).Execute(ctx, def.Get(t), &p)
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, 1, phaser.Get(t).Len())
 			})
 
 			cancel()
+			phaser.Get(t).Finish()
+
 			assert.Within(t, time.Millisecond, func(ctx context.Context) {
 				w.Wait()
 			})
 
 			assert.ErrorIs(t, gotErr, ctx.Err())
+			assert.Equal(t, counter.Get(t)["foo"], 1)
+			assert.Equal(t, counter.Get(t)["bar"], 1)
+			assert.Equal(t, counter.Get(t)["baz"], 0)
+
+			t.Log("and then re-execution should be possible, and continuing from where it was left")
+			t.Log("when the same process entity is used")
+			assert.NoError(t, rt.Get(t).Execute(t.Context(), def.Get(t), &p))
+
+			assert.Equal(t, counter.Get(t)["foo"], 1)
+			assert.Equal(t, counter.Get(t)["bar"], 2, "expected that the failing bar is re-run")
+			assert.Equal(t, counter.Get(t)["baz"], 1)
 		})
 	})
 }

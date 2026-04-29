@@ -88,22 +88,22 @@ func (d ExecuteParticipant) execute(ctx context.Context, input []any) (_output [
 
 	if len(args) != fn.Type().NumIn() {
 		const format = "participant execution arguments don't match the input arguments mapping.\nsignature in the format of func(inputs) (outputs)\n%s"
-		return nil, ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature(ctx))
+		return nil, ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature())
 	}
 
 	var lastIsError bool
-	var expectedOuputMappingLen = fn.Type().NumOut()
-	if 0 < expectedOuputMappingLen {
-		lastOut := fn.Type().Out(expectedOuputMappingLen - 1)
+	var expectedOutputMappingLen = fn.Type().NumOut()
+	if 0 < expectedOutputMappingLen {
+		lastOut := fn.Type().Out(expectedOutputMappingLen - 1)
 		if lastOut == reflectErrorType || lastOut.Implements(reflectErrorType) {
-			expectedOuputMappingLen-- // we don't count error output with output mapping
+			expectedOutputMappingLen-- // we don't count error output with output mapping
 			lastIsError = true
 		}
 	}
 
-	if len(d.Output) != expectedOuputMappingLen {
+	if len(d.Output) != expectedOutputMappingLen {
 		const format = "participant execution result values count don't match the output mapping\nsignature in the format of func(inputs) (outputs)\n%s"
-		return nil, ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature(ctx))
+		return nil, ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature())
 	}
 
 	var out = fn.Call(args)

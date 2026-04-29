@@ -181,9 +181,9 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 
 	newEvent := ie.NewEvent(ie.ID, input, output)
 	{
-		// memorise the call event, and make it idempotent for the next occurence
+		// memorize the call event, and make it idempotent for the next occurrence
 		// transaction might be needed here,
-		// but to pull it off sciencifically correctly requires some thinking.
+		// but to pull it off scientifically correctly requires some thinking.
 		incCallIndex(ei, ie.ID)
 		p.Events = append(p.Events, newEvent)
 	}
