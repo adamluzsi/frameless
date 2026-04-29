@@ -1,5 +1,18 @@
 # Workflow
 
+Super lightweight workflow framework, and the scheduling and all is totally up to the developer, no forced usage of any specific backing solution.
+6m
+
+but it still has the ability to 
+- execute participants with idempotency
+- serialise workflow process definitions, so the end-users can create/compose their workflows in your system
+- event log based state change management, so by changing the event history
+  - you can even rollback an execution to a previous state
+  - execution replay comes from the event log itself
+  - workflow variables are actually just a view on the event log
+
+
+
 **Goals**:
 
 - A Workflow Engine's primary focus should be to enable the interpretation and scheduling of end-user-defined logic

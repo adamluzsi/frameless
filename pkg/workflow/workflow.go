@@ -41,6 +41,7 @@ type ConditionConvertible interface {
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
+	ContextSetup []func(context.Context) context.Context
 }
 
 type ParticipantRepository interface {
@@ -51,6 +52,7 @@ type ConditionRepository interface {
 	crud.ByIDFinder[Condition, ConditionID]
 }
 
+// Context returns a fresh execution runtime context intended to be used for calling Definition#Execute.
 func (r Runtime) Context(ctx context.Context) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -62,6 +64,12 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 		ctx = ContextWithConditions(ctx, r.Conditions)
 	}
 	ctx = WithExecutionIndex(ctx)
+	for _, init := range r.ContextSetup {
+		if init == nil {
+			continue
+		}
+		ctx = init(ctx)
+	}
 	return ctx
 }
 
