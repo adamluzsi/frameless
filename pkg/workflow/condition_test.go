@@ -250,9 +250,10 @@ func TestExecuteCondition(t *testing.T) {
 				}
 
 				var p workflow.Process
+				p.Definition = pdef
 				p.Var().Set("trigger-val", triggerVal)
 
-				assert.NoError(t, r.Execute(t.Context(), pdef, &p))
+				assert.NoError(t, r.Execute(t.Context(), &p))
 				assert.NotEmpty(t, p.Events)
 				eventsAfterTheFirstExecution := slicekit.Clone(p.Events)
 

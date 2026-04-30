@@ -45,7 +45,7 @@ func Example() {
 		},
 	}
 
-	_ = rt.Execute(context.Background(), userDefinedWorkflowDefinition, &workflow.Process{})
+	_ = rt.Execute(context.Background(), &workflow.Process{Definition: userDefinedWorkflowDefinition})
 }
 
 func Test_e2e(tt *testing.T) {
@@ -285,8 +285,7 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
-		assert.NoError(t, rt.Get(t).Execute(t.Context(), def.Get(t), &workflow.Process{}))
-
+		assert.NoError(t, rt.Get(t).Execute(t.Context(), &workflow.Process{Definition: def.Get(t)}))
 		assert.Equal(t, counter.Get(t)["foo"], 1)
 		assert.Equal(t, counter.Get(t)["bar"], 1)
 		assert.Equal(t, counter.Get(t)["baz"], 1)
@@ -309,11 +308,13 @@ func Test_pauseAndContinue(t *testing.T) {
 		s.Then("workflow process can be recovered from a context cancellation", func(t *testcase.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 
-			var p workflow.Process
+			var p = workflow.Process{
+				Definition: def.Get(t),
+			}
 			var gotErr error
 
 			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
-				gotErr = rt.Get(t).Execute(ctx, def.Get(t), &p)
+				gotErr = rt.Get(t).Execute(ctx, &p)
 			})
 
 			t.Eventually(func(t *testcase.T) {
@@ -334,7 +335,7 @@ func Test_pauseAndContinue(t *testing.T) {
 
 			t.Log("and then re-execution should be possible, and continuing from where it was left")
 			t.Log("when the same process entity is used")
-			assert.NoError(t, rt.Get(t).Execute(t.Context(), def.Get(t), &p))
+			assert.NoError(t, rt.Get(t).Execute(t.Context(), &p))
 
 			assert.Equal(t, counter.Get(t)["foo"], 1)
 			assert.Equal(t, counter.Get(t)["bar"], 2, "expected that the failing bar is re-run")

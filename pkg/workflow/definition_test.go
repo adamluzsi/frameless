@@ -157,9 +157,10 @@ func TestIf(t *testing.T) {
 			}
 
 			var p workflow.Process
+			p.Definition = pdef
 			t.Random.Repeat(3, 7, func() {
 				// a fresh dedicated context for each execution is expected
-				assert.NoError(t, rt.Execute(t.Context(), pdef, &p))
+				assert.NoError(t, rt.Execute(t.Context(), &p))
 			})
 			assert.Equal(t, count, 1,
 				"Process contains the event log of changes,",

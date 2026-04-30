@@ -73,14 +73,18 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 	return ctx
 }
 
-func (r Runtime) Execute(ctx context.Context, def Definition, p *Process) error {
-	return def.Execute(r.Context(ctx), p)
+func (r Runtime) Execute(ctx context.Context, p *Process) error {
+	if p.Definition == nil {
+		return nil
+	}
+	return p.Definition.Execute(r.Context(ctx), p)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
-	Events Events `json:"events"`
+	Definition Definition `json:"def"`
+	Events     Events     `json:"events"`
 }
 
 type Events []Event

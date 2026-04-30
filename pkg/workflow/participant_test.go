@@ -79,7 +79,7 @@ func TestExecuteParticipant(t *testing.T) {
 			assert.NoError(t, gotCTX.Err())
 		})
 
-		s.When("the ExecuteParticipant.ID (pariticipant ID) is invalid", func(s *testcase.Spec) {
+		s.When("the ExecuteParticipant.ID (participant ID) is invalid", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *workflow.ExecuteParticipant {
 				randomPID := workflow.ParticipantID(random.Unique(t.Random.String, string(pid.Get(t))))
 				ep := subject.Super(t)
@@ -250,8 +250,9 @@ func TestExecuteParticipant(t *testing.T) {
 				}
 
 				var p workflow.Process
+				p.Definition = pdef
 
-				assert.NoError(t, r.Execute(t.Context(), pdef, &p))
+				assert.NoError(t, r.Execute(t.Context(), &p))
 				assert.NotEmpty(t, p.Events)
 				eventsAfterTheFirstExecution := slicekit.Clone(p.Events)
 
