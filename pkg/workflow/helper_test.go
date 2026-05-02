@@ -144,3 +144,14 @@ func NewRandomState(t *testcase.T) *workflow.Process {
 	})
 	return &s
 }
+
+type StubDefinition struct {
+	StubExecute func(ctx context.Context, p *workflow.Process) error
+}
+
+func (stub StubDefinition) Execute(ctx context.Context, p *workflow.Process) error {
+	if stub.StubExecute != nil {
+		return stub.StubExecute(ctx, p)
+	}
+	return nil
+}

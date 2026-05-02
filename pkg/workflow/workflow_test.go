@@ -343,3 +343,74 @@ func Test_pauseAndContinue(t *testing.T) {
 		})
 	})
 }
+
+func TestRuntime(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		participants = let.Var(s, func(t *testcase.T) workflow.Participants {
+			return workflow.Participants{}
+		})
+		conditions = let.Var(s, func(t *testcase.T) workflow.Conditions {
+			return workflow.Conditions{}
+		})
+		contextSetup = let.Var(s, func(t *testcase.T) []func(context.Context) context.Context {
+			return nil
+		})
+	)
+	runtime := let.Var(s, func(t *testcase.T) workflow.Runtime {
+		return workflow.Runtime{
+			Participants: participants.Get(t),
+			Conditions:   conditions.Get(t),
+			ContextSetup: contextSetup.Get(t),
+		}
+	})
+	_ = runtime
+
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		var (
+			ctx     = let.Context(s)
+			process = let.Var(s, func(t *testcase.T) *workflow.Process {
+				return &workflow.Process{}
+			})
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return runtime.Get(t).Execute(ctx.Get(t), process.Get(t))
+		})
+
+		s.When("process doesn't have definition", func(s *testcase.Spec) {
+			process.Let(s, func(t *testcase.T) *workflow.Process {
+				p := process.Super(t)
+				p.Definition = nil
+				return p
+			})
+
+			s.Then("it will return without executing anything, no error", func(t *testcase.T) {
+				og := *process.Get(t)
+				assert.NoError(t, act(t))
+				assert.Equal(t, og, *process.Get(t))
+			})
+		})
+
+		s.When("definition is provided in the process", func(s *testcase.Spec) {
+			defRan := let.VarOf(s, false)
+			definition := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return &StubDefinition{func(ctx context.Context, p *workflow.Process) error {
+					assert.NotNil(t, ctx)
+
+					return ctx.Err()
+				}}
+			})
+			process.Let(s, func(t *testcase.T) *workflow.Process {
+				p := process.Super(t)
+				p.Definition = definition.Get(t)
+				return p
+			})
+
+			s.Then("the definition is executed", func(t *testcase.T) {
+
+			})
+		})
+	})
+
+}
