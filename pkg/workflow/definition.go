@@ -174,3 +174,34 @@ func (d *If) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+type Suspend struct {
+	While Condition
+	Until Condition
+}
+
+const suspendJSONType jsonkit.TypeID = "workflow::suspend"
+
+func (suspend Suspend) Execute(ctx context.Context, p *Process) error {
+	var Continue bool
+	switch {
+	case suspend.While != nil:
+		ok, err := suspend.While.Evaluate(ctx, p)
+		if err != nil {
+			return err
+		}
+		Continue = !ok
+	case suspend.Until != nil:
+		ok, err := suspend.Until.Evaluate(ctx, p)
+		if err != nil {
+			return err
+		}
+		Continue = ok
+	}
+	if Continue {
+		return nil // OK
+	}
+	return Suspend{} // empty intentionally
+}
+
+func (Suspend) Error() string { return suspendJSONType.String() }

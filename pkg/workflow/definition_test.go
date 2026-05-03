@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
+	"go.llib.dev/frameless/pkg/workflow/wftesting"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -315,6 +316,301 @@ func TestSequence(t *testing.T) {
 					assert.ErrorIs(t, act(t), expErr.Get(t))
 					assert.NotContains(t, callOrder.Get(t), bazPid.Get(t))
 				})
+			})
+		})
+	})
+}
+
+func TestPause(t *testing.T) {
+
+}
+
+func TestSuspend(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var c = letC(s)
+
+	var (
+		while = let.VarOf[workflow.Condition](s, nil)
+		until = let.VarOf[workflow.Condition](s, nil)
+	)
+	subject := let.Var(s, func(t *testcase.T) *workflow.Suspend {
+		return &workflow.Suspend{
+			While: while.Get(t),
+			Until: until.Get(t),
+		}
+	})
+
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		var (
+			ctx     = c.LetContext(s)
+			process = LetProcess(s)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
+		})
+
+		var onAct = func(t *testcase.T) {
+			_ = act(t)
+		}
+
+		s.When("While condition is true (Continue=false)", func(s *testcase.Spec) {
+			while.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftesting.Stub{
+					StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return true, nil
+					},
+				}
+			})
+
+			s.Test("Suspend error expected", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, workflow.Suspend{})
+			})
+
+			ThenProcessIsNotCompleted(s, process, onAct)
+		})
+
+		s.When("While condition is false (Continue=true)", func(s *testcase.Spec) {
+			while.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftesting.Stub{
+					StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return false, nil
+					},
+				}
+			})
+
+			s.Test("no error expected", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			ThenProcessIsCompleted(s, process, onAct)
+		})
+
+		s.When("Until condition is true (Continue=true)", func(s *testcase.Spec) {
+			until.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftesting.Stub{
+					StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return true, nil
+					},
+				}
+			})
+
+			s.Test("no error expected", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			ThenProcessIsCompleted(s, process, onAct)
+		})
+
+		s.When("Until condition is false (Continue=false)", func(s *testcase.Spec) {
+			until.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftesting.Stub{
+					StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return false, nil
+					},
+				}
+			})
+
+			s.Test("Suspend error expected", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+			})
+
+			ThenProcessIsNotCompleted(s, process, onAct)
+		})
+
+		s.When("condition evaluation fails", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+
+			subject := let.Var(s, func(t *testcase.T) *workflow.Suspend {
+				return &workflow.Suspend{
+					While: &StubCondition{
+						StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+							return false, expErr.Get(t)
+						},
+					},
+				}
+			})
+
+			act := let.Act(func(t *testcase.T) error {
+				return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
+			})
+
+			s.Then("error is propagated back", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), expErr.Get(t))
+			})
+		})
+
+		s.Test("is idempotent when Continue=true", func(t *testcase.T) {
+			var p workflow.Process
+			subject := &workflow.Suspend{
+				Until: wftemplate.Condition("true"),
+			}
+			t.Random.Repeat(3, 7, func() {
+				assert.NoError(t, subject.Execute(t.Context(), &p))
+			})
+			assert.False(t, workflow.IsCompleted(p.Events),
+				"Suspend execution should not add EventCompleted")
+		})
+	})
+
+	s.Describe("IsCompleted", func(s *testcase.Spec) {
+		s.Test("returns false when events are empty", func(t *testcase.T) {
+			assert.False(t, workflow.IsCompleted(workflow.Events{}))
+		})
+
+		s.Test("returns false when EventCompleted is not present", func(t *testcase.T) {
+			events := workflow.Events{
+				workflow.VariableEvent{
+					Operation: workflow.SetVariableEventOperation,
+					Key:       "foo",
+					Value:     42,
+				},
+			}
+			assert.False(t, workflow.IsCompleted(events))
+		})
+
+		s.Test("returns true when EventCompleted is present", func(t *testcase.T) {
+			events := workflow.Events{
+				workflow.VariableEvent{
+					Operation: workflow.SetVariableEventOperation,
+					Key:       "foo",
+					Value:     42,
+				},
+				workflow.EventCompleted{},
+			}
+			assert.True(t, workflow.IsCompleted(events))
+		})
+
+		s.Test("returns true when EventCompleted is present among other events", func(t *testcase.T) {
+			events := workflow.Events{
+				workflow.VariableEvent{
+					Operation: workflow.SetVariableEventOperation,
+					Key:       "foo",
+					Value:     42,
+				},
+				workflow.EventCompleted{},
+				workflow.VariableEvent{
+					Operation: workflow.SetVariableEventOperation,
+					Key:       "bar",
+					Value:     "baz",
+				},
+			}
+			assert.True(t, workflow.IsCompleted(events))
+		})
+	})
+
+	s.Describe("Runtime Execute with EventCompleted", func(s *testcase.Spec) {
+		var ctx = c.LetContext(s)
+
+		s.When("definition successfully executes", func(s *testcase.Spec) {
+			var pid = LetParticipantID(s)
+			c.LetStub(s, pid)
+
+			def := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.ExecuteParticipant{ID: pid.Get(t)},
+				}
+			})
+
+			s.Then("EventCompleted is added to Process#Events", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				assert.NoError(t, c.Runtime.Get(t).Execute(ctx.Get(t), p))
+
+				assert.Contains(t, p.Events, workflow.EventCompleted{},
+					"Process#Events should contain EventCompleted after successful execution")
+			})
+
+			s.Then("IsCompleted returns true", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				assert.NoError(t, c.Runtime.Get(t).Execute(ctx.Get(t), p))
+				assert.True(t, workflow.IsCompleted(p.Events),
+					"IsCompleted should return true when EventCompleted is present")
+			})
+		})
+
+		s.When("definition returns Suspend error", func(s *testcase.Spec) {
+			def := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Suspend{
+					Until: wftemplate.Condition("false"),
+				}
+			})
+
+			s.Then("EventCompleted is NOT added", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				err := c.Runtime.Get(t).Execute(ctx.Get(t), p)
+
+				assert.ErrorIs(t, err, workflow.Suspend{})
+				assert.NotContains(t, p.Events, workflow.EventCompleted{},
+					"Process#Events should NOT contain EventCompleted when suspended")
+			})
+
+			s.Then("IsCompleted returns false", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				err := c.Runtime.Get(t).Execute(ctx.Get(t), p)
+
+				assert.ErrorIs(t, err, workflow.Suspend{})
+				assert.False(t, workflow.IsCompleted(p.Events),
+					"IsCompleted should return false when no EventCompleted is present")
+			})
+		})
+
+		s.When("definition returns other error", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+			var pid = LetParticipantID(s)
+			stub := c.LetStub(s, pid)
+
+			stub.Let(s, func(t *testcase.T) *StubParticipant {
+				s := stub.Super(t)
+				s.Err = expErr.Get(t)
+				return s
+			})
+
+			def := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.ExecuteParticipant{ID: pid.Get(t)},
+				}
+			})
+
+			s.Then("EventCompleted is NOT added", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				err := c.Runtime.Get(t).Execute(ctx.Get(t), p)
+
+				assert.ErrorIs(t, err, expErr.Get(t))
+				assert.NotContains(t, p.Events, workflow.EventCompleted{},
+					"Process#Events should NOT contain EventCompleted when error occurs")
+			})
+
+			s.Then("IsCompleted returns false", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+				err := c.Runtime.Get(t).Execute(ctx.Get(t), p)
+
+				assert.ErrorIs(t, err, expErr.Get(t))
+				assert.False(t, workflow.IsCompleted(p.Events),
+					"IsCompleted should return false when no EventCompleted is present")
+			})
+		})
+
+		s.When("definition successfully executes", func(s *testcase.Spec) {
+			var pid = LetParticipantID(s)
+			c.LetStub(s, pid)
+
+			def := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.ExecuteParticipant{ID: pid.Get(t)},
+				}
+			})
+
+			s.Test("EventCompleted persists across re-executions after successful completion", func(t *testcase.T) {
+				p := &workflow.Process{Definition: def.Get(t)}
+
+				// First execution - should succeed and add EventCompleted
+				assert.NoError(t, c.Runtime.Get(t).Execute(ctx.Get(t), p))
+				assert.True(t, workflow.IsCompleted(p.Events))
+
+				// Second execution - should still have EventCompleted (idempotent)
+				assert.NoError(t, c.Runtime.Get(t).Execute(ctx.Get(t), p))
+				assert.True(t, workflow.IsCompleted(p.Events))
 			})
 		})
 	})

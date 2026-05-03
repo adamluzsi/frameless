@@ -62,10 +62,6 @@ type participantCacheKey struct {
 	Input     string // []VariableValue
 }
 
-type participantCacheValue struct {
-	Output Variables
-}
-
 type pcRes struct {
 }
 
@@ -85,11 +81,11 @@ type executionEvent[ID ~string] struct {
 	Input []any
 	// Output is the cached output variable setting
 	Output []any
-	// Result is the cached reutn value of the executeWR
+	// Result is the cached return value of the executeWR
 	Result []any
 }
 
-func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (rerr error) {
+func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) error {
 	_, err := ie.executeWR(ctx, p)
 	return err
 }
@@ -143,7 +139,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 		if len(ie.Input) == len(matchingEE.Input) {
 			for i, key := range ie.Input {
 				// invalidate on input value mismatch
-				// it is idempotent olny if input arguments the same too.
+				// it is idempotent only if input arguments the same too.
 				if !reflectkit.Equal(mProcess.Var().Get(key), matchingEE.Input[i]) {
 					found = false
 					break

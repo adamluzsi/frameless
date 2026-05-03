@@ -13,6 +13,8 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+
+	. "go.llib.dev/frameless/pkg/workflow/wftesting"
 )
 
 func Example() {
@@ -394,10 +396,13 @@ func TestRuntime(t *testing.T) {
 
 		s.When("definition is provided in the process", func(s *testcase.Spec) {
 			defRan := let.VarOf(s, false)
-			definition := let.Var(s, func(t *testcase.T) workflow.Definition {
-				return &StubDefinition{func(ctx context.Context, p *workflow.Process) error {
-					assert.NotNil(t, ctx)
+			defCtx := let.VarOf[context.Context](s, nil)
 
+			definition := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return &Stub{StubExecute: func(ctx context.Context, p *workflow.Process) error {
+					defCtx.Set(t, ctx)
+					assert.NotNil(t, ctx)
+					defRan.Set(t, true)
 					return ctx.Err()
 				}}
 			})
@@ -408,9 +413,41 @@ func TestRuntime(t *testing.T) {
 			})
 
 			s.Then("the definition is executed", func(t *testcase.T) {
+				act(t)
+
+				assert.True(t, defRan.Get(t))
+			})
+
+			s.And("context contains values", func(s *testcase.Spec) {
+				type ctxKey struct{}
+				ctxValue := let.String(s)
+
+				ctx.Let(s, func(t *testcase.T) context.Context {
+					return context.WithValue(ctx.Super(t), ctxKey{}, ctxValue.Get(t))
+				})
+
+				s.Then("context with its values is passed through", func(t *testcase.T) {
+					act(t)
+
+					assert.NotNil(t, defCtx.Get(t))
+					got, ok := defCtx.Get(t).Value(ctxKey{}).(string)
+					assert.True(t, ok)
+					assert.Equal(t, ctxValue.Get(t), got)
+				})
+			})
+
+			s.Then("definition returns pause signals", func(t *testcase.T) {
+				shouldWait := let.VarOf(s, false)
+
+				definition.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Suspend{
+						Until: Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+							return shouldWait.Get(t), nil
+						}},
+					}
+				})
 
 			})
 		})
 	})
-
 }

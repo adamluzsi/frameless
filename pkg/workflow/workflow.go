@@ -12,8 +12,8 @@ import (
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/ds"
@@ -77,7 +77,11 @@ func (r Runtime) Execute(ctx context.Context, p *Process) error {
 	if p.Definition == nil {
 		return nil
 	}
-	return p.Definition.Execute(r.Context(ctx), p)
+	err := p.Definition.Execute(r.Context(ctx), p)
+	if err == nil && !IsCompleted(p.Events) {
+		p.Events = append(p.Events, EventCompleted{})
+	}
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,10 +112,48 @@ type Event interface {
 
 type EventType string
 
+// EventCompleted is emitted when a workflow definition successfully completes execution.
+type EventCompleted struct{}
+
+func (EventCompleted) Type() EventType { return "workflow::completed" }
+
+// IsCompleted checks if the given events contain an EventCompleted event.
+func IsCompleted[T Events | Process | *Process](v T) bool {
+	var events Events
+	switch v := any(v).(type) {
+	case Events:
+		events = v
+	case Process:
+		events = v.Events
+	case *Process:
+		events = v.Events
+	}
+	for _, e := range slicekit.IterReverse(events) {
+		if _, ok := e.(EventCompleted); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func FilterEvent[T Event](es []Event) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, e := range es {
+			if v, ok := e.(T); ok {
+				if !yield(v) {
+					return
+				}
+			}
+		}
+	}
+}
+
 type Vars interface {
 	ds.Map[VariableKey, any]
 	ds.MapConvertible[VariableKey, any]
 }
+
+type VariableKey string
 
 func (p *Process) Var() Vars {
 	return varProcessProxy{Process: p}
@@ -125,9 +167,13 @@ var _ ds.ReadOnlyMap[VariableKey, any] = varProcessProxy{}
 var _ ds.Map[VariableKey, any] = (*varProcessProxy)(nil)
 var _ ds.MapConvertible[VariableKey, any] = (*varProcessProxy)(nil)
 
-const typeIDVariableEvent = "workflow::variable-event"
+const (
+	typeIDVariableEvent  = "workflow::variable-event"
+	typeIDCompletedEvent = "workflow::completed"
+)
 
 var _ = jsonkit.RegisterTypeID[VariableEvent](typeIDVariableEvent)
+var _ = jsonkit.RegisterTypeID[EventCompleted](typeIDCompletedEvent)
 
 type VariableEvent struct {
 	Operation VariableEventOperation `json:"op"`
@@ -263,67 +309,6 @@ func (s varProcessProxy) validateVariables(context.Context) error {
 		return fmt.Errorf("workflow variables are not valid because the json encoded values should be okay to unmarshal")
 	}
 	if !reflectkit.Equal(m, got) {
-		return fmt.Errorf("workflow variables are not valid because json encoding should not affect its values")
-	}
-	return nil
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-type Variables struct {
-	Process *Process
-	vs      dsmap.Map[VariableKey, any]
-}
-
-func (vs Variables) MarshalJSON() ([]byte, error) {
-	return json.Marshal(vs.vs)
-}
-
-func (vs *Variables) UnmarshalJSON(data []byte) error {
-	var m map[VariableKey]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return err
-	}
-	vs.vs = dsmap.Map[VariableKey, any](m)
-	return nil
-}
-
-type VariableKey string
-
-var _ ds.ReadOnlyMap[VariableKey, any] = Variables{}
-var _ ds.Map[VariableKey, any] = (*Variables)(nil)
-var _ ds.MapConvertible[VariableKey, any] = (*Variables)(nil)
-
-func (vs Variables) Lookup(key VariableKey) (any, bool) { return vs.vs.Lookup(key) }
-func (vs Variables) Get(key VariableKey) any            { return vs.vs.Get(key) }
-func (vs Variables) All() iter.Seq2[VariableKey, any]   { return vs.vs.All() }
-func (cs *Variables) Set(key VariableKey, val any)      { cs.vs.Set(key, val) }
-func (cs *Variables) Delete(key VariableKey)            { cs.vs.Delete(key) }
-func (cs *Variables) ToMap() map[VariableKey]any        { return mapkit.Clone(cs.vs.ToMap()) }
-
-func (vs Variables) Validate(ctx context.Context) error {
-	return vs.validateVariables(ctx)
-}
-
-func (vs *Variables) Merge(oth Variables) {
-	if oth.vs == nil {
-		return
-	}
-	for k, v := range oth.vs.All() {
-		vs.vs.Set(k, v)
-	}
-}
-
-func (s *Variables) validateVariables(context.Context) error {
-	data, err := json.Marshal(s.vs)
-	if err != nil {
-		return fmt.Errorf("workflow variables are not valid because the values must be json encodable")
-	}
-	var got dsmap.Map[VariableKey, any]
-	if err := json.Unmarshal(data, &got); err != nil {
-		return fmt.Errorf("workflow variables are not valid because the json encoded values should be okay to unmarshal")
-	}
-	if !reflectkit.Equal(s.vs, got) {
 		return fmt.Errorf("workflow variables are not valid because json encoding should not affect its values")
 	}
 	return nil

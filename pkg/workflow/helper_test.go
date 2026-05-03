@@ -6,6 +6,7 @@ import (
 	"go.llib.dev/frameless/pkg/workflow"
 
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
@@ -145,13 +146,18 @@ func NewRandomState(t *testcase.T) *workflow.Process {
 	return &s
 }
 
-type StubDefinition struct {
-	StubExecute func(ctx context.Context, p *workflow.Process) error
+func ThenProcessIsCompleted(s *testcase.Spec, process testcase.Var[*workflow.Process], act func(t *testcase.T)) {
+	s.Then("the workflow process is completed", func(t *testcase.T) {
+		act(t)
+
+		assert.True(t, workflow.IsCompleted(process.Get(t)))
+	})
 }
 
-func (stub StubDefinition) Execute(ctx context.Context, p *workflow.Process) error {
-	if stub.StubExecute != nil {
-		return stub.StubExecute(ctx, p)
-	}
-	return nil
+func ThenProcessIsNotCompleted(s *testcase.Spec, process testcase.Var[*workflow.Process], act func(t *testcase.T)) {
+	s.Then("the workflow process is not completed", func(t *testcase.T) {
+		act(t)
+
+		assert.False(t, workflow.IsCompleted(process.Get(t)))
+	})
 }
