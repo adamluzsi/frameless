@@ -78,7 +78,7 @@ func (r Runtime) Execute(ctx context.Context, p *Process) error {
 		return nil
 	}
 	err := p.Definition.Execute(r.Context(ctx), p)
-	if err == nil && !IsCompleted(p.Events) {
+	if err == nil && !IsCompleted(p) {
 		p.Events = append(p.Events, EventCompleted{})
 	}
 	return err

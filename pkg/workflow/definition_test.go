@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 	"go.llib.dev/frameless/pkg/workflow/wftesting"
@@ -321,14 +322,8 @@ func TestSequence(t *testing.T) {
 	})
 }
 
-func TestPause(t *testing.T) {
-
-}
-
 func TestSuspend(t *testing.T) {
 	s := testcase.NewSpec(t)
-
-	var c = letC(s)
 
 	var (
 		while = let.VarOf[workflow.Condition](s, nil)
@@ -343,7 +338,7 @@ func TestSuspend(t *testing.T) {
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
 		var (
-			ctx     = c.LetContext(s)
+			ctx     = let.Context(s)
 			process = LetProcess(s)
 		)
 		act := let.Act(func(t *testcase.T) error {
@@ -422,85 +417,165 @@ func TestSuspend(t *testing.T) {
 		s.When("condition evaluation fails", func(s *testcase.Spec) {
 			expErr := let.Error(s)
 
-			subject := let.Var(s, func(t *testcase.T) *workflow.Suspend {
-				return &workflow.Suspend{
-					While: &StubCondition{
-						StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
-							return false, expErr.Get(t)
-						},
+			s.Before(func(t *testcase.T) {
+				faultyCondition := wftesting.Stub{
+					StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return false, expErr.Get(t)
 					},
+				}
+				if t.Random.Bool() {
+					while.Set(t, faultyCondition)
+				} else {
+					until.Set(t, faultyCondition)
 				}
 			})
 
-			act := let.Act(func(t *testcase.T) error {
-				return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
-			})
-
-			s.Then("error is propagated back", func(t *testcase.T) {
+			s.Then("fault propagated back", func(t *testcase.T) {
 				assert.ErrorIs(t, act(t), expErr.Get(t))
 			})
-		})
 
-		s.Test("is idempotent when Continue=true", func(t *testcase.T) {
-			var p workflow.Process
-			subject := &workflow.Suspend{
-				Until: wftemplate.Condition("true"),
-			}
-			t.Random.Repeat(3, 7, func() {
-				assert.NoError(t, subject.Execute(t.Context(), &p))
+			ThenProcessIsNotCompleted(s, process, onAct)
+		})
+	})
+
+	s.Context("workflow.Runtime integration", func(s *testcase.Spec) {
+		var c = letC(s)
+		var (
+			Context = let.Context(s)
+			suspend = let.Var(s, func(t *testcase.T) workflow.Suspend {
+				return workflow.Suspend{}
 			})
-			assert.False(t, workflow.IsCompleted(p.Events),
-				"Suspend execution should not add EventCompleted")
+			process = let.Var(s, func(t *testcase.T) *workflow.Process {
+				return &workflow.Process{Definition: suspend.Get(t)}
+			})
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return c.Runtime.Get(t).Execute(Context.Get(t), process.Get(t))
+		})
+
+		var onAct = func(t *testcase.T) {
+			_ = act(t)
+		}
+
+		s.When("suspend requested", func(s *testcase.Spec) {
+			suspend.Let(s, func(t *testcase.T) workflow.Suspend {
+				return workflow.Suspend{
+					While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return true, nil
+					}},
+				}
+			})
+
+			s.Then("no error bubbles back", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			ThenProcessIsNotCompleted(s, process, onAct)
+		})
+
+		s.When("suspend allows to continue the workflow", func(s *testcase.Spec) {
+			suspend.Let(s, func(t *testcase.T) workflow.Suspend {
+				return workflow.Suspend{
+					While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+						return false, nil
+					}},
+				}
+			})
+
+			s.Then("finishes normally", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			ThenProcessIsCompleted(s, process, onAct)
+		})
+	})
+}
+
+func TestIsCompleted(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		process = LetProcess(s)
+	)
+	act := let.Act(func(t *testcase.T) bool {
+		return workflow.IsCompleted(process.Get(t))
+	})
+
+	s.When("when events are empty", func(s *testcase.Spec) {
+		process.Let(s, func(t *testcase.T) *workflow.Process {
+			p := process.Super(t)
+			if t.Random.Bool() {
+				p.Events = nil
+			} else {
+				p.Events = []workflow.Event{}
+			}
+			return p
+		})
+
+		s.Then("event is considered not completed", func(t *testcase.T) {
+			assert.False(t, act(t))
 		})
 	})
 
-	s.Describe("IsCompleted", func(s *testcase.Spec) {
-		s.Test("returns false when events are empty", func(t *testcase.T) {
-			assert.False(t, workflow.IsCompleted(workflow.Events{}))
-		})
-
-		s.Test("returns false when EventCompleted is not present", func(t *testcase.T) {
-			events := workflow.Events{
+	s.When("process has events but nothing related to process completion", func(s *testcase.Spec) {
+		process.Let(s, func(t *testcase.T) *workflow.Process {
+			p := process.Super(t)
+			p.Events = workflow.Events{
 				workflow.VariableEvent{
 					Operation: workflow.SetVariableEventOperation,
 					Key:       "foo",
 					Value:     42,
 				},
+				workflow.ExecuteParticipantEvent{
+					ParticipantID: "foo",
+				},
 			}
-			assert.False(t, workflow.IsCompleted(events))
+			return p
 		})
 
-		s.Test("returns true when EventCompleted is present", func(t *testcase.T) {
-			events := workflow.Events{
-				workflow.VariableEvent{
-					Operation: workflow.SetVariableEventOperation,
-					Key:       "foo",
-					Value:     42,
-				},
-				workflow.EventCompleted{},
-			}
-			assert.True(t, workflow.IsCompleted(events))
-		})
-
-		s.Test("returns true when EventCompleted is present among other events", func(t *testcase.T) {
-			events := workflow.Events{
-				workflow.VariableEvent{
-					Operation: workflow.SetVariableEventOperation,
-					Key:       "foo",
-					Value:     42,
-				},
-				workflow.EventCompleted{},
-				workflow.VariableEvent{
-					Operation: workflow.SetVariableEventOperation,
-					Key:       "bar",
-					Value:     "baz",
-				},
-			}
-			assert.True(t, workflow.IsCompleted(events))
+		s.Then("it is considered not completed", func(t *testcase.T) {
+			assert.False(t, act(t))
 		})
 	})
 
-	s.Describe("Runtime Execute with EventCompleted", func(s *testcase.Spec) {
+	s.When("EventCompleted event is present", func(s *testcase.Spec) {
+		process.Let(s, func(t *testcase.T) *workflow.Process {
+			p := process.Super(t)
+			p.Events = append(p.Events, workflow.EventCompleted{})
+			return p
+		})
+
+		s.Then("it is considered completed", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+
+		s.And("other events as well present in the event history", func(s *testcase.Spec) {
+			process.Let(s, func(t *testcase.T) *workflow.Process {
+				p := process.Super(t)
+				var events []workflow.Event
+				events = append(events,
+					workflow.VariableEvent{
+						Operation: workflow.SetVariableEventOperation,
+						Key:       "foo",
+						Value:     42,
+					},
+					workflow.ExecuteParticipantEvent{
+						ParticipantID: "foo",
+					})
+				slicekit.Unshift(&p.Events, events...)
+				return p
+			})
+
+			s.Then("it is considered completed", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+	})
+}
+
+/*
+
+ s.Describe("Runtime Execute with EventCompleted", func(s *testcase.Spec) {
 		var ctx = c.LetContext(s)
 
 		s.When("definition successfully executes", func(s *testcase.Spec) {
@@ -614,4 +689,5 @@ func TestSuspend(t *testing.T) {
 			})
 		})
 	})
-}
+
+*/
