@@ -20,16 +20,9 @@ type Worker struct {
 }
 
 type Queue interface {
-	pubsub.Publisher[Job]
-	pubsub.Subscriber[Job]
+	pubsub.Publisher[*workflow.Process]
+	pubsub.Subscriber[*workflow.Process]
 }
-
-type Job struct {
-	ID      JobID
-	Process *workflow.Process
-}
-
-type JobID = uuid.UUID
 
 var _ pubsub.Publisher[workflow.Definition] = (*Worker)(nil)
 
@@ -50,7 +43,14 @@ func (w Worker) Publish(ctx context.Context, defs ...workflow.Definition) error 
 
 var _ tasker.Runnable = (*Worker)(nil)
 
+func (w Worker) init() {
+	if _, ok := w.Runtime.On.Lookup(workflow.OnErr[workflow.Suspend]{}); !ok {
+		w.Runtime.On.Set(workflow.OnErr[workflow.Suspend]{}, w.onSuspend)
+	}
+}
+
 func (w Worker) Run(ctx context.Context) error {
+	w.init()
 	for msg, err := range w.Tasks.Subscribe(ctx) {
 		if err != nil {
 			return err
@@ -65,12 +65,17 @@ func (w Worker) Run(ctx context.Context) error {
 	return nil
 }
 
-func (w Worker) handle(msg pubsub.Message[Job]) (rErr error) {
+func (w Worker) onSuspend(ctx context.Context, p *workflow.Process) error {
+	// requeue suspended workflow
+	return w.Tasks.Publish(ctx, p)
+}
+
+func (w Worker) handle(msg pubsub.Message[*workflow.Process]) (rErr error) {
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
-	var job = msg.Data()
-	err := w.Runtime.Execute(msg.Context(), job.Process)
+	var p = msg.Data()
+	err := w.Runtime.Execute(msg.Context(), p)
 	if err != nil {
-		return w.Errors.Publish(msg.Context(), msg.Data())
+		return w.Errors.Publish(msg.Context(), p)
 	}
 	return nil
 }
