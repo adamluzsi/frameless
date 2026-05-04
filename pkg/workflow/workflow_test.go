@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
+	"go.llib.dev/frameless/pkg/workflow/wftesting"
 	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/ds/dscontract"
 	"go.llib.dev/testcase"
@@ -435,18 +436,86 @@ func TestRuntime(t *testing.T) {
 					assert.Equal(t, ctxValue.Get(t), got)
 				})
 			})
+		})
 
-			s.Then("definition returns pause signals", func(t *testcase.T) {
-				shouldWait := let.VarOf(s, false)
+		s.Context("Suspend", func(s *testcase.Spec) {
+			suspend := let.Var(s, func(t *testcase.T) workflow.Suspend {
+				return workflow.Suspend{}
+			})
 
-				definition.Let(s, func(t *testcase.T) workflow.Definition {
+			process.Let(s, func(t *testcase.T) *workflow.Process {
+				p := process.Super(t)
+				p.Definition = suspend.Get(t)
+				return p
+			})
+
+			var onAct = func(t *testcase.T) {
+				_ = act(t)
+			}
+
+			s.When("suspend requested", func(s *testcase.Spec) {
+				suspend.Let(s, func(t *testcase.T) workflow.Suspend {
 					return workflow.Suspend{
-						Until: Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
-							return shouldWait.Get(t), nil
+						While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+							return true, nil
 						}},
 					}
 				})
 
+				s.Then("Suspend error bubbles back", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.Suspend{})
+				})
+
+				ThenProcessIsNotCompleted(s, process, onAct)
+
+				s.And(".On with Suspend configured", func(s *testcase.Spec) {
+					onSuspendRan := let.VarOf(s, false)
+					onSuspend := let.Var(s, func(t *testcase.T) func(ctx context.Context, p *workflow.Process) error {
+						return func(ctx context.Context, p *workflow.Process) error {
+							assert.NotNil(t, ctx)
+							assert.Equal(t, process.Get(t), p)
+							onSuspendRan.Set(t, true)
+							return nil
+						}
+					})
+					runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+						r := runtime.Super(t)
+						r.On.Set(workflow.OnErr[workflow.Suspend]{}, onSuspend.Get(t))
+						return r
+					})
+
+					s.Then(".On Suspend handler is called", func(t *testcase.T) {
+						act(t)
+
+						assert.True(t, onSuspendRan.Get(t))
+					})
+
+					s.Then("no error bubbles back", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+					})
+
+					s.Then("process is not marked as completed", func(t *testcase.T) {
+						act(t)
+
+						assert.False(t, workflow.IsCompleted(process.Get(t)))
+					})
+				})
+			})
+
+			s.When("suspend allows to continue the workflow", func(s *testcase.Spec) {
+				suspend.Let(s, func(t *testcase.T) workflow.Suspend {
+					return workflow.Suspend{
+						While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
+							return false, nil
+						}},
+					}
+				})
+
+				s.Then("finishes normally", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+
+				ThenProcessIsCompleted(s, process, onAct)
 			})
 		})
 	})

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -42,6 +43,27 @@ type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
 	ContextSetup []func(context.Context) context.Context
+
+	On dsmap.Map[OnErrType, func(ctx context.Context, p *Process) error]
+}
+
+type OnErr[Err error] struct{}
+
+var _ OnErrType = OnErr[error]{}
+
+func (OnErr[Err]) Is(err error) bool {
+	var target Err
+	if errors.Is(err, target) {
+		return true
+	}
+	if errors.As(err, &target) {
+		return true
+	}
+	return false
+}
+
+type OnErrType interface {
+	Is(error) bool
 }
 
 type ParticipantRepository interface {
@@ -77,9 +99,25 @@ func (r Runtime) Execute(ctx context.Context, p *Process) error {
 	if p.Definition == nil {
 		return nil
 	}
-	err := p.Definition.Execute(r.Context(ctx), p)
-	if err == nil && !IsCompleted(p) {
-		p.Events = append(p.Events, EventCompleted{})
+	var err = p.Definition.Execute(r.Context(ctx), p)
+	if err == nil {
+		if !IsCompleted(p) {
+			p.Events = append(p.Events, EventCompleted{})
+		}
+		return nil
+	}
+	for onErr, handler := range r.On {
+		if onErr == nil {
+			continue
+		}
+		if !onErr.Is(err) {
+			continue
+		}
+		if handler != nil {
+			return handler(ctx, p)
+		}
+		err = nil
+		break
 	}
 	return err
 }

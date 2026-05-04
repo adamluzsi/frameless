@@ -345,10 +345,6 @@ func TestSuspend(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		var onAct = func(t *testcase.T) {
-			_ = act(t)
-		}
-
 		s.When("While condition is true (Continue=false)", func(s *testcase.Spec) {
 			while.Let(s, func(t *testcase.T) workflow.Condition {
 				return wftesting.Stub{
@@ -362,8 +358,6 @@ func TestSuspend(t *testing.T) {
 				err := act(t)
 				assert.ErrorIs(t, err, workflow.Suspend{})
 			})
-
-			ThenProcessIsNotCompleted(s, process, onAct)
 		})
 
 		s.When("While condition is false (Continue=true)", func(s *testcase.Spec) {
@@ -378,8 +372,6 @@ func TestSuspend(t *testing.T) {
 			s.Test("no error expected", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 			})
-
-			ThenProcessIsCompleted(s, process, onAct)
 		})
 
 		s.When("Until condition is true (Continue=true)", func(s *testcase.Spec) {
@@ -394,8 +386,6 @@ func TestSuspend(t *testing.T) {
 			s.Test("no error expected", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 			})
-
-			ThenProcessIsCompleted(s, process, onAct)
 		})
 
 		s.When("Until condition is false (Continue=false)", func(s *testcase.Spec) {
@@ -410,8 +400,6 @@ func TestSuspend(t *testing.T) {
 			s.Test("Suspend error expected", func(t *testcase.T) {
 				assert.ErrorIs(t, act(t), workflow.Suspend{})
 			})
-
-			ThenProcessIsNotCompleted(s, process, onAct)
 		})
 
 		s.When("condition evaluation fails", func(s *testcase.Spec) {
@@ -433,60 +421,6 @@ func TestSuspend(t *testing.T) {
 			s.Then("fault propagated back", func(t *testcase.T) {
 				assert.ErrorIs(t, act(t), expErr.Get(t))
 			})
-
-			ThenProcessIsNotCompleted(s, process, onAct)
-		})
-	})
-
-	s.Context("workflow.Runtime integration", func(s *testcase.Spec) {
-		var c = letC(s)
-		var (
-			Context = let.Context(s)
-			suspend = let.Var(s, func(t *testcase.T) workflow.Suspend {
-				return workflow.Suspend{}
-			})
-			process = let.Var(s, func(t *testcase.T) *workflow.Process {
-				return &workflow.Process{Definition: suspend.Get(t)}
-			})
-		)
-		act := let.Act(func(t *testcase.T) error {
-			return c.Runtime.Get(t).Execute(Context.Get(t), process.Get(t))
-		})
-
-		var onAct = func(t *testcase.T) {
-			_ = act(t)
-		}
-
-		s.When("suspend requested", func(s *testcase.Spec) {
-			suspend.Let(s, func(t *testcase.T) workflow.Suspend {
-				return workflow.Suspend{
-					While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
-						return true, nil
-					}},
-				}
-			})
-
-			s.Then("no error bubbles back", func(t *testcase.T) {
-				assert.NoError(t, act(t))
-			})
-
-			ThenProcessIsNotCompleted(s, process, onAct)
-		})
-
-		s.When("suspend allows to continue the workflow", func(s *testcase.Spec) {
-			suspend.Let(s, func(t *testcase.T) workflow.Suspend {
-				return workflow.Suspend{
-					While: wftesting.Stub{StubEvaluate: func(ctx context.Context, p *workflow.Process) (bool, error) {
-						return false, nil
-					}},
-				}
-			})
-
-			s.Then("finishes normally", func(t *testcase.T) {
-				assert.NoError(t, act(t))
-			})
-
-			ThenProcessIsCompleted(s, process, onAct)
 		})
 	})
 }
