@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dslist"
 	"go.llib.dev/frameless/port/ds/dsmap"
 )
 
@@ -44,25 +45,33 @@ type Runtime struct {
 	Conditions   ConditionRepository
 	ContextSetup []func(context.Context) context.Context
 
-	On dsmap.Map[OnErrType, func(ctx context.Context, p *Process) error]
+	Errors dslist.Slice[ErrorHandler]
 }
 
-type OnErr[Err error] struct{}
+func OnError[Error error](fn func(ctx context.Context, p *Process, err Error) error) ErrorHandler {
+	return errorHandlerFunc[Error](fn)
+}
 
-var _ OnErrType = OnErr[error]{}
+type errorHandlerFunc[Error error] func(ctx context.Context, p *Process, err Error) error
 
-func (OnErr[Err]) Is(err error) bool {
-	var target Err
-	if errors.Is(err, target) {
-		return true
-	}
+func (fn errorHandlerFunc[Error]) Is(err error) bool {
+	var target Error
+	return errors.Is(err, target)
+}
+
+func (fn errorHandlerFunc[Error]) Handle(ctx context.Context, p *Process, err error) (error, bool) {
+	var target Error
 	if errors.As(err, &target) {
-		return true
+		return fn(ctx, p, target), true
 	}
-	return false
+	if errors.Is(err, target) {
+		return fn(ctx, p, target), true
+	}
+	return nil, false
 }
 
-type OnErrType interface {
+type ErrorHandler interface {
+	Handle(ctx context.Context, p *Process, err error) (error, bool)
 	Is(error) bool
 }
 
@@ -106,18 +115,10 @@ func (r Runtime) Execute(ctx context.Context, p *Process) error {
 		}
 		return nil
 	}
-	for onErr, handler := range r.On {
-		if onErr == nil {
-			continue
+	for _, handler := range r.Errors {
+		if hErr, ok := handler.Handle(ctx, p, err); ok || hErr != nil {
+			return hErr
 		}
-		if !onErr.Is(err) {
-			continue
-		}
-		if handler != nil {
-			return handler(ctx, p)
-		}
-		err = nil
-		break
 	}
 	return err
 }

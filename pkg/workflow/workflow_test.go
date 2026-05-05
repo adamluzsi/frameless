@@ -470,8 +470,8 @@ func TestRuntime(t *testing.T) {
 
 				s.And(".On with Suspend configured", func(s *testcase.Spec) {
 					onSuspendRan := let.VarOf(s, false)
-					onSuspend := let.Var(s, func(t *testcase.T) func(ctx context.Context, p *workflow.Process) error {
-						return func(ctx context.Context, p *workflow.Process) error {
+					onSuspend := let.Var(s, func(t *testcase.T) func(ctx context.Context, p *workflow.Process, _ workflow.Suspend) error {
+						return func(ctx context.Context, p *workflow.Process, _ workflow.Suspend) error {
 							assert.NotNil(t, ctx)
 							assert.Equal(t, process.Get(t), p)
 							onSuspendRan.Set(t, true)
@@ -480,7 +480,7 @@ func TestRuntime(t *testing.T) {
 					})
 					runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 						r := runtime.Super(t)
-						r.On.Set(workflow.OnErr[workflow.Suspend]{}, onSuspend.Get(t))
+						r.Errors.Append(workflow.OnError(onSuspend.Get(t)))
 						return r
 					})
 
