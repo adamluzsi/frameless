@@ -26,6 +26,9 @@ type Queue[Data any] struct {
 	Volatile bool
 	// blocking will cause the Queue to wait until the published messages are ACK -ed.
 	Blocking bool
+	// TransactionalMessageContext will make subscription message context contain a Queue transaction.
+	// This can enable safe requeue operations.
+	TransactionalMessageContext bool
 	// SortLessFunc will define how to sort data, when we look for what message to handle next.
 	// if not supplied FIFO is the default ordering.
 	SortLessFunc func(i Data, j Data) bool
