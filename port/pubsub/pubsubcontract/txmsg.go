@@ -1,9 +1,9 @@
 package pubsubcontract
 
 import (
-	"context"
 	"testing"
 
+	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
@@ -18,12 +18,9 @@ import (
 func TransactionalMessageContext[Data any](
 	publisher pubsub.Publisher[Data],
 	subscriber pubsub.Subscriber[Data],
-	commitManager interface {
-		BeginTx(context.Context) (context.Context, error)
-		CommitTx(context.Context) error
-		RollbackTx(context.Context) error
-	},
+	commitManager comproto.OnePhaseCommitProtocol,
 	opts ...Option[Data]) contract.Contract {
+
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig[Config[Data]](opts)
 
@@ -88,5 +85,5 @@ func TransactionalMessageContext[Data any](
 		})
 	})
 
-	return s.AsSuite("Requeue")
+	return s.AsSuite("TransactionalMessageContext")
 }
