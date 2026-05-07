@@ -45,6 +45,10 @@ func (q *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
 	if len(vs) == 0 {
 		return nil
 	}
+	// If there's an active transaction in the context, buffer into it instead of publishing directly
+	if tx, ok := q.txm().LookupTx(ctx); ok && atomic.LoadInt32(&tx.done) == 0 {
+		return q.txm().Q(ctx).Publish(ctx, vs...)
+	}
 	var msgs = q.publish(ctx, vs)
 	q.blockingWait(ctx, msgs)
 	return nil
@@ -156,10 +160,10 @@ func (q *Queue[Data]) sort(recs []*queueMessage[Data]) {
 }
 
 type queueTx[Data any] struct {
-	m sync.Mutex
-	q *Queue[Data]
-
+	m    sync.Mutex
+	q    *Queue[Data]
 	msgs []Data
+	done int32 // atomic: 0 = active, 1 = done (commit/rollback in progress or finished)
 }
 
 type qpub[Data any] struct {
@@ -186,14 +190,14 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]
 			return &queueTx[Data]{q: db, msgs: []Data{}}, nil
 		},
 		Commit: func(ctx context.Context, tx *queueTx[Data]) error {
-			tx.m.Lock()
-			defer tx.m.Unlock()
+			atomic.StoreInt32(&tx.done, 1)
 			return tx.q.Publish(ctx, tx.msgs...)
 		},
 		Rollback: func(ctx context.Context, tx *queueTx[Data]) error {
+			atomic.StoreInt32(&tx.done, 1)
 			tx.m.Lock()
-			defer tx.m.Unlock()
 			tx.msgs = nil
+			tx.m.Unlock()
 			return nil
 		},
 	}
@@ -330,13 +334,23 @@ func (s *QueueSubscription[Data]) Next() bool {
 		return false
 	}
 
+	var txCtx context.Context
+	if s.q.TransactionalMessageContext {
+		txCtx, err = s.q.BeginTx(s.ctx)
+		if err != nil {
+			s.err = err
+			return false
+		}
+	}
+
 	s.value = &pubsubMessage[Data]{
-		ctx:  s.ctx,
-		q:    s.q,
-		sub:  s,
-		msg:  msg,
-		ack:  ack,
-		nack: nack,
+		ctx:   s.ctx,
+		txCtx: txCtx,
+		q:     s.q,
+		sub:   s,
+		msg:   msg,
+		ack:   ack,
+		nack:  nack,
 	}
 
 	return true
@@ -350,7 +364,8 @@ func (s *QueueSubscription[Data]) Value() pubsub.Message[Data] {
 }
 
 type pubsubMessage[Data any] struct {
-	ctx context.Context
+	ctx   context.Context
+	txCtx context.Context // transactional context when TransactionalMessageContext is enabled
 
 	q   *Queue[Data]
 	sub *QueueSubscription[Data]
@@ -361,6 +376,9 @@ type pubsubMessage[Data any] struct {
 }
 
 func (pm *pubsubMessage[Data]) Context() context.Context {
+	if pm.txCtx != nil {
+		return pm.txCtx
+	}
 	return pm.ctx
 }
 
@@ -368,12 +386,22 @@ func (pm *pubsubMessage[Data]) ACK() error {
 	if pm.msg == nil {
 		return fmt.Errorf(".Value accessed before iter.Next, nothing to ACK")
 	}
+	if pm.txCtx != nil {
+		if err := pm.q.CommitTx(pm.txCtx); err != nil {
+			return err
+		}
+	}
 	return pm.ack()
 }
 
 func (pm *pubsubMessage[Data]) NACK() error {
 	if pm.msg == nil {
 		return fmt.Errorf(".Value accessed before iter.Next, nothing to NACK")
+	}
+	if pm.txCtx != nil {
+		if err := pm.q.RollbackTx(pm.txCtx); err != nil {
+			return err
+		}
 	}
 	return pm.nack()
 }
