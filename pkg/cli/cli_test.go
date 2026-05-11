@@ -1051,7 +1051,6 @@ func TestServeMux(t *testing.T) {
 					out := string(response.Get(t).CombinedOutput())
 					assert.NotEmpty(t, out)
 
-					fmt.Println(out)
 					for name, cmd := range commands.Get(t) {
 						assert.Contains(t, out, fmt.Sprintf("- %s: %s", name, cmd.summary))
 						assert.NotContains(t, out, cmd.description)
@@ -2721,4 +2720,86 @@ func TestResponseRecorder(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		rr = let.Var(s, func(t *testcase.T) *cli.ResponseRecorder {
+			return &cli.ResponseRecorder{}
+		})
+		w = let.Var(s, func(t *testcase.T) cli.ResponseWriter {
+			return rr.Get(t)
+		})
+		message = let.String(s)
+		code    = let.Int(s)
+	)
+	act := let.Act0(func(t *testcase.T) {
+		cli.Error(w.Get(t), message.Get(t), code.Get(t))
+	})
+
+	s.Then("it won't stop the execution of the goroutine", func(t *testcase.T) {
+		o := sandbox.Run(func() { act(t) })
+
+		assert.True(t, o.OK)
+		assert.False(t, o.Goexit)
+		assert.False(t, o.Panic)
+	})
+
+	s.Then("error will writes error message into response writer", func(t *testcase.T) {
+		act(t)
+
+		output := string(rr.Get(t).CombinedOutput())
+		assert.Contains(t, output, message.Get(t))
+	})
+
+	s.Then("it will set exit code in the response writer", func(t *testcase.T) {
+		act(t)
+
+		assert.Equal(t, code.Get(t), rr.Get(t).Code)
+	})
+
+	s.When("response writer supports cli.ErrorWriter", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			_, ok := w.Get(t).(cli.ErrorWriter)
+			assert.True(t, ok)
+		})
+
+		s.Then("ErrorWriter will be used to write response", func(t *testcase.T) {
+			act(t)
+
+			assert.Contains(t, rr.Get(t).Err.String(), message.Get(t))
+			assert.Empty(t, rr.Get(t).Out.String())
+		})
+	})
+
+	s.When("response writer lack support for cli.ErrorWriter", func(s *testcase.Spec) {
+		w.Let(s, func(t *testcase.T) cli.ResponseWriter {
+			return WithoutErrorWriter{W: rr.Get(t)}
+		})
+		s.Before(func(t *testcase.T) {
+			_, ok := w.Get(t).(cli.ErrorWriter)
+			assert.False(t, ok)
+		})
+
+		s.Then("Write will be used to write response", func(t *testcase.T) {
+			act(t)
+
+			assert.Contains(t, rr.Get(t).Out.String(), message.Get(t))
+			assert.Empty(t, rr.Get(t).Err.String())
+		})
+	})
+}
+
+type WithoutErrorWriter struct {
+	W cli.ResponseWriter
+}
+
+func (woEW WithoutErrorWriter) ExitCode(n int) {
+	woEW.W.ExitCode(n)
+}
+
+func (woEW WithoutErrorWriter) Write(p []byte) (n int, err error) {
+	return woEW.W.Write(p)
 }

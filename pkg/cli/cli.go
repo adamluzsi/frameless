@@ -1426,3 +1426,15 @@ func enumError(name string, enums []reflect.Value, val reflect.Value) error {
 	const format = "%s got the value of %v which is not part of the acceptable values\n\naccepted values:\n%s"
 	return EnumError.Wrap((fmt.Errorf(format, name, val.Interface(), acceptedValuesFormatted)))
 }
+
+// Error replies to the request with the specified error message and exit code.
+// It does not otherwise end the request; the caller should ensure no further
+// writes are done to w.
+func Error(w ResponseWriter, message string, code int) {
+	w.ExitCode(code)
+	if ew, ok := w.(ErrorWriter); ok {
+		_, _ = fmt.Fprintln(ew.Stderr(), message)
+		return
+	}
+	_, _ = fmt.Fprintln(w, message)
+}
