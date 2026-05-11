@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/port/comproto"
 
 	"go.llib.dev/frameless/port/pubsub"
@@ -56,6 +57,12 @@ func (r *AsyncResults[Data]) ReceivedAt() time.Time {
 func (r *AsyncResults[Data]) Eventually(tb testing.TB, blk func(testing.TB, []Data)) {
 	tb.Helper()
 	Eventually.Assert(tb, func(it testing.TB) { blk(it, r.Values()) })
+}
+
+func (r *AsyncResults[Data]) AssertEmpty(tb testing.TB, msg ...assert.Message) {
+	tb.Helper()
+	Waiter.Wait()
+	assert.Empty(tb, r.Values(), msg...)
 }
 
 func (r *AsyncResults[Data]) Finish() {
@@ -127,4 +134,28 @@ func (sih *consumer[Data]) wrk(
 			return nil
 		}(v))
 	}
+}
+
+var CleanupTimeout = 256 * time.Millisecond
+
+func TryCleanup[Data any](tb testing.TB, subscriber pubsub.Subscriber[Data], ctx context.Context) {
+	if !spechelper.TryCleanup(tb, ctx, subscriber) {
+		DrainSubscriber(tb, subscriber, ctx, CleanupTimeout)
+	}
+}
+
+func DrainSubscriber[Data any](tb testing.TB, subscriber pubsub.Subscriber[Data], ctx context.Context, timeout time.Duration) {
+	var (
+		refTime = time.Now().UTC()
+		sub     = Subscribe[Data](tb, subscriber, ctx)
+	)
+	defer sub.Finish()
+	Waiter.While(func() bool {
+		receivedAt := sub.ReceivedAt()
+		if receivedAt.IsZero() {
+			receivedAt = refTime
+		}
+		duration := time.Now().UTC().Sub(receivedAt)
+		return duration <= timeout
+	})
 }

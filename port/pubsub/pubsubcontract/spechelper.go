@@ -15,6 +15,8 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
+const timeout = time.Second / 2
+
 type PubSub[Data any] struct {
 	pubsub.Publisher[Data]
 	pubsub.Subscriber[Data]
@@ -107,11 +109,23 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
-	return &subscriptionIteratorHelper[Data]{id: t.Random.UUID(), Subscriber: c.subject().Get(t).Subscriber}
+func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionHelper[Data] {
+	return newSubscriptionIteratorHelper[Data](t, c.subject().Get(t).Subscriber)
 }
 
-type subscriptionIteratorHelper[Data any] struct {
+func newSubscriptionIteratorHelper[Data any](t *testcase.T, subscriber pubsub.Subscriber[Data]) *subscriptionHelper[Data] {
+	return &subscriptionHelper[Data]{id: t.Random.UUID(), Subscriber: subscriber}
+}
+
+func subscribeTo[Data any](t *testcase.T, ctx context.Context, subscriber pubsub.Subscriber[Data]) *subscriptionHelper[Data] {
+	sub := newSubscriptionIteratorHelper(t, subscriber)
+	sub.Start(t, ctx)
+	t.Cleanup(sub.Stop)
+	return sub
+}
+
+// replace me with pubsubtest.Subscribe
+type subscriptionHelper[Data any] struct {
 	id string
 
 	Subscriber       pubsub.Subscriber[Data]
@@ -125,53 +139,53 @@ type subscriptionIteratorHelper[Data any] struct {
 	cancel     func()
 }
 
-func (sih *subscriptionIteratorHelper[Data]) AckedAt() time.Time {
-	sih.mutex.Lock()
-	defer sih.mutex.Unlock()
-	return sih.ackedAt
+func (subH *subscriptionHelper[Data]) AckedAt() time.Time {
+	subH.mutex.Lock()
+	defer subH.mutex.Unlock()
+	return subH.ackedAt
 }
 
-func (sih *subscriptionIteratorHelper[Data]) Values() []Data {
-	sih.mutex.Lock()
-	defer sih.mutex.Unlock()
-	return append([]Data{}, sih.data...)
+func (subH *subscriptionHelper[Data]) Values() []Data {
+	subH.mutex.Lock()
+	defer subH.mutex.Unlock()
+	return append([]Data{}, subH.data...)
 }
 
-func (sih *subscriptionIteratorHelper[Data]) ReceivedAt() time.Time {
-	sih.mutex.Lock()
-	defer sih.mutex.Unlock()
-	return sih.receivedAt
+func (subH *subscriptionHelper[Data]) ReceivedAt() time.Time {
+	subH.mutex.Lock()
+	defer subH.mutex.Unlock()
+	return subH.receivedAt
 }
 
-func (sih *subscriptionIteratorHelper[Data]) Start(tb testing.TB, ctx context.Context) {
-	assert.Nil(tb, sih.cancel)
+func (subH *subscriptionHelper[Data]) Start(tb testing.TB, ctx context.Context) {
+	assert.Nil(tb, subH.cancel)
 	ctx, cancel := context.WithCancel(ctx)
-	sub := sih.Subscriber.Subscribe(ctx)
+	subscription := subH.Subscriber.Subscribe(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go sih.wrk(tb, ctx, &wg, sub)
-	sih.cancel = func() {
+	go subH.work(tb, ctx, &wg, subscription)
+	subH.cancel = func() {
 		cancel()
 		wg.Wait()
-		sih.cancel = nil
+		subH.cancel = nil
 	}
 }
 
-func (sih *subscriptionIteratorHelper[Data]) Stop() {
-	if sih.cancel != nil {
-		sih.cancel()
+func (subH *subscriptionHelper[Data]) Stop() {
+	if subH.cancel != nil {
+		subH.cancel()
 	}
 }
 
-func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup, sub pubsub.Subscription[Data]) {
+func (subH *subscriptionHelper[Data]) work(tb testing.TB, ctx context.Context, wg *sync.WaitGroup, subscription pubsub.Subscription[Data]) {
 	defer wg.Done()
-	for msg, err := range sub {
-		if !sih.handle(tb, ctx, msg, err) {
+	for msg, err := range subscription {
+		if !subH.handle(tb, ctx, msg, err) {
 			break
 		}
 	}
 }
-func (sih *subscriptionIteratorHelper[Data]) handle(tb testing.TB, ctx context.Context, msg pubsub.Message[Data], err error) bool {
+func (subH *subscriptionHelper[Data]) handle(tb testing.TB, ctx context.Context, msg pubsub.Message[Data], err error) bool {
 	var should = assert.Should(tb)
 	if err != nil {
 		should.AnyOf(func(a *assert.A) {
@@ -181,39 +195,45 @@ func (sih *subscriptionIteratorHelper[Data]) handle(tb testing.TB, ctx context.C
 		})
 		return true
 	}
-	sih.mutex.Lock()
-	defer sih.mutex.Unlock()
+	subH.mutex.Lock()
+	defer subH.mutex.Unlock()
 	if msg == nil {
 		should.True(msg != nil, "msg should not be nil")
 		return false
 	}
-	sih.receivedAt = time.Now().UTC()
-	if 0 < sih.HandlingDuration {
-		time.Sleep(sih.HandlingDuration)
+	subH.receivedAt = time.Now().UTC()
+	if 0 < subH.HandlingDuration {
+		time.Sleep(subH.HandlingDuration)
 	}
 	pubsubtest.Waiter.Wait()
-	sih.data = append(sih.data, msg.Data())
-	sih.ackedAt = time.Now().UTC()
+	subH.data = append(subH.data, msg.Data())
+	subH.ackedAt = time.Now().UTC()
 	pubsubtest.Waiter.Wait()
 	should.NoError(msg.ACK())
 	return true
 }
 
-func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
-	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[Data] {
-		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.subject().Get(t).MakeContext(t))
-		t.Cleanup(sih.Stop)
-		return sih
+func (subH *subscriptionHelper[Data]) assertEmpty(t *testcase.T, msg ...assert.Message) {
+	t.Helper()
+	t.Random.Repeat(3, 7, func() {
+		t.Helper()
+
+		assert.Empty(t, subH.Values(), msg...)
+	})
+}
+
+func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionHelper[Data]] {
+	return testcase.Let(s, func(t *testcase.T) *subscriptionHelper[Data] {
+		return subscribeTo(t, c.subject().Get(t).MakeContext(t), c.subject().Get(t).Subscriber)
 	}).EagerLoading(s)
 }
 
 func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
-		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.subject().Get(t).MakeContext(t))
-		sih.Stop()
+		sub := c.newSubscriptionIteratorHelper(t)
+		sub.Start(t, c.subject().Get(t).MakeContext(t))
+		sub.Stop()
 	})
 }
 

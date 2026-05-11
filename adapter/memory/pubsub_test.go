@@ -140,6 +140,40 @@ func TestQueue_implementsFanOutExchange(t *testing.T) {
 	)
 }
 
+func TestQueue_implementsTransactionalMessageContext(t *testing.T) {
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeData: func(tb testing.TB) TestEntity {
+			v := makeTestEntity(tb)
+			v.Data = testcase.ToT(&tb).Random.UUID()
+			return v
+		},
+	}
+
+	q := &memory.Queue[TestEntity]{}
+
+	pubsubcontract.TransactionalMessageContext(q, q, pubsubConfig).Test(t)
+}
+
+func TestQueue_implementsTransactionalPublisher(t *testing.T) {
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeData: func(tb testing.TB) TestEntity {
+			v := makeTestEntity(tb)
+			v.Data = testcase.ToT(&tb).Random.UUID()
+			return v
+		},
+	}
+
+	q := &memory.Queue[TestEntity]{}
+
+	pubsubcontract.TransactionalPublisher(q, q, q, pubsubConfig).Test(t)
+}
+
 var _ pubsub.Publisher[testent.Foo] = &memory.FanOutExchange[testent.Foo]{}
 
 // TestQueue_combined
@@ -225,4 +259,27 @@ func TestQueue_smoke(t *testing.T) {
 	assert.NoError(t, msg2.NACK())
 
 	w.Wait() // wait till NotWithin assertion finish its thing
+}
+
+func TestQueue_blockingQueueIsNotCompatibleWithTransactions(t *testing.T) {
+	t.Run("BeginTx fails", func(t *testing.T) {
+		q := &memory.Queue[testent.Foo]{
+			Blocking: true,
+		}
+
+		_, err := q.BeginTx(t.Context())
+		assert.Error(t, err)
+	})
+	t.Run("Publish with tx fails", func(t *testing.T) {
+		q := &memory.Queue[testent.Foo]{
+			Blocking: false,
+		}
+
+		tx, err := q.BeginTx(t.Context())
+		assert.Error(t, err)
+
+		q.Blocking = true
+
+		assert.Error(t, q.Publish(tx, testent.MakeFoo(t)))
+	})
 }
