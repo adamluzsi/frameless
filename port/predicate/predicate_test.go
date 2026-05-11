@@ -10,3 +10,5 @@ import (
 var _ predicate.Comparable[time.Time] = (*time.Time)(nil)
 
 var _ predicate.ComparableShort[*big.Int] = (*big.Int)(nil)
+
+var _ predicate.Zeroable = (*time.Time)(nil)

@@ -2,7 +2,7 @@
 //
 // This package provides a framework for expressing relational predicates
 // in logical conditions that describe how values relate to one another.
-// Types implementingthese interfaces can be used in generic algorithms
+// Types implementing these interfaces can be used in generic algorithms
 // that require comparison or equality semantics.
 //
 // # Predicates
@@ -10,16 +10,16 @@
 // A predicate is a function or condition that returns a boolean result about a property or relationship.
 // The interfaces in this package define predicates that answer fundamental questions:
 //
-//   - Equalable: "Are these two values semantically equal?"
+//   - Equatable: "Are these two values semantically equal?"
 //   - Comparable: "How do these values order relative to each other?"
 //
 // These predicates are distinct from syntax-level equality (==) because they allow
 // types to define semantic equivalence and ordering logic tailored to their domain.
 package predicate
 
-// Equalable defines custom equality semantics for a type.
+// Equatable defines custom equality semantics for a type.
 //
-// An implementation of Equalable allows a type to define how semantic equality
+// An implementation of Equatable allows a type to define how semantic equality
 // is determined, distinct from Go's syntax-level equality operator (==).
 // This is useful for encapsulated types, domain-specific values, or situations
 // where reference equality differs from logical equivalence.
@@ -27,9 +27,9 @@ package predicate
 // # Semantic vs Syntactic Equality
 //
 // Go's == operator performs syntactic equality: for structs, it compares all
-// fields directly. Equalable allows types to define semantic equality
+// fields directly. Equatable allows types to define semantic equality
 // based on domain logic instead.
-type Equalable[T any] interface {
+type Equatable[T any] interface {
 	// Equal will perform semantic equality checking.
 	Equal(oth T) bool
 }
@@ -69,4 +69,21 @@ type ComparableShort[T any] interface {
 	// (-x) cmp (-y) == -(x cmp y)
 	//
 	Cmp(T) int
+}
+
+// Zeroable defines whether a value represents the zero state for its type.
+//
+// A zero value is the natural "empty" or "unset" state of a type — analogous
+// to Go's zero values, but expressed as a semantic predicate rather than
+// syntactic inspection. This is useful for domain types where the zero state
+// carries meaning beyond a field-by-field default.
+//
+// # Relation to Other Predicates
+//
+// Zeroable is a degenerate form of a predicate: rather than relating two values
+// to one another (as Equatable and Comparable do), it expresses a unary
+// condition — whether a value relates to the zero of its own type.
+type Zeroable interface {
+	// IsZero reports whether the receiver represents the zero value for its type.
+	IsZero() bool
 }
