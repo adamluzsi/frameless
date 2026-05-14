@@ -59,7 +59,7 @@ func TestBuffered(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{}
 
-	pubsubcontract.Buffered[TestEntity](q, q, pubsubConfig).Test(t)
+	pubsubcontract.Durable[TestEntity](q, q, pubsubConfig).Test(t)
 }
 
 func TestVolatile(t *testing.T) {

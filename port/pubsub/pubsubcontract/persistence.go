@@ -11,9 +11,9 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-// Buffered defines a publisher behaviour where if the subscription is canceled,
-// the publisher messages can be still consumed after resubscribing.
-func Buffered[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscriber[Data], opts ...Option[Data]) contract.Contract {
+// Durable defines a subscriber behaviour where if the subscription is canceled,
+// the published messages can be still consumed after resubscribing.
+func Durable[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscriber[Data], opts ...Option[Data]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig[Config[Data]](opts)
 

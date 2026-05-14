@@ -66,7 +66,7 @@ func TestQueue_implementsBuffered(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{}
 
-	pubsubcontract.Buffered[TestEntity](q, q, pubsubConfig).Test(t)
+	pubsubcontract.Durable[TestEntity](q, q, pubsubConfig).Test(t)
 }
 
 func TestQueue_implementsVolatile(t *testing.T) {
@@ -154,7 +154,7 @@ func TestQueue_combined(t *testing.T) {
 
 	testcase.RunSuite(t,
 		pubsubcontract.Queue[testent.Foo](q, q),
-		pubsubcontract.Buffered[testent.Foo](q, q),
+		pubsubcontract.Durable[testent.Foo](q, q),
 		pubsubcontract.FIFO[testent.Foo](q, q),
 	)
 }
