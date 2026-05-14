@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/contextkit"
@@ -32,9 +33,9 @@ func (cs ContextSetup) SetUp(ctx context.Context) context.Context {
 		if init == nil {
 			continue
 		}
-		nctx := init(ctx)
-		if nctx != nil {
-			ctx = nctx
+		var next = init(ctx)
+		if next != nil {
+			ctx = next
 		}
 	}
 	return ctx
@@ -115,7 +116,7 @@ func (s *Scheduler) Schedule(ctx context.Context, p *Process) error {
 		return err
 	}
 
-	if err := s.ProcessSignalQueue.Publish(ctx, p.ID); err != nil {
+	if err := s.ProcessSignalQueue.Publish(ctx, ProcessSignal{ProcessID: p.ID}); err != nil {
 		return err
 	}
 
@@ -132,33 +133,38 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	if !ok {
 		return ErrFatal.F("workflow.Runtime is missing for Scheduler (workflow.Scheduler#Runtime or from context)")
 	}
-	var handle = func(msg pubsub.Message[ProcessID]) (rErr error) {
+	var handle = func(msg pubsub.Message[ProcessSignal]) (rErr error) {
 		defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 		var (
 			ctx = msg.Context()
-			pid = msg.Data()
+			sig = msg.Data()
 		)
 
-		p, found, err := s.ProcessRepository.FindByID(ctx, pid)
+		p, found, err := s.ProcessRepository.FindByID(ctx, sig.ProcessID)
 		if err != nil {
 			return err
 		}
 		if !found {
-			return fmt.Errorf("missing process: %v", pid.String())
+			return fmt.Errorf("missing process: %v", sig.ProcessID.String())
 		}
 
 		err = rt.Execute(ctx, &p)
+
+		var suspend Suspend
 		switch {
 		case err == nil:
 			if err := s.ProcessRepository.Save(ctx, &p); err != nil {
 				return err
 			}
 			return nil
-		case errors.As(err, &Suspend{}):
+		case errors.As(err, &suspend):
 			if err := s.ProcessRepository.Save(ctx, &p); err != nil {
 				return err
 			}
-			return s.ProcessSignalQueue.Publish(ctx, p.ID)
+			return s.ProcessSignalQueue.Publish(ctx, ProcessSignal{
+				ProcessID: p.ID,
+				// TODO: how to know the suspend time here?
+			})
 		}
 		return err
 	}
@@ -194,8 +200,13 @@ func (s *Scheduler) Validate(ctx context.Context) error {
 }
 
 type ProcessSignalQueue interface {
-	pubsub.Publisher[ProcessID]
-	pubsub.Subscriber[ProcessID]
+	pubsub.Publisher[ProcessSignal]
+	pubsub.Subscriber[ProcessSignal]
+}
+
+type ProcessSignal struct {
+	ProcessID ProcessID `json:"pid"`
+	Start     time.Time `json:"start,omitzero"`
 }
 
 type ProcessRepository interface {
