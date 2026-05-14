@@ -53,7 +53,7 @@ type Comparable[T any] interface {
 	// The side that’s lower (touching the ground) represents the smaller value.
 	// The side that’s up shows the larger value — it’s higher, so it’s greater.
 	//
-	// Implementors must ensure consistent ordering semantics.
+	// Implementers must ensure consistent ordering semantics.
 	Compare(T) int
 }
 
