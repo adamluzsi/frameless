@@ -9,6 +9,8 @@ import (
 	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit"
+	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
@@ -34,35 +36,8 @@ type ProcessRepository interface {
 	crud.ByIDDeleter[workflow.ProcessID]
 }
 
-// --- EXP --- //
-
-type ScheduleChange struct{}
-
-type ScheduleChangeBroadcast interface {
-	pubsub.Publisher[ScheduleChange]
-	pubsub.Subscriber[ScheduleChange]
-}
-
-type ProcessSignalQueue interface {
-	pubsub.Publisher[workflow.ProcessID]
-	pubsub.Subscriber[workflow.ProcessID]
-}
-
-type ProcessScheduleEntry struct {
-	ProcessID workflow.ProcessID `json:"pid"`
-	StartTime time.Time          `json:"start,omitzero"`
-}
-
-type ProcessScheduleRepository interface {
-	crud.Saver[ProcessScheduleEntry]
-	crud.ByIDFinder[ProcessScheduleEntry, workflow.ProcessID]
-	crud.ByIDDeleter[workflow.ProcessID]
-
-	FindNextFrom(ctx context.Context, from time.Time) (ProcessScheduleEntry, bool, error)
-}
-
 // Schedule will Schedule a Process for eventually processing.
-func (s Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
+func (s *Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
 	if err := s.Validate(ctx); err != nil {
 		return err
 	}
@@ -83,7 +58,7 @@ func (s Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
 		return err
 	}
 
-	if err := s.ProcessSignalQueue.Publish(ctx, ProcessSignal{ProcessID: p.ID}); err != nil {
+	if err := s.ProcessSignalQueue.Publish(ctx, p.ID); err != nil {
 		return err
 	}
 
@@ -92,82 +67,145 @@ func (s Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
 
 var _ taskerlite.Runnable = (*Scheduler)(nil)
 
-func (s Scheduler) Run(ctx context.Context) error {
+func (s *Scheduler) Run(ctx context.Context) error {
 	if err := s.Validate(ctx); err != nil {
 		return err
 	}
+
+	var g synckit.Group
+
+	changes := make(chan struct{})
+
+	g.Go(ctx, func(ctx context.Context) error {
+		return s.runListenToChanges(ctx, changes)
+	})
+
+	g.Go(ctx, func(ctx context.Context) error {
+		return s.runScheduleSignals(ctx, changes)
+	})
+
+	g.Go(ctx, s.runListenToSignals)
+
+	return g.Wait()
+}
+
+func (s *Scheduler) runListenToSignals(ctx context.Context) error {
 	var rt, ok = s.lookupRuntime(ctx)
 	if !ok {
-		return workflow.ErrFatal.F("workflow.Runtime is missing for Scheduler (workflow.Scheduler#Runtime or from context)")
-	}
-	var handle = func(msg pubsub.Message[ProcessSignal]) (rErr error) {
-		defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
-		var (
-			ctx = msg.Context()
-			sig = msg.Data()
-		)
-
-		p, found, err := s.ProcessRepository.FindByID(ctx, sig.ProcessID)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return fmt.Errorf("missing process: %v", sig.ProcessID.String())
-		}
-
-		err = rt.Execute(ctx, &p)
-
-		var suspend workflow.Suspend
-		switch {
-		case err == nil:
-			if err := s.ProcessRepository.Save(ctx, &p); err != nil {
-				return err
-			}
-			return nil
-		case errors.As(err, &suspend):
-			if err := s.ProcessRepository.Save(ctx, &p); err != nil {
-				return err
-			}
-
-			if err := s.ProcessScheduleRepository.Save(ctx, &ProcessScheduleEntry{
-				ProcessID: p.ID,
-			}); err != nil {
-				return err
-			}
-
-			return s.ProcessSignalQueue.Publish(ctx, p.ID)
-		}
-		return err
+		return workflow.ErrFatal.F("workflow.Runtime is missing for Scheduler (%T#Runtime or from context)", s)
 	}
 	for msg, err := range s.ProcessSignalQueue.Subscribe(ctx) {
 		if err != nil {
 			return err
 		}
-		if err := handle(msg); err != nil {
+		if err := s.runSignalHandler(rt, msg); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s Scheduler) Validate(ctx context.Context) error {
-	if s == nil {
-		return ErrFatal.F("uninitialized workflow.Scheduler")
+func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[workflow.ProcessID]) (rErr error) {
+	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
+	var (
+		ctx = msg.Context()
+		pid = msg.Data()
+	)
+
+	p, found, err := s.ProcessRepository.FindByID(ctx, pid)
+	if err != nil {
+		return err
 	}
-	if s.ProcessSignalQueue == nil {
-		return ErrFatal.F("uninitialized workflow.Scheduler#ProcessSignalQueue")
+	if !found {
+		return fmt.Errorf("missing process: %v", pid.String())
 	}
-	if s.ProcessRepository == nil {
-		return ErrFatal.F("uninitialized workflow.Scheduler#ProcessRepository")
+
+	err = rt.Execute(ctx, &p)
+
+	var suspend workflow.Suspend
+	switch {
+	case err == nil:
+		if err := s.ProcessRepository.Save(ctx, &p); err != nil {
+			return err
+		}
+		return nil
+	case errors.As(err, &suspend):
+		if err := s.ProcessRepository.Save(ctx, &p); err != nil {
+			return err
+		}
+
+		if err := s.ProcessScheduleRepository.Save(ctx, &ProcessScheduleEntry{
+			ProcessID: p.ID,
+		}); err != nil {
+			return err
+		}
+
+		return s.ProcessSignalQueue.Publish(ctx, p.ID)
+	}
+	return err
+}
+
+func (s *Scheduler) runListenToChanges(ctx context.Context, changes chan<- struct{}) error {
+	defer close(changes)
+	for msg, err := range s.ScheduleChangeBroadcast.Subscribe(ctx) {
+		if err != nil {
+			return err
+		}
+		select {
+		case changes <- struct{}{}:
+			msg.ACK()
+		case <-ctx.Done():
+			return msg.NACK()
+		}
 	}
 	return nil
 }
 
-func (s Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
+func (s *Scheduler) runScheduleSignals(ctx context.Context, changes chan struct{}) error {
+	tx, err := s.ProcessScheduleRepository.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.ProcessScheduleRepository
+
+}
+
+func (s *Scheduler) Validate(ctx context.Context) error {
+	return validate.Value(ctx, s)
+}
+
+// --- EXP --- //
+
+type ScheduleChange struct{}
+
+type ScheduleChangeBroadcast interface {
+	pubsub.Publisher[ScheduleChange]
+	pubsub.Subscriber[ScheduleChange]
+}
+
+type ProcessSignalQueue interface {
+	pubsub.Publisher[workflow.ProcessID]
+	pubsub.Subscriber[workflow.ProcessID]
+}
+
+// ProcessQueue is an ordered queue, where process execution requests are published.
+// It is expected to be a FIFO, durable
+type ProcessQueue interface {
+	pubsub.Publisher[ProcessScheduleEntry]
+	pubsub.Subscriber[ProcessScheduleEntry]
+}
+
+type ProcessScheduleEntry struct {
+	ProcessID workflow.ProcessID `json:"pid"`
+	StartTime time.Time          `json:"start,omitzero"`
+}
+
+func (s *Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
 	if s.Runtime != nil {
 		return *s.Runtime, true
 	}
-	return RuntimeFromContext(ctx)
+	return workflow.RuntimeFromContext(ctx)
 }
 
 type AwakeByProcessStatus struct {
@@ -176,13 +214,13 @@ type AwakeByProcessStatus struct {
 	Status ProcessStatusEvent `json:"statusEvent"`
 }
 
-var _ Event = AwakeByProcessStatus{}
+var _ workflow.Event = AwakeByProcessStatus{}
 
 const typeAwakeByProcessStatus = "workflow::event::awake-by-process-status"
 
 var _ = jsonkit.RegisterTypeID[AwakeByProcessStatus](typeAwakeByProcessStatus)
 
-func (AwakeByProcessStatus) Type() EventType { return typeAwakeByProcessStatus }
+func (AwakeByProcessStatus) Type() workflow.EventType { return typeAwakeByProcessStatus }
 
 type ProcessStatusEvent string
 
@@ -199,10 +237,10 @@ type AwakeByExternalEvent struct {
 	EventCode string    `json:"eventCode"`
 }
 
-var _ Event = AwakeByExternalEvent{}
+var _ workflow.Event = AwakeByExternalEvent{}
 
 const typeAwakeByExternalEvent = "workflow::event::awake-by-external-event"
 
 var _ = jsonkit.RegisterTypeID[AwakeByExternalEvent](typeAwakeByExternalEvent)
 
-func (AwakeByExternalEvent) Type() EventType { return typeAwakeByExternalEvent }
+func (AwakeByExternalEvent) Type() workflow.EventType { return typeAwakeByExternalEvent }
