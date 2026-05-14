@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/pubsub"
+	"go.llib.dev/testcase/clock"
 )
 
 type Scheduler struct {
@@ -22,12 +23,11 @@ type Scheduler struct {
 	Runtime *workflow.Runtime
 	// ProcessRepository is where the scheduled process states are kept
 	ProcessRepository ProcessRepository
-	// ProcessSignalQueue is used to schedule process execution tasks.
-	ProcessSignalQueue ProcessSignalQueue
-	// ProcessScheduleRepository contains meta data about the process schedule
-	ProcessScheduleRepository ProcessScheduleRepository
-	// ScheduleChangeBroadcast
-	ScheduleChangeBroadcast ScheduleChangeBroadcast
+	// ProcessQueue contains the scheduled metadata about which Process requires execution.
+	ProcessQueue ProcessQueue
+	// ProcessQueueChangeBroadcast contains the information about whether or not
+	// ProcessQueue might have a new higher priority Process to be executed
+	ProcessQueueChangeBroadcast ProcessQueueChangeBroadcast
 }
 
 type ProcessRepository interface {
@@ -35,6 +35,28 @@ type ProcessRepository interface {
 	crud.ByIDFinder[workflow.Process, workflow.ProcessID]
 	crud.ByIDDeleter[workflow.ProcessID]
 }
+
+// ProcessQueue is an ordered queue, where process execution requests are published.
+// It is expected to be a FIFO, Durable, and Ordered by ProcessScheduleEntry#StartTime ASC.
+type ProcessQueue interface {
+	pubsub.Publisher[ProcessScheduleEntry]
+	pubsub.Subscriber[ProcessScheduleEntry]
+}
+
+type ProcessScheduleEntry struct {
+	ProcessID workflow.ProcessID `json:"pid"`
+	StartTime time.Time          `json:"start,omitzero"`
+}
+
+// ProcessQueueChangeBroadcast is a Volatile, FanOut exchange based broadcasting pubsub channel,
+// where worker nodes can subscribe, to get notified if a new workflow Process was scheduled for execution.
+// It allows optimisations, such as sleeping on time until the start of the next event arrives.
+type ProcessQueueChangeBroadcast interface {
+	pubsub.Publisher[ProcessQueueChange]
+	pubsub.Subscriber[ProcessQueueChange]
+}
+
+type ProcessQueueChange struct{}
 
 // Schedule will Schedule a Process for eventually processing.
 func (s *Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
@@ -74,50 +96,52 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 	var g synckit.Group
 
-	changes := make(chan struct{})
+	changes := make(chan ProcessQueueChange)
 
 	g.Go(ctx, func(ctx context.Context) error {
 		return s.runListenToChanges(ctx, changes)
 	})
 
 	g.Go(ctx, func(ctx context.Context) error {
-		return s.runScheduleSignals(ctx, changes)
+		return s.runListenToSignals(ctx, changes)
 	})
-
-	g.Go(ctx, s.runListenToSignals)
 
 	return g.Wait()
 }
 
-func (s *Scheduler) runListenToSignals(ctx context.Context) error {
+func (s *Scheduler) runListenToSignals(ctx context.Context, changes <-chan ProcessQueueChange) error {
 	var rt, ok = s.lookupRuntime(ctx)
 	if !ok {
 		return workflow.ErrFatal.F("workflow.Runtime is missing for Scheduler (%T#Runtime or from context)", s)
 	}
-	for msg, err := range s.ProcessSignalQueue.Subscribe(ctx) {
+	for msg, err := range s.ProcessQueue.Subscribe(ctx) {
 		if err != nil {
 			return err
 		}
-		if err := s.runSignalHandler(rt, msg); err != nil {
+		if err := s.runSignalHandler(rt, msg, changes); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[workflow.ProcessID]) (rErr error) {
+func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[ProcessScheduleEntry], changes <-chan ProcessQueueChange) (rErr error) {
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 	var (
 		ctx = msg.Context()
-		pid = msg.Data()
+		sch = msg.Data()
 	)
 
-	p, found, err := s.ProcessRepository.FindByID(ctx, pid)
+	if !sch.StartTime.IsZero() && clock.Now().Compare(sch.StartTime) == 0 {
+
+	}
+
+	p, found, err := s.ProcessRepository.FindByID(ctx, sch.ProcessID)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("missing process: %v", pid.String())
+		return fmt.Errorf("missing process: %v", sch.ProcessID.String())
 	}
 
 	err = rt.Execute(ctx, &p)
@@ -145,14 +169,14 @@ func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[wor
 	return err
 }
 
-func (s *Scheduler) runListenToChanges(ctx context.Context, changes chan<- struct{}) error {
+func (s *Scheduler) runListenToChanges(ctx context.Context, changes chan<- ProcessQueueChange) error {
 	defer close(changes)
-	for msg, err := range s.ScheduleChangeBroadcast.Subscribe(ctx) {
+	for msg, err := range s.ProcessQueueChangeBroadcast.Subscribe(ctx) {
 		if err != nil {
 			return err
 		}
 		select {
-		case changes <- struct{}{}:
+		case changes <- msg.Data():
 			msg.ACK()
 		case <-ctx.Done():
 			return msg.NACK()
@@ -161,44 +185,15 @@ func (s *Scheduler) runListenToChanges(ctx context.Context, changes chan<- struc
 	return nil
 }
 
-func (s *Scheduler) runScheduleSignals(ctx context.Context, changes chan struct{}) error {
-	tx, err := s.ProcessScheduleRepository.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-
-	s.ProcessScheduleRepository
-
-}
-
 func (s *Scheduler) Validate(ctx context.Context) error {
 	return validate.Value(ctx, s)
 }
 
 // --- EXP --- //
 
-type ScheduleChange struct{}
-
-type ScheduleChangeBroadcast interface {
-	pubsub.Publisher[ScheduleChange]
-	pubsub.Subscriber[ScheduleChange]
-}
-
 type ProcessSignalQueue interface {
 	pubsub.Publisher[workflow.ProcessID]
 	pubsub.Subscriber[workflow.ProcessID]
-}
-
-// ProcessQueue is an ordered queue, where process execution requests are published.
-// It is expected to be a FIFO, durable
-type ProcessQueue interface {
-	pubsub.Publisher[ProcessScheduleEntry]
-	pubsub.Subscriber[ProcessScheduleEntry]
-}
-
-type ProcessScheduleEntry struct {
-	ProcessID workflow.ProcessID `json:"pid"`
-	StartTime time.Time          `json:"start,omitzero"`
 }
 
 func (s *Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
