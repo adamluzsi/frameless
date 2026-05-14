@@ -208,6 +208,10 @@ func (s *Scheduler) runListenToChanges(ctx context.Context, changes chan<- Proce
 			msg.ACK()
 		case <-ctx.Done():
 			return msg.NACK()
+		case <-time.After(time.Second):
+			// if no-one is sleeping on a scheduled task,
+			// then workers are already busy picking up changes
+			// so no need to wait with this relatively old change.
 		}
 	}
 	return nil

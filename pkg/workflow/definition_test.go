@@ -26,7 +26,7 @@ func ExampleIf() {
 func TestIf(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	var c = letC(s)
+	var c = wftesting.LetC(s)
 
 	var (
 		Cond = let.Var(s, func(t *testcase.T) workflow.Condition {
@@ -50,7 +50,7 @@ func TestIf(t *testing.T) {
 	s.Describe("#Execute", func(s *testcase.Spec) {
 		var (
 			ctx     = c.LetContext(s)
-			process = LetProcess(s)
+			process = wftesting.LetProcess(s)
 		)
 		act := let.Act(func(t *testcase.T) error {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
@@ -194,7 +194,7 @@ func TestSequence(t *testing.T) {
 	s.Describe("#Execute", func(s *testcase.Spec) {
 		var (
 			ctx     = c.LetContext(s)
-			process = LetProcess(s)
+			process = wftesting.LetProcess(s)
 		)
 		act := let.Act(func(t *testcase.T) error {
 			return sequence.Get(t).Execute(ctx.Get(t), process.Get(t))
@@ -429,7 +429,7 @@ func TestIsCompleted(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		process = LetProcess(s)
+		process = wftesting.LetProcess(s)
 	)
 	act := let.Act(func(t *testcase.T) bool {
 		return workflow.IsCompleted(process.Get(t))
