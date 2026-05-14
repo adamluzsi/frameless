@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftesting"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -16,7 +17,7 @@ import (
 func TestExecuteCondition(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	var c = letC(s)
+	var c = wftesting.LetC(s)
 
 	var cid = LetConditionID(s)
 
@@ -209,7 +210,7 @@ func TestExecuteCondition(t *testing.T) {
 
 	s.Context("smoke", func(s *testcase.Spec) {
 		s.Context("idempotency", func(s *testcase.Spec) {
-			s.Test("same repeation don't execute conditions twice", func(t *testcase.T) {
+			s.Test("same repeating don't execute conditions twice", func(t *testcase.T) {
 
 				var (
 					fooOut = t.Random.Bool()
@@ -379,7 +380,7 @@ func LetConditionID(s *testcase.Spec) testcase.Var[workflow.ConditionID] {
 	})
 }
 
-func LetCondition[Func any](s *testcase.Spec, c C, cid testcase.Var[workflow.ConditionID], mk func(t *testcase.T) Func) testcase.Var[Func] {
+func LetCondition[Func any](s *testcase.Spec, c wftesting.C, cid testcase.Var[workflow.ConditionID], mk func(t *testcase.T) Func) testcase.Var[Func] {
 	p := let.Var(s, func(t *testcase.T) Func {
 		return mk(t)
 	})

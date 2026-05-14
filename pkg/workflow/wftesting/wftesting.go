@@ -40,6 +40,9 @@ func (stub Stub) Evaluate(ctx context.Context, p *workflow.Process) (bool, error
 	return true, nil
 }
 
+// StubParticipant
+//
+// Deprecated: use Stub instead
 type StubParticipant struct {
 	Err error
 
@@ -113,6 +116,9 @@ func (c *C) LetContext(s *testcase.Spec) testcase.Var[context.Context] {
 	})
 }
 
+// LetStub
+//
+// Deprecated: use Stub instead
 func (c *C) LetStub(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
 	s.H().Helper()
 
@@ -155,10 +161,11 @@ type C struct {
 	Conditions   testcase.Var[workflow.Conditions]
 	ContextSetup testcase.Var[[]func(context.Context) context.Context]
 
-	Scheduler          testcase.Var[*wfschedule.Scheduler]
-	SchedulerRunErr    testcase.Var[error]
-	ProcessSignalQueue testcase.Var[*memory.Queue[wfschedule.ProcessSignal]]
-	ProcessRepository  testcase.Var[*memory.Repository[workflow.Process, workflow.ProcessID]]
+	Scheduler                   testcase.Var[*wfschedule.Scheduler]
+	SchedulerRunErr             testcase.Var[error]
+	ProcessRepository           testcase.Var[*memory.Repository[workflow.Process, workflow.ProcessID]]
+	ProcessQueue                testcase.Var[*memory.Queue[wfschedule.ProcessScheduleEntry]]
+	ProcessQueueChangeBroadcast testcase.Var[*memory.Queue[wfschedule.ProcessQueueChange]]
 }
 
 func LetC(s *testcase.Spec) C {
@@ -182,8 +189,12 @@ func LetC(s *testcase.Spec) C {
 		}
 	})
 
-	c.ProcessSignalQueue = let.Var(s, func(t *testcase.T) *memory.Queue[wfschedule.ProcessSignal] {
-		return &memory.Queue[wfschedule.ProcessSignal]{}
+	c.ProcessQueue = let.Var(s, func(t *testcase.T) *memory.Queue[wfschedule.ProcessScheduleEntry] {
+		return &memory.Queue[wfschedule.ProcessScheduleEntry]{
+			SortLessFunc: func(i, j wfschedule.ProcessScheduleEntry) bool {
+				return i.StartTime.Before(j.StartTime)
+			},
+		}
 	})
 
 	c.ProcessRepository = let.Var(s, func(t *testcase.T) *memory.Repository[workflow.Process, workflow.ProcessID] {
@@ -194,9 +205,9 @@ func LetC(s *testcase.Spec) C {
 
 	c.Scheduler = let.Var(s, func(t *testcase.T) *wfschedule.Scheduler {
 		var sch = &wfschedule.Scheduler{
-			Runtime:            pointer.Of(c.Runtime.Get(t)),
-			ProcessSignalQueue: c.ProcessSignalQueue.Get(t),
-			ProcessRepository:  c.ProcessRepository.Get(t),
+			Runtime:           pointer.Of(c.Runtime.Get(t)),
+			ProcessQueue:      c.ProcessQueue.Get(t),
+			ProcessRepository: c.ProcessRepository.Get(t),
 		}
 		go func() {
 			var err = sch.Run(t.Context())

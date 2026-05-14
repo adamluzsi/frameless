@@ -37,7 +37,7 @@ type ProcessRepository interface {
 }
 
 // ProcessQueue is an ordered queue, where process execution requests are published.
-// It is expected to be a FIFO, Durable, and Ordered by ProcessScheduleEntry#StartTime ASC.
+// It is expected to be a Durable and Ordered queue where ordering is sorted by ProcessScheduleEntry#StartTime ASC.
 type ProcessQueue interface {
 	pubsub.Publisher[ProcessScheduleEntry]
 	pubsub.Subscriber[ProcessScheduleEntry]
@@ -59,7 +59,7 @@ type ProcessQueueChangeBroadcast interface {
 type ProcessQueueChange struct{}
 
 // Schedule will Schedule a Process for eventually processing.
-func (s *Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
+func (s *Scheduler) Schedule(ctx context.Context, p *workflow.Process, startTime time.Time) error {
 	if err := s.Validate(ctx); err != nil {
 		return err
 	}
@@ -80,7 +80,14 @@ func (s *Scheduler) Schedule(ctx context.Context, p *workflow.Process) error {
 		return err
 	}
 
-	if err := s.ProcessSignalQueue.Publish(ctx, p.ID); err != nil {
+	if err := s.ProcessQueue.Publish(ctx, ProcessScheduleEntry{
+		ProcessID: p.ID,
+		StartTime: startTime,
+	}); err != nil {
+		return err
+	}
+
+	if err := s.ProcessQueueChangeBroadcast.Publish(ctx, ProcessQueueChange{}); err != nil {
 		return err
 	}
 
@@ -125,6 +132,31 @@ func (s *Scheduler) runListenToSignals(ctx context.Context, changes <-chan Proce
 	return nil
 }
 
+func (s *Scheduler) guardAgainstEarlyExecution(ctx context.Context, sch ProcessScheduleEntry, changes <-chan ProcessQueueChange) (ok bool) {
+	if sch.StartTime.IsZero() {
+		return true
+	}
+
+	var now = clock.Now()
+	if sch.StartTime.Before(now) {
+		return true
+	}
+
+	var ticker = clock.NewTicker(sch.StartTime.Sub(clock.Now()))
+	defer ticker.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+
+	case <-changes:
+		return false
+
+	case <-ticker.C:
+		return true
+	}
+}
+
 func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[ProcessScheduleEntry], changes <-chan ProcessQueueChange) (rErr error) {
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 	var (
@@ -132,8 +164,8 @@ func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[Pro
 		sch = msg.Data()
 	)
 
-	if !sch.StartTime.IsZero() && clock.Now().Compare(sch.StartTime) == 0 {
-
+	if !s.guardAgainstEarlyExecution(ctx, sch, changes) {
+		return msg.NACK()
 	}
 
 	p, found, err := s.ProcessRepository.FindByID(ctx, sch.ProcessID)
@@ -157,14 +189,10 @@ func (s *Scheduler) runSignalHandler(rt workflow.Runtime, msg pubsub.Message[Pro
 		if err := s.ProcessRepository.Save(ctx, &p); err != nil {
 			return err
 		}
-
-		if err := s.ProcessScheduleRepository.Save(ctx, &ProcessScheduleEntry{
+		return s.ProcessQueue.Publish(ctx, ProcessScheduleEntry{
 			ProcessID: p.ID,
-		}); err != nil {
-			return err
-		}
-
-		return s.ProcessSignalQueue.Publish(ctx, p.ID)
+			StartTime: clock.Now().Add(time.Second),
+		})
 	}
 	return err
 }
@@ -191,12 +219,7 @@ func (s *Scheduler) Validate(ctx context.Context) error {
 
 // --- EXP --- //
 
-type ProcessSignalQueue interface {
-	pubsub.Publisher[workflow.ProcessID]
-	pubsub.Subscriber[workflow.ProcessID]
-}
-
-func (s *Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
+func (s *Scheduler) lookupRuntime(ctx context.Context) (workflow.Runtime, bool) {
 	if s.Runtime != nil {
 		return *s.Runtime, true
 	}
@@ -204,8 +227,8 @@ func (s *Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
 }
 
 type AwakeByProcessStatus struct {
-	Waiter ProcessID          `json:"waiterID"`
-	Target ProcessID          `json:"targetID"`
+	Waiter workflow.ProcessID `json:"waiterID"`
+	Target workflow.ProcessID `json:"targetID"`
 	Status ProcessStatusEvent `json:"statusEvent"`
 }
 
@@ -228,8 +251,8 @@ const (
 var _ = enum.Register[ProcessStatusEvent](ProcessCompletion, ProcessCancellation, ProcessProgression)
 
 type AwakeByExternalEvent struct {
-	Waiter    ProcessID `json:"waiterID"`
-	EventCode string    `json:"eventCode"`
+	Waiter    workflow.ProcessID `json:"waiterID"`
+	EventCode string             `json:"eventCode"`
 }
 
 var _ workflow.Event = AwakeByExternalEvent{}
