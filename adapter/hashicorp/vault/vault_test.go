@@ -1,4 +1,4 @@
-package hashicorpvault_test
+package vault_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"go.llib.dev/frameless/adapter/hashicorpvault"
+	"go.llib.dev/frameless/adapter/hashicorp/vault"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -21,7 +21,7 @@ import (
 
 func TestEntityRepository_implementsCRUD(t *testing.T) {
 	client := NewClient(t)
-	repo := hashicorpvault.Repository[testEntity, testEntityID]{
+	repo := vault.Repository[testEntity, testEntityID]{
 		BasePath:   "test-entities",
 		MountPoint: MountPoint(t),
 		Client:     client,
@@ -128,7 +128,7 @@ var _ = dtokit.Register[testEntity, testEntityDTO](
 
 func TestEntityRepository_smoke(t *testing.T) {
 	client := NewClient(t)
-	repo := hashicorpvault.Repository[testEntity, testEntityID]{
+	repo := vault.Repository[testEntity, testEntityID]{
 		BasePath:   "test-entities",
 		MountPoint: MountPoint(t),
 	}
@@ -251,7 +251,7 @@ func Test_nonPermanentDelete(t *testing.T) {
 		ctx := t.Context()
 
 		client := NewClient(t)
-		repo := hashicorpvault.Repository[testEntity, testEntityID]{
+		repo := vault.Repository[testEntity, testEntityID]{
 			BasePath:   "test-entities",
 			MountPoint: MountPoint(t),
 		}
@@ -296,7 +296,7 @@ func Test_nonPermanentDelete(t *testing.T) {
 		ctx := t.Context()
 
 		client := NewClient(t)
-		repo := hashicorpvault.Repository[testEntity, testEntityID]{
+		repo := vault.Repository[testEntity, testEntityID]{
 			BasePath:   "test-entities",
 			MountPoint: MountPoint(t),
 		}
@@ -340,7 +340,7 @@ func Test_nonPermanentDelete(t *testing.T) {
 		ctx := t.Context()
 
 		client := NewClient(t)
-		repo := hashicorpvault.Repository[testEntity, testEntityID]{
+		repo := vault.Repository[testEntity, testEntityID]{
 			BasePath:   "test-entities",
 			MountPoint: MountPoint(t),
 		}
@@ -387,7 +387,7 @@ func Test_nonPermanentDelete(t *testing.T) {
 func TestRepository_withNestedMountPath(t *testing.T) {
 	exampleNestedPath := pathkit.Join("something", "keys", "test")
 	client := NewClient(t)
-	repo := hashicorpvault.Repository[testEntity, testEntityID]{
+	repo := vault.Repository[testEntity, testEntityID]{
 		BasePath:   exampleNestedPath,
 		MountPoint: MountPoint(t),
 	}
@@ -436,8 +436,8 @@ func TestClient_HealthCheck(t *testing.T) {
 
 // ////////////////////////// HELPERS //////////////////////////// //
 
-func NewClient(tb testing.TB) *hashicorpvault.Client {
-	client, err := hashicorpvault.NewClient(getConfig(tb))
+func NewClient(tb testing.TB) *vault.Client {
+	client, err := vault.NewClient(getConfig(tb))
 	assert.NoError(tb, err)
 	if token, ok := os.LookupEnv("VAULT_TOKEN"); ok {
 		client.GetToken = func(ctx context.Context) (string, error) { return token, nil }
@@ -445,8 +445,8 @@ func NewClient(tb testing.TB) *hashicorpvault.Client {
 	return client
 }
 
-func getConfig(tb testing.TB) hashicorpvault.Config {
-	c, err := env.Init[hashicorpvault.Config]()
+func getConfig(tb testing.TB) vault.Config {
+	c, err := env.Init[vault.Config]()
 	if err != nil {
 		tb.Skipf("unable to run vault tests:\n%s", err.Error())
 	}

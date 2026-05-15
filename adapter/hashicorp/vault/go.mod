@@ -1,4 +1,4 @@
-module go.llib.dev/frameless/adapter/hashicorpvault
+module go.llib.dev/frameless/adapter/hashicorp/vault
 
 go 1.25
 

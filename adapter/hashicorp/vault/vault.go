@@ -1,4 +1,4 @@
-package hashicorpvault
+package vault
 
 import (
 	"context"
