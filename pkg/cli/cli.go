@@ -402,8 +402,8 @@ type stop struct{}
 
 func NewStdRequest(ctx context.Context) *Request {
 	var args []string
-	if 1 < len(os.Args) {
-		args = os.Args[1:]
+	if vs := osint.Args(); 1 < len(vs) {
+		args = vs[1:]
 	}
 	return &Request{
 		ctx:  ctx,
@@ -418,11 +418,6 @@ func Main(ctx context.Context, h Handler) {
 			l.Out = os.Stderr
 		}
 	})
-
-	var (
-		w = &StdResponse{}
-		r = NewStdRequest(ctx)
-	)
 
 	sigch := make(chan os.Signal)
 	signals := []os.Signal{
@@ -444,6 +439,11 @@ func Main(ctx context.Context, h Handler) {
 			return
 		}
 	}()
+
+	var (
+		w = &StdResponse{}
+		r = NewStdRequest(ctx)
+	)
 
 	ServeCLI(h, w, r)
 	osint.Exit(w.Code)
@@ -473,8 +473,8 @@ func execName() string {
 	if ep, err := os.Executable(); err == nil {
 		return filepath.Base(ep)
 	}
-	if 0 < len(os.Args) {
-		return os.Args[0]
+	if 0 < len(osint.Args()) {
+		return osint.Args()[0]
 	}
 	return ""
 }

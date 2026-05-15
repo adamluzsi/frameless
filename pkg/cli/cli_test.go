@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/cli"
@@ -17,7 +20,9 @@ import (
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
+	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -2802,4 +2807,59 @@ func (woEW WithoutErrorWriter) ExitCode(n int) {
 
 func (woEW WithoutErrorWriter) Write(p []byte) (n int, err error) {
 	return woEW.W.Write(p)
+}
+
+func TestMain_signalInterrupt(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	var handlerDone int32
+	h := cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		<-r.Context().Done()
+		atomic.StoreInt32(&handlerDone, 1)
+	})
+
+	logger.Stub(t)
+	osint.StubExit(t, func(code int) {})
+	osint.StubArgs(t, []string{"cmd"})
+
+	var sigch chan<- os.Signal
+	var sigs []os.Signal
+	defer signalint.StubNotify(func(c chan<- os.Signal, sig ...os.Signal) {
+		sigch = c
+		sigs = sig
+	})()
+
+	var mainDone int32
+	go func() {
+		sandbox.Run(func() {
+			cli.Main(context.Background(), h)
+		})
+		atomic.StoreInt32(&mainDone, 1)
+	}()
+
+	t.Eventually(func(t *testcase.T) {
+		assert.NotEmpty(t, sigs)
+		assert.NotNil(t, sigch)
+	})
+
+	w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+		for atomic.LoadInt32(&handlerDone) == 0 {
+		}
+	})
+
+	select {
+	case sigch <- random.Pick(t.Random, sigs...):
+	case <-t.Context().Done():
+	case <-time.After(time.Second):
+		t.FailNow()
+	}
+
+	assert.Within(t, 100*time.Millisecond, func(ctx context.Context) {
+		w.Wait()
+	})
+
+	t.Eventually(func(t *testcase.T) {
+		assert.Equal(t, atomic.LoadInt32(&handlerDone), 1)
+		assert.Equal(t, atomic.LoadInt32(&mainDone), 1)
+	})
 }

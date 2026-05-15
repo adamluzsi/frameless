@@ -58,3 +58,18 @@ func StubStderr(tb testint.TB, out *os.File) {
 		stderr = prev
 	})
 }
+
+var args *[]string
+
+func StubArgs(tb testint.TB, vs []string) {
+	var og = args
+	tb.Cleanup(func() { args = og })
+	args = &vs
+}
+
+func Args() []string {
+	if args != nil {
+		return *args
+	}
+	return os.Args
+}
