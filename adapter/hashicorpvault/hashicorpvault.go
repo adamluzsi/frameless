@@ -216,6 +216,13 @@ func (r Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		}
 		response, err := r.Client.Secrets.KvV2List(ctx, r.basePath(), requestOptions...)
 		if err != nil {
+			var vaultResponseError *vault.ResponseError
+			if errors.As(err, &vaultResponseError) {
+				if vaultResponseError.Errors == nil && vaultResponseError.StatusCode == 404 {
+					// No entities found at this path, return empty iterator
+					return nil
+				}
+			}
 			return err
 		}
 		for _, id := range response.Data.Keys {
@@ -342,8 +349,9 @@ func (r Repository[ENT, ID]) PermanentDeleteByID(ctx context.Context, id ID) err
 	vaultRecordPath := r.getVaultPath(id)
 
 	if _, err := r.Client.Secrets.KvV2ReadMetadata(ctx, vaultRecordPath, requestOptions...); err != nil {
-		if respErr, ok := errorkit.As[*vault.ResponseError](err); ok && respErr != nil {
-			if respErr.StatusCode == http.StatusNotFound {
+		var vaultResponseError *vault.ResponseError
+		if errors.As(err, &vaultResponseError) {
+			if vaultResponseError.StatusCode == http.StatusNotFound {
 				return crud.ErrNotFound
 			}
 		}
