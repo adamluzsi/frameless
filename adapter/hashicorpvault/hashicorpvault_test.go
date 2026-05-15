@@ -115,9 +115,11 @@ func TestEntityRepository_implementsCRUD(t *testing.T) {
 
 	testcase.RunSuite(t,
 		crudcontract.Creator(repo, config),
+		crudcontract.Saver(repo, config),
 		crudcontract.ByIDFinder(repo, config),
 		crudcontract.AllFinder(repo, config),
 		crudcontract.ByIDDeleter(repo, config),
+		crudcontract.AllDeleter(repo, config),
 	)
 }
 
