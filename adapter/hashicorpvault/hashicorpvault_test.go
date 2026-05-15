@@ -19,46 +19,6 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-// testEntity is a test entity that implements the required interfaces for the Repository
-type testEntity struct {
-	ID  testEntityID `ext:"ID"`
-	Foo string
-	Bar string
-}
-
-func (t testEntity) LookupID() (testEntityID, bool) {
-	return t.ID, true
-}
-
-type testEntityID string
-
-func (id testEntityID) String() string { return string(id) }
-
-// testEntityDTO is the DTO format for testEntity
-type testEntityDTO struct {
-	ID   string `ext:"ID" json:"id"`
-	FooV string `json:"foov"`
-	BarV string `json:"barv"`
-}
-
-// Register the mapping for testEntity
-var _ = dtokit.Register[testEntity, testEntityDTO](
-	func(ctx context.Context, ent testEntity) (testEntityDTO, error) {
-		return testEntityDTO{
-			ID:   string(ent.ID),
-			FooV: ent.Foo,
-			BarV: ent.Bar,
-		}, nil
-	},
-	func(ctx context.Context, dto testEntityDTO) (testEntity, error) {
-		return testEntity{
-			ID:  testEntityID(dto.ID),
-			Foo: dto.FooV,
-			Bar: dto.BarV,
-		}, nil
-	},
-)
-
 func TestEntityRepository_implementsCRUD(t *testing.T) {
 	client := NewClient(t)
 	repo := hashicorpvault.Repository[testEntity, testEntityID]{
@@ -116,12 +76,55 @@ func TestEntityRepository_implementsCRUD(t *testing.T) {
 	testcase.RunSuite(t,
 		crudcontract.Creator(repo, config),
 		crudcontract.Saver(repo, config),
+		crudcontract.Updater(repo, config),
 		crudcontract.ByIDFinder(repo, config),
 		crudcontract.AllFinder(repo, config),
 		crudcontract.ByIDDeleter(repo, config),
 		crudcontract.AllDeleter(repo, config),
+		crudcontract.Finder(repo, config),
+		crudcontract.Deleter(repo, config),
 	)
 }
+
+// testEntity is a test entity that implements the required interfaces for the Repository
+type testEntity struct {
+	ID  testEntityID `ext:"ID"`
+	Foo string
+	Bar string
+}
+
+func (t testEntity) LookupID() (testEntityID, bool) {
+	return t.ID, true
+}
+
+type testEntityID string
+
+func (id testEntityID) String() string { return string(id) }
+
+// testEntityDTO is the DTO format for testEntity
+type testEntityDTO struct {
+	ID   string `ext:"ID" json:"id"`
+	FooV string `json:"foov"`
+	BarV string `json:"barv"`
+}
+
+// Register the mapping for testEntity
+var _ = dtokit.Register[testEntity, testEntityDTO](
+	func(ctx context.Context, ent testEntity) (testEntityDTO, error) {
+		return testEntityDTO{
+			ID:   string(ent.ID),
+			FooV: ent.Foo,
+			BarV: ent.Bar,
+		}, nil
+	},
+	func(ctx context.Context, dto testEntityDTO) (testEntity, error) {
+		return testEntity{
+			ID:  testEntityID(dto.ID),
+			Foo: dto.FooV,
+			Bar: dto.BarV,
+		}, nil
+	},
+)
 
 func TestEntityRepository_smoke(t *testing.T) {
 	client := NewClient(t)

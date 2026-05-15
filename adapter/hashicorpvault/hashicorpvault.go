@@ -362,6 +362,83 @@ func (r Repository[ENT, ID]) PermanentDeleteByID(ctx context.Context, id ID) err
 	return err
 }
 
+// Save implements crud.Saver interface.
+// It creates the entity if it doesn't exist, or updates it if it does.
+func (r Repository[ENT, ID]) Save(ctx context.Context, ptr *ENT) error {
+	ctx = withLoggingFields(ctx)
+
+	id, found := r.IDA.Lookup(*ptr)
+	if !found || zerokit.IsZero(id) {
+		// Entity has no valid ID, treat as create
+		return r.Create(ctx, ptr)
+	}
+
+	// Check if entity exists
+	_, exists, err := r.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		// Entity exists, update it
+		return r.Update(ctx, ptr)
+	}
+
+	// Entity doesn't exist, create it
+	return r.Create(ctx, ptr)
+}
+
+// Update updates an existing entity. Returns an error if the entity doesn't exist.
+func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
+	ctx = withLoggingFields(ctx)
+
+	id, found := r.IDA.Lookup(*ptr)
+	if !found || zerokit.IsZero(id) {
+		return crud.ErrNotFound.F("entity has no valid ID")
+	}
+
+	// Verify entity exists before updating
+	_, exists, err := r.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return crud.ErrNotFound.F("entity with id=%v not found", id)
+	}
+
+	// Perform the update by creating (which overwrites in Vault KV v2)
+	return r.Create(ctx, ptr)
+}
+
+// DeleteAll implements crud.AllDeleter interface.
+// It deletes all entities in the repository.
+func (r Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
+	ctx = withLoggingFields(ctx)
+
+	// Collect all IDs first to avoid iteration issues
+	var ids []ID
+	for ent, err := range r.FindAll(ctx) {
+		if err != nil {
+			return err
+		}
+
+		id, ok := r.IDA.Lookup(ent)
+		if !ok {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	// Delete each entity
+	for _, id := range ids {
+		if err := r.DeleteByID(ctx, id); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type ctxKeyIDKey[KeyID any] struct{}
 
 func (r Repository[ENT, ID]) withID(ctx context.Context, id ID) context.Context {
