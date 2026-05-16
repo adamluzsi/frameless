@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"iter"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -229,7 +230,13 @@ func (r Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 			if id == "metadata" { // TODO: FIXME: test me please
 				continue
 			}
-			ent, found, err := r.FindByID(ctx, ID(id))
+			// URL-decode the ID since it was encoded when stored
+			decodedID, err := url.PathUnescape(id)
+			if err != nil {
+				// If decoding fails, use the original ID (shouldn't happen in normal cases)
+				decodedID = id
+			}
+			ent, found, err := r.FindByID(ctx, ID(decodedID))
 			if err != nil {
 				return err
 			}
@@ -470,7 +477,9 @@ func (r Repository[ENT, ID]) basePath() string {
 }
 
 func (r Repository[ENT, ID]) getVaultPath(id ID) string {
-	return trimSlash(pathkit.Join(r.BasePath, string(id)))
+	// URL-encode the ID to handle special characters like '/' that could break the path
+	encodedID := url.PathEscape(string(id))
+	return trimSlash(pathkit.Join(r.BasePath, encodedID))
 }
 
 const requestTimeout = 30 * time.Second
