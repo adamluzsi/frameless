@@ -21,54 +21,35 @@ import (
 
 func TestEntityRepository_implementsCRUD(t *testing.T) {
 	client := NewClient(t)
-	repo := vault.Repository[testEntity, testEntityID]{
+	repo := vault.Repository[Entity[string], string]{
 		BasePath:   "test-entities",
 		MountPoint: MountPoint(t),
 		Client:     client,
-		MakeID: func(ctx context.Context) (testEntityID, error) {
+		MakeID: func(ctx context.Context) (string, error) {
 			id, err := uuid.MakeV4()
 			if err != nil {
 				return "", err
 			}
-			return testEntityID(id.String()), nil
+			return id.String(), nil
 		},
-		Mapper: dtokit.Mapping[testEntity, testEntityDTO]{
-			ToDTO: func(ctx context.Context, ent testEntity) (testEntityDTO, error) {
-				return testEntityDTO{
-					ID:   string(ent.ID),
-					FooV: ent.Foo,
-					BarV: ent.Bar,
-				}, nil
-			},
-			ToENT: func(ctx context.Context, dto testEntityDTO) (testEntity, error) {
-				return testEntity{
-					ID:  testEntityID(dto.ID),
-					Foo: dto.FooV,
-					Bar: dto.BarV,
-				}, nil
-			},
-		},
+		Mapper:            EntityToEntityJSONDTOMapping[string](),
 		DeletePermanently: true,
 	}
 
-	config := crudcontract.Config[testEntity, testEntityID]{
-		MakeEntity: func(tb testing.TB) testEntity {
+	config := crudcontract.Config[Entity[string], string]{
+		MakeEntity: func(tb testing.TB) Entity[string] {
 			tc := testcase.ToT(&tb)
-			return testEntity{
-				Foo: tc.Random.String(),
-				Bar: tc.Random.String(),
-			}
+			return MakeEntity[string](tc.Random)
 		},
-		ChangeEntity: func(tb testing.TB, te *testEntity) {
+		ChangeEntity: func(tb testing.TB, te *Entity[string]) {
 			tc := testcase.ToT(&tb)
-			te.Foo = tc.Random.String()
-			te.Bar = tc.Random.String()
+			ChangeEntity(tc.Random, te)
 		},
 
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 
-		IDA: func(te *testEntity) *testEntityID {
+		IDA: func(te *Entity[string]) *string {
 			return &te.ID
 		},
 	}
