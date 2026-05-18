@@ -616,6 +616,17 @@ func TestStub(t *testing.T) {
 			assert.Equal(t, buf1, data)
 		})
 
+		s.Test("reads are reflected in the Offset", func(t *testcase.T) {
+			data := []byte(t.Random.String())
+			stub := &iokit.Stub{Data: data}
+			buf1 := make([]byte, len(data))
+			n, err := stub.Read(buf1)
+			assert.NoError(t, err)
+			assert.Equal(t, len(data), n)
+			assert.Equal(t, buf1, data)
+			assert.Equal(t, len(data), stub.Offset())
+		})
+
 		s.Test("allows the injection of a Read error", func(t *testcase.T) {
 			expErr := t.Random.Error()
 			reader := &iokit.Stub{StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
@@ -849,6 +860,120 @@ func TestStub(t *testing.T) {
 			assert.Equal(t, rN, n)
 			assert.Equal(t, rErr, err)
 			assert.Equal(t, stub.Close(), cErr)
+		})
+	})
+
+	s.Describe("#Reset", func(s *testcase.Spec) {
+		act := let.Act0(func(t *testcase.T) {
+			stub.Get(t).Reset()
+		})
+
+		s.When("stub is in a zero state", func(s *testcase.Spec) {
+			stub.Let(s, func(t *testcase.T) *iokit.Stub {
+				return &iokit.Stub{}
+			})
+
+			s.Then("does nothing particularly", func(t *testcase.T) {
+				act(t)
+
+				assert.Empty(t, stub.Get(t))
+			})
+
+			s.And("value is written into the stub", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					stub.Get(t).Write([]byte(t.Random.UUID()))
+				})
+
+				s.Then("the data field is restored into its original state", func(t *testcase.T) {
+					act(t)
+
+					assert.Nil(t, stub.Get(t).Data)
+				})
+			})
+		})
+
+		s.When("the stub is initialised with Data value", func(s *testcase.Spec) {
+			data := let.Var(s, func(t *testcase.T) []byte {
+				return []byte(t.Random.String())
+			})
+			stub.Let(s, func(t *testcase.T) *iokit.Stub {
+				st := stub.Super(t)
+				st.Data = data.Get(t)
+				return st
+			})
+
+			s.Then("the #Data field is kept intact", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, data.Get(t), stub.Get(t).Data)
+			})
+
+			s.And("value is written into the stub", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					stub.Get(t).Write([]byte(t.Random.UUID()))
+				})
+
+				s.Then("the data field is restored into its original state", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, data.Get(t), stub.Get(t).Data)
+				})
+
+				s.Then("write reads count is set back to zero", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, 0, stub.Get(t).NumWrite())
+				})
+			})
+
+			s.And("data is read from the reader", func(s *testcase.Spec) {
+
+			})
+
+			s.And("one of the stubbed function modifies the #Data field state", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					st := stub.Get(t)
+					dt := []byte(t.Random.UUID())
+					random.Pick(t.Random,
+						func() {
+							st.StubClose = func(stub *iokit.Stub) error {
+								stub.Data = append(stub.Data, dt...)
+								return nil
+							}
+							st.Close()
+						},
+						func() {
+							st.StubRead = func(stub *iokit.Stub, p []byte) (int, error) {
+								stub.Data = append(stub.Data, dt...)
+								return 42, nil
+							}
+							st.Read(make([]byte, 42))
+						},
+						func() {
+							st.StubWrite = func(stub *iokit.Stub, p []byte) (int, error) {
+								stub.Data = append(stub.Data, dt...)
+								return 42, nil
+							}
+							st.Write([]byte(t.Random.String()))
+						},
+						func() {
+							// I'm surprised that this is not causing an error
+							// there is plenty of capacity left,
+							// yet it doesn't append to it
+							st.Data = make([]byte, 0, 5*len(data.Get(t)))
+							st.Data = append(st.Data, data.Get(t)...)
+							bs := st.Bytes()
+							bs = append(bs, []byte(t.Random.String())...)
+						},
+					)()
+				})
+
+				s.Then("the data field is restored into its original state", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, data.Get(t), stub.Get(t).Data)
+				})
+			})
 		})
 	})
 }

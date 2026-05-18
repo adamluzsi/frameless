@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mathkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
@@ -239,9 +240,11 @@ type Stub struct {
 	stubbed  int32 `enum:"0,1"`
 	numRead  int64
 	numWrite int64
+
+	ogData *[]byte
 }
 
-func withoutStubbFunc[FN any](stubbed *int32, p *FN) func() {
+func withoutStubFunc[FN any](stubbed *int32, p *FN) func() {
 	atomic.StoreInt32(stubbed, 1)
 	fn := *p
 	var zero FN
@@ -259,9 +262,10 @@ func (r *Stub) incNum(p *int64) {
 }
 
 func (r *Stub) Write(p []byte) (int, error) {
+	defer r.preserveDataFieldStateIfNeeded()()
 	r.incNum(&r.numWrite)
 	if fn := r.StubWrite; fn != nil {
-		defer withoutStubbFunc(&r.stubbed, &r.StubWrite)()
+		defer withoutStubFunc(&r.stubbed, &r.StubWrite)()
 		return fn(r, p)
 	}
 	r.Data = append(r.Data, p...)
@@ -269,11 +273,12 @@ func (r *Stub) Write(p []byte) (int, error) {
 }
 
 func (r *Stub) Read(p []byte) (int, error) {
+	defer r.preserveDataFieldStateIfNeeded()()
 	r.incNum(&r.numRead)
 
 	if r.StubRead != nil {
 		fn := r.StubRead
-		defer withoutStubbFunc(&r.stubbed, &r.StubRead)()
+		defer withoutStubFunc(&r.stubbed, &r.StubRead)()
 		return fn(r, p)
 	}
 
@@ -306,8 +311,9 @@ func (r *Stub) Read(p []byte) (int, error) {
 }
 
 func (r *Stub) Close() error {
+	defer r.preserveDataFieldStateIfNeeded()()
 	if fn := r.StubClose; fn != nil {
-		defer withoutStubbFunc(&r.stubbed, &r.StubClose)()
+		defer withoutStubFunc(&r.stubbed, &r.StubClose)()
 		return fn(r)
 	}
 	atomic.StoreInt32(&r.closed, 1)
@@ -326,8 +332,38 @@ func (r *Stub) NumWrite() int {
 	return int(atomic.LoadInt64(&r.numWrite))
 }
 
+func (r *Stub) Offset() int {
+	return int(atomic.LoadInt64(&r.index))
+}
+
 func (r *Stub) Bytes() []byte {
 	return r.Data
+}
+
+func (r *Stub) preserveDataFieldStateIfNeeded() func() {
+	if r.ogData != nil {
+		return func() {}
+	}
+	var data = slicekit.Clone(r.Data)
+	return func() {
+		if r.ogData != nil {
+			return
+		}
+		if !bytes.Equal(r.Data, data) {
+			r.ogData = &data
+		}
+	}
+}
+
+func (r *Stub) Reset() {
+	if r.ogData != nil {
+		r.Data = *r.ogData
+		r.ogData = nil
+	}
+	r.index = 0
+	r.closed = 0
+	r.numRead = 0
+	r.numWrite = 0
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {

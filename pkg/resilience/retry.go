@@ -46,9 +46,13 @@ func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U])
 	}
 }
 
-type RetryPolicy[U FailureCount | StartedAt] interface {
+type RetryPolicy[U RetryUnit] interface {
 	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
 	ShouldTry(ctx context.Context, u U) bool
+}
+
+type RetryUnit interface {
+	FailureCount | StartedAt
 }
 
 type (
