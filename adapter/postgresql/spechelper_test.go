@@ -218,6 +218,18 @@ func MigrateEntity(tb testing.TB, cm postgresql.Connection) {
 	})
 }
 
+func MigrateEntityIndexes(tb testing.TB, cm postgresql.Connection) {
+	ctx := context.Background()
+
+	_, err := cm.ExecContext(ctx, testEntityIndexesUP)
+	assert.NoError(tb, err)
+
+	tb.Cleanup(func() {
+		_, err := cm.ExecContext(ctx, testEntityIndexesDOWN)
+		assert.NoError(tb, err)
+	})
+}
+
 const testMigrateUP = `
 CREATE TABLE "test_entities" (
     id	TEXT	NOT	NULL	PRIMARY KEY,
@@ -229,4 +241,18 @@ CREATE TABLE "test_entities" (
 
 const testMigrateDOWN = `
 DROP TABLE IF EXISTS "test_entities";
+`
+
+const testEntityIndexesUP = `
+CREATE INDEX IF NOT EXISTS idx_test_entities_foo ON "test_entities" (foo);
+CREATE INDEX IF NOT EXISTS idx_test_entities_bar ON "test_entities" (bar);
+CREATE INDEX IF NOT EXISTS idx_test_entities_baz ON "test_entities" (baz);
+CREATE INDEX IF NOT EXISTS idx_test_entities_foo_bar ON "test_entities" (foo, bar);
+`
+
+const testEntityIndexesDOWN = `
+DROP INDEX IF EXISTS idx_test_entities_foo;
+DROP INDEX IF EXISTS idx_test_entities_bar;
+DROP INDEX IF EXISTS idx_test_entities_baz;
+DROP INDEX IF EXISTS idx_test_entities_foo_bar;
 `

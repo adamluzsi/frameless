@@ -2,6 +2,7 @@ package postgresql_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -328,9 +330,7 @@ func Test_pgxQuery(t *testing.T) {
 }
 
 func TestBatch_rainyAdd(t *testing.T) {
-	cm, err := postgresql.Connect(DatabaseURL(t))
-	assert.NoError(t, err)
-
+	cm := GetConnection(t)
 	MigrateEntity(t, cm)
 
 	mapping := EntityMapping()
@@ -350,4 +350,110 @@ func TestBatch_rainyAdd(t *testing.T) {
 			a.Test(func(t testing.TB) { assert.Error(t, batch.Close()) })
 		})
 	})
+}
+
+func Benchmark_batch(b *testing.B) {
+	if testing.Short() {
+		b.Skip("testing.Short()")
+	}
+
+	s := testcase.NewSpec(b)
+
+	var (
+		cm   = GetConnection(b)
+		ctx  = context.Background()
+		repo = &postgresql.Repository[Entity, string]{
+			Connection: cm,
+			Mapping:    EntityMapping(),
+		}
+	)
+
+	s.Before(func(t *testcase.T) {
+		MigrateEntity(t, cm)
+		MigrateEntityIndexes(t, cm)
+	})
+
+	var samplings = []int{
+		100,
+		1000,
+		10000,
+		100000,
+		1000000,
+	}
+
+	rnd := random.New(random.CryptoSeed{})
+	var makeEntities = func(t *testcase.T, n int) []Entity {
+		return random.Slice(n, func() Entity {
+			return Entity{
+				ID:  rnd.UUID(),
+				Foo: rnd.UUID(),
+				Bar: rnd.UUID(),
+				Baz: rnd.UUID(),
+			}
+		}, random.UniqueValues)
+	}
+
+	s.Before(func(t *testcase.T) {
+		_, err := cm.ExecContext(ctx, "TRUNCATE TABLE test_entities")
+		assert.NoError(t, err)
+	})
+
+	var cases = func(s *testcase.Spec, n int) {
+		entities := let.Var(s, func(t *testcase.T) []Entity {
+			return makeEntities(t, n)
+		})
+
+		s.Benchmark("Batch", func(t *testcase.T) {
+			batch := repo.Batch(ctx)
+			for _, e := range entities.Get(t) {
+				assert.NoError(b, batch.Add(e))
+			}
+			assert.NoError(b, batch.Close())
+		})
+
+		s.Benchmark("Tx+COPY", func(t *testcase.T) {
+			ents := entities.Get(t)
+			tx, err := cm.DB.Begin(ctx)
+			assert.NoError(b, err)
+
+			// Prepare COPY data
+			rows := make([][]any, len(ents))
+			for i, e := range ents {
+				rows[i] = []any{e.ID, e.Foo, e.Bar, e.Baz}
+			}
+
+			_, err = tx.CopyFrom(
+				ctx,
+				pgx.Identifier{"test_entities"},
+				[]string{"id", "foo", "bar", "baz"},
+				pgx.CopyFromRows(rows),
+			)
+			assert.NoError(b, err)
+
+			err = tx.Commit(ctx)
+			assert.NoError(b, err)
+		})
+	}
+
+	for _, sampling := range samplings {
+		n := sampling
+
+		s.Context(fmt.Sprintf("%d", n), func(s *testcase.Spec) {
+			s.Context("empty", func(s *testcase.Spec) {
+				cases(s, n)
+			})
+
+			s.Context("prefilled", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					batch := repo.Batch(t.Context())
+					for _, e := range makeEntities(t, 1_000_000) {
+						assert.NoError(b, batch.Add(e))
+					}
+					assert.NoError(b, batch.Close())
+				})
+
+				cases(s, n)
+			})
+		})
+	}
 }

@@ -1,8 +1,0 @@
-go 1.25.0
-
-use (
-	.
-	./examples/background-processing
-	./examples/cli-app
-	./examples/restful-api
-)

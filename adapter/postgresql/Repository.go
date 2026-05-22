@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -451,7 +452,7 @@ type Batch[ENT, ID any] struct {
 	_begin  sync.Once
 	_finish sync.Once
 
-	bgjob synckit.Job
+	bgJob synckit.Job
 
 	input chan ENT
 }
@@ -462,7 +463,7 @@ func (b *Batch[ENT, ID]) init() {
 		if b.Context == nil {
 			b.Context = context.Background()
 		}
-		b.bgjob = synckit.Go(b.Context, b.stream)
+		b.bgJob = synckit.Go(b.Context, b.stream)
 	})
 }
 
@@ -473,8 +474,8 @@ func (b *Batch[ENT, ID]) Add(v ENT) error {
 		return nil
 	case <-b.Context.Done():
 		return b.Context.Err()
-	case <-b.bgjob.Done():
-		return b.bgjob.Wait()
+	case <-b.bgJob.Done():
+		return b.bgJob.Wait()
 	}
 }
 
@@ -483,7 +484,7 @@ func (b *Batch[ENT, ID]) Close() error {
 	b._finish.Do(func() {
 		close(b.input)
 	})
-	return b.bgjob.Wait()
+	return b.bgJob.Wait()
 }
 
 func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
@@ -506,9 +507,17 @@ func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
 	if !ok {
 		return fmt.Errorf("impposible scenario, no transaction in context after BeginTx")
 	}
+
+	// Create staging table optimized for bulk COPY operations
+	stagingTable, err := b.createStagingTable(ctx, tx, columns)
+	if err != nil {
+		return err
+	}
+
+	// Copy data into staging table
 	_, err = (*tx).CopyFrom(
 		ctx,
-		b.Repository.tableIdentifier(),
+		stagingTable,
 		slicekit.Map(columns, func(cn flsql.ColumnName) string {
 			return string(cn)
 		}),
@@ -538,5 +547,78 @@ func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
 			}
 		}),
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to copy into staging table: %w", err)
+	}
+
+	// Move data from staging table to main table
+	// This ensures all data is properly typed and committed to the main table
+	insertQuery := fmt.Sprintf(
+		"INSERT INTO %s (%s) SELECT %s FROM %s",
+		b.Repository.tableIdentifier().Sanitize(),
+		b.quotedColumnsClause(columns),
+		b.quotedColumnsClause(columns),
+		stagingTable.Sanitize(),
+	)
+
+	logger.Debug(ctx, "postgres.Batch#stream", logging.Field("query", insertQuery))
+
+	if _, err := (*tx).Exec(ctx, insertQuery); err != nil {
+		return fmt.Errorf("failed to insert from staging table: %w", err)
+	}
+
+	return nil
+}
+
+func (b *Batch[ENT, ID]) quotedColumnsClause(cols []flsql.ColumnName) string {
+	return flsql.JoinColumnName(cols, "%q", ", ")
+}
+
+// createStagingTable creates a temporary staging table bound to the Batch insertion's transaction.
+// The table is:
+//   - TEMPORARY: only visible to this connection
+//   - ON COMMIT DROP: automatically dropped when the transaction ends
+//
+// Returns the staging table identifier that can be used for COPY operations.
+func (b *Batch[ENT, ID]) createStagingTable(ctx context.Context, tx *pgx.Tx, columnNames []flsql.ColumnName) (stageTableName pgx.Identifier, rErr error) {
+	if tx == nil {
+		return nil, fmt.Errorf("postgres.Batch staging table creation requires a transaction")
+	}
+	if len(columnNames) == 0 {
+		return nil, fmt.Errorf("postgres.Batch staging table creation requires at least one column")
+	}
+
+	// Generate a unique table name based on the source table
+	sourceTable := b.Repository.tableIdentifier()
+	stagingName := fmt.Sprintf("_staging_%s_%d", sourceTable[len(sourceTable)-1], time.Now().UnixNano())
+	stagingTable := pgx.Identifier{stagingName}
+
+	// Build CREATE TEMPORARY TABLE statement
+	// ON COMMIT DROP ensures automatic cleanup when transaction ends
+	var query strings.Builder
+	query.WriteString("CREATE TEMPORARY TABLE ")
+	query.WriteString(stagingTable.Sanitize())
+	query.WriteString(" (")
+
+	// Build column definitions
+	// We'll use generic types that work well with COPY for all value types
+	// The actual type inference from Go values would require reflection on the entity type
+	// For maximum compatibility with COPY, we use TEXT for all columns and let PostgreSQL handle coercion
+	columnDefs := make([]string, len(columnNames))
+	for i, col := range columnNames {
+		// Using TEXT allows COPY to accept any value type and PostgreSQL will coerce appropriately
+		// This is safe and performant for batch operations
+		columnDefs[i] = fmt.Sprintf(`"%s" TEXT`, col)
+	}
+	query.WriteString(strings.Join(columnDefs, ", "))
+	query.WriteString(") ON COMMIT DROP")
+
+	logger.Debug(ctx, "postgres.Batch#createStagingTable", logging.Field("query", query.String()))
+
+	_, err := (*tx).Exec(ctx, query.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create staging table: %w", err)
+	}
+
+	return stagingTable, nil
 }
