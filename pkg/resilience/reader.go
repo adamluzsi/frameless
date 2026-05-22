@@ -53,6 +53,17 @@ read:
 
 var _ io.Closer = (*RetryReader[FailureCount])(nil)
 
+// Source is the current io.Reader source which is being used by the RetryReader.
+// Interacting with source should be avoided,
+// the only purpose of it would be to access stat related data,
+// such as if the source is a fs.File, then accessing fs.File.Stat
+func (rr *RetryReader[RU]) Source() io.Reader {
+	if rr.reader == nil {
+		rr.restart()
+	}
+	return rr.reader
+}
+
 func (rr *RetryReader[RU]) restart() error {
 	if rr.closed {
 		return iokit.ErrClosed

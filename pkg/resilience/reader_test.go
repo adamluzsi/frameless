@@ -32,6 +32,183 @@ func ExampleRetryReader() {
 	_, _ = data, err
 }
 
+func TestRetryReader_spec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		Context = let.Context(s)
+
+		content   = let.String(s)
+		lastStub  = let.VarOf[*iokit.Stub](s, nil)
+		openCount = let.VarOf(s, 0)
+		Open      = let.Var(s, func(t *testcase.T) func() (io.Reader, error) {
+			return func() (io.Reader, error) {
+				openCount.Set(t, openCount.Get(t)+1)
+				stub := &iokit.Stub{Data: []byte(content.Get(t))}
+				lastStub.Set(t, stub)
+				return stub, nil
+			}
+		})
+		RetryPolicy = let.Var(s, func(t *testcase.T) resilience.RetryPolicy[resilience.FailureCount] {
+			return resilience.FixedDelay{
+				Delay:    time.Nanosecond,
+				Attempts: 5,
+			}
+		})
+	)
+	subject := let.Var(s, func(t *testcase.T) *resilience.RetryReader[resilience.FailureCount] {
+		return &resilience.RetryReader[resilience.FailureCount]{
+			Context:     Context.Get(t),
+			Open:        Open.Get(t),
+			RetryPolicy: RetryPolicy.Get(t),
+		}
+	})
+
+	s.Describe("#Close", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Close()
+		})
+
+		s.When("open was never used", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.Equal(t, openCount.Get(t), 0)
+			})
+
+			s.Then("it does nothing just mark itself closed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.ErrorIs(t, act(t), iokit.ErrClosed)
+				assert.Equal(t, 0, openCount.Get(t))
+			})
+		})
+
+		s.When("due to a read, the underlying io was opened", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				contentBytesLen := len([]byte(content.Get(t)))
+				count := t.Random.IntBetween(1, contentBytesLen/2)
+				n, err := subject.Get(t).Read(make([]byte, count))
+				assert.NoError(t, err)
+				assert.Equal(t, n, count)
+			})
+
+			s.And("the opened io.Reader is a ReadCloser", func(s *testcase.Spec) {
+				stub := let.Var(s, func(t *testcase.T) *iokit.Stub {
+					return &iokit.Stub{Data: []byte(content.Get(t))}
+				})
+				Open.Let(s, func(t *testcase.T) func() (io.Reader, error) {
+					return func() (io.Reader, error) {
+						st := stub.Get(t)
+						st.Reset()
+						var _ io.ReadCloser = st // implements ReadCloser
+						return st, nil
+					}
+				})
+
+				s.Then("it closes the underlying io.ReadCloser", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.True(t, stub.Get(t).IsClosed())
+				})
+			})
+		})
+	})
+
+	s.Describe("#Source", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) io.Reader {
+			return subject.Get(t).Source()
+		})
+
+		s.Then("source reader is returned", func(t *testcase.T) {
+			src := act(t)
+			assert.NotEmpty(t, src)
+			assert.NotEmpty(t, lastStub.Get(t))
+			assert.Equal[io.Reader](t, src, lastStub.Get(t))
+		})
+	})
+
+	s.Describe("#Read", func(s *testcase.Spec) {
+		var method = func(t *testcase.T, p []byte) (int, error) {
+			return subject.Get(t).Read(p)
+		}
+
+		var (
+			p = let.Var(s, func(t *testcase.T) []byte {
+				return make([]byte, len([]byte(content.Get(t))))
+			})
+		)
+		act := let.Act2(func(t *testcase.T) (int, error) {
+			return method(t, p.Get(t))
+		})
+
+		s.Then("it will read the requested amount", func(t *testcase.T) {
+			n, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, n, len(p.Get(t)))
+			assert.Equal(t, []byte(content.Get(t))[:n], p.Get(t))
+		})
+
+		s.Then("it works as expected with io.ReadAll", func(t *testcase.T) {
+			var (
+				got []byte
+				err error
+			)
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				got, err = io.ReadAll(subject.Get(t))
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, content.Get(t), string(got))
+
+			assert.NotNil(t, lastStub.Get(t))
+			assert.Equal(t, lastStub.Get(t).Offset(), len([]byte(content.Get(t))))
+		})
+
+		s.When("errors occur during reading", func(s *testcase.Spec) {
+			errorCount := let.IntB(s, 1, 3) // must be less than retry policy max attempt
+			readerCloses := let.VarOf[int](s, 0)
+			Open.Let(s, func(t *testcase.T) func() (io.Reader, error) {
+				var firstPassed bool
+				var errCount = errorCount.Get(t)
+				stub := &iokit.Stub{
+					Data: []byte(content.Get(t)),
+					StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
+						if !firstPassed {
+							firstPassed = true
+							return stub.Read(p[:len(p)/2])
+						}
+						if errCount != 0 {
+							errCount--
+							return 0, t.Random.Error()
+						}
+						return stub.Read(p)
+					},
+					StubClose: func(stub *iokit.Stub) error {
+						if !stub.IsClosed() {
+							readerCloses.Set(t, readerCloses.Get(t)+1)
+						}
+						return stub.Close()
+					},
+				}
+				return func() (io.Reader, error) {
+					stub.Reset()
+					return stub, nil
+				}
+			})
+
+			s.Then("from the outside, the errors are not observable", func(t *testcase.T) {
+				got, err := io.ReadAll(subject.Get(t))
+				assert.NoError(t, err)
+				assert.Equal(t, content.Get(t), string(got))
+			})
+
+			s.Then("failed readers are closed", func(t *testcase.T) {
+				_, err := io.ReadAll(subject.Get(t))
+				assert.NoError(t, err)
+
+				assert.Equal(t, errorCount.Get(t), readerCloses.Get(t))
+			})
+		})
+	})
+}
+
 func TestRetryReader_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 
@@ -253,168 +430,4 @@ func (t *trackingReader) Seek(offset int64, whence int) (int64, error) {
 		return s.Seek(offset, whence)
 	}
 	return 0, errors.New("not seekable")
-}
-
-func TestRetryReader_spec(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	var (
-		Context = let.Context(s)
-
-		content   = let.String(s)
-		lastStub  = let.VarOf[*iokit.Stub](s, nil)
-		openCount = let.VarOf(s, 0)
-		Open      = let.Var(s, func(t *testcase.T) func() (io.Reader, error) {
-			return func() (io.Reader, error) {
-				openCount.Set(t, openCount.Get(t)+1)
-				stub := &iokit.Stub{Data: []byte(content.Get(t))}
-				lastStub.Set(t, stub)
-				return stub, nil
-			}
-		})
-		RetryPolicy = let.Var(s, func(t *testcase.T) resilience.RetryPolicy[resilience.FailureCount] {
-			return resilience.FixedDelay{
-				Delay:    time.Nanosecond,
-				Attempts: 5,
-			}
-		})
-	)
-	subject := let.Var(s, func(t *testcase.T) *resilience.RetryReader[resilience.FailureCount] {
-		return &resilience.RetryReader[resilience.FailureCount]{
-			Context:     Context.Get(t),
-			Open:        Open.Get(t),
-			RetryPolicy: RetryPolicy.Get(t),
-		}
-	})
-
-	s.Describe("#Close", func(s *testcase.Spec) {
-		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Close()
-		})
-
-		s.When("open was never used", func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				assert.Equal(t, openCount.Get(t), 0)
-			})
-
-			s.Then("it does nothing just mark itself closed", func(t *testcase.T) {
-				assert.NoError(t, act(t))
-				assert.ErrorIs(t, act(t), iokit.ErrClosed)
-				assert.Equal(t, 0, openCount.Get(t))
-			})
-		})
-
-		s.When("due to a read, the underlying io was opened", func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				contentBytesLen := len([]byte(content.Get(t)))
-				count := t.Random.IntBetween(1, contentBytesLen/2)
-				n, err := subject.Get(t).Read(make([]byte, count))
-				assert.NoError(t, err)
-				assert.Equal(t, n, count)
-			})
-
-			s.And("the opened io.Reader is a ReadCloser", func(s *testcase.Spec) {
-				stub := let.Var(s, func(t *testcase.T) *iokit.Stub {
-					return &iokit.Stub{Data: []byte(content.Get(t))}
-				})
-				Open.Let(s, func(t *testcase.T) func() (io.Reader, error) {
-					return func() (io.Reader, error) {
-						st := stub.Get(t)
-						st.Reset()
-						var _ io.ReadCloser = st // implements ReadCloser
-						return st, nil
-					}
-				})
-
-				s.Then("it closes the underlying io.ReadCloser", func(t *testcase.T) {
-					assert.NoError(t, act(t))
-
-					assert.True(t, stub.Get(t).IsClosed())
-				})
-			})
-		})
-	})
-
-	s.Describe("#Read", func(s *testcase.Spec) {
-		var method = func(t *testcase.T, p []byte) (int, error) {
-			return subject.Get(t).Read(p)
-		}
-
-		var (
-			p = let.Var(s, func(t *testcase.T) []byte {
-				return make([]byte, len([]byte(content.Get(t))))
-			})
-		)
-		act := let.Act2(func(t *testcase.T) (int, error) {
-			return method(t, p.Get(t))
-		})
-
-		s.Then("it will read the requested amount", func(t *testcase.T) {
-			n, err := act(t)
-			assert.NoError(t, err)
-			assert.Equal(t, n, len(p.Get(t)))
-			assert.Equal(t, []byte(content.Get(t))[:n], p.Get(t))
-		})
-
-		s.Then("it works as expected with io.ReadAll", func(t *testcase.T) {
-			var (
-				got []byte
-				err error
-			)
-			assert.Within(t, time.Second, func(ctx context.Context) {
-				got, err = io.ReadAll(subject.Get(t))
-			})
-			assert.NoError(t, err)
-			assert.Equal(t, content.Get(t), string(got))
-
-			assert.NotNil(t, lastStub.Get(t))
-			assert.Equal(t, lastStub.Get(t).Offset(), len([]byte(content.Get(t))))
-		})
-
-		s.When("errors occur during reading", func(s *testcase.Spec) {
-			errorCount := let.IntB(s, 1, 3) // must be less than retry policy max attempt
-			readerCloses := let.VarOf[int](s, 0)
-			Open.Let(s, func(t *testcase.T) func() (io.Reader, error) {
-				var firstPassed bool
-				var errCount = errorCount.Get(t)
-				stub := &iokit.Stub{
-					Data: []byte(content.Get(t)),
-					StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
-						if !firstPassed {
-							firstPassed = true
-							return stub.Read(p[:len(p)/2])
-						}
-						if errCount != 0 {
-							errCount--
-							return 0, t.Random.Error()
-						}
-						return stub.Read(p)
-					},
-					StubClose: func(stub *iokit.Stub) error {
-						if !stub.IsClosed() {
-							readerCloses.Set(t, readerCloses.Get(t)+1)
-						}
-						return stub.Close()
-					},
-				}
-				return func() (io.Reader, error) {
-					stub.Reset()
-					return stub, nil
-				}
-			})
-
-			s.Then("from the outside, the errors are not observable", func(t *testcase.T) {
-				got, err := io.ReadAll(subject.Get(t))
-				assert.NoError(t, err)
-				assert.Equal(t, content.Get(t), string(got))
-			})
-
-			s.Then("failed readers are closed", func(t *testcase.T) {
-				_, err := io.ReadAll(subject.Get(t))
-				assert.NoError(t, err)
-
-				assert.Equal(t, errorCount.Get(t), readerCloses.Get(t))
-			})
-		})
-	})
 }
