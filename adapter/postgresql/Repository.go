@@ -31,6 +31,7 @@ import (
 type Repository[ENT, ID any] struct {
 	Connection Connection
 	Mapping    flsql.Mapping[ENT, ID]
+	BatchConfig
 }
 
 func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) (rErr error) {
@@ -455,6 +456,15 @@ type Batch[ENT, ID any] struct {
 	bgJob synckit.Job
 
 	input chan ENT
+
+	BatchConfig BatchConfig
+}
+
+type BatchConfig struct {
+	// UseStagingTable will make the Batch to use a temporary table instead directly inserting element by element
+	UseStagingTable bool
+	// NoTransaction disables the transaction usage during batch.
+	NoTransaction bool
 }
 
 func (b *Batch[ENT, ID]) init() {
