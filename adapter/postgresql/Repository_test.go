@@ -70,17 +70,18 @@ func ExampleRepository() {
 }
 
 func TestRepository(t *testing.T) {
+	s := testcase.NewSpec(t)
 	mapping := EntityMapping()
 
 	cm, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 
+	MigrateEntity(t, cm)
+
 	subject := &postgresql.Repository[Entity, string]{
 		Connection: cm,
 		Mapping:    mapping,
 	}
-
-	MigrateEntity(t, cm)
 
 	config := crudcontract.Config[Entity, string]{
 		MakeContext: func(t testing.TB) context.Context {
@@ -88,20 +89,92 @@ func TestRepository(t *testing.T) {
 		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,
-
-		ChangeEntity: nil, // test entity can be freely changed
-
-		OnePhaseCommit: cm,
+		ChangeEntity:    nil, // test entity can be freely changed
+		OnePhaseCommit:  cm,
 	}
 
-	testcase.RunSuite(t,
+	testcase.RunSuite(s,
 		crudcontract.Creator[Entity, string](subject, config),
 		crudcontract.Finder[Entity, string](subject, config),
 		crudcontract.Updater[Entity, string](subject, config),
 		crudcontract.Deleter[Entity, string](subject, config),
 		crudcontract.OnePhaseCommitProtocol[Entity, string](subject, subject.Connection),
-		crudcontract.Batcher(subject, config),
-	)
+		crudcontract.Batcher(subject, config))
+}
+
+func TestRepository_BatchConfig(t *testing.T) {
+	s := testcase.NewSpec(t)
+	mapping := EntityMapping()
+
+	cm, err := postgresql.Connect(DatabaseURL(t))
+	assert.NoError(t, err)
+
+	MigrateEntity(t, cm)
+
+	baseConfig := crudcontract.Config[Entity, string]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+		ChangeEntity:    nil, // test entity can be freely changed
+		OnePhaseCommit:  cm,
+	}
+
+	s.Context("no transaction", func(s *testcase.Spec) {
+		subject := &postgresql.Repository[Entity, string]{
+			Connection: cm,
+			Mapping:    mapping,
+			BatchConfig: postgresql.BatchConfig{
+				NoTransaction: true,
+			},
+		}
+		config := baseConfig
+		config.OnePhaseCommit = nil
+		crudcontract.Batcher(subject, config).Spec(s)
+	})
+
+	s.Context("with staging table", func(s *testcase.Spec) {
+		subject := &postgresql.Repository[Entity, string]{
+			Connection: cm,
+			Mapping:    mapping,
+			BatchConfig: postgresql.BatchConfig{
+				UseStagingTable: true,
+			},
+		}
+		config := baseConfig
+		crudcontract.Batcher(subject, config).Spec(s)
+
+		s.Context("without transaction", func(s *testcase.Spec) {
+			subject := &postgresql.Repository[Entity, string]{
+				Connection: cm,
+				Mapping:    mapping,
+				BatchConfig: postgresql.BatchConfig{
+					UseStagingTable: true,
+					NoTransaction:   true,
+				},
+			}
+			config := baseConfig
+			config.OnePhaseCommit = nil
+
+			s.After(func(t *testcase.T) {
+				query := `SELECT tablename FROM pg_tables WHERE schemaname = 'pg_temp' AND tablename ILIKE '%staging%';`
+				rows, err := cm.QueryContext(t.Context(), query)
+				assert.NoError(t, err)
+
+				for rows.Next() {
+					var tableName string
+					assert.NoError(t, rows.Scan(&tableName))
+					t.Errorf("unexpected staging table found: %s", tableName)
+					break
+				}
+				assert.NoError(t, rows.Err())
+				assert.NoError(t, rows.Close())
+			})
+
+			crudcontract.Batcher(subject, config).Spec(s)
+		})
+	})
 }
 
 func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
@@ -134,7 +207,7 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	cachecontract.EntityRepository[Entity, string](repo, cm).Test(t)
 }
 
-func TestRepository_implementscrudBatcher(t *testing.T) {
+func TestRepository_implementsCRUDBatcher(t *testing.T) {
 	cm := GetConnection(t)
 	MigrateEntity(t, cm)
 
