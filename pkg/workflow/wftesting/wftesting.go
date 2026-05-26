@@ -2,6 +2,8 @@ package wftesting
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	"errors"
 	"sync"
@@ -96,6 +98,10 @@ func LetParticipantID(s *testcase.Spec) testcase.Var[workflow.ParticipantID] {
 }
 
 func LetParticipant[Func any](s *testcase.Spec, c C, pid testcase.Var[workflow.ParticipantID], mk func(t *testcase.T) Func) testcase.Var[Func] {
+	typ := reflect.TypeFor[Func]()
+	if typ.Kind() != reflect.Func {
+		panic(fmt.Sprintf("LetParticipant expected Func but got %s", typ.String()))
+	}
 	p := let.Var(s, func(t *testcase.T) Func {
 		return mk(t)
 	})
@@ -116,10 +122,10 @@ func (c *C) LetContext(s *testcase.Spec) testcase.Var[context.Context] {
 	})
 }
 
-// LetStub
+// LetStubParticipant
 //
-// Deprecated: use Stub instead
-func (c *C) LetStub(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
+// Deprecated: Use LetParticipant instead
+func (c *C) LetStubParticipant(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
 	s.H().Helper()
 
 	stub := let.Var(s, func(t *testcase.T) *StubParticipant {

@@ -24,8 +24,15 @@ func TestScheduler(t *testing.T) {
 	c := LetC(s)
 
 	var (
-		pid  = LetParticipantID(s)
-		stub = c.LetStub(s, pid)
+		pid = LetParticipantID(s)
+
+		callCount = let.VarOf(s, 0)
+		_         = LetParticipant(s, c, pid, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				callCount.Set(t, callCount.Get(t)+1)
+				return nil
+			}
+		})
 	)
 
 	subject := c.Scheduler.Bind(s)
@@ -55,7 +62,7 @@ func TestScheduler(t *testing.T) {
 				assert.NoError(t, act(t))
 
 				t.Eventually(func(t *testcase.T) {
-					assert.Equal(t, stub.Get(t).CallCount(), 1)
+					assert.Equal(t, callCount.Get(t), 1)
 				})
 			})
 
@@ -72,7 +79,7 @@ func TestScheduler(t *testing.T) {
 					assert.NoError(t, act(t))
 
 					w := assert.NotWithin(t, timeout, func(ctx context.Context) {
-						for stub.Get(t).CallCount() == 1 {
+						for callCount.Get(t) == 1 {
 							select {
 							case <-t.Done():
 								return
@@ -125,7 +132,7 @@ func TestScheduler(t *testing.T) {
 				})
 
 				t.Eventually(func(t *testcase.T) {
-					assert.Equal(t, stub.Get(t).CallCount(), 1)
+					assert.Equal(t, callCount.Get(t), 1)
 				})
 			})
 		})
@@ -149,7 +156,7 @@ func TestScheduler(t *testing.T) {
 
 				assert.NotWithin(t, timeout, func(ctx context.Context) {
 					for {
-						if stub.Get(t).CallCount() == 1 {
+						if callCount.Get(t) == 1 {
 							break
 						}
 						select {
@@ -163,7 +170,7 @@ func TestScheduler(t *testing.T) {
 				shouldSuspend.Set(t, false)
 
 				t.Eventually(func(t *testcase.T) {
-					assert.Equal(t, stub.Get(t).CallCount(), 1)
+					assert.Equal(t, callCount.Get(t), 1)
 				})
 			})
 		})

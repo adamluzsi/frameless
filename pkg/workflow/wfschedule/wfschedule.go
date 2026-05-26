@@ -45,7 +45,8 @@ type ProcessQueue interface {
 
 type ProcessScheduleEntry struct {
 	ProcessID workflow.ProcessID `json:"pid"`
-	StartTime time.Time          `json:"start,omitzero"`
+	// StartTime defines when it is expected to schedule the process for the next time.
+	StartTime time.Time `json:"start,omitzero"`
 }
 
 // ProcessQueueChangeBroadcast is a Volatile, FanOut exchange based broadcasting pubsub channel,
@@ -102,6 +103,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 
 	var g synckit.Group
+	g.ErrorOnGoexit = true
 
 	changes := make(chan ProcessQueueChange)
 
