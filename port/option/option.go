@@ -13,7 +13,7 @@ func (fn Func[Config]) Configure(c *Config) { fn(c) }
 // func ToConfig[Config any, Opt Option[Config]](opts ...Opt) Config {
 func ToConfig[Config any, Opt Option[Config]](opts []Opt) Config {
 	var c Config
-	if init, ok := any(&c).(initer); ok {
+	if init, ok := any(&c).(canInit); ok {
 		init.Init()
 	}
 	for _, opt := range opts {
@@ -22,6 +22,6 @@ func ToConfig[Config any, Opt Option[Config]](opts []Opt) Config {
 	return c
 }
 
-type initer interface {
+type canInit interface {
 	Init()
 }

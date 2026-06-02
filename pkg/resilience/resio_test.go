@@ -1,12 +1,15 @@
 package resilience_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"os"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
@@ -17,12 +20,12 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func ExampleRetryReader() {
-	reader := &resilience.RetryReader[resilience.FailureCount]{
+func ExampleReader() {
+	reader := &resilience.Reader{
 		Open: func() (io.Reader, error) {
 			return os.Open("name")
 		},
-		RetryPolicy: resilience.FixedDelay{
+		RetryStrategy: resilience.FixedDelay{
 			Delay:    time.Second,
 			Attempts: 7,
 		},
@@ -32,7 +35,7 @@ func ExampleRetryReader() {
 	_, _ = data, err
 }
 
-func TestRetryReader_spec(t *testing.T) {
+func TestReader_spec(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -49,18 +52,18 @@ func TestRetryReader_spec(t *testing.T) {
 				return stub, nil
 			}
 		})
-		RetryPolicy = let.Var(s, func(t *testcase.T) resilience.RetryPolicy[resilience.FailureCount] {
+		RetryStrategy = let.Var(s, func(t *testcase.T) resilience.RetryStrategy {
 			return resilience.FixedDelay{
 				Delay:    time.Nanosecond,
 				Attempts: 5,
 			}
 		})
 	)
-	subject := let.Var(s, func(t *testcase.T) *resilience.RetryReader[resilience.FailureCount] {
-		return &resilience.RetryReader[resilience.FailureCount]{
-			Context:     Context.Get(t),
-			Open:        Open.Get(t),
-			RetryPolicy: RetryPolicy.Get(t),
+	subject := let.Var(s, func(t *testcase.T) *resilience.Reader {
+		return &resilience.Reader{
+			Context:       Context.Get(t),
+			Open:          Open.Get(t),
+			RetryStrategy: RetryStrategy.Get(t),
 		}
 	})
 
@@ -209,7 +212,7 @@ func TestRetryReader_spec(t *testing.T) {
 	})
 }
 
-func TestRetryReader_smoke(t *testing.T) {
+func TestReader_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 
 	t.Run("normal read all, close -> works as expected", func(t *testing.T) {
@@ -217,12 +220,12 @@ func TestRetryReader_smoke(t *testing.T) {
 		reader := strings.NewReader(data)
 
 		ctx := context.Background()
-		subject := &resilience.RetryReader[resilience.FailureCount]{
+		subject := &resilience.Reader{
 			Context: ctx,
 			Open: func() (io.Reader, error) {
 				return reader, nil
 			},
-			RetryPolicy: &resilience.FixedDelay{Attempts: 3},
+			RetryStrategy: &resilience.FixedDelay{Attempts: 3},
 		}
 
 		got, err := io.ReadAll(subject)
@@ -237,12 +240,12 @@ func TestRetryReader_smoke(t *testing.T) {
 		reader := strings.NewReader(data)
 
 		ctx := context.Background()
-		subject := &resilience.RetryReader[resilience.FailureCount]{
+		subject := &resilience.Reader{
 			Context: ctx,
 			Open: func() (io.Reader, error) {
 				return reader, nil
 			},
-			RetryPolicy: &resilience.FixedDelay{Attempts: 3},
+			RetryStrategy: &resilience.FixedDelay{Attempts: 3},
 		}
 
 		// First close should succeed
@@ -255,12 +258,12 @@ func TestRetryReader_smoke(t *testing.T) {
 		reader := strings.NewReader(data)
 
 		ctx := context.Background()
-		subject := &resilience.RetryReader[resilience.FailureCount]{
+		subject := &resilience.Reader{
 			Context: ctx,
 			Open: func() (io.Reader, error) {
 				return reader, nil
 			},
-			RetryPolicy: &resilience.FixedDelay{Attempts: 3},
+			RetryStrategy: &resilience.FixedDelay{Attempts: 3},
 		}
 
 		assert.NoError(t, subject.Close())
@@ -276,7 +279,7 @@ func TestRetryReader_smoke(t *testing.T) {
 
 		// First Open returns a reader that fails, subsequent Opens return a working reader
 		ctx := context.Background()
-		subject := &resilience.RetryReader[resilience.FailureCount]{
+		subject := &resilience.Reader{
 			Context: ctx,
 			Open: func() (io.Reader, error) {
 				openCount++
@@ -292,7 +295,7 @@ func TestRetryReader_smoke(t *testing.T) {
 				// Subsequent Opens return a working reader
 				return strings.NewReader(data), nil
 			},
-			RetryPolicy: &resilience.FixedDelay{Attempts: 5},
+			RetryStrategy: &resilience.FixedDelay{Attempts: 5},
 		}
 
 		buf := make([]byte, len(data))
@@ -317,7 +320,7 @@ func TestRetryReader_smoke(t *testing.T) {
 		resumePosition := 0
 
 		ctx := context.Background()
-		subject := &resilience.RetryReader[resilience.FailureCount]{
+		subject := &resilience.Reader{
 			Context: ctx,
 			Open: func() (io.Reader, error) {
 				openCount++
@@ -332,7 +335,7 @@ func TestRetryReader_smoke(t *testing.T) {
 				}
 				return r, nil
 			},
-			RetryPolicy: &resilience.FixedDelay{Attempts: 5},
+			RetryStrategy: &resilience.FixedDelay{Attempts: 5},
 		}
 
 		// Read in small chunks to simulate gradual reading
@@ -430,4 +433,246 @@ func (t *trackingReader) Seek(offset int64, whence int) (int64, error) {
 		return s.Seek(offset, whence)
 	}
 	return 0, errors.New("not seekable")
+}
+
+//-------------------------------------------------------------------------------------------------
+
+func TestTransfer(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		// data is the payload provided by the source.
+		data = let.Var(s, func(t *testcase.T) []byte {
+			return []byte(t.Random.StringN(256))
+		})
+		// src is the stream returned by the source factory.
+		src = let.Var(s, func(t *testcase.T) *closeTrackingReadCloser {
+			return &closeTrackingReadCloser{Reader: bytes.NewReader(data.Get(t))}
+		})
+		// dst is the stream returned by the output factory.
+		dst = let.Var(s, func(t *testcase.T) *closeTrackingWriteCloser {
+			return &closeTrackingWriteCloser{Buffer: &bytes.Buffer{}}
+		})
+		// source is the input factory passed to Download.
+		source = let.Var(s, func(t *testcase.T) func() (io.ReadCloser, error) {
+			return func() (io.ReadCloser, error) { return src.Get(t), nil }
+		})
+		// output is the destination factory passed to Download.
+		output = let.Var(s, func(t *testcase.T) func() (io.WriteCloser, error) {
+			return func() (io.WriteCloser, error) { return dst.Get(t), nil }
+		})
+		// recorded captures the progress reported during the download.
+		recorded = let.Var(s, func(t *testcase.T) *[]resilience.TransferProgress {
+			return &[]resilience.TransferProgress{}
+		})
+		// onProgress is the progress observer passed to Download.
+		onProgress = let.Var(s, func(t *testcase.T) func(resilience.TransferProgress) {
+			return func(p resilience.TransferProgress) {
+				rec := recorded.Get(t)
+				*rec = append(*rec, p)
+			}
+		})
+	)
+
+	var ctx = let.Context(s)
+
+	act := let.Act(func(t *testcase.T) error {
+		return resilience.Transfer(ctx.Get(t), source.Get(t), output.Get(t),
+			resilience.TransferConfig{
+				// keep retries fast and deterministic during tests.
+				RetryStrategy: singleAttemptPolicy{},
+				OnProgress:    onProgress.Get(t),
+			})
+	})
+
+	s.Then("it finishes without error", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+	})
+
+	s.Then("the source stream is copied into the output stream verbatim", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+		assert.Equal(t, data.Get(t), dst.Get(t).Bytes())
+	})
+
+	s.Then("both the source and the output streams are closed", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+		assert.True(t, src.Get(t).closed, "expected the source stream to be closed")
+		assert.True(t, dst.Get(t).closed, "expected the output stream to be closed")
+	})
+
+	s.Then("progress is reported up to the total number of bytes copied", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		progresses := *recorded.Get(t)
+		assert.NotEmpty(t, progresses)
+
+		last := progresses[len(progresses)-1]
+		assert.Equal(t, int64(len(data.Get(t))), last.Written)
+	})
+
+	s.When("the source factory is not configured", func(s *testcase.Spec) {
+		source.Let(s, func(t *testcase.T) func() (io.ReadCloser, error) {
+			return nil
+		})
+
+		s.Then("an error is reported", func(t *testcase.T) {
+			assert.Error(t, act(t))
+		})
+	})
+
+	s.When("the output factory is not configured", func(s *testcase.Spec) {
+		output.Let(s, func(t *testcase.T) func() (io.WriteCloser, error) {
+			return nil
+		})
+
+		s.Then("an error is reported", func(t *testcase.T) {
+			assert.Error(t, act(t))
+		})
+	})
+
+	s.When("the progress observer is not configured", func(s *testcase.Spec) {
+		onProgress.Let(s, func(t *testcase.T) func(resilience.TransferProgress) {
+			return nil
+		})
+
+		s.Then("the download still succeeds", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal(t, data.Get(t), dst.Get(t).Bytes())
+		})
+	})
+
+	s.When("the source fails to open", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		source.Let(s, func(t *testcase.T) func() (io.ReadCloser, error) {
+			return func() (io.ReadCloser, error) { return nil, expErr.Get(t) }
+		})
+
+		s.Then("the error is propagated", func(t *testcase.T) {
+			gotErr := act(t)
+			assert.Error(t, gotErr)
+			assert.ErrorIs(t, gotErr, expErr.Get(t))
+		})
+
+		s.Then("the already opened output stream is closed", func(t *testcase.T) {
+			_ = act(t)
+			assert.True(t, dst.Get(t).closed, "expected the output stream to be closed")
+		})
+	})
+
+	s.When("the output fails to open", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		output.Let(s, func(t *testcase.T) func() (io.WriteCloser, error) {
+			return func() (io.WriteCloser, error) { return nil, expErr.Get(t) }
+		})
+
+		s.Then("the error is propagated", func(t *testcase.T) {
+			gotErr := act(t)
+			assert.Error(t, gotErr)
+			assert.ErrorIs(t, gotErr, expErr.Get(t))
+		})
+
+		s.Then("the source stream is never opened", func(t *testcase.T) {
+			_ = act(t)
+			assert.False(t, src.Get(t).closed, "expected the source stream to remain untouched")
+		})
+	})
+
+	s.When("the source read fails transiently but recovers when re-opened", func(s *testcase.Spec) {
+		flaky := let.Error(s)
+
+		source.Let(s, func(t *testcase.T) func() (io.ReadCloser, error) {
+			var opened int
+			return func() (io.ReadCloser, error) {
+				opened++
+				if opened == 1 {
+					// the first read yields part of the payload, then fails.
+					half := len(data.Get(t)) / 2
+					return io.NopCloser(io.MultiReader(
+						bytes.NewReader(data.Get(t)[:half]),
+						iotest.ErrReader(flaky.Get(t)),
+					)), nil
+				}
+				// re-opening yields the full stream, replayed from the offset.
+				return io.NopCloser(bytes.NewReader(data.Get(t))), nil
+			}
+		})
+
+		s.Then("the full payload is downloaded despite the transient failure", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal(t, data.Get(t), dst.Get(t).Bytes())
+		})
+	})
+
+	s.When("the source keeps failing and cannot be re-opened", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		source.Let(s, func(t *testcase.T) func() (io.ReadCloser, error) {
+			var opened int
+			return func() (io.ReadCloser, error) {
+				opened++
+				if opened == 1 {
+					return io.NopCloser(iotest.ErrReader(expErr.Get(t))), nil
+				}
+				return nil, expErr.Get(t)
+			}
+		})
+
+		s.Then("the error is propagated", func(t *testcase.T) {
+			gotErr := act(t)
+			assert.Error(t, gotErr)
+			assert.ErrorIs(t, gotErr, expErr.Get(t))
+		})
+	})
+
+	s.When("the context is cancelled", func(s *testcase.Spec) {
+		ctx.Let(s, func(t *testcase.T) context.Context {
+			c, cancel := context.WithCancel(context.Background())
+			cancel()
+			return c
+		})
+
+		s.Then("the context error is returned", func(t *testcase.T) {
+			gotErr := act(t)
+			assert.Error(t, gotErr)
+			assert.ErrorIs(t, gotErr, context.Canceled)
+		})
+	})
+}
+
+// singleAttemptPolicy permits exactly one open attempt with no further retries,
+// keeping failure scenarios fast and deterministic in tests.
+type singleAttemptPolicy struct{}
+
+var _ resilience.RetryPolicy[resilience.FailureCount] = singleAttemptPolicy{}
+
+func (singleAttemptPolicy) ShouldTry(ctx context.Context, failureCount resilience.FailureCount) bool {
+	return failureCount == 0
+}
+
+func (rp singleAttemptPolicy) Retry(ctx context.Context) iter.Seq[resilience.RetryAttempt] {
+	return resilience.Retries(ctx, rp)
+}
+
+// closeTrackingReadCloser wraps an io.Reader and records whether it was closed.
+type closeTrackingReadCloser struct {
+	io.Reader
+	closed bool
+}
+
+func (r *closeTrackingReadCloser) Close() error {
+	r.closed = true
+	return nil
+}
+
+// closeTrackingWriteCloser wraps a bytes.Buffer and records whether it was closed.
+type closeTrackingWriteCloser struct {
+	*bytes.Buffer
+	closed bool
+}
+
+func (w *closeTrackingWriteCloser) Close() error {
+	w.closed = true
+	return nil
 }
