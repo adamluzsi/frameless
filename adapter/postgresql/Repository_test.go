@@ -102,6 +102,79 @@ func TestRepository(t *testing.T) {
 		crudcontract.Batcher(subject, config))
 }
 
+func TestRepository_Truncate(t *testing.T) {
+	cm, err := postgresql.Connect(DatabaseURL(t))
+	assert.NoError(t, err)
+
+	MigrateEntity(t, cm)
+
+	repo := postgresql.Repository[Entity, string]{
+		Connection: cm,
+		Mapping:    EntityMapping(),
+	}
+
+	ctx := context.Background()
+	makeEntity := MakeEntityFunc(t)
+
+	// createEntities creates n entities in the resource and returns their IDs.
+	createEntities := func(t *testing.T, n int) []string {
+		var ids []string
+		for i := 0; i < n; i++ {
+			ent := makeEntity()
+			crudtest.Create[Entity, string](t, repo, ctx, &ent)
+			ids = append(ids, ent.ID)
+		}
+		return ids
+	}
+
+	// always leave a clean table behind for the next test case.
+	t.Cleanup(func() { assert.NoError(t, repo.Truncate(ctx)) })
+
+	t.Run("Truncate removes all created entities", func(t *testing.T) {
+		assert.NoError(t, repo.Truncate(ctx))
+
+		ids := createEntities(t, 3)
+
+		assert.NoError(t, repo.Truncate(ctx))
+
+		for _, id := range ids {
+			crudtest.IsAbsent[Entity, string](t, repo, ctx, id)
+		}
+	})
+
+	t.Run("Truncate within a committed transaction removes all created entities", func(t *testing.T) {
+		assert.NoError(t, repo.Truncate(ctx))
+
+		ids := createEntities(t, 3)
+
+		tx, err := repo.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		assert.NoError(t, repo.Truncate(tx))
+		assert.NoError(t, repo.CommitTx(tx))
+
+		for _, id := range ids {
+			crudtest.IsAbsent[Entity, string](t, repo, ctx, id)
+		}
+	})
+
+	t.Run("Truncate within a rolled back transaction leaves the created entities intact", func(t *testing.T) {
+		assert.NoError(t, repo.Truncate(ctx))
+
+		ids := createEntities(t, 3)
+
+		tx, err := repo.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		assert.NoError(t, repo.Truncate(tx))
+		assert.NoError(t, repo.RollbackTx(tx))
+
+		for _, id := range ids {
+			crudtest.IsPresent[Entity, string](t, repo, ctx, id)
+		}
+	})
+}
+
 func TestRepository_BatchConfig(t *testing.T) {
 	s := testcase.NewSpec(t)
 	mapping := EntityMapping()

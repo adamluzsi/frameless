@@ -136,8 +136,9 @@ type Entity struct {
 }
 
 func MakeEntityFunc(tb testing.TB) func() Entity {
+	var t = testcase.ToT(&tb)
 	return func() Entity {
-		te := testcase.ToT(&tb).Random.Make(Entity{}).(Entity)
+		te := t.Random.Make(Entity{}).(Entity)
 		te.ID = ""
 		return te
 	}

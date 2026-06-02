@@ -158,16 +158,24 @@ func (r Repository[ENT, ID]) DeleteAll(ctx context.Context) (rErr error) {
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
-
 	var (
 		tableName = r.tableIdentifier().Sanitize()
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
-
 	if _, err := r.Connection.ExecContext(ctx, query); err != nil {
-		return err
+		return fmt.Errorf("failed to delete all entries from %s table: %w", tableName, err)
 	}
+	return nil
+}
 
+func (r Repository[ENT, ID]) Truncate(ctx context.Context) (rErr error) {
+	var (
+		tableName = r.tableIdentifier().Sanitize()
+		query     = fmt.Sprintf(`TRUNCATE %s`, tableName)
+	)
+	if _, err := r.Connection.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf("failed to truncate %s table: %w", tableName, err)
+	}
 	return nil
 }
 
@@ -626,7 +634,7 @@ func (b *Batch[ENT, ID]) useStagingTable(ctx *context.Context, columns []flsql.C
 	var batchID = strings.ReplaceAll(batchUUID.String(), "-", "")
 	stagingTable = append(stagingTable, fmt.Sprintf("staging_%s_%s", sourceTable[sourceTableLastElementIndex], batchID))
 
-	query := fmt.Sprintf("CREATE TEMPORARY TABLE %s (LIKE %s INCLUDING DEFAULTS)",
+	query := fmt.Sprintf("CREATE TEMPORARY TABLE %s (LIKE %s INCLUDING ALL EXCLUDING INDEXES)",
 		stagingTable.Sanitize(),
 		sourceTable.Sanitize())
 
