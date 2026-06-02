@@ -2,11 +2,13 @@ package resilience_test
 
 import (
 	"context"
+	"iter"
 	"math"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -883,6 +885,203 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 }
 
+func SpecDescribeRetry[Subject resilience.RetryStrategy](s *testcase.Spec, subject testcase.Var[Subject]) {
+	var (
+		Context, ContextCancel = let.ContextWithCancel(s)
+	)
+	act := let.Act(func(t *testcase.T) iter.Seq[resilience.RetryAttempt] {
+		return subject.Get(t).Retry(Context.Get(t))
+	})
+
+	doAttempts := func(t *testcase.T) []resilience.RetryAttempt {
+		var attempts []resilience.RetryAttempt
+		for attempt := range act(t) {
+			attempts = append(attempts, attempt)
+		}
+		return attempts
+	}
+
+	s.Then("it will yield multiple retry attempts since no break from retry is signaled", func(t *testcase.T) {
+		attempts := doAttempts(t)
+
+		assert.Assert(t, 1 < len(attempts), "expected at least more than one retry attempt to be made")
+	})
+
+	s.Then("each RetryAttempt has an incremented FailureCount", func(t *testcase.T) {
+		attempts := doAttempts(t)
+
+		for i, attempt := range attempts {
+			assert.Equal(t, resilience.FailureCount(i), attempt.FailureCount)
+		}
+	})
+
+	s.Then("all RetryAttempt values share the same StartedAt", func(t *testcase.T) {
+		attempts := doAttempts(t)
+
+		assert.NotEmpty(t, attempts)
+		startedAt := attempts[0].StartedAt
+		for _, attempt := range attempts {
+			assert.Equal(t, startedAt, attempt.StartedAt)
+		}
+	})
+
+	s.When("context is cancelled", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			assert.Assert(t, 1 < iterkit.Count(subject.Get(t).Retry(t.Context())),
+				"this test can only work if the subject has the ability to do more than 1 retries")
+		})
+
+		s.Context("after the iteration is already started", func(s *testcase.Spec) {
+			pull := let.Var(s, func(t *testcase.T) func() (resilience.RetryAttempt, bool) {
+				pull, stop := iter.Pull(act(t))
+				t.Defer(stop)
+				return pull
+			})
+
+			s.Before(func(t *testcase.T) {
+				attempt, ok := pull.Get(t)()
+				assert.True(t, ok)
+				assert.Equal(t, attempt.FailureCount, 0)
+
+				ContextCancel.Get(t)()
+				assert.Within(t, time.Second, func(ctx context.Context) {
+					select {
+					case <-Context.Get(t).Done():
+					case <-ctx.Done():
+					}
+				})
+			})
+
+			s.Then("following pull attempts will meet early iteration stopping due to context cancellation", func(t *testcase.T) {
+				attempt, ok := pull.Get(t)()
+				assert.False(t, ok)
+				assert.Empty(t, attempt)
+			})
+		})
+
+		s.Context("before the retry attempt is even made", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				ContextCancel.Get(t)()
+			})
+
+			s.Then("no attempt is made since the context is already cancelled", func(t *testcase.T) {
+				attempts := doAttempts(t)
+
+				assert.Equal(t, 0, len(attempts))
+				assert.Empty(t, attempts)
+			})
+		})
+	})
+}
+
+func TestExponentialBackoff_Retry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
+		return &resilience.ExponentialBackoff{
+			Delay:    time.Nanosecond,
+			Attempts: 10,
+		}
+	})
+
+	SpecDescribeRetry(s, subject)
+}
+
+func TestJitter_Retry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.Jitter {
+		return &resilience.Jitter{
+			Delay:    time.Nanosecond,
+			Attempts: 10,
+		}
+	})
+
+	SpecDescribeRetry(s, subject)
+}
+
+func TestWaiter_Retry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		subject = testcase.Let(s, func(t *testcase.T) *resilience.Waiter {
+			return &resilience.Waiter{
+				Timeout:      time.Millisecond,
+				WaitDuration: time.Nanosecond,
+			}
+		})
+
+		Context = let.Context(s)
+	)
+
+	act := func(t *testcase.T) iter.Seq[resilience.RetryAttempt] {
+		return subject.Get(t).Retry(Context.Get(t))
+	}
+
+	s.Then("it will yield at least one retry attempt", func(t *testcase.T) {
+		var attempts []resilience.RetryAttempt
+		for attempt := range act(t) {
+			attempts = append(attempts, attempt)
+		}
+
+		assert.NotEmpty(t, attempts)
+	})
+
+	s.Then("each RetryAttempt has an incremented FailureCount", func(t *testcase.T) {
+		var attempts []resilience.RetryAttempt
+		for attempt := range act(t) {
+			attempts = append(attempts, attempt)
+		}
+
+		for i, attempt := range attempts {
+			assert.Equal(t, resilience.FailureCount(i), attempt.FailureCount)
+		}
+	})
+
+	s.Then("all RetryAttempt values share the same StartedAt", func(t *testcase.T) {
+		var attempts []resilience.RetryAttempt
+		for attempt := range act(t) {
+			attempts = append(attempts, attempt)
+		}
+
+		assert.NotEmpty(t, attempts)
+		startedAt := attempts[0].StartedAt
+		for _, attempt := range attempts {
+			assert.Equal(t, startedAt, attempt.StartedAt)
+		}
+	})
+
+	s.When("context is cancelled", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		})
+
+		s.Then("no attempt is made since the context is already cancelled", func(t *testcase.T) {
+			var attempts []resilience.RetryAttempt
+			for attempt := range act(t) {
+				attempts = append(attempts, attempt)
+			}
+
+			assert.Empty(t, attempts)
+		})
+	})
+}
+
+func TestFixedDelay_Retry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.FixedDelay {
+		return &resilience.FixedDelay{
+			Delay:    time.Nanosecond,
+			Attempts: 10,
+		}
+	})
+
+	SpecDescribeRetry(s, subject)
+}
+
 func ExampleRetries() {
 	var (
 		ctx = context.Background()
@@ -963,7 +1162,7 @@ func TestRetries(t *testing.T) {
 
 			var got []int
 			for v := range resilience.Retries(t.Context(), rs) {
-				got = append(got, v)
+				got = append(got, v.FailureCount)
 			}
 
 			assert.Equal(t, exp, got)
@@ -1000,7 +1199,7 @@ func TestRetries(t *testing.T) {
 			w := assert.NotWithin(t, time.Second/2, func(ctx context.Context) {
 				var expFailureCount resilience.FailureCount
 				for v := range resilience.Retries(context.Background(), rs) {
-					assert.Equal(t, v, expFailureCount)
+					assert.Equal(t, v.FailureCount, expFailureCount)
 					expFailureCount++
 				}
 			})

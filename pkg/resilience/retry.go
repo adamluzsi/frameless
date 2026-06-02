@@ -12,30 +12,44 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[FailureCount] {
+type RetryStrategy interface {
+	Retry(ctx context.Context) iter.Seq[RetryAttempt]
+}
+
+type RetryAttempt struct {
+	StartedAt    StartedAt
+	FailureCount FailureCount
+}
+
+func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[RetryAttempt] {
 	switch rp := rp.(type) {
 	case RetryPolicy[FailureCount]:
-		return func(yield func(FailureCount) bool) {
-			var failureCount FailureCount
+		return func(yield func(RetryAttempt) bool) {
+			var (
+				startedAt    = clock.Now()
+				failureCount FailureCount
+			)
 			for {
 				if !rp.ShouldTry(ctx, failureCount) {
 					return
 				}
-				if !yield(failureCount) {
+				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
 					return
 				}
 				failureCount++
 			}
 		}
 	case RetryPolicy[StartedAt]:
-		return func(yield func(FailureCount) bool) {
-			var startedAt StartedAt = clock.Now()
-			var failureCount FailureCount
+		return func(yield func(RetryAttempt) bool) {
+			var (
+				startedAt    = clock.Now()
+				failureCount FailureCount
+			)
 			for {
 				if !rp.ShouldTry(ctx, startedAt) {
 					return
 				}
-				if !yield(failureCount) {
+				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
 					return
 				}
 				failureCount++
@@ -85,6 +99,12 @@ type ExponentialBackoff struct {
 	//
 	// Default: 5 if Timeout is not set.
 	Attempts int
+}
+
+var _ RetryStrategy = ExponentialBackoff{}
+
+func (rs ExponentialBackoff) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
+	return Retries(ctx, rs)
 }
 
 func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
@@ -170,6 +190,12 @@ type Jitter struct {
 	Attempts int
 }
 
+var _ RetryStrategy = Jitter{}
+
+func (rs Jitter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
+	return Retries(ctx, rs)
+}
+
 func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
 	if rs.getMaxRetries() <= count {
 		return false
@@ -222,6 +248,12 @@ type Waiter struct {
 	WaitDuration time.Duration
 }
 
+var _ RetryStrategy = Waiter{}
+
+func (rs Waiter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
+	return Retries(ctx, rs)
+}
+
 func (rs Waiter) getTimeout() time.Duration {
 	const defaultTimeout = 30 * time.Second
 	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
@@ -271,7 +303,7 @@ func wait(maxWait time.Duration) {
 		if maxWait <= elapsed { // if max wait time is reached
 			return
 		}
-		if elapsed < maxWait { // if we withint the max wait time,
+		if elapsed < maxWait { // if we within the max wait time,
 			var (
 				ttw  = WaitUnit
 				diff = maxWait - elapsed
@@ -289,7 +321,7 @@ var _ RetryPolicy[FailureCount] = FixedDelay{}
 // FixedDelay is a RetryPolicy implementation.
 //
 // FixedDelay will make retries with fixed delays between them.
-// It is a lineral waiting time based retry policy.
+// It is a lineal waiting time based retry policy.
 type FixedDelay struct {
 	// Delay is the time duration waited between attempts.
 	//
@@ -305,6 +337,12 @@ type FixedDelay struct {
 	//
 	// Default: 5 if Timeout is not set.
 	Attempts int
+}
+
+var _ RetryStrategy = FixedDelay{}
+
+func (rs FixedDelay) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
+	return Retries(ctx, rs)
 }
 
 func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
