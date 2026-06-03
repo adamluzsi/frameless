@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"iter"
 	"os"
 	"strings"
@@ -461,28 +462,16 @@ func TestTransfer(t *testing.T) {
 		output = let.Var(s, func(t *testcase.T) func() (io.WriteCloser, error) {
 			return func() (io.WriteCloser, error) { return dst.Get(t), nil }
 		})
-		// recorded captures the progress reported during the download.
-		recorded = let.Var(s, func(t *testcase.T) *[]resilience.TransferProgress {
-			return &[]resilience.TransferProgress{}
-		})
-		// onProgress is the progress observer passed to Download.
-		onProgress = let.Var(s, func(t *testcase.T) func(resilience.TransferProgress) {
-			return func(p resilience.TransferProgress) {
-				rec := recorded.Get(t)
-				*rec = append(*rec, p)
-			}
-		})
 	)
 
 	var ctx = let.Context(s)
 
 	act := let.Act(func(t *testcase.T) error {
-		return resilience.Transfer(ctx.Get(t), source.Get(t), output.Get(t),
-			resilience.TransferConfig{
-				// keep retries fast and deterministic during tests.
-				RetryStrategy: singleAttemptPolicy{},
-				OnProgress:    onProgress.Get(t),
-			})
+		m := resilience.TransferManager{
+			// keep retries fast and deterministic during tests.
+			RetryStrategy: singleAttemptPolicy{},
+		}
+		return m.Transfer(ctx.Get(t), source.Get(t), output.Get(t))
 	})
 
 	s.Then("it finishes without error", func(t *testcase.T) {
@@ -498,16 +487,6 @@ func TestTransfer(t *testing.T) {
 		assert.NoError(t, act(t))
 		assert.True(t, src.Get(t).closed, "expected the source stream to be closed")
 		assert.True(t, dst.Get(t).closed, "expected the output stream to be closed")
-	})
-
-	s.Then("progress is reported up to the total number of bytes copied", func(t *testcase.T) {
-		assert.NoError(t, act(t))
-
-		progresses := *recorded.Get(t)
-		assert.NotEmpty(t, progresses)
-
-		last := progresses[len(progresses)-1]
-		assert.Equal(t, int64(len(data.Get(t))), last.Written)
 	})
 
 	s.When("the source factory is not configured", func(s *testcase.Spec) {
@@ -527,17 +506,6 @@ func TestTransfer(t *testing.T) {
 
 		s.Then("an error is reported", func(t *testcase.T) {
 			assert.Error(t, act(t))
-		})
-	})
-
-	s.When("the progress observer is not configured", func(s *testcase.Spec) {
-		onProgress.Let(s, func(t *testcase.T) func(resilience.TransferProgress) {
-			return nil
-		})
-
-		s.Then("the download still succeeds", func(t *testcase.T) {
-			assert.NoError(t, act(t))
-			assert.Equal(t, data.Get(t), dst.Get(t).Bytes())
 		})
 	})
 
@@ -626,17 +594,54 @@ func TestTransfer(t *testing.T) {
 		})
 	})
 
-	s.When("the context is cancelled", func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) context.Context {
-			c, cancel := context.WithCancel(context.Background())
-			cancel()
-			return c
+	s.When("the output is seekable and already holds partially transferred data", func(s *testcase.Spec) {
+		// seekDst behaves like a file opened for read-write (cursor at position 0)
+		// that already holds the first half of the payload, as if an earlier
+		// transfer was interrupted. Being seekable, the transfer can resume.
+		seekDst := let.Var(s, func(t *testcase.T) *seekableWriteCloser {
+			half := len(data.Get(t)) / 2
+			return &seekableWriteCloser{data: append([]byte{}, data.Get(t)[:half]...)}
 		})
 
-		s.Then("the context error is returned", func(t *testcase.T) {
-			gotErr := act(t)
-			assert.Error(t, gotErr)
-			assert.ErrorIs(t, gotErr, context.Canceled)
+		output.Let(s, func(t *testcase.T) func() (io.WriteCloser, error) {
+			return func() (io.WriteCloser, error) { return seekDst.Get(t), nil }
+		})
+
+		s.Then("the transfer resumes from the offset, appending the remainder to the full payload", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal(t, data.Get(t), seekDst.Get(t).Bytes())
+		})
+
+		s.And("the output already holds the full payload", func(s *testcase.Spec) {
+			seekDst.Let(s, func(t *testcase.T) *seekableWriteCloser {
+				return &seekableWriteCloser{data: append([]byte{}, data.Get(t)...)}
+			})
+
+			s.Then("nothing further is transferred and the payload stays intact", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal(t, data.Get(t), seekDst.Get(t).Bytes())
+			})
+		})
+	})
+
+	s.When("the output is truncatable but not seekable and already holds partial data", func(s *testcase.Spec) {
+		// statDst exposes Stat and Truncate (like a file) but is not seekable, so
+		// the transfer cannot safely resume; instead it truncates the partial
+		// content and re-downloads from the beginning.
+		statDst := let.Var(s, func(t *testcase.T) *statWriteCloser {
+			buf := &bytes.Buffer{}
+			half := len(data.Get(t)) / 2
+			buf.Write(data.Get(t)[:half])
+			return &statWriteCloser{Buffer: buf}
+		})
+
+		output.Let(s, func(t *testcase.T) func() (io.WriteCloser, error) {
+			return func() (io.WriteCloser, error) { return statDst.Get(t), nil }
+		})
+
+		s.Then("the partial content is truncated and the payload is re-downloaded in full", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal(t, data.Get(t), statDst.Get(t).Bytes())
 		})
 	})
 }
@@ -676,3 +681,83 @@ func (w *closeTrackingWriteCloser) Close() error {
 	w.closed = true
 	return nil
 }
+
+// statWriteCloser wraps a bytes.Buffer and exposes its current size via Stat,
+// mimicking an *os.File so resume behaviour can be exercised.
+type statWriteCloser struct {
+	*bytes.Buffer
+	closed bool
+}
+
+func (w *statWriteCloser) Close() error {
+	w.closed = true
+	return nil
+}
+
+func (w *statWriteCloser) Stat() (fs.FileInfo, error) {
+	return fakeFileInfo{size: int64(w.Buffer.Len())}, nil
+}
+
+// Truncate discards the buffered content down to size, mirroring *os.File.
+// statWriteCloser is intentionally not an io.Seeker, so it exercises the
+// truncate-and-restart fallback rather than the seek-and-resume path.
+func (w *statWriteCloser) Truncate(size int64) error {
+	w.Buffer.Truncate(int(size))
+	return nil
+}
+
+// fakeFileInfo is a minimal fs.FileInfo that only reports a size.
+type fakeFileInfo struct{ size int64 }
+
+func (fi fakeFileInfo) Name() string       { return "" }
+func (fi fakeFileInfo) Size() int64        { return fi.size }
+func (fi fakeFileInfo) Mode() fs.FileMode  { return 0 }
+func (fi fakeFileInfo) ModTime() time.Time { return time.Time{} }
+func (fi fakeFileInfo) IsDir() bool        { return false }
+func (fi fakeFileInfo) Sys() any           { return nil }
+
+// seekableWriteCloser is an in-memory output that honours its write cursor,
+// mimicking an *os.File opened for overwriting: writes land at the current
+// position rather than always appending. It also exposes Stat for resuming.
+type seekableWriteCloser struct {
+	data   []byte
+	pos    int64
+	closed bool
+}
+
+func (w *seekableWriteCloser) Write(p []byte) (int, error) {
+	end := w.pos + int64(len(p))
+	if int64(len(w.data)) < end {
+		grown := make([]byte, end)
+		copy(grown, w.data)
+		w.data = grown
+	}
+	copy(w.data[w.pos:end], p)
+	w.pos = end
+	return len(p), nil
+}
+
+func (w *seekableWriteCloser) Seek(offset int64, whence int) (int64, error) {
+	var base int64
+	switch whence {
+	case io.SeekStart:
+		base = 0
+	case io.SeekCurrent:
+		base = w.pos
+	case io.SeekEnd:
+		base = int64(len(w.data))
+	}
+	w.pos = base + offset
+	return w.pos, nil
+}
+
+func (w *seekableWriteCloser) Stat() (fs.FileInfo, error) {
+	return fakeFileInfo{size: int64(len(w.data))}, nil
+}
+
+func (w *seekableWriteCloser) Close() error {
+	w.closed = true
+	return nil
+}
+
+func (w *seekableWriteCloser) Bytes() []byte { return w.data }

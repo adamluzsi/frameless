@@ -2,17 +2,17 @@ package resilience
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/mathkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/port/option"
 )
 
 // Reader will provide a seamless io.Reader | io.ReadCloser experience,
@@ -100,10 +100,8 @@ func (rr *Reader) restart() error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if rr.RetryStrategy == nil {
-		return fmt.Errorf("missing RetryStrategy in %T", rr)
-	}
-	for range rr.RetryStrategy.Retry(ctx) {
+	var rs = getRetryStrategy(rr.RetryStrategy)
+	for range rs.Retry(ctx) {
 		r, err, ok := attempt()
 		if err == nil && ok {
 			rr.reader = r
@@ -173,18 +171,21 @@ func (rr *Reader) seekFunc(r io.Reader) func(n int) (error, bool) {
 	}
 }
 
+type TransferManager struct {
+	RetryStrategy RetryStrategy
+	BufferSize    iokit.ByteSize // default 16 Megabyte
+}
+
 // Transfer copies the Source stream into the Output stream.
 // Both streams are closed before Transfer returns.
 //
 // Reading from the Source is made resilient: on a transient read failure the
 // Source is re-opened and replayed from the current offset, and the stream is
 // kept alive during slow writes to avoid idle read timeouts on remote sources.
-func Transfer(ctx context.Context,
+func (m TransferManager) Transfer(ctx context.Context,
 	source func() (io.ReadCloser, error),
 	output func() (io.WriteCloser, error),
-	opts ...TransferOption) (rErr error) {
-
-	c := option.ToConfig(opts)
+) (rErr error) {
 
 	if source == nil {
 		return fmt.Errorf("missing Source dependency in Transfer")
@@ -199,6 +200,15 @@ func Transfer(ctx context.Context,
 	}
 	defer errorkit.Finish(&rErr, dst.Close)
 
+	// If the output already holds partially (or fully) transferred data, resume
+	// from where it left off instead of re-transferring from the beginning.
+	// We rely on the output exposing its current size via a Stat method
+	// (as os.File does); the source is then replayed from that offset.
+	resumeOffset, err := outputSize(dst)
+	if err != nil {
+		return fmt.Errorf("failed to inspect the output for resuming: %w", err)
+	}
+
 	// RetryReader re-opens the Source on transient read failures and replays
 	// from the current offset, providing a seamless read stream even when the
 	// underlying (remote) source flakes.
@@ -206,8 +216,27 @@ func Transfer(ctx context.Context,
 		Open: func() (io.Reader, error) {
 			return source()
 		},
-		RetryStrategy: c.getRetryStrategy(),
+		RetryStrategy: getRetryStrategy(m.RetryStrategy),
 		Context:       ctx,
+	}
+
+	// Seed the offset so the source is seeked forward past the bytes already
+	// present in the output, making the transfer resumable.
+	if 0 < resumeOffset {
+		// Position the output's write cursor at its end so the resumed bytes are
+		// appended rather than overwriting from the start. This makes resuming
+		// correct even when the output was not opened in append mode.
+		if seeker, ok := dst.(io.Seeker); ok {
+			if _, err := seeker.Seek(0, io.SeekEnd); err != nil {
+				return fmt.Errorf("failed to seek the output to resume: %w", err)
+			}
+			// if we can seek the local file, we should continue from where we left with the reader
+			rr.offset = rr.offset.Of(int(resumeOffset))
+		} else if ft, ok := dst.(fileTruncate); ok {
+			if err := ft.Truncate(0); err != nil {
+				return fmt.Errorf("failed to truncate destination file: %w", err)
+			}
+		}
 	}
 
 	// keep the (potentially remote) source alive across slow writes.
@@ -217,80 +246,44 @@ func Transfer(ctx context.Context,
 	defer errorkit.Finish(&rErr, keptAlive.Close)
 
 	// buffer 16mb worth of reads to improve throughput from the remote source.
-	buffered := bufio.NewReaderSize(keptAlive, 16*iokit.Megabyte)
+	var buffered = bufio.NewReaderSize(keptAlive, cmp.Or(m.BufferSize, 16*iokit.Megabyte))
 
-	w := &progressWriter{Writer: dst, report: c.reportProgress}
-	r := &ctxReader{ctx: ctx, Reader: buffered}
+	var src io.Reader = buffered
 
-	if _, err := io.Copy(w, r); err != nil {
+	if _, err := io.Copy(dst, src); err != nil {
 		return fmt.Errorf("failed to transfer: %w", err)
 	}
 
 	return nil
 }
 
-// ctxReader aborts the copy as soon as the context is done.
-type ctxReader struct {
-	ctx context.Context
-	io.Reader
+type fileStat interface {
+	Stat() (fs.FileInfo, error)
 }
 
-func (r *ctxReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
+type fileTruncate interface {
+	Truncate(size int64) error
+}
+
+// outputSize reports how many bytes the output stream already holds.
+//
+// When the output exposes a Stat method that returns an fs.FileInfo
+// (as *os.File does), its current size is used to resume an interrupted
+// transfer. Outputs without such a method are treated as empty (size 0).
+func outputSize(output io.Writer) (int64, error) {
+	stater, ok := output.(fileStat)
+	if !ok {
+		return 0, nil
+	}
+	info, err := stater.Stat()
+	if err != nil {
 		return 0, err
 	}
-	return r.Reader.Read(p)
-}
-
-// progressWriter is an io.Writer proxy that reports the cumulative
-// number of bytes written through the report callback.
-type progressWriter struct {
-	Writer io.Writer
-
-	report  func(TransferProgress)
-	written int64
-}
-
-var _ io.Writer = (*progressWriter)(nil)
-
-func (w *progressWriter) Write(p []byte) (int, error) {
-	n, err := w.Writer.Write(p)
-	w.written += int64(n)
-	if w.report != nil {
-		w.report(TransferProgress{Written: w.written})
+	if info == nil {
+		return 0, nil
 	}
-	return n, err
-}
-
-type TransferOption option.Option[TransferConfig]
-
-type TransferConfig struct {
-	RetryStrategy RetryStrategy
-	// OnProgress is an optional observer invoked while the stream
-	// is being copied. It can be used to report transfer progress.
-	OnProgress func(TransferProgress)
-}
-
-// TransferProgress describes the state of an ongoing transfer.
-type TransferProgress struct {
-	Name      string
-	TotalSize int64
-	Written   int64
-}
-
-func (c TransferConfig) Configure(t *TransferConfig) {
-	*t = reflectkit.MergeStruct(*t, c)
-}
-
-func (c TransferConfig) getRetryStrategy() RetryStrategy {
-	if c.RetryStrategy != nil {
-		return c.RetryStrategy
+	if size := info.Size(); 0 < size {
+		return size, nil
 	}
-	return Jitter{}
-}
-
-func (c TransferConfig) reportProgress(p TransferProgress) {
-	if c.OnProgress != nil {
-		c.OnProgress(p)
-	}
+	return 0, nil
 }
