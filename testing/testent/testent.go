@@ -4,6 +4,7 @@ import (
 	"context"
 	"iter"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/uuid"
@@ -12,6 +13,31 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/random"
 )
+
+type Entity[ID any] struct {
+	ID ID `ext:"id"`
+
+	String string
+	Int    int
+	Float  float64
+	Bool   bool
+	Slice  []string
+	Map    map[string]int
+	Time   time.Time
+}
+
+func MakeEntity[ID any](rnd *random.Random) Entity[ID] {
+	return Entity[ID]{
+		ID:     rnd.Make(*new(ID)).(ID),
+		String: rnd.String(),
+		Int:    rnd.Int(),
+		Float:  rnd.Float64(),
+		Bool:   rnd.Bool(),
+		Slice:  random.Slice(rnd.IntBetween(0, 7), rnd.String),
+		Map:    random.Map(rnd.IntBetween(0, 7), func() (string, int) { return rnd.String(), rnd.Int() }),
+		Time:   rnd.Time(),
+	}
+}
 
 type Foo struct {
 	ID  FooID `ext:"ID"`
