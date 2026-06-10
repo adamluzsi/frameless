@@ -100,7 +100,7 @@ func (rr *Reader) restart() error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var rs = getRetryStrategy(rr.RetryStrategy)
+	var rs = GetRetryStrategy(rr.RetryStrategy)
 	for range rs.Retry(ctx) {
 		r, err, ok := attempt()
 		if err == nil && ok {
@@ -216,7 +216,7 @@ func (m TransferManager) Transfer(ctx context.Context,
 		Open: func() (io.Reader, error) {
 			return source()
 		},
-		RetryStrategy: getRetryStrategy(m.RetryStrategy),
+		RetryStrategy: GetRetryStrategy(m.RetryStrategy),
 		Context:       ctx,
 	}
 

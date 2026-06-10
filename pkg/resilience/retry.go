@@ -23,11 +23,14 @@ type RetryAttempt struct {
 
 var DefaultRetryStrategy RetryStrategy = Jitter{}
 
-func getRetryStrategy(rs RetryStrategy) RetryStrategy {
+func GetRetryStrategy(rs RetryStrategy) RetryStrategy {
 	if rs != nil {
 		return rs
 	}
-	return DefaultRetryStrategy
+	if DefaultRetryStrategy != nil {
+		return DefaultRetryStrategy
+	}
+	return Jitter{}
 }
 
 func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[RetryAttempt] {

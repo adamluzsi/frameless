@@ -1,20 +1,15 @@
 package httpkit
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
-	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -22,128 +17,17 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
+func NewClient() *http.Client {
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
 type RoundTripperFunc func(request *http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
 }
 
-type RetryRoundTripper struct {
-	// Transport specifies the mechanism by which individual
-	// HTTP requests are made.
-	//
-	// Default: http.DefaultTransport
-	Transport http.RoundTripper
-	// RetryStrategy will be used to evaluate if a new retry attempt should be done.
-	//
-	// Default: retry.ExponentialBackoff
-	RetryStrategy resilience.RetryPolicy[resilience.FailureCount]
-	// OnStatus is an [OPTIONAL] configuration field that could contain whether a certain http status code should be retried or not.
-	// The RetryRoundTripper has a default behaviour about which status code can be retried, and this option can override that.
-	OnStatus map[int]bool
-}
-
-var temporaryErrorResponseCodes = map[int]struct{}{
-	http.StatusInternalServerError: {},
-	http.StatusBadGateway:          {},
-	http.StatusGatewayTimeout:      {},
-	http.StatusServiceUnavailable:  {},
-	http.StatusInsufficientStorage: {},
-	http.StatusTooManyRequests:     {},
-	http.StatusRequestTimeout:      {},
-}
-
-// RoundTrip
-//
-// TODO: optional waiting based on the Retry-After header
-func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Response, err error) {
-	rs := rt.getRetryStrategy()
-	body, err := rt.readBody(request)
-	if err != nil {
-		return nil, err
-	}
-	request.Body = io.NopCloser(body)
-
-	for i := 0; rs.ShouldTry(request.Context(), i); i++ {
-		// reset body to original state before making the request
-		if _, err := body.Seek(0, io.SeekStart); err != nil {
-			return nil, err
-		}
-
-		resp, err = rt.transport().RoundTrip(request)
-
-		if err != nil {
-			if rt.isRetriableError(err) {
-				continue
-			}
-			return resp, err
-		}
-
-		if rt.isRetriableStatus(resp.StatusCode) {
-			continue
-		}
-
-		return resp, nil
-	}
-	if err := request.Context().Err(); err != nil {
-		return nil, err
-	}
-	return
-}
-
-func (rt RetryRoundTripper) isRetriableStatus(code int) bool {
-	if rt.OnStatus != nil {
-		if should, ok := rt.OnStatus[code]; ok {
-			return should
-		}
-	}
-	_, ok := temporaryErrorResponseCodes[code]
-	return ok
-}
-
-func (rt RetryRoundTripper) transport() http.RoundTripper {
-	if rt.Transport == nil {
-		return http.DefaultTransport
-	}
-	return rt.Transport
-}
-
-func (rt RetryRoundTripper) readBody(req *http.Request) (io.ReadSeeker, error) {
-	reqBody := req.Body
-	if reqBody == nil {
-		reqBody = io.NopCloser(bytes.NewReader([]byte{}))
-	}
-	bs, err := io.ReadAll(reqBody)
-	err = errorkit.Merge(err, reqBody.Close())
-	if err != nil {
-		return nil, err
-	}
-	return iokit.NewBuffer(bs), err
-}
-
-func (rt RetryRoundTripper) isRetriableError(err error) bool {
-	return errors.Is(err, http.ErrHandlerTimeout) ||
-		errors.Is(err, net.ErrClosed) ||
-		isTimeout(err)
-}
-
-func (rt RetryRoundTripper) getRetryStrategy() resilience.RetryPolicy[resilience.FailureCount] {
-	if rt.RetryStrategy != nil {
-		return rt.RetryStrategy
-	}
-	return &resilience.ExponentialBackoff{}
-}
-
-func isTimeout(err error) bool {
-	type errorWithTimeoutInfo interface {
-		error
-		Timeout() bool
-	}
-	if v, ok := err.(errorWithTimeoutInfo); ok && v.Timeout() {
-		return true
-	}
-	return false
-}
+type RetryRoundTripper = resilience.HTTPRoundTripper
 
 // WithAccessLog is a MiddlewareFactoryFunc for adding AccessLog to a http.Handler middleware stack.
 func WithAccessLog(next http.Handler) http.Handler {
