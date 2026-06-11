@@ -1,6 +1,8 @@
 package tasker
 
 import (
+	"encoding"
+	"strings"
 	"time"
 
 	"go.llib.dev/frameless/pkg/timekit"
@@ -55,4 +57,44 @@ func getLocation(loc *time.Location) *time.Location {
 		return time.Local
 	}
 	return loc
+}
+
+var _ encoding.TextUnmarshaler = (*Daily)(nil)
+
+func (i *Daily) UnmarshalText(text []byte) error {
+	var (
+		raw = string(text)
+		t   time.Time
+		err error
+		loc *time.Location
+	)
+	if strings.ContainsAny(raw, "+Z") {
+		const layoutWTZ = "15:04Z07:00"
+		t, err = time.Parse(layoutWTZ, string(text))
+		loc = t.Location()
+	} else {
+		const layout = "15:04"
+		t, err = time.Parse(layout, string(text))
+		loc = time.Local
+	}
+	if err != nil {
+		return err
+	}
+	i.Hour = t.Hour()
+	i.Minute = t.Minute()
+	i.Location = loc
+	return nil
+}
+
+var _ encoding.TextMarshaler = (*Daily)(nil)
+
+func (i Daily) MarshalText() (text []byte, err error) {
+	if i.Location != nil {
+		const layoutWTZ = "15:04Z07:00"
+		d := time.Date(0, 0, 0, i.Hour, i.Minute, 0, 0, i.Location)
+		return []byte(d.Format(layoutWTZ)), nil
+	}
+	const layoutLocal = "15:04"
+	d := time.Date(0, 0, 0, i.Hour, i.Minute, 0, 0, time.Local)
+	return []byte(d.Format(layoutLocal)), nil
 }
