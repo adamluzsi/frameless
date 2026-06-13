@@ -18,7 +18,25 @@ import (
 	"go.llib.dev/testcase/tchttp"
 )
 
-func TestRoundTripper(t *testing.T) {
+// ExampleHTTPRoundTripper demonstrates how to use HTTPRoundTripper
+// as the transport for an http.Client, enabling automatic retries
+// for recoverable errors like 5xx status codes and network timeouts.
+func ExampleHTTPRoundTripper() {
+	// Wrap it into an http.Client to make requests with automatic retries.
+	client := &http.Client{
+		// Create an HTTPRoundTripper with default settings.
+		// It will retry on recoverable network errors and 5xx status codes
+		// using the default retry strategy.
+		Transport: resilience.HTTPRoundTripper{},
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	resp, err := client.Do(req)
+	_ = resp
+	_ = err
+}
+
+func TestHTTPRoundTripper(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
