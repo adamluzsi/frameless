@@ -33,11 +33,11 @@ type HTTPRoundTripper struct {
 	// This field allows the overwriting the default behaviour
 	// about which status code can be retried.
 	OnStatus map[int]bool
-	// NoResponseBodyRepeat will disable http response body repeating upon error occurrence.
+	// DisableResponseBodyRetry will disable http response body repeating upon error occurrence.
 	// with http.Response#Body reading.
 	// Else the resilience HTTPRoundTripper will retry body read issues,
 	// for http Methods which are not meant to mutate state on the server side, such as GET.
-	NoResponseBodyRepeat bool
+	DisableResponseBodyRetry bool
 }
 
 var temporaryErrorResponseCodes = map[int]struct{}{
@@ -76,7 +76,7 @@ func (rt HTTPRoundTripper) RoundTrip(request *http.Request) (*http.Response, err
 		return response, err
 	}
 
-	if !rt.NoResponseBodyRepeat && isHTTPMethodRepeatable(request.Method) && response.Body != nil {
+	if !rt.DisableResponseBodyRetry && isHTTPMethodRepeatable(request.Method) && response.Body != nil {
 		var body = response.Body
 		response.Body = &Reader{
 			reader:        body,
