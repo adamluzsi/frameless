@@ -21,8 +21,8 @@ type RetryStrategy interface {
 }
 
 type RetryAttempt struct {
-	StartedAt    StartedAt
-	FailureCount FailureCount
+	StartedAt    time.Time
+	FailureCount int
 }
 
 var DefaultRetryStrategy RetryStrategy = Jitter{}
@@ -37,42 +37,20 @@ func GetRetryStrategy(rs RetryStrategy) RetryStrategy {
 	return Jitter{}
 }
 
-func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[RetryAttempt] {
-	switch rp := rp.(type) {
-	case RetryPolicy[FailureCount]:
-		return func(yield func(RetryAttempt) bool) {
-			var (
-				startedAt    = clock.Now()
-				failureCount FailureCount
-			)
-			for {
-				if !rp.ShouldTry(ctx, failureCount) {
-					return
-				}
-				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
-					return
-				}
-				failureCount++
-			}
+func Retries(ctx context.Context, rs RetryStrategy) iter.Seq[RetryAttempt] {
+	return func(yield func(RetryAttempt) bool) {
+		var attempt = RetryAttempt{
+			StartedAt: clock.Now(),
 		}
-	case RetryPolicy[StartedAt]:
-		return func(yield func(RetryAttempt) bool) {
-			var (
-				startedAt    = clock.Now()
-				failureCount FailureCount
-			)
-			for {
-				if !rp.ShouldTry(ctx, startedAt) {
-					return
-				}
-				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
-					return
-				}
-				failureCount++
+		for {
+			if !rs.ShouldRetry(ctx, attempt) {
+				return
 			}
+			if !yield(attempt) {
+				return
+			}
+			attempt.FailureCount++
 		}
-	default:
-		panic("not-implemented")
 	}
 }
 
