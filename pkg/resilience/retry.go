@@ -13,12 +13,29 @@ import (
 )
 
 type RetryStrategy interface {
-	Retry(ctx context.Context) iter.Seq[RetryAttempt]
+	// ShouldTry returns the state whether or not a retry attempt should be done.
+	ShouldTry(ctx context.Context, attempt RetryAttempt) bool
+}
+
+func MakeRetryAttempt() RetryAttempt {
+	return RetryAttempt{
+		StartedAt:    clock.Now(),
+		FailureCount: 0,
+	}
 }
 
 type RetryAttempt struct {
-	StartedAt    StartedAt
-	FailureCount FailureCount
+	StartedAt    time.Time
+	FailureCount int
+}
+
+// Next will increment update RetryAttempt to represent the next attempt.
+//
+// Best used as part of for loop's third block
+//
+//	for make attempt ; should try ; next attempt {
+func (a *RetryAttempt) Next() {
+	a.FailureCount++
 }
 
 var DefaultRetryStrategy RetryStrategy = Jitter{}
@@ -33,60 +50,22 @@ func GetRetryStrategy(rs RetryStrategy) RetryStrategy {
 	return Jitter{}
 }
 
-func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[RetryAttempt] {
-	switch rp := rp.(type) {
-	case RetryPolicy[FailureCount]:
-		return func(yield func(RetryAttempt) bool) {
-			var (
-				startedAt    = clock.Now()
-				failureCount FailureCount
-			)
-			for {
-				if !rp.ShouldTry(ctx, failureCount) {
-					return
-				}
-				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
-					return
-				}
-				failureCount++
+// for range Retries
+// for range Retry
+
+func Retries(ctx context.Context, rs RetryStrategy) iter.Seq[RetryAttempt] {
+	rs = GetRetryStrategy(rs)
+	return func(yield func(RetryAttempt) bool) {
+		for attempt := MakeRetryAttempt(); rs.ShouldTry(ctx, attempt); attempt.Next() {
+			if !rs.ShouldTry(ctx, attempt) {
+				return
+			}
+			if !yield(attempt) {
+				return
 			}
 		}
-	case RetryPolicy[StartedAt]:
-		return func(yield func(RetryAttempt) bool) {
-			var (
-				startedAt    = clock.Now()
-				failureCount FailureCount
-			)
-			for {
-				if !rp.ShouldTry(ctx, startedAt) {
-					return
-				}
-				if !yield(RetryAttempt{StartedAt: startedAt, FailureCount: failureCount}) {
-					return
-				}
-				failureCount++
-			}
-		}
-	default:
-		panic("not-implemented")
 	}
 }
-
-type RetryPolicy[U RetryUnit] interface {
-	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
-	ShouldTry(ctx context.Context, u U) bool
-}
-
-type RetryUnit interface {
-	FailureCount | StartedAt
-}
-
-type (
-	FailureCount = int
-	StartedAt    = time.Time
-)
-
-var _ RetryPolicy[FailureCount] = ExponentialBackoff{}
 
 // ExponentialBackoff is a RetryPolicy implementation.
 //
@@ -115,15 +94,11 @@ type ExponentialBackoff struct {
 
 var _ RetryStrategy = ExponentialBackoff{}
 
-func (rs ExponentialBackoff) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
-	return Retries(ctx, rs)
-}
-
-func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
-	if rs.isDeadlineReached(ctx, failureCount) {
+func (rs ExponentialBackoff) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
+	if rs.isDeadlineReached(ctx, attempt.FailureCount) {
 		return false
 	}
-	waitTime, ok := rs.waitTime(ctx, failureCount)
+	waitTime, ok := rs.waitTime(ctx, attempt.FailureCount)
 	if !ok {
 		return false
 	}
@@ -135,7 +110,7 @@ func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount Failure
 	}
 }
 
-func (rs ExponentialBackoff) waitTime(ctx context.Context, count FailureCount) (duration time.Duration, ok bool) {
+func (rs ExponentialBackoff) waitTime(ctx context.Context, count int) (duration time.Duration, ok bool) {
 	var (
 		maxRetries = rs.getMaxRetries()
 		waitTime   = rs.getWaitTime()
@@ -152,7 +127,7 @@ func (rs ExponentialBackoff) waitTime(ctx context.Context, count FailureCount) (
 	return rs.calcWaitTime(waitTime, count), true
 }
 
-func (rs ExponentialBackoff) calcWaitTime(waitTime time.Duration, count FailureCount) time.Duration {
+func (rs ExponentialBackoff) calcWaitTime(waitTime time.Duration, count int) time.Duration {
 	backoffMultiplier := math.Pow(2, float64(count))
 	return time.Duration(backoffMultiplier) * waitTime
 }
@@ -167,7 +142,7 @@ func (rs ExponentialBackoff) getMaxRetries() int {
 	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
-func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {
+func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount int) bool {
 	if rs.Timeout == 0 {
 		return false
 	}
@@ -181,8 +156,6 @@ func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount
 	}
 	return rs.Timeout <= totalWaitedTime
 }
-
-var _ RetryPolicy[FailureCount] = Jitter{}
 
 // Jitter is a RetryPolicy implementation.
 //
@@ -204,18 +177,14 @@ type Jitter struct {
 
 var _ RetryStrategy = Jitter{}
 
-func (rs Jitter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
-	return Retries(ctx, rs)
-}
-
-func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
-	if rs.getMaxRetries() <= count {
+func (rs Jitter) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
+	if rs.getMaxRetries() <= attempt.FailureCount {
 		return false
 	}
 	if ctx.Err() != nil {
 		return false
 	}
-	if count == 0 {
+	if attempt.FailureCount == 0 {
 		return true
 	}
 	select {
@@ -242,8 +211,6 @@ func (rs Jitter) getMaxRetries() int {
 	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
-var _ RetryPolicy[StartedAt] = Waiter{}
-
 // Waiter is a RetryPolicy implementation.
 //
 // Waiter will check if a retry attempt should be made
@@ -262,8 +229,12 @@ type Waiter struct {
 
 var _ RetryStrategy = Waiter{}
 
-func (rs Waiter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
-	return Retries(ctx, rs)
+func (rs Waiter) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
+	var (
+		now      = clock.Now()
+		deadline = attempt.StartedAt.Add(rs.getTimeout())
+	)
+	return now.Before(deadline) && ctx.Err() == nil
 }
 
 func (rs Waiter) getTimeout() time.Duration {
@@ -274,11 +245,6 @@ func (rs Waiter) getTimeout() time.Duration {
 func (rs Waiter) getWaitDuration() time.Duration {
 	const defaultWaitDuration = time.Millisecond
 	return zerokit.Coalesce(rs.WaitDuration, defaultWaitDuration)
-}
-func (rs Waiter) ShouldTry(ctx context.Context, startedAt StartedAt) bool {
-	now := clock.Now()
-	deadline := startedAt.Add(rs.getTimeout())
-	return now.Before(deadline) && ctx.Err() == nil
 }
 
 // While implements the retry strategy looping part.
@@ -328,8 +294,6 @@ func wait(maxWait time.Duration) {
 	}
 }
 
-var _ RetryPolicy[FailureCount] = FixedDelay{}
-
 // FixedDelay is a RetryPolicy implementation.
 //
 // FixedDelay will make retries with fixed delays between them.
@@ -353,15 +317,11 @@ type FixedDelay struct {
 
 var _ RetryStrategy = FixedDelay{}
 
-func (rs FixedDelay) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
-	return Retries(ctx, rs)
-}
-
-func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
-	if rs.isDeadlineReached(ctx, failureCount) {
+func (rs FixedDelay) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
+	if rs.isDeadlineReached(ctx, attempt.FailureCount) {
 		return false
 	}
-	waitTime, ok := rs.waitTime(ctx, failureCount)
+	waitTime, ok := rs.waitTime(ctx, attempt.FailureCount)
 	if !ok {
 		return false
 	}
@@ -373,7 +333,7 @@ func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) b
 	}
 }
 
-func (rs FixedDelay) waitTime(ctx context.Context, count FailureCount) (duration time.Duration, ok bool) {
+func (rs FixedDelay) waitTime(ctx context.Context, count int) (duration time.Duration, ok bool) {
 	var (
 		maxRetries = rs.getMaxRetries()
 		waitTime   = rs.getWaitTime()
@@ -400,7 +360,7 @@ func (rs FixedDelay) getMaxRetries() int {
 	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
-func (rs FixedDelay) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {
+func (rs FixedDelay) isDeadlineReached(ctx context.Context, failureCount int) bool {
 	if rs.Timeout == 0 {
 		return false
 	}

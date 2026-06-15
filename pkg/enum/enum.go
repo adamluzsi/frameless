@@ -161,24 +161,21 @@ type tagIDStructField struct {
 }
 
 func valuesForTag(field reflect.StructField) (_ []reflect.Value, _ bool, rErr error) {
-	tag, ok := field.Tag.Lookup(enumTagName)
+	var tag, ok = field.Tag.Lookup(enumTagName)
 	if !ok {
 		return nil, false, nil
 	}
 	defer errorkit.Recover(&rErr)
-	id := tagIDStructField{
+	var id = tagIDStructField{
 		Name:    field.Name,
 		Type:    field.Type.String(),
 		Tag:     field.Tag,
 		PkgPath: field.PkgPath,
 	}
-	return tagCache.GetOrInit(id, func() []reflect.Value {
-		enumerators, err := parseTag(field.Type, tag)
-		if err != nil {
-			panic(err)
-		}
-		return enumerators
-	}), true, nil
+	var v, err = tagCache.GetOrInitErr(id, func() ([]reflect.Value, error) {
+		return parseTag(field.Type, tag)
+	})
+	return v, true, err
 }
 
 const enumTagName = "enum"

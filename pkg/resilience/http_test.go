@@ -18,7 +18,25 @@ import (
 	"go.llib.dev/testcase/tchttp"
 )
 
-func TestRoundTripper(t *testing.T) {
+// ExampleHTTPRoundTripper demonstrates how to use HTTPRoundTripper
+// as the transport for an http.Client, enabling automatic retries
+// for recoverable errors like 5xx status codes and network timeouts.
+func ExampleHTTPRoundTripper() {
+	// Wrap it into an http.Client to make requests with automatic retries.
+	client := &http.Client{
+		// Create an HTTPRoundTripper with default settings.
+		// It will retry on recoverable network errors and 5xx status codes
+		// using the default retry strategy.
+		Transport: resilience.HTTPRoundTripper{},
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	resp, err := client.Do(req)
+	_ = resp
+	_ = err
+}
+
+func TestHTTPRoundTripper(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
@@ -64,9 +82,10 @@ func TestRoundTripper(t *testing.T) {
 			c.Transport = retryRT.Get(t)
 			return c
 		})
-		req = testcase.Let(s, func(t *testcase.T) *http.Request {
+		method = testcase.LetValue(s, http.MethodGet)
+		req    = testcase.Let(s, func(t *testcase.T) *http.Request {
 			type NonResettableBody struct{ io.Reader } // To forcefully prevent resetting of the request body by the http.Client
-			request, err := http.NewRequest(http.MethodGet, server.Get(t).URL,
+			request, err := http.NewRequest(method.Get(t), server.Get(t).URL,
 				NonResettableBody{Reader: strings.NewReader(requestBody.Get(t))})
 			assert.Must(t).NoError(err)
 			return request
@@ -230,6 +249,123 @@ func TestRoundTripper(t *testing.T) {
 		})
 	})
 
+	s.When("the response body fails while being read", func(s *testcase.Spec) {
+		// Use a sufficiently long response body so the injected read failure
+		// can occur in the middle of the stream, exercising the resume-from-offset path.
+		responseBody.Let(s, func(t *testcase.T) string {
+			return t.Random.StringN(t.Random.IntBetween(256, 1024))
+		})
+
+		// bodyReadFailures is the number of responses whose body will fail
+		// during Read before a healthy response body is finally served.
+		bodyReadFailures := testcase.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(1, 3)
+		})
+
+		// failAt is the byte offset at which a faulty body stops and reports a read error.
+		// It may land anywhere within the stream, including at the very beginning (0).
+		failAt := testcase.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, len(responseBody.Get(t))-1)
+		})
+
+		// transportCalls counts how many times the underlying transport was invoked,
+		// allowing the assertions to verify that the request was actually re-issued.
+		transportCalls := testcase.Let(s, func(t *testcase.T) *int {
+			return new(int)
+		})
+
+		transport.Let(s, func(t *testcase.T) http.RoundTripper {
+			var (
+				mutex     sync.Mutex
+				failsLeft = bodyReadFailures.Get(t)
+				failAfter = failAt.Get(t)
+				callCount = transportCalls.Get(t)
+			)
+			return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+				resp, err := http.DefaultTransport.RoundTrip(r)
+				if err != nil {
+					return resp, err
+				}
+				mutex.Lock()
+				defer mutex.Unlock()
+				*callCount++
+				if 0 < failsLeft {
+					failsLeft--
+					resp.Body = &faultyResponseBody{
+						ReadCloser: resp.Body,
+						failAfter:  failAfter,
+						failErr:    io.ErrUnexpectedEOF,
+					}
+				}
+				return resp, nil
+			})
+		})
+
+		s.Then("the broken stream is repaired and the full body is returned", func(t *testcase.T) {
+			response, err := act(t)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
+		})
+
+		s.Then("the request is re-issued through the transport once per failed body read", func(t *testcase.T) {
+			response, err := act(t)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
+
+			// one initial request, plus one re-issue for each faulty body read.
+			assert.Must(t).Equal(bodyReadFailures.Get(t)+1, *transportCalls.Get(t))
+		})
+
+		s.And("the failure happens before any byte was delivered", func(s *testcase.Spec) {
+			failAt.Let(s, func(t *testcase.T) int {
+				return 0
+			})
+
+			s.Then("the body is still recovered and fully returned", func(t *testcase.T) {
+				response, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
+			})
+		})
+
+		s.And("the body keeps failing several times before it can be read", func(s *testcase.Spec) {
+			bodyReadFailures.Let(s, func(t *testcase.T) int {
+				return t.Random.IntBetween(3, 5)
+			})
+
+			s.Then("the round tripper keeps repairing the stream until the full body is returned", func(t *testcase.T) {
+				response, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
+			})
+		})
+
+		s.And("the HTTP method is not safe to repeat", func(s *testcase.Spec) {
+			method.Let(s, func(t *testcase.T) string {
+				return t.Random.Pick([]string{
+					http.MethodPost,
+					http.MethodPut,
+					http.MethodPatch,
+					http.MethodDelete,
+				}).(string)
+			})
+
+			s.Then("the body read failure is surfaced to the caller instead of being retried", func(t *testcase.T) {
+				response, err := act(t)
+				assert.Must(t).NoError(err) // the round trip itself succeeds
+
+				defer response.Body.Close()
+				_, err = io.ReadAll(response.Body)
+				assert.Must(t).Error(err)
+
+				// the body must not have been wrapped for resilient reading,
+				// so the transport is invoked exactly once (no re-issue).
+				assert.Must(t).Equal(1, *transportCalls.Get(t))
+			})
+		})
+	})
+
 	s.When("the server responds with an unrecoverable error", func(s *testcase.Spec) {
 		responseCode.Let(s, func(t *testcase.T) int {
 			return t.Random.Pick([]int{
@@ -299,3 +435,33 @@ type NetTimeoutError struct{}
 
 func (NetTimeoutError) Error() string { return "net: timeout error" }
 func (NetTimeoutError) Timeout() bool { return true }
+
+// faultyResponseBody is an http.Response body that simulates a connection
+// dropping mid-stream: after delivering failAfter bytes, the next Read returns
+// failErr once instead of more data. It is used to exercise HTTPRoundTripper's
+// resilient response-body reading, which re-issues the request and resumes the
+// stream from the current offset for repeatable HTTP methods.
+type faultyResponseBody struct {
+	io.ReadCloser
+	failAfter int
+	failErr   error
+	delivered int
+	failed    bool
+}
+
+func (b *faultyResponseBody) Read(p []byte) (int, error) {
+	if !b.failed && b.failAfter <= b.delivered {
+		b.failed = true
+		return 0, b.failErr
+	}
+	if !b.failed {
+		// never deliver past failAfter in a single read,
+		// so the failure reliably lands at the intended offset.
+		if remaining := b.failAfter - b.delivered; remaining < len(p) {
+			p = p[:remaining]
+		}
+	}
+	n, err := b.ReadCloser.Read(p)
+	b.delivered += n
+	return n, err
+}

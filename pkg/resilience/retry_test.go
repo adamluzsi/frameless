@@ -17,13 +17,12 @@ import (
 	"go.llib.dev/testcase/let"
 )
 
-var _ resilience.RetryPolicy[int] = &resilience.ExponentialBackoff{}
-
 func ExampleExponentialBackoff() {
 	ctx := context.Background()
 	rs := resilience.ExponentialBackoff{}
 
-	for i := 0; rs.ShouldTry(ctx, i); i++ {
+	var attempt resilience.RetryAttempt
+	for ; rs.ShouldTry(ctx, attempt); attempt.FailureCount++ {
 		// do an action
 		// return on success
 	}
@@ -51,9 +50,14 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	var (
 		Context      = let.Context(s)
 		failureCount = testcase.LetValue[int](s, 0)
+		attempt      = let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+			a := resilience.MakeRetryAttempt()
+			a.FailureCount = failureCount.Get(t)
+			return a
+		})
 	)
 	act := func(t *testcase.T) bool {
-		return subject.Get(t).ShouldTry(Context.Get(t), failureCount.Get(t))
+		return subject.Get(t).ShouldTry(Context.Get(t), attempt.Get(t))
 	}
 
 	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
@@ -69,7 +73,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
 			var n int
-			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+			for range resilience.Retries(t.Context(), subject.Get(t)) {
 				n++
 			}
 
@@ -224,7 +228,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 			s.Then("retry will be attempted until timeout is reached", func(t *testcase.T) {
 				var total int
-				for i := 0; subject.Get(t).ShouldTry(Context.Get(t), i); i++ {
+				for range resilience.Retries(t.Context(), subject.Get(t)) {
 					total++
 				}
 
@@ -249,7 +253,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		s.When("we ran out of time compared to the timeout duration", func(s *testcase.Spec) {
 			failureCount.Let(s, func(t *testcase.T) int {
 				t.Log("given we failed once already")
-				t.Log("then we susected that we have waited already one backoff duration worth of time")
+				t.Log("then it is suspected that we have waited already one backoff duration worth of time")
 				return 1
 			})
 
@@ -265,13 +269,11 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 }
 
-var _ resilience.RetryPolicy[int] = &resilience.Jitter{}
-
 func ExampleJitter() {
 	ctx := context.Background()
 	rs := resilience.Jitter{}
 
-	for i := 0; rs.ShouldTry(ctx, i); i++ {
+	for range resilience.Retries(ctx, rs) {
 		// do an action
 		// return on success
 	}
@@ -288,9 +290,15 @@ func TestJitter_ShouldTry(t *testing.T) {
 	var (
 		Context      = let.Context(s)
 		failureCount = testcase.LetValue[int](s, 0)
+		attempt      = let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+			return resilience.RetryAttempt{
+				StartedAt:    clock.Now(),
+				FailureCount: failureCount.Get(t),
+			}
+		})
 	)
 	act := func(t *testcase.T) bool {
-		return subject.Get(t).ShouldTry(Context.Get(t), failureCount.Get(t))
+		return subject.Get(t).ShouldTry(Context.Get(t), attempt.Get(t))
 	}
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -310,7 +318,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
 			var n int
-			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+			for range resilience.Retries(Context.Get(t), subject.Get(t)) {
 				n++
 			}
 
@@ -429,12 +437,12 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 func ExampleWaiter_ShouldTry() {
 	var (
-		ctx = context.Background()
-		rs  = resilience.Waiter{Timeout: time.Minute}
-		now = time.Now()
+		ctx     = context.Background()
+		rs      = resilience.Waiter{Timeout: time.Minute}
+		attempt = resilience.MakeRetryAttempt()
 	)
 
-	for rs.ShouldTry(ctx, now) {
+	for ; rs.ShouldTry(ctx, attempt); attempt.Next() {
 		// do an action
 		// return on success
 	}
@@ -472,12 +480,19 @@ func TestWaiter(t *testing.T) {
 	s.Describe("ShouldTry", func(s *testcase.Spec) {
 		var (
 			Context   = let.Context(s)
-			startedAt = let.Var(s, func(t *testcase.T) resilience.StartedAt {
+			startedAt = let.Var(s, func(t *testcase.T) time.Time {
 				return clock.Now()
 			}).EagerLoading(s)
+
+			attempt = let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+				return resilience.RetryAttempt{
+					StartedAt:    startedAt.Get(t),
+					FailureCount: t.Random.IntBetween(0, 1024),
+				}
+			})
 		)
 		act := func(t *testcase.T) bool {
-			return subject.Get(t).ShouldTry(Context.Get(t), startedAt.Get(t))
+			return subject.Get(t).ShouldTry(Context.Get(t), attempt.Get(t))
 		}
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -496,8 +511,8 @@ func TestWaiter(t *testing.T) {
 			})
 		})
 
-		s.When("the last failure occured within the deadline", func(s *testcase.Spec) {
-			startedAt.Let(s, func(t *testcase.T) resilience.StartedAt {
+		s.When("the last failure occurred within the deadline", func(s *testcase.Spec) {
+			startedAt.Let(s, func(t *testcase.T) time.Time {
 				return time.Now()
 			})
 			timeout.Let(s, func(t *testcase.T) time.Duration {
@@ -537,16 +552,16 @@ func TestWaiter(t *testing.T) {
 			})
 
 			s.Then("the wait time will fully reached", func(t *testcase.T) {
-				const wtime = time.Second / 4
-				assert.True(t, wtime < timeout.Get(t))
+				const wTime = time.Second / 4
+				assert.True(t, wTime < timeout.Get(t))
 
-				w := assert.NotWithin(t, wtime, func(ctx context.Context) {
+				w := assert.NotWithin(t, wTime, func(ctx context.Context) {
 					act(t)
 				}, "expected that the timeout is not reached due to the `while true {}` condition")
 
 				timecop.Travel(t, timeout.Get(t))
 
-				assert.Within(t, wtime, func(ctx context.Context) {
+				assert.Within(t, wTime, func(ctx context.Context) {
 					w.Wait()
 				}, "expected that deadline reached already by this point")
 			})
@@ -560,10 +575,10 @@ func TestWaiter(t *testing.T) {
 			})
 
 			s.Then("the timeout is not reached", func(t *testcase.T) {
-				const wtime = time.Second / 4
-				assert.True(t, wtime < timeout.Get(t))
+				const wTime = time.Second / 4
+				assert.True(t, wTime < timeout.Get(t))
 
-				assert.Within(t, wtime, func(ctx context.Context) {
+				assert.Within(t, wTime, func(ctx context.Context) {
 					act(t)
 				})
 			})
@@ -602,16 +617,16 @@ func TestWaiter(t *testing.T) {
 				waitDuration.Let(s, let.DurationBetween(s, time.Minute, time.Hour).Get)
 
 				s.Then("default wait duration is waited", func(t *testcase.T) {
-					var wtime = 25 * time.Millisecond
-					assert.True(t, wtime < waitDuration.Get(t))
+					var wTime = 25 * time.Millisecond
+					assert.True(t, wTime < waitDuration.Get(t))
 
-					w := assert.NotWithin(t, wtime-(wtime/4), func(ctx context.Context) {
+					w := assert.NotWithin(t, wTime-(wTime/4), func(ctx context.Context) {
 						act(t)
 					})
 
 					timecop.Travel(t, waitDuration.Get(t))
 
-					assert.Within(t, wtime, func(ctx context.Context) {
+					assert.Within(t, wTime, func(ctx context.Context) {
 						w.Wait()
 					})
 				})
@@ -651,8 +666,6 @@ func measure(blk func()) time.Duration {
 	return endTime.Sub(startTime)
 }
 
-var _ resilience.RetryPolicy[int] = &resilience.FixedDelay{}
-
 func ExampleFixedDelay() {
 	ctx := context.Background()
 	rs := resilience.FixedDelay{
@@ -660,7 +673,7 @@ func ExampleFixedDelay() {
 		Timeout: 5 * time.Minute,
 	}
 
-	for i := 0; rs.ShouldTry(ctx, i); i++ {
+	for range resilience.Retries(ctx, rs) {
 		// do an action
 		// return/break on success
 	}
@@ -687,9 +700,14 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	var (
 		Context      = let.Context(s)
 		failureCount = testcase.LetValue[int](s, 0)
+		attempt      = let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+			a := resilience.MakeRetryAttempt()
+			a.FailureCount = failureCount.Get(t)
+			return a
+		})
 	)
 	act := func(t *testcase.T) bool {
-		return subject.Get(t).ShouldTry(Context.Get(t), failureCount.Get(t))
+		return subject.Get(t).ShouldTry(Context.Get(t), attempt.Get(t))
 	}
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -716,7 +734,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
 			var n int
-			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+			for range resilience.Retries(Context.Get(t), subject.Get(t)) {
 				n++
 			}
 
@@ -846,7 +864,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 					return t.Random.IntBetween(max+1, max*2)
 				})
 
-				s.Then("it is advised to abandone the retry attempt", func(t *testcase.T) {
+				s.Then("it is advised to abandon the retry attempt", func(t *testcase.T) {
 					assert.False(t, act(t))
 				})
 			})
@@ -885,12 +903,12 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 }
 
-func SpecDescribeRetry[Subject resilience.RetryStrategy](s *testcase.Spec, subject testcase.Var[Subject]) {
+func SpecDescribeRetries[Subject resilience.RetryStrategy](s *testcase.Spec, subject testcase.Var[Subject]) {
 	var (
 		Context, ContextCancel = let.ContextWithCancel(s)
 	)
 	act := let.Act(func(t *testcase.T) iter.Seq[resilience.RetryAttempt] {
-		return subject.Get(t).Retry(Context.Get(t))
+		return resilience.Retries(Context.Get(t), subject.Get(t))
 	})
 
 	doAttempts := func(t *testcase.T) []resilience.RetryAttempt {
@@ -911,7 +929,7 @@ func SpecDescribeRetry[Subject resilience.RetryStrategy](s *testcase.Spec, subje
 		attempts := doAttempts(t)
 
 		for i, attempt := range attempts {
-			assert.Equal(t, resilience.FailureCount(i), attempt.FailureCount)
+			assert.Equal(t, i, attempt.FailureCount)
 		}
 	})
 
@@ -927,7 +945,7 @@ func SpecDescribeRetry[Subject resilience.RetryStrategy](s *testcase.Spec, subje
 
 	s.When("context is cancelled", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			assert.Assert(t, 1 < iterkit.Count(subject.Get(t).Retry(t.Context())),
+			assert.Assert(t, 1 < iterkit.Count(resilience.Retries(t.Context(), subject.Get(t))),
 				"this test can only work if the subject has the ability to do more than 1 retries")
 		})
 
@@ -974,6 +992,37 @@ func SpecDescribeRetry[Subject resilience.RetryStrategy](s *testcase.Spec, subje
 	})
 }
 
+func SpecDescribeShouldTry[Subject resilience.RetryStrategy](s *testcase.Spec, subject testcase.Var[Subject]) {
+	var (
+		Context = let.Context(s)
+		attempt = testcase.Let(s, func(t *testcase.T) resilience.RetryAttempt {
+			return resilience.RetryAttempt{
+				StartedAt:    clock.Now(),
+				FailureCount: 0,
+			}
+		})
+	)
+	act := let.Act(func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(Context.Get(t), attempt.Get(t))
+	})
+
+	s.Then("on a fresh retry attempt, it reports that a retry can be attempted", func(t *testcase.T) {
+		assert.True(t, act(t))
+	})
+
+	s.When("context is cancelled", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(Context.Super(t))
+			cancel()
+			return ctx
+		})
+
+		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+}
+
 func TestExponentialBackoff_Retry(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -984,7 +1033,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 		}
 	})
 
-	SpecDescribeRetry(s, subject)
+	SpecDescribeRetries(s, subject)
 }
 
 func TestJitter_Retry(t *testing.T) {
@@ -997,7 +1046,7 @@ func TestJitter_Retry(t *testing.T) {
 		}
 	})
 
-	SpecDescribeRetry(s, subject)
+	SpecDescribeRetries(s, subject)
 }
 
 func TestWaiter_Retry(t *testing.T) {
@@ -1015,7 +1064,7 @@ func TestWaiter_Retry(t *testing.T) {
 	)
 
 	act := func(t *testcase.T) iter.Seq[resilience.RetryAttempt] {
-		return subject.Get(t).Retry(Context.Get(t))
+		return resilience.Retries(Context.Get(t), subject.Get(t))
 	}
 
 	s.Then("it will yield at least one retry attempt", func(t *testcase.T) {
@@ -1034,7 +1083,7 @@ func TestWaiter_Retry(t *testing.T) {
 		}
 
 		for i, attempt := range attempts {
-			assert.Equal(t, resilience.FailureCount(i), attempt.FailureCount)
+			assert.Equal(t, i, attempt.FailureCount)
 		}
 	})
 
@@ -1079,7 +1128,219 @@ func TestFixedDelay_Retry(t *testing.T) {
 		}
 	})
 
-	SpecDescribeRetry(s, subject)
+	SpecDescribeRetries(s, subject)
+}
+
+func TestExponentialBackoff_ShouldTry_spec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		attempts = testcase.LetValue[int](s, 5)
+		delay    = testcase.LetValue(s, time.Nanosecond)
+		timeout  = testcase.LetValue[time.Duration](s, 0)
+	)
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
+		return &resilience.ExponentialBackoff{
+			Attempts: attempts.Get(t),
+			Delay:    delay.Get(t),
+			Timeout:  timeout.Get(t),
+		}
+	})
+
+	failureCount := testcase.LetValue[int](s, 0)
+	attempt := let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+		return resilience.RetryAttempt{
+			StartedAt:    clock.Now(),
+			FailureCount: failureCount.Get(t),
+		}
+	})
+
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(t.Context(), attempt.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
+
+	SpecDescribeShouldTry(s, subject)
+
+	s.Then("it mirrors the decision ShouldTry makes for the attempt's FailureCount", func(t *testcase.T) {
+		failureCount.Set(t, t.Random.IntBetween(0, attempts.Get(t)*2))
+
+		assert.Equal(t, act(t), subject.Get(t).ShouldTry(t.Context(), attempt.Get(t)))
+	})
+
+	s.When("the attempt's FailureCount reached the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return attempts.Get(t)
+		})
+
+		s.Then("it advises against making a new retry attempt", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("the attempt's FailureCount is still below the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, attempts.Get(t)-1)
+		})
+
+		s.Then("it advises that a new retry attempt can be made", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+	})
+}
+
+func TestJitter_ShouldTry_spec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		delay    = testcase.LetValue(s, time.Nanosecond)
+		attempts = testcase.LetValue[int](s, 5)
+	)
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.Jitter {
+		return &resilience.Jitter{
+			Delay:    delay.Get(t),
+			Attempts: attempts.Get(t),
+		}
+	})
+
+	failureCount := testcase.LetValue[int](s, 0)
+	attempt := let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+		a := resilience.MakeRetryAttempt()
+		a.FailureCount = failureCount.Get(t)
+		return a
+	})
+
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(t.Context(), attempt.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
+
+	SpecDescribeShouldTry(s, subject)
+
+	s.Then("it mirrors the decision ShouldTry makes for the attempt's FailureCount", func(t *testcase.T) {
+		failureCount.Set(t, t.Random.IntBetween(0, attempts.Get(t)*2))
+
+		assert.Equal(t, act(t), subject.Get(t).ShouldTry(t.Context(), attempt.Get(t)))
+	})
+
+	s.When("the attempt's FailureCount reached the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return attempts.Get(t)
+		})
+
+		s.Then("it advises against making a new retry attempt", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("the attempt's FailureCount is still below the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, attempts.Get(t)-1)
+		})
+
+		s.Then("it advises that a new retry attempt can be made", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+	})
+}
+
+func TestWaiter_ShouldTry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		timeout = let.DurationBetween(s, time.Minute, time.Hour)
+		subject = testcase.Let(s, func(t *testcase.T) *resilience.Waiter {
+			return &resilience.Waiter{Timeout: timeout.Get(t)}
+		})
+		startedAt = testcase.Let(s, func(t *testcase.T) time.Time {
+			return clock.Now()
+		}).EagerLoading(s)
+		attempt = let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+			return resilience.RetryAttempt{
+				StartedAt: startedAt.Get(t),
+			}
+		})
+	)
+
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(t.Context(), attempt.Get(t))
+	}
+
+	SpecDescribeShouldTry(s, subject)
+
+	s.Then("it mirrors the decision ShouldTry makes for the attempt's StartedAt", func(t *testcase.T) {
+		assert.Equal(t, act(t), subject.Get(t).ShouldTry(t.Context(), attempt.Get(t)))
+	})
+
+	s.When("the timeout window already elapsed since the attempt started", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			timecop.Travel(t, timeout.Get(t)+time.Second)
+		})
+
+		s.Then("it advises against making a new retry attempt", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+}
+
+func TestFixedDelay_ShouldTry_spec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		delay    = testcase.LetValue[time.Duration](s, time.Nanosecond)
+		attempts = testcase.LetValue[int](s, 5)
+		timeout  = testcase.LetValue[time.Duration](s, 0)
+	)
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.FixedDelay {
+		return &resilience.FixedDelay{
+			Delay:    delay.Get(t),
+			Attempts: attempts.Get(t),
+			Timeout:  timeout.Get(t),
+		}
+	})
+
+	failureCount := testcase.LetValue[int](s, 0)
+	attempt := let.Var(s, func(t *testcase.T) resilience.RetryAttempt {
+		a := resilience.MakeRetryAttempt()
+		a.FailureCount = failureCount.Get(t)
+		return a
+	})
+
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(t.Context(), attempt.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
+
+	SpecDescribeShouldTry(s, subject)
+
+	s.Then("it mirrors the decision ShouldTry makes for the attempt's FailureCount", func(t *testcase.T) {
+		failureCount.Set(t, t.Random.IntBetween(0, attempts.Get(t)*2))
+
+		assert.Equal(t, act(t), subject.Get(t).ShouldTry(t.Context(), attempt.Get(t)))
+	})
+
+	s.When("the attempt's FailureCount reached the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return attempts.Get(t)
+		})
+
+		s.Then("it advises against making a new retry attempt", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("the attempt's FailureCount is still below the allowed maximum number of attempts", func(s *testcase.Spec) {
+		failureCount.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, attempts.Get(t)-1)
+		})
+
+		s.Then("it advises that a new retry attempt can be made", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+	})
 }
 
 func ExampleRetries() {
@@ -1197,7 +1458,7 @@ func TestRetries(t *testing.T) {
 			}
 
 			w := assert.NotWithin(t, time.Second/2, func(ctx context.Context) {
-				var expFailureCount resilience.FailureCount
+				var expFailureCount int
 				for v := range resilience.Retries(context.Background(), rs) {
 					assert.Equal(t, v.FailureCount, expFailureCount)
 					expFailureCount++

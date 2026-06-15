@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"iter"
 	"os"
 	"strings"
 	"testing"
@@ -469,7 +468,10 @@ func TestTransfer(t *testing.T) {
 	act := let.Act(func(t *testcase.T) error {
 		m := resilience.TransferManager{
 			// keep retries fast and deterministic during tests.
-			RetryStrategy: singleAttemptPolicy{},
+			RetryStrategy: resilience.FixedDelay{
+				Attempts: 1,               // single attempt policy
+				Delay:    time.Nanosecond, // with virtually no delay
+			},
 		}
 		return m.Transfer(ctx.Get(t), source.Get(t), output.Get(t))
 	})
@@ -594,13 +596,13 @@ func TestTransfer(t *testing.T) {
 		})
 	})
 
-	s.When("the output is seekable and already holds partially transferred data", func(s *testcase.Spec) {
+	s.When("the output is seek-able and already holds partially transferred data", func(s *testcase.Spec) {
 		// seekDst behaves like a file opened for read-write (cursor at position 0)
 		// that already holds the first half of the payload, as if an earlier
-		// transfer was interrupted. Being seekable, the transfer can resume.
-		seekDst := let.Var(s, func(t *testcase.T) *seekableWriteCloser {
+		// transfer was interrupted. Being seek-able, the transfer can resume.
+		seekDst := let.Var(s, func(t *testcase.T) *seekAbleWriteCloser {
 			half := len(data.Get(t)) / 2
-			return &seekableWriteCloser{data: append([]byte{}, data.Get(t)[:half]...)}
+			return &seekAbleWriteCloser{data: append([]byte{}, data.Get(t)[:half]...)}
 		})
 
 		output.Let(s, func(t *testcase.T) func() (io.WriteCloser, error) {
@@ -613,8 +615,8 @@ func TestTransfer(t *testing.T) {
 		})
 
 		s.And("the output already holds the full payload", func(s *testcase.Spec) {
-			seekDst.Let(s, func(t *testcase.T) *seekableWriteCloser {
-				return &seekableWriteCloser{data: append([]byte{}, data.Get(t)...)}
+			seekDst.Let(s, func(t *testcase.T) *seekAbleWriteCloser {
+				return &seekAbleWriteCloser{data: append([]byte{}, data.Get(t)...)}
 			})
 
 			s.Then("nothing further is transferred and the payload stays intact", func(t *testcase.T) {
@@ -644,20 +646,6 @@ func TestTransfer(t *testing.T) {
 			assert.Equal(t, data.Get(t), statDst.Get(t).Bytes())
 		})
 	})
-}
-
-// singleAttemptPolicy permits exactly one open attempt with no further retries,
-// keeping failure scenarios fast and deterministic in tests.
-type singleAttemptPolicy struct{}
-
-var _ resilience.RetryPolicy[resilience.FailureCount] = singleAttemptPolicy{}
-
-func (singleAttemptPolicy) ShouldTry(ctx context.Context, failureCount resilience.FailureCount) bool {
-	return failureCount == 0
-}
-
-func (rp singleAttemptPolicy) Retry(ctx context.Context) iter.Seq[resilience.RetryAttempt] {
-	return resilience.Retries(ctx, rp)
 }
 
 // closeTrackingReadCloser wraps an io.Reader and records whether it was closed.
@@ -716,16 +704,16 @@ func (fi fakeFileInfo) ModTime() time.Time { return time.Time{} }
 func (fi fakeFileInfo) IsDir() bool        { return false }
 func (fi fakeFileInfo) Sys() any           { return nil }
 
-// seekableWriteCloser is an in-memory output that honours its write cursor,
+// seekAbleWriteCloser is an in-memory output that honours its write cursor,
 // mimicking an *os.File opened for overwriting: writes land at the current
 // position rather than always appending. It also exposes Stat for resuming.
-type seekableWriteCloser struct {
+type seekAbleWriteCloser struct {
 	data   []byte
 	pos    int64
 	closed bool
 }
 
-func (w *seekableWriteCloser) Write(p []byte) (int, error) {
+func (w *seekAbleWriteCloser) Write(p []byte) (int, error) {
 	end := w.pos + int64(len(p))
 	if int64(len(w.data)) < end {
 		grown := make([]byte, end)
@@ -737,7 +725,7 @@ func (w *seekableWriteCloser) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *seekableWriteCloser) Seek(offset int64, whence int) (int64, error) {
+func (w *seekAbleWriteCloser) Seek(offset int64, whence int) (int64, error) {
 	var base int64
 	switch whence {
 	case io.SeekStart:
@@ -751,13 +739,13 @@ func (w *seekableWriteCloser) Seek(offset int64, whence int) (int64, error) {
 	return w.pos, nil
 }
 
-func (w *seekableWriteCloser) Stat() (fs.FileInfo, error) {
+func (w *seekAbleWriteCloser) Stat() (fs.FileInfo, error) {
 	return fakeFileInfo{size: int64(len(w.data))}, nil
 }
 
-func (w *seekableWriteCloser) Close() error {
+func (w *seekAbleWriteCloser) Close() error {
 	w.closed = true
 	return nil
 }
 
-func (w *seekableWriteCloser) Bytes() []byte { return w.data }
+func (w *seekAbleWriteCloser) Bytes() []byte { return w.data }
