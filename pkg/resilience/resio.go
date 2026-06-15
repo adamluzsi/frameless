@@ -100,8 +100,7 @@ func (rr *Reader) restart() error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var rs = GetRetryStrategy(rr.RetryStrategy)
-	for range rs.Retry(ctx) {
+	for range Retries(ctx, rr.RetryStrategy) {
 		r, err, ok := attempt()
 		if err == nil && ok {
 			rr.reader = r
@@ -220,7 +219,7 @@ func (m TransferManager) Transfer(ctx context.Context,
 		Context:       ctx,
 	}
 
-	// Seed the offset so the source is seeked forward past the bytes already
+	// Seed the offset so the source will seek forward past the bytes already
 	// present in the output, making the transfer resumable.
 	if 0 < resumeOffset {
 		// Position the output's write cursor at its end so the resumed bytes are

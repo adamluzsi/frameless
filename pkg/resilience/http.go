@@ -117,7 +117,7 @@ func (rt HTTPRoundTripper) tryRoundTrip(ctx context.Context, transport http.Roun
 		response *http.Response
 		err      error
 	)
-	for range GetRetryStrategy(rt.RetryStrategy).Retry(ctx) {
+	for range Retries(ctx, rt.RetryStrategy) {
 		var request *http.Request
 
 		request, err = mkRequest()

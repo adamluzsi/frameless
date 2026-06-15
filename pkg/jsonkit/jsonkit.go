@@ -403,7 +403,7 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	ptr := reflect.New(identifiedType)
 	ctx := context.Background()
 	// max pointer to pointer nesting level is limited to 42 levels
-	for i := 0; ptrNestingLoop.ShouldTry(ctx, i); i++ {
+	for range resilience.Retries(ctx, ptrNestingLoop) {
 		if check(ptr.Type().Elem()) {
 			return ptr, nil
 		}
