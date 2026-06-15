@@ -13,7 +13,11 @@ import (
 )
 
 type RetryStrategy interface {
+	// Retry returns an iterator that will automatically makes retry attempts
+	// while it is still within the retry strategy.
 	Retry(ctx context.Context) iter.Seq[RetryAttempt]
+	// ShouldRetry returns the state whether or not a retry attempt should be done.
+	ShouldRetry(ctx context.Context, attempt RetryAttempt) bool
 }
 
 type RetryAttempt struct {
@@ -72,6 +76,9 @@ func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U])
 	}
 }
 
+// RetryPolicy
+//
+// Deprecated: use RetryStrategy
 type RetryPolicy[U RetryUnit] interface {
 	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
 	ShouldTry(ctx context.Context, u U) bool
