@@ -126,6 +126,10 @@ func (rs ExponentialBackoff) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
 	return Retries(ctx, rs)
 }
 
+func (rs ExponentialBackoff) ShouldRetry(ctx context.Context, attempt RetryAttempt) bool {
+	return rs.ShouldTry(ctx, attempt.FailureCount)
+}
+
 func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
 	if rs.isDeadlineReached(ctx, failureCount) {
 		return false
@@ -215,6 +219,10 @@ func (rs Jitter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
 	return Retries(ctx, rs)
 }
 
+func (rs Jitter) ShouldRetry(ctx context.Context, attempt RetryAttempt) bool {
+	return rs.ShouldTry(ctx, attempt.FailureCount)
+}
+
 func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
 	if rs.getMaxRetries() <= count {
 		return false
@@ -271,6 +279,10 @@ var _ RetryStrategy = Waiter{}
 
 func (rs Waiter) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
 	return Retries(ctx, rs)
+}
+
+func (rs Waiter) ShouldRetry(ctx context.Context, attempt RetryAttempt) bool {
+	return rs.ShouldTry(ctx, attempt.StartedAt)
 }
 
 func (rs Waiter) getTimeout() time.Duration {
@@ -362,6 +374,10 @@ var _ RetryStrategy = FixedDelay{}
 
 func (rs FixedDelay) Retry(ctx context.Context) iter.Seq[RetryAttempt] {
 	return Retries(ctx, rs)
+}
+
+func (rs FixedDelay) ShouldRetry(ctx context.Context, attempt RetryAttempt) bool {
+	return rs.ShouldTry(ctx, attempt.FailureCount)
 }
 
 func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) bool {

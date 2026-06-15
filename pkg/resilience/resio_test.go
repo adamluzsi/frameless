@@ -656,6 +656,10 @@ func (singleAttemptPolicy) ShouldTry(ctx context.Context, failureCount resilienc
 	return failureCount == 0
 }
 
+func (rp singleAttemptPolicy) ShouldRetry(ctx context.Context, attempt resilience.RetryAttempt) bool {
+	return rp.ShouldTry(ctx, attempt.FailureCount)
+}
+
 func (rp singleAttemptPolicy) Retry(ctx context.Context) iter.Seq[resilience.RetryAttempt] {
 	return resilience.Retries(ctx, rp)
 }
