@@ -40,16 +40,20 @@ func FinishOnError(returnErr *error, blk func()) {
 
 // Recover will attempt a recover, and if recovery yields a value, it sets it as an error.
 func Recover(returnErr *error) {
-	r := recover()
-	if r == nil {
-		return
+	var err = ToError(recover())
+	if err != nil {
+		*returnErr = Merge(*returnErr, err)
 	}
-	switch r := r.(type) {
-	case error:
-		*returnErr = r
-	default:
-		*returnErr = fmt.Errorf("%v", r)
+}
+
+func ToError(v any) error {
+	if v == nil {
+		return nil
 	}
+	if err, ok := v.(error); ok {
+		return err
+	}
+	return fmt.Errorf("%v", v)
 }
 
 // As function serves as a shorthand to enable one-liner error handling with errors.As.

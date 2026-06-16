@@ -56,7 +56,10 @@ func FinishOnError(returnErr *error, blk func()) {
 
 // Recover will attempt a recover, and if recovery yields a value, it sets it as an error.
 func Recover(returnErr *error) {
-	errorkitlite.Recover(returnErr)
+	var err = errorkitlite.ToError(recover())
+	if err != nil {
+		*returnErr = Merge(*returnErr, err)
+	}
 }
 
 // RecoverWith will attempt a recover, and if recovery yields a non nil value, it executs the passed function.

@@ -206,7 +206,7 @@ func TestRecover(t *testing.T) {
 		action    = testcase.Var[func() error]{ID: `action`}
 		actionLet = func(s *testcase.Spec, fn func() error) { action.Let(s, func(t *testcase.T) func() error { return fn }) }
 	)
-	subject := func(t *testcase.T) (err error) {
+	act := func(t *testcase.T) (err error) {
 		defer errorkit.Recover(&err)
 		return action.Get(t)()
 	}
@@ -217,7 +217,7 @@ func TestRecover(t *testing.T) {
 		})
 
 		s.Then(`it will do nothing`, func(t *testcase.T) {
-			assert.Must(t).NoError(subject(t))
+			assert.Must(t).NoError(act(t))
 		})
 	})
 
@@ -226,7 +226,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { return expectedErr })
 
 		s.Then(`it will pass the received error through`, func(t *testcase.T) {
-			assert.Equal(t, expectedErr, subject(t))
+			assert.Equal(t, expectedErr, act(t))
 		})
 	})
 
@@ -235,7 +235,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			assert.Equal(t, expectedErr, subject(t))
+			assert.Equal(t, expectedErr, act(t))
 		})
 	})
 
@@ -244,7 +244,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			assert.Equal(t, expectedErr, subject(t))
+			assert.Equal(t, expectedErr, act(t))
 		})
 	})
 
@@ -253,7 +253,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(msg) })
 
 		s.Then(`it will capture the panic value and create an error from it, where message is the panic object is formatted with fmt`, func(t *testcase.T) {
-			assert.Equal(t, errors.New("boom"), subject(t))
+			assert.Equal(t, errors.New("boom"), act(t))
 		})
 	})
 
@@ -271,7 +271,7 @@ func TestRecover(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = subject(t)
+				_ = act(t)
 				finished = true
 			}()
 			wg.Wait()

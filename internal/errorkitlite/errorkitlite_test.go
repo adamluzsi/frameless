@@ -629,3 +629,91 @@ func TestFinishOnError(t *testing.T) {
 		})
 	})
 }
+
+func TestToError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		v = let.Var[any](s, nil)
+	)
+	act := let.Act(func(t *testcase.T) error {
+		return errorkitlite.ToError(v.Get(t))
+	})
+
+	s.When("the value is nil", func(s *testcase.Spec) {
+		v.Let(s, func(t *testcase.T) any {
+			return nil
+		})
+
+		s.Then("no error is returned", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+	})
+
+	s.When("the value is an error", func(s *testcase.Spec) {
+		expErr := let.Var(s, func(t *testcase.T) error {
+			return t.Random.Error()
+		})
+		v.Let(s, func(t *testcase.T) any {
+			return expErr.Get(t)
+		})
+
+		s.Then("the same error value is returned as-is", func(t *testcase.T) {
+			got := act(t)
+
+			assert.Equal(t, expErr.Get(t), got)
+			assert.ErrorIs(t, got, expErr.Get(t))
+		})
+
+		s.And("the error is of a concrete custom type", func(s *testcase.Spec) {
+			myError := let.Var(s, func(t *testcase.T) MyError {
+				return MyError{Msg: t.Random.String()}
+			})
+			expErr.Let(s, func(t *testcase.T) error {
+				return myError.Get(t)
+			})
+
+			s.Then("the concrete error value is returned", func(t *testcase.T) {
+				got := act(t)
+
+				assert.Equal(t, expErr.Get(t), got)
+				assert.Equal[error](t, myError.Get(t), got)
+				assert.ErrorIs(t, got, expErr.Get(t))
+			})
+
+			s.Then("the concrete error value is preserved, so errors.As keeps working", func(t *testcase.T) {
+				got := act(t)
+
+				var gotErr MyError
+				assert.True(t, errors.As(got, &gotErr))
+				assert.Equal(t, myError.Get(t), gotErr)
+			})
+		})
+	})
+
+	s.When("the value is not an error", func(s *testcase.Spec) {
+		v.Let(s, func(t *testcase.T) any {
+			return t.Random.String()
+		})
+
+		s.Then("an error is built from the value's default formatting", func(t *testcase.T) {
+			got := act(t)
+
+			assert.Error(t, got)
+			assert.Equal(t, fmt.Sprintf("%v", v.Get(t)), got.Error())
+		})
+
+		s.And("the value is a non-string type", func(s *testcase.Spec) {
+			v.Let(s, func(t *testcase.T) any {
+				return t.Random.Int()
+			})
+
+			s.Then("the error message is the fmt formatted value", func(t *testcase.T) {
+				got := act(t)
+
+				assert.Error(t, got)
+				assert.Equal(t, fmt.Sprintf("%v", v.Get(t)), got.Error())
+			})
+		})
+	})
+}
