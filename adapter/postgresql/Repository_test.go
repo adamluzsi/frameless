@@ -207,6 +207,18 @@ func TestRepository_BatchConfig(t *testing.T) {
 		crudcontract.Batcher(subject, config).Spec(s)
 	})
 
+	s.Context("with buffered channel", func(s *testcase.Spec) {
+		subject := &postgresql.Repository[Entity, string]{
+			Connection: cm,
+			Mapping:    mapping,
+			BatchConfig: postgresql.BatchConfig{
+				BufferSize: 256,
+			},
+		}
+		config := baseConfig
+		crudcontract.Batcher(subject, config).Spec(s)
+	})
+
 	s.Context("with staging table", func(s *testcase.Spec) {
 		subject := &postgresql.Repository[Entity, string]{
 			Connection: cm,

@@ -24,6 +24,7 @@ import (
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/testcase/clock"
 )
 
 // Repository is a frameless external resource supplier to store a certain entity type.
@@ -474,11 +475,15 @@ type BatchConfig struct {
 	UseStagingTable bool
 	// NoTransaction disables the transaction usage during batch.
 	NoTransaction bool
+	// BufferSize defines how big the buffering channel should be for the batch insertion.
+	//
+	// default: unbuffered channel for COPY record handover
+	BufferSize int
 }
 
 func (b *Batch[ENT, ID]) init() {
 	b._begin.Do(func() {
-		b.input = make(chan ENT)
+		b.input = make(chan ENT, b.BatchConfig.BufferSize)
 		b.Context = cmp.Or(b.Context, context.Background())
 		b.bgJob = synckit.Go(b.Context, b.stream)
 	})
@@ -486,13 +491,16 @@ func (b *Batch[ENT, ID]) init() {
 
 func (b *Batch[ENT, ID]) Add(v ENT) error {
 	b.init()
+	if err := b.Context.Err(); err != nil {
+		return err
+	}
 	select {
-	case b.input <- v:
-		return nil
 	case <-b.Context.Done():
 		return b.Context.Err()
 	case <-b.bgJob.Done():
 		return b.bgJob.Wait()
+	case b.input <- v:
+		return nil
 	}
 }
 
@@ -549,6 +557,21 @@ func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
 		})
 		tableName = stagingTable
 	}
+
+	var start = clock.Now()
+	logger.Debug(ctx, "CopyFrom", logging.Field("target", tableName), logging.Field("status", "finished"))
+	defer logger.Debug(ctx, "CopyFrom", logging.Field("target", tableName), logging.Field("status", "finished"),
+		logging.LazyDetail(func() logging.Detail {
+			var fields = logging.Fields{}
+			finish := clock.Now()
+			duration := finish.Sub(start)
+			fields["duration"] = duration.String()
+			fields["duration_ms"] = duration.Milliseconds()
+			return fields
+		}),
+		logging.LazyDetail(func() logging.Detail {
+			return logging.ErrField(rErr)
+		}))
 
 	// Copy data into staging table
 	_, err = b.getBatchDestination(ctx).CopyFrom(

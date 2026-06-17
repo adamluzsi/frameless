@@ -137,6 +137,10 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 
 			cancel()
 
+			t.Eventually(func(t *testcase.T) {
+				assert.Error(t, ctx.Err())
+			})
+
 			assert.Error(t, batch.Add(last))
 			assert.Error(t, batch.Close())
 		})
