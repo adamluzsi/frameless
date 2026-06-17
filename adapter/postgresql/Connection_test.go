@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/crudcontract"
@@ -20,6 +21,57 @@ func TestConnect_smoke(t *testing.T) {
 	ctx := context.Background()
 	c, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
+	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
+	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
+
+	ctxWithTx, err := c.BeginTx(ctx)
+	assert.NoError(t, err)
+	defer func() { _ = c.RollbackTx(ctxWithTx) }()
+
+	assert.NoError(t, c.QueryRowContext(ctxWithTx, "SELECT").Scan())
+}
+
+func TestConnect_libpq(t *testing.T) {
+	testcase.UnsetEnv(t, "DATABASE_URL")
+	testcase.UnsetEnv(t, "PG_DATABASE_DSN")
+	testcase.UnsetEnv(t, "PG_DATABASE_URL")
+
+	testcase.SetEnv(t, "PGUSER", testcase.GetEnv(t, "POSTGRES_USER"))
+	testcase.SetEnv(t, "PGPASSWORD", testcase.GetEnv(t, "POSTGRES_PASSWORD"))
+	testcase.SetEnv(t, "PGDATABASE", testcase.GetEnv(t, "POSTGRES_DB"))
+	testcase.SetEnv(t, "PGPORT", testcase.GetEnv(t, "POSTGRES_PORT"))
+	testcase.SetEnv(t, "PGHOST", testcase.GetEnv(t, "POSTGRES_HOST"))
+
+	ctx := context.Background()
+	c, err := postgresql.Connect("")
+	assert.NoError(t, err)
+	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
+	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
+
+	ctxWithTx, err := c.BeginTx(ctx)
+	assert.NoError(t, err)
+	defer func() { _ = c.RollbackTx(ctxWithTx) }()
+
+	assert.NoError(t, c.QueryRowContext(ctxWithTx, "SELECT").Scan())
+}
+
+func TestMakeConnectionFromPool_libpq(t *testing.T) {
+	testcase.UnsetEnv(t, "DATABASE_URL")
+	testcase.UnsetEnv(t, "PG_DATABASE_DSN")
+	testcase.UnsetEnv(t, "PG_DATABASE_URL")
+
+	testcase.SetEnv(t, "PGUSER", testcase.GetEnv(t, "POSTGRES_USER"))
+	testcase.SetEnv(t, "PGPASSWORD", testcase.GetEnv(t, "POSTGRES_PASSWORD"))
+	testcase.SetEnv(t, "PGDATABASE", testcase.GetEnv(t, "POSTGRES_DB"))
+	testcase.SetEnv(t, "PGPORT", testcase.GetEnv(t, "POSTGRES_PORT"))
+	testcase.SetEnv(t, "PGHOST", testcase.GetEnv(t, "POSTGRES_HOST"))
+
+	ctx := t.Context()
+
+	pool, err := pgxpool.New(ctx, "")
+	assert.NoError(t, err)
+
+	c := postgresql.MakeConnectionFromPGXPool(pool)
 	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
 	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
 

@@ -14,11 +14,18 @@ type Connection struct {
 	flsql.ConnectionAdapter[pgxpool.Pool, pgx.Tx]
 }
 
+// Connect will connect to PostgreSQL using a connection string.
+//
+// If the connection string left empty, it will fall back to use libpq conventions through the pgx.ParseConfig("").
 func Connect(dsn string) (Connection, error) {
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return Connection{}, err
 	}
+	return MakeConnectionFromPGXPool(pool), nil
+}
+
+func MakeConnectionFromPGXPool(pool *pgxpool.Pool) Connection {
 	return Connection{
 		ConnectionAdapter: flsql.ConnectionAdapter[pgxpool.Pool, pgx.Tx]{
 			DB: pool,
@@ -59,7 +66,7 @@ func Connect(dsn string) (Connection, error) {
 				return nil
 			},
 		},
-	}, nil
+	}
 }
 
 var ContextTxOptions contextkit.ValueHandler[ctxKeyTxOptions, pgx.TxOptions]
