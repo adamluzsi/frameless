@@ -2,6 +2,9 @@ package sandbox
 
 import (
 	"runtime"
+
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/port/option"
 )
 
 type O struct {
@@ -12,7 +15,8 @@ type O struct {
 	PanicValue any
 }
 
-func Run(fn func()) O {
+func Run(fn func(), opts ...Option) O {
+	c := option.ToConfig(opts)
 	var done = make(chan struct{})
 	var o O
 	go func() {
@@ -36,7 +40,9 @@ func Run(fn func()) O {
 		}()
 		func() {
 			defer func() {
-				r = recover()
+				if !c.NoRecover {
+					r = recover()
+				}
 			}()
 			fn()
 			o.OK = true
@@ -47,4 +53,14 @@ func Run(fn func()) O {
 	}()
 	<-done
 	return o
+}
+
+type Option option.Option[Config]
+
+type Config struct {
+	NoRecover bool
+}
+
+func (c Config) Configure(t *Config) {
+	*t = reflectkit.MergeStruct(*t, c)
 }

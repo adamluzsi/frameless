@@ -14,10 +14,11 @@ func TestRun(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		fn = let.Var[func()](s, nil)
+		fn   = let.Var[func()](s, nil)
+		opts = let.VarOf[[]sandbox.Option](s, nil)
 	)
 	act := let.Act(func(t *testcase.T) sandbox.O {
-		return sandbox.Run(fn.Get(t))
+		return sandbox.Run(fn.Get(t), opts.Get(t)...)
 	})
 
 	s.Context("OK", func(s *testcase.Spec) {
@@ -58,6 +59,20 @@ func TestRun(t *testing.T) {
 			return func() {
 				panic(val.Get(t))
 			}
+		})
+
+		s.Context("with NoRecover option", func(s *testcase.Spec) {
+			opts.Let(s, func(t *testcase.T) []sandbox.Option {
+				return []sandbox.Option{
+					sandbox.Config{NoRecover: true},
+				}
+			})
+
+			s.Then("Run will panic", func(t *testcase.T) {
+				assert.Panic(t, func() {
+					act(t)
+				})
+			})
 		})
 
 		s.Context("nil panic value", func(s *testcase.Spec) {
