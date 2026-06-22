@@ -432,7 +432,7 @@ func TestInit_race(t *testing.T) {
 		})
 	})
 
-	testcase.Race(r, w, more...)
+	testcase.Race(append([]func(){r, w}, more...)...)
 }
 
 func BenchmarkInit(b *testing.B) {
@@ -596,7 +596,7 @@ func makeConcurrentReadsAccesses[T any](tb testing.TB, init func(*T) T) {
 			if ctx.Err() != nil {
 				break
 			}
-			testcase.Race(blk, blk, more...)
+			testcase.Race(more...)
 		}
 	}()
 	for {
@@ -622,7 +622,7 @@ func makeConcurrentAccesses[T any](tb testing.TB, init func(*T) T) {
 				if ctx.Err() != nil {
 					break
 				}
-				testcase.Race(blk, blk, more...)
+				testcase.Race(more...)
 			}
 		}()
 	}()

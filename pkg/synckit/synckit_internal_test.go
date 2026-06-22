@@ -33,7 +33,7 @@ func TestLocks_noGarbage(t *testing.T) {
 			defer m.Unlock()
 		})
 	}
-	testcase.Race(func() {}, func() {}, fns...)
+	testcase.Race(fns...)
 
 	assert.Equal(t, 0, len(l.locks))
 }

@@ -221,7 +221,7 @@ func TestFreePort(t *testing.T) {
 					got.Set(port, struct{}{})
 				})
 			}
-			testcase.Race(func() {}, func() {}, fns...)
+			testcase.Race(fns...)
 			assert.True(t, 1 < got.Len())
 		})
 	})

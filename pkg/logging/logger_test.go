@@ -338,7 +338,7 @@ func TestLogger_concurrentUse(t *testing.T) {
 		write := func() { l.Info(ctx, "msg") }
 		var writes = random.Slice(10000, func() func() { return write })
 
-		testcase.Race(write, write, writes...)
+		testcase.Race(writes...)
 
 		defer func() {
 			if t.Failed() {

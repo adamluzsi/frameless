@@ -36,10 +36,6 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-type Entity struct {
-	Text string
-}
-
 type ReadCloser struct {
 	IsClosed bool
 	io       io.Reader
@@ -219,7 +215,7 @@ func TestLast(t *testing.T) {
 	})
 
 	s.Test("empty", func(t *testcase.T) {
-		_, found := iterkit.Last(iterkit.Empty[Entity]())
+		_, found := iterkit.Last(iterkit.Empty[Entity[string]]())
 		assert.False(t, found)
 	})
 }
@@ -279,7 +275,7 @@ func TestLastE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("empty", func(t *testcase.T) {
-		_, found, err := iterkit.LastE(iterkit.Empty2[Entity, error]())
+		_, found, err := iterkit.LastE(iterkit.Empty2[Entity[string], error]())
 		assert.NoError(t, err)
 		assert.False(t, found)
 	})
@@ -296,7 +292,7 @@ func TestLastE(t *testing.T) {
 	})
 
 	s.Test("empty", func(t *testcase.T) {
-		v, found, err := iterkit.LastE(iterkit.Empty2[Entity, error]())
+		v, found, err := iterkit.LastE(iterkit.Empty2[Entity[string], error]())
 		assert.NoError(t, err)
 		assert.False(t, found)
 		assert.Empty(t, v)
@@ -3105,7 +3101,7 @@ func TestFirst1_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 }
 
 func TestFirst1_WhenNextSayThereIsNoValueToBeDecoded_NotFoundReturned(t *testing.T) {
-	_, found := iterkit.First[Entity](iterkit.Empty[Entity]())
+	_, found := iterkit.First[Entity[string]](iterkit.Empty[Entity[string]]())
 	assert.False(t, found)
 }
 
@@ -3125,7 +3121,7 @@ func TestFirst2(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("empty", func(t *testcase.T) {
-		_, _, found := iterkit.First2(iterkit.Empty2[Entity, error]())
+		_, _, found := iterkit.First2(iterkit.Empty2[Entity[string], error]())
 		assert.False(t, found)
 	})
 
@@ -3175,7 +3171,7 @@ func TestFirstE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("empty", func(t *testcase.T) {
-		_, found, err := iterkit.FirstE(iterkit.Empty2[Entity, error]())
+		_, found, err := iterkit.FirstE(iterkit.Empty2[Entity[string], error]())
 		assert.NoError(t, err)
 		assert.False(t, found)
 	})
@@ -5582,8 +5578,8 @@ func TestFind(t *testing.T) {
 	})
 
 	s.Test("not-found in empty", func(t *testcase.T) {
-		_, found := iterkit.Find(iterkit.Empty[Entity](), func(n Entity) bool {
-			return n.Text == "foo"
+		_, found := iterkit.Find(iterkit.Empty[Entity[string]](), func(n Entity[string]) bool {
+			return n.String == "foo"
 		})
 		assert.False(t, found)
 	})

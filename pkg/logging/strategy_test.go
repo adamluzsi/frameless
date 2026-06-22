@@ -153,7 +153,7 @@ func makeConcurrentAccesses(tb testing.TB, l *logging.Logger) {
 				if ctx.Err() != nil {
 					break
 				}
-				testcase.Race(blk, blk, more...)
+				testcase.Race(more...)
 			}
 		}()
 	}()
