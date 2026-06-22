@@ -42,7 +42,7 @@ type Step[R any] interface {
 }
 
 // Version of the version identifier of a migration step.
-// UNIX timestamp, or an incrementaly increasing integer values are often used for this purpose.
+// UNIX timestamp, or an incrementally increasing integer values are often used for this purpose.
 // The only constraint for a Version number that it must be sortable by string character comparison.
 type Version string
 

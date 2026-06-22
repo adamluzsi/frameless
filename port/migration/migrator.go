@@ -115,6 +115,63 @@ func (m Migrator[R]) Migrate(ctx context.Context) (rErr error) {
 	return nil
 }
 
+// MigrateDown rolls back applied migration steps until the targetVersion is reached.
+//
+// Every applied step whose version is greater than targetVersion is rolled back,
+// in the reverse order of how they were applied, ensuring that newer changes are
+// undone before the changes they depend on. The targetVersion itself, along with
+// every earlier step, is left applied.
+//
+// When targetVersion is empty, every applied step is rolled back.
+//
+// If a non-empty targetVersion does not match any known migration step,
+// MigrateDown fails early without rolling back anything.
+//
+// Steps that were never applied are skipped, which makes MigrateDown idempotent.
+func (m Migrator[R]) MigrateDown(ctx context.Context, targetVersion Version) (rErr error) {
+	if targetVersion != "" {
+		if _, ok := m.Steps[targetVersion]; !ok {
+			return fmt.Errorf("the target version %q does not exist among the migration steps", targetVersion)
+		}
+	}
+
+	if m.EnsureStateRepository != nil {
+		if err := m.EnsureStateRepository(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := m.validate(ctx); err != nil {
+		return err
+	}
+
+	schemaCTX, err := m.StateRepository.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, m.StateRepository, schemaCTX)
+
+	stepCTX, err := m.Resource.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Resource, stepCTX)
+
+	stages := m.Steps.stages()
+	for i := len(stages) - 1; i >= 0; i-- {
+		stage := stages[i]
+		if stage.Version <= targetVersion {
+			// Reached the target version; keep it and every earlier step applied.
+			break
+		}
+		if err := m.down(schemaCTX, stepCTX, stage.Version, stage.Step); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (m Migrator[R]) up(schemaTx, stepTx context.Context, version Version, step Step[R]) error {
 	stateID := StateID{Namespace: m.Namespace, Version: version}
 	state, ok, err := m.StateRepository.FindByID(schemaTx, stateID)
@@ -131,4 +188,23 @@ func (m Migrator[R]) up(schemaTx, stepTx context.Context, version Version, step 
 		return fmt.Errorf("namespace:%q / version:%q is in a dirty state", stateID.Namespace, stateID.Version)
 	}
 	return nil
+}
+
+func (m Migrator[R]) down(schemaTx, stepTx context.Context, version Version, step Step[R]) error {
+	stateID := StateID{Namespace: m.Namespace, Version: version}
+	state, ok, err := m.StateRepository.FindByID(schemaTx, stateID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		// The migration step was never applied, so there is nothing to roll back.
+		return nil
+	}
+	if state.Dirty {
+		return fmt.Errorf("namespace:%q / version:%q is in a dirty state", stateID.Namespace, stateID.Version)
+	}
+	if err := step.MigrateDown(m.Resource, stepTx); err != nil {
+		return fmt.Errorf("error with MigrateDown %s/%s: %w", m.Namespace, version, err)
+	}
+	return m.StateRepository.DeleteByID(schemaTx, stateID)
 }
