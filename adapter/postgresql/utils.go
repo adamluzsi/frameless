@@ -87,8 +87,8 @@ func DropTableIndexes(ctx context.Context, c Connection, table pgx.Identifier) (
 	// pass SQL NULL (not an empty string) so the query falls back to
 	// current_schema() via COALESCE.
 	var schemaArg sql.NullString
-	if schemaID != nil {
-		schemaArg.String = schemaID.Sanitize()
+	if schemaID != nil && len(schemaID) == 1 {
+		schemaArg.String = schemaID[0]
 		schemaArg.Valid = true
 	}
 

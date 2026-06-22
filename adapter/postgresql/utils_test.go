@@ -324,3 +324,45 @@ SELECT EXISTS (
 	assert.NoError(tb, c.QueryRowContext(ctx, q, name).Scan(&exists))
 	return exists
 }
+
+func TestDropTableIndexes_schemaQualifiedTable(t *testing.T) {
+	c := GetConnection(t)
+	ctx := t.Context()
+
+	// A non-default schema is the whole point of this test.
+	schema := randomName(t, "test_schema")
+	createSchema(t, c, schema) // CASCADE-drops the table + indexes on cleanup
+
+	table := randomName(t, "test_disable_idx_schema")
+	tableID := pgx.Identifier{schema, table}
+
+	mustExec(t, c, fmt.Sprintf(`CREATE TABLE %s (id int PRIMARY KEY, val text)`,
+		tableID.Sanitize()))
+
+	// CREATE INDEX cannot schema-qualify the index name; the index lands in the
+	// table's schema. Keep the schema-qualified identifier for the existence check.
+	valIdxName := table + "_val_idx"
+	mustExec(t, c, fmt.Sprintf(`CREATE INDEX %s ON %s (val)`,
+		pgx.Identifier{valIdxName}.Sanitize(), tableID.Sanitize()))
+
+	valIdx := pgx.Identifier{schema, valIdxName}
+	pkIdx := pgx.Identifier{schema, table + "_pkey"}
+
+	// sanity: the secondary index and the primary key both exist.
+	assert.True(t, indexExists(t, c, valIdx))
+	assert.True(t, indexExists(t, c, pkIdx))
+
+	recreate, err := postgresql.DropTableIndexes(ctx, c, tableID)
+	assert.NoError(t, err)
+	assert.NotNil(t, recreate)
+
+	// BUG: with schemaID.Sanitize() this assertion fails — the index is still here.
+	assert.False(t, indexExists(t, c, valIdx),
+		"the secondary index of a schema-qualified table must be dropped")
+	assert.True(t, indexExists(t, c, pkIdx))
+
+	// and it round-trips back on recreate.
+	assert.NoError(t, recreate())
+	assert.True(t, indexExists(t, c, valIdx))
+	assert.True(t, indexExists(t, c, pkIdx))
+}

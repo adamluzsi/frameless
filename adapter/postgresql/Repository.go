@@ -559,7 +559,7 @@ func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
 	}
 
 	var start = clock.Now()
-	logger.Debug(ctx, "CopyFrom", logging.Field("target", tableName), logging.Field("status", "finished"))
+	logger.Debug(ctx, "CopyFrom", logging.Field("target", tableName), logging.Field("status", "started"))
 	defer logger.Debug(ctx, "CopyFrom", logging.Field("target", tableName), logging.Field("status", "finished"),
 		logging.LazyDetail(func() logging.Detail {
 			var fields = logging.Fields{}
