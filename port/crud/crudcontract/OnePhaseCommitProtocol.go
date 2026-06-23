@@ -15,7 +15,6 @@ import (
 
 	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/frameless/port/crud/crudtest"
 
 	"go.llib.dev/testcase"
 )
@@ -240,7 +239,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 			`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 		)
 
-		t.Defer(crudtest.DeleteAll[ENT, ID], t, subject, c.MakeContext(t))
+		t.Cleanup(func() { spechelper.TryCleanup(t, c.MakeContext(t), subject) })
 
 		var globalContext = c.MakeContext(t)
 
@@ -314,6 +313,8 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure emulate multi level transaction`, func(t *testcase.T) {
+			t.Cleanup(func() { spechelper.TryCleanup(t, c.MakeContext(t), subject) })
+
 			t.Log(
 				`Even if the current driver or resource don't support multi level transactions`,
 				`It should still accept multiple transaction begin for a given Context`,
@@ -324,8 +325,6 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				`behavior of the rainy path with rollbacks is not part of the base specification`,
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
-
-			t.Defer(crudtest.DeleteAll[ENT, ID], t, subject, c.MakeContext(t))
 
 			var globalContext = c.MakeContext(t)
 
