@@ -16,6 +16,14 @@ import (
 	"go.llib.dev/frameless/port/ds"
 )
 
+type TryLocker interface {
+	TryLock() bool
+	Unlock()
+}
+
+var _ TryLocker = (*sync.Mutex)(nil)
+var _ TryLocker = (*sync.RWMutex)(nil)
+
 type Waiter interface{ Wait() }
 
 type RWLocker interface {
@@ -869,3 +877,182 @@ func IsDone(done <-chan struct{}) bool {
 		return false
 	}
 }
+
+// Limiter is a concurrency limiter: a sync.Locker that lets up to a fixed
+// number of goroutines hold the lock at the same time.
+//
+// Unlike sync.RWMutex, which allows any amount of read holder,
+// a Limiter allows up to Ceiling.Limit() concurrent holders.
+// It is handy to cap how much work runs in parallel.
+// for example to avoid overwhelming a downstream dependency.
+//
+// The limit is expressed through the C type parameter, keeping the
+// configuration part of the type itself,
+// which allows it to be part of a struct zero initialization.
+//
+//	// type level configuration, to limit at most runtime.NumCPU() goroutines at once
+//	var limiter synckit.Limiter[synckit.LimitByNumCPU]
+//
+//	// runtime configuration
+//	limiter := synckit.Limiter[synckit.LimitAtRuntime]{Ceiling: 10}
+//
+// Like sync.Mutex, a Limiter must not be copied after first use.
+//
+// Limiter by default has no limit.
+type Limiter struct {
+	o sync.Once
+	m sync.RWMutex
+	c *sync.Cond
+
+	limit int
+	held  int
+}
+
+func (l *Limiter) init() {
+	l.o.Do(func() {
+		l.c = sync.NewCond(&l.m)
+	})
+}
+
+var _ sync.Locker = (*Limiter)(nil)
+
+func (l *Limiter) Lock() {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	for !l.hasRoom() { // re-checked after every wake
+		l.c.Wait()
+	}
+	l.held++
+}
+
+func (l *Limiter) Unlock() {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	if l.held == 0 {
+		panic("synckit.Limiter: Unlock without Lock")
+	}
+	l.held--
+	l.c.Signal()
+}
+
+var _ TryLocker = (*Limiter)(nil)
+
+func (l *Limiter) TryLock() (ok bool) {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	ok = l.hasRoom()
+	if ok {
+		l.held++
+	}
+	return
+}
+
+func (l *Limiter) Limit() int {
+	l.m.RLock()
+	defer l.m.RUnlock()
+	return l.limit
+}
+
+// SetLimit changes the cap at runtime.
+// Increasing wakes blocked goroutines.
+// Decreasing never preempts current holders.
+//
+// If n == 0, then we make Limiter unlimited.
+// Ideal default behaviour to have components have a Limiter in them,
+// but allow something to manage their Limit externally when needed.
+//
+// If n < 0, then we make Limiter disabled,
+// to block all locking attempts until new Limit is given.
+// Useful when you want to use a dynamic scaling,
+// and first you want to start up all worker goroutines,
+// and then dynamically periodically set the limit
+// to something that can
+func (l *Limiter) SetLimit(n int) {
+	l.init()
+	if l.Limit() == n { // fast check
+		return
+	}
+	l.m.Lock()
+	defer l.m.Unlock()
+	if l.limit == n {
+		// no change detected
+		// someone already updated the limit size
+		// (concurrently)
+		return
+	}
+	l.limit = n
+	if l.hasRoom() {
+		l.c.Broadcast() // let waiters re-check; the surplus re-parks
+	}
+}
+
+func (l *Limiter) hasRoom() bool {
+	if l.limit < 0 { // disabled
+		return false
+	}
+	if l.limit == 0 { // unlimited
+		return true
+	}
+	return l.held < l.limit
+}
+
+// limiterLimit reports the maximum number of concurrent holders a Limiter
+// allows. LimitByNumCPU and LimitAtRuntime are provided out of the box, but any
+// type with a Limit() int method can be used as a Limiter ceiling.
+type LimitCeiling interface {
+	// Limit reports the maximum number of concurrent holders.
+	// It must return a value greater than zero,
+	// and is consulted once, on the Limiter's first use.
+	Limit() int
+}
+
+type limitCeilingNOOP struct{}
+
+var _ LimitCeiling = limitCeilingNOOP{}
+
+func (limitCeilingNOOP) Limit() int { panic("not-implemented") }
+
+// LimiterWithCeiling is a Limiter that self-initialize with the zero value of LimitCeiling.
+// It is handful if you need to have a zero value based initialization for your Limiter.
+//
+// For example, when your Limiter is controlled by an environment variable,
+// or by the available number of the CPU.
+type LimiterWithCeiling[Ceiling LimitCeiling] struct {
+	l Limiter
+	c Ceiling
+}
+
+var _ TryLocker = (*LimiterWithCeiling[limitCeilingNOOP])(nil)
+
+func (l *LimiterWithCeiling[Ceiling]) TryLock() (ok bool) {
+	l.l.SetLimit(l.c.Limit())
+	return l.l.TryLock()
+}
+
+var _ sync.Locker = (*LimiterWithCeiling[limitCeilingNOOP])(nil)
+
+func (l *LimiterWithCeiling[Ceiling]) Lock() {
+	l.l.SetLimit(l.c.Limit())
+	l.l.Lock()
+}
+
+func (l *LimiterWithCeiling[Ceiling]) Unlock() {
+	l.l.Unlock()
+}
+
+func (l *LimiterWithCeiling[Ceiling]) Limit() int {
+	return l.l.Limit()
+}
+
+// LimitToNumCPU is a Limiter ceiling that caps concurrency at runtime.NumCPU().
+//
+// Its zero value is ready to use, so a Limiter[LimitToNumCPU] needs no further
+// configuration.
+type LimitToNumCPU struct{}
+
+var _ LimitCeiling = LimitToNumCPU{}
+
+func (LimitToNumCPU) Limit() int { return runtime.NumCPU() }

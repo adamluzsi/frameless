@@ -15,7 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/ds"
-	datastructcontract "go.llib.dev/frameless/port/ds/dscontract"
+	"go.llib.dev/frameless/port/ds/dscontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -35,7 +35,7 @@ func TestRWLockerFactory(t *testing.T) {
 		return subject.Get(t).RWLocker(key)
 	}
 
-	rlockerFor := func(t *testcase.T, key string) sync.Locker {
+	rLockerFor := func(t *testcase.T, key string) sync.Locker {
 		return subject.Get(t).RWLocker(key).RLocker()
 	}
 
@@ -68,7 +68,7 @@ func TestRWLockerFactory(t *testing.T) {
 	})
 
 	s.Then("read locking and unlocking works as expected", func(t *testcase.T) {
-		l := rlockerFor(t, t.Random.String())
+		l := rLockerFor(t, t.Random.String())
 
 		assert.Within(t, timeout, func(ctx context.Context) {
 			l.Lock()
@@ -84,7 +84,7 @@ func TestRWLockerFactory(t *testing.T) {
 	})
 
 	s.Then("calling read unlock first will cause panic", func(t *testcase.T) {
-		l := rlockerFor(t, t.Random.String())
+		l := rLockerFor(t, t.Random.String())
 
 		assert.Panic(t, l.Unlock)
 	})
@@ -111,7 +111,7 @@ func TestRWLockerFactory(t *testing.T) {
 		})
 
 		s.Then("read lockers for the same key will hang when they try to acquire the lock", func(t *testcase.T) {
-			l := rlockerFor(t, key.Get(t))
+			l := rLockerFor(t, key.Get(t))
 
 			assert.NotWithin(t, timeout, func(ctx context.Context) {
 				l.Lock()
@@ -132,7 +132,7 @@ func TestRWLockerFactory(t *testing.T) {
 			}, testcase.Flaky(3))
 
 			s.Then("read lockers for a different key will able to lock", func(t *testcase.T) {
-				l := rlockerFor(t, othKey.Get(t))
+				l := rLockerFor(t, othKey.Get(t))
 
 				assert.Within(t, timeout, func(ctx context.Context) {
 					l.Lock()
@@ -146,7 +146,7 @@ func TestRWLockerFactory(t *testing.T) {
 		key := let.String(s)
 
 		s.Before(func(t *testcase.T) {
-			l := rlockerFor(t, key.Get(t))
+			l := rLockerFor(t, key.Get(t))
 
 			assert.Within(t, timeout, func(ctx context.Context) {
 				l.Lock()
@@ -164,7 +164,7 @@ func TestRWLockerFactory(t *testing.T) {
 		})
 
 		s.Then("read lockers for the same key will work", func(t *testcase.T) {
-			l := rlockerFor(t, key.Get(t))
+			l := rLockerFor(t, key.Get(t))
 
 			assert.Within(t, timeout, func(ctx context.Context) {
 				l.Lock()
@@ -202,7 +202,7 @@ func TestRWLockerFactory(t *testing.T) {
 			})
 
 			s.Then("read lockers for a different key will able to lock", func(t *testcase.T) {
-				l := rlockerFor(t, othKey.Get(t))
+				l := rLockerFor(t, othKey.Get(t))
 
 				assert.Within(t, timeout, func(ctx context.Context) {
 					l.Lock()
@@ -477,7 +477,7 @@ func TestMap(t *testing.T) {
 		s.When("Do func is nil", func(s *testcase.Spec) {
 			fn.LetValue(s, nil)
 
-			s.Then("no error raied", func(t *testcase.T) {
+			s.Then("no error raised", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 			})
 		})
@@ -1612,7 +1612,7 @@ func TestMap(t *testing.T) {
 		})
 	})
 
-	s.Context("implements Key-Value-Store", datastructcontract.Map[string, int](func(tb testing.TB) ds.Map[string, int] {
+	s.Context("implements Key-Value-Store", dscontract.Map[string, int](func(tb testing.TB) ds.Map[string, int] {
 		return &synckit.Map[string, int]{}
 	}).Spec)
 }
@@ -1682,15 +1682,15 @@ func TestSlice(t *testing.T) {
 		})
 	})
 
-	s.Context("implements List", datastructcontract.List(func(tb testing.TB) ds.List[string] {
+	s.Context("implements List", dscontract.List(func(tb testing.TB) ds.List[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
-	s.Context("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) ds.List[string] {
+	s.Context("implements ordered List", dscontract.OrderedList(func(tb testing.TB) ds.List[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
-	s.Context("implements sequence", datastructcontract.Sequence(func(tb testing.TB) ds.Sequence[string] {
+	s.Context("implements sequence", dscontract.Sequence(func(tb testing.TB) ds.Sequence[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
@@ -3293,5 +3293,396 @@ func wait() {
 	for range 128 {
 		runtime.Gosched()
 		time.Sleep(time.Nanosecond)
+	}
+}
+
+type MyTypeLimiterExample struct {
+	// allow at most runtime.NumCPU() goroutines to hold the limiter at once
+	limiter synckit.Limiter
+}
+
+func (i *MyTypeLimiterExample) Do() {
+	i.limiter.SetLimit(4)
+	i.limiter.Lock()
+	defer i.limiter.Unlock()
+
+}
+
+func ExampleLimiter_byNumCPU() {
+	var (
+		ctx = context.Background()
+		v   MyTypeLimiterExample
+		g   synckit.Group
+	)
+	for range 1024 {
+		g.Go(ctx, func(ctx context.Context) error {
+			v.Do() // works only if within the ceiling limit
+			return nil
+		})
+	}
+	g.Wait()
+}
+
+func ExampleLimiter_changingLimitDynamically() {
+	var (
+		ctx = context.Background()
+		v   synckit.Limiter
+		g   synckit.Group
+	)
+
+	v.SetLimit(-1) // set to reject all
+
+	// fan out
+	for range 1024 {
+		g.Go(ctx, func(ctx context.Context) error {
+			v.Lock() // acquired only if within the ceiling limit
+			defer v.Unlock()
+			return nil
+		})
+	}
+	g.Wait()
+}
+
+func ExampleLimiter() {
+	var l synckit.Limiter
+	l.SetLimit(42)
+
+	for range 100 {
+		l.Lock()
+		go func() {
+			defer l.Unlock()
+
+			// do action, max concurrency limited to Limiter#Limit()
+		}()
+	}
+}
+
+func ExampleLimiterWithCeiling() {
+	var l synckit.LimiterWithCeiling[synckit.LimitToNumCPU]
+
+	for range 1000 {
+		l.Lock()
+		go func() {
+			defer l.Unlock()
+
+			// do action max concurrency limited to number of available CPU
+		}()
+	}
+}
+
+func TestLimiter(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	limit := testcase.Let(s, func(t *testcase.T) int {
+		return t.Random.IntBetween(2, 5)
+	})
+	limiter := testcase.Let(s, func(t *testcase.T) *synckit.Limiter {
+		var l synckit.Limiter
+		l.SetLimit(limit.Get(t))
+		return &l
+	})
+
+	s.Test("it implements sync.Locker", func(t *testcase.T) {
+		var _ sync.Locker = limiter.Get(t)
+	})
+
+	s.Test("it implements synckit.TryLocker", func(t *testcase.T) {
+		var _ synckit.TryLocker = limiter.Get(t)
+	})
+
+	s.Test("up to the limit goroutines may acquire it without blocking", func(t *testcase.T) {
+		l := limiter.Get(t)
+		assert.Within(t, timeout, func(ctx context.Context) {
+			for range limit.Get(t) {
+				l.Lock()
+			}
+		})
+	})
+
+	s.Test("it allows exactly the configured number of concurrent holders", func(t *testcase.T) {
+		assertLimiterAllowsExactly(t, limiter.Get(t), limit.Get(t))
+	})
+
+	s.Test("acquiring beyond the limit blocks until a slot is released", func(t *testcase.T) {
+		l := limiter.Get(t)
+
+		for range limit.Get(t) { // saturate every slot
+			l.Lock()
+		}
+
+		var acquired int32
+		go func() {
+			l.Lock()
+			atomic.AddInt32(&acquired, 1)
+		}()
+
+		for range t.Random.IntBetween(64, 128) {
+			runtime.Gosched()
+			assert.Equal(t, int32(0), atomic.LoadInt32(&acquired),
+				"it should keep blocking while the limiter is saturated")
+		}
+
+		l.Unlock() // free a single slot
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(1), atomic.LoadInt32(&acquired))
+		})
+	})
+
+	s.Test("a slot becomes reusable after Unlock", func(t *testcase.T) {
+		l := limiter.Get(t)
+		assert.Within(t, timeout, func(ctx context.Context) {
+			t.Random.Repeat(3, 7, func() {
+				l.Lock()
+				l.Unlock()
+			})
+		})
+	})
+
+	s.Test("Do runs the function while holding a slot", func(t *testcase.T) {
+		l := limiter.Get(t)
+		var ran bool
+		assert.Within(t, timeout, func(ctx context.Context) {
+			l.Lock()
+			defer l.Unlock()
+			ran = true
+		})
+		assert.True(t, ran)
+	})
+
+	s.Test("Do releases the slot even when the function panics", func(t *testcase.T) {
+		l := limiter.Get(t)
+
+		expectedPanic := t.Random.Error()
+		got := assert.Panic(t, func() {
+			l.Lock()
+			defer l.Unlock()
+			panic(expectedPanic)
+		})
+		assert.Equal[any](t, expectedPanic, got)
+
+		// the slot must have been released, so the limiter is fully usable again
+		assert.Within(t, timeout, func(ctx context.Context) {
+			for range limit.Get(t) {
+				l.Lock()
+			}
+		})
+	})
+
+	s.Test("Unlock without a held slot panics", func(t *testcase.T) {
+		l := limiter.Get(t)
+		assert.Panic(t, func() {
+			l.Unlock()
+		})
+	})
+
+	s.Test("unlocking more than was locked panics", func(t *testcase.T) {
+		l := limiter.Get(t)
+		l.Lock()
+		l.Unlock()
+		assert.Panic(t, func() {
+			l.Unlock()
+		})
+	})
+
+	s.Test("limiter is set to reject everything with Limit -1", func(t *testcase.T) {
+		l := limiter.Get(t)
+		l.SetLimit(-1)
+
+		w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			l.Lock()
+			l.Unlock()
+		})
+
+		l.SetLimit(0) // unlimited
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			w.Wait()
+		})
+	})
+
+	s.Test("it is safe for concurrent use", func(t *testcase.T) {
+		l := limiter.Get(t)
+		testcase.Race(func() {
+			l.Lock()
+			l.Unlock()
+		}, func() {
+			l.Lock()
+			l.Unlock()
+		})
+	})
+}
+
+func TestLimiterWithDefault_LimitByNumCPU(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	limiter := testcase.Let(s, func(t *testcase.T) *synckit.LimiterWithCeiling[synckit.LimitToNumCPU] {
+		var l synckit.LimiterWithCeiling[synckit.LimitToNumCPU]
+		return &l
+	})
+
+	s.Test("its zero value is ready to use", func(t *testcase.T) {
+		assert.Within(t, timeout, func(ctx context.Context) {
+			l := limiter.Get(t)
+			l.Lock()
+			l.Unlock()
+		})
+	})
+
+	s.Test("the ceiling reports runtime.NumCPU()", func(t *testcase.T) {
+		var n int
+		for {
+			if !limiter.Get(t).TryLock() {
+				break
+			}
+			n++
+		}
+
+		assert.Equal(t, runtime.NumCPU(), n)
+
+		for range n {
+			limiter.Get(t).Unlock()
+		}
+	})
+
+	s.Test("it caps concurrency at runtime.NumCPU()", func(t *testcase.T) {
+		assertLimiterAllowsExactly(t, limiter.Get(t), runtime.NumCPU())
+	})
+
+	s.Test("it is safe for concurrent use", func(t *testcase.T) {
+		l := limiter.Get(t)
+		testcase.Race(func() {
+			l.Lock()
+			defer l.Unlock()
+		}, func() {
+			l.Lock()
+			defer l.Unlock()
+		}, func() {
+			l.Lock()
+			defer l.Unlock()
+		})
+	})
+}
+
+func TestLimiter_limitAtRuntime(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("the limit can be computed at runtime", func(t *testcase.T) {
+		n := t.Random.IntBetween(2, 6)
+		l := &synckit.Limiter{}
+		l.SetLimit(n)
+		assert.Equal(t, n, l.Limit())
+	})
+
+	s.Test("the configured number is the concurrency limit", func(t *testcase.T) {
+		n := t.Random.IntBetween(2, 6)
+		l := &synckit.Limiter{}
+		l.SetLimit(n)
+		assertLimiterAllowsExactly(t, l, n)
+	})
+
+	s.Test("a limit of one provides mutual exclusion, like a mutex", func(t *testcase.T) {
+		l := &synckit.Limiter{}
+		l.SetLimit(1)
+
+		var (
+			current     int32
+			maxObserved int32
+			wg          sync.WaitGroup
+		)
+		t.Random.Repeat(5, 12, func() {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				l.Lock()
+				defer l.Unlock()
+				cur := atomic.AddInt32(&current, 1)
+				for {
+					was := atomic.LoadInt32(&maxObserved)
+					if cur <= was || atomic.CompareAndSwapInt32(&maxObserved, was, cur) {
+						break
+					}
+				}
+				runtime.Gosched()
+				atomic.AddInt32(&current, -1)
+			}()
+		})
+		wg.Wait()
+
+		assert.Equal(t, int32(1), atomic.LoadInt32(&maxObserved),
+			"with a limit of one, at most one goroutine may run at a time")
+	})
+
+	s.Test("a zero limit will set the limiter to unlimited", func(t *testcase.T) {
+		l := &synckit.Limiter{}
+		if t.Random.Bool() {
+			l.SetLimit(0)
+		}
+		m := t.Random.Repeat(1, 100, func() {
+			assert.True(t, l.TryLock())
+		})
+		for range m {
+			l.Unlock()
+		}
+	})
+
+	s.Test("a negative limit will set the limiter to be always blocked until next limit set", func(t *testcase.T) {
+		l := &synckit.Limiter{}
+		l.SetLimit(-1)
+
+		t.Random.Repeat(1, 100, func() {
+			assert.False(t, l.TryLock())
+		})
+
+		w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			l.Lock()
+			l.Unlock()
+		})
+
+		l.SetLimit(1)
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			w.Wait()
+		})
+	})
+}
+
+// assertLimiterAllowsExactly verifies that locker behaves as a concurrency
+// limiter with the given limit: exactly limit goroutines can hold it at the
+// same time, and one extra acquirer stays blocked while it is saturated.
+func assertLimiterAllowsExactly(t *testcase.T, locker sync.Locker, limit int) {
+	var holding int32
+	release := make(chan struct{})
+	defer close(release)
+
+	// Saturate every slot. Each holder keeps its slot until release is closed.
+	for range limit {
+		go func() {
+			locker.Lock()
+			defer locker.Unlock()
+			atomic.AddInt32(&holding, 1)
+			<-release
+		}()
+	}
+
+	// Eventually every slot is taken.
+	t.Eventually(func(t *testcase.T) {
+		assert.Equal(t, int32(limit), atomic.LoadInt32(&holding))
+	})
+
+	// While saturated, one extra acquirer must not be able to get in.
+	var extra int32
+	go func() {
+		locker.Lock()
+		defer locker.Unlock()
+		atomic.AddInt32(&extra, 1)
+		<-release
+	}()
+	for range t.Random.IntBetween(64, 128) {
+		runtime.Gosched()
+		assert.Equal(t, int32(0), atomic.LoadInt32(&extra),
+			"no goroutine beyond the limit should be able to hold the limiter")
+		assert.Equal(t, int32(limit), atomic.LoadInt32(&holding),
+			"all holders should still be inside their critical section")
 	}
 }
