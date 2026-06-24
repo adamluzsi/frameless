@@ -74,9 +74,22 @@ type Interval interface {
 	UntilNext(since time.Time) time.Duration
 }
 
+// DayTime is a time of day, like "09:30", without any calendar date attached.
+//
+// Use it when you care about the clock time but not which day it falls on,
+// for example an alarm or a daily scheduled task.
+// When no offset is given, the local time is assumed.
+//
+// It can be marshaled into a text representation such as "HH:mm" format (e.g. "09:30").
+// In case Location is not nil, it is also represented in the text format as ISO 8601 offset,
+// such as "09:30Z" (UTC) or "09:30+02:00".
 type DayTime struct {
-	Hour     int `range:"0..24"`
-	Minute   int `range:"0..60"`
+	// Hour is the hour of the day, from 0 to 23.
+	Hour int `range:"0..24"`
+	// Minute is the minute of the hour, from 0 to 59.
+	Minute int `range:"0..60"`
+	// Location is the timezone this time belongs to.
+	// A nil Location means the local time (time.Local).
 	Location *time.Location
 }
 
@@ -136,27 +149,30 @@ func (dt DayTime) UntilNext(since time.Time) time.Duration {
 var _ encoding.TextUnmarshaler = (*DayTime)(nil)
 
 func (dt *DayTime) UnmarshalText(text []byte) error {
-	var (
-		raw = string(text)
-		t   time.Time
-		err error
-		loc *time.Location
-	)
-	if strings.ContainsAny(raw, "+Z") {
-		const layoutWTZ = "15:04Z07:00"
-		t, err = time.Parse(layoutWTZ, string(text))
-		loc = t.Location()
-	} else {
-		const layout = "15:04"
-		t, err = time.Parse(layout, string(text))
-		loc = time.Local
+	raw := strings.TrimSpace(string(text))
+
+	if strings.ContainsAny(raw, "Z+-") {
+		for _, layout := range []string{
+			"15:04Z07:00", // HH:mm+02:00 / HH:mmZ
+			"15:04Z0700",  // HH:mm+0200  / HH:mmZ
+			"15:04Z07",    // HH:mm+02    / HH:mmZ
+		} {
+			if t, err := time.Parse(layout, raw); err == nil {
+				dt.Hour = t.Hour()
+				dt.Minute = t.Minute()
+				dt.Location = t.Location()
+				return nil
+			}
+		}
 	}
+
+	t, err := time.Parse("15:04", raw)
 	if err != nil {
 		return err
 	}
 	dt.Hour = t.Hour()
 	dt.Minute = t.Minute()
-	dt.Location = loc
+	dt.Location = nil
 	return nil
 }
 

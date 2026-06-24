@@ -1628,20 +1628,46 @@ func Test_rfc5424(t *testing.T) {
 
 }
 
-func TestDaytime(t *testing.T) {
+func TestDayTime(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	var dayTime = let.Var(s, func(t *testcase.T) *timekit.DayTime {
-		return &timekit.DayTime{
-			Hour:     t.Random.IntBetween(0, 23),
-			Minute:   t.Random.IntBetween(0, 59),
-			Location: random.Pick(t.Random, time.Local, time.UTC),
-		}
+	location := let.Var(s, func(t *testcase.T) *time.Location {
+		lz := random.Pick(t.Random, time.Local, time.UTC)
+		t.Log("location", lz.String())
+		return lz
 	})
+
+	var dayTime = let.Var(s, func(t *testcase.T) *timekit.DayTime {
+		dt := &timekit.DayTime{
+			Hour:   t.Random.IntBetween(0, 23),
+			Minute: t.Random.IntBetween(0, 59),
+		}
+		if t.Random.IntN(3) != 0 {
+			t.OnFail(func() {
+				t.Log("DayTime is constructed with Location", location.Get(t).String())
+			})
+			dt.Location = location.Get(t)
+		}
+		t.OnFail(func() {
+			t.Logf("dayTime: %#v", dt)
+		})
+		return dt
+	})
+
+	// offsetOf renders a location's UTC offset the same way MarshalText/UnmarshalText
+	// encode it ("Z" for UTC, "+hh:mm" / "-hh:mm" otherwise), so two locations that
+	// represent the same offset compare equal regardless of *time.Location identity.
+	var offsetOf = func(loc *time.Location) string {
+		return time.Date(2000, time.January, 1, 0, 0, 0, 0, loc).Format("Z07:00")
+	}
 
 	s.Describe("#MarshalText", func(s *testcase.Spec) {
 		act := let.Act2(func(t *testcase.T) ([]byte, error) {
-			return dayTime.Get(t).MarshalText()
+			data, err := dayTime.Get(t).MarshalText()
+			if err == nil {
+				t.Log(string(data))
+			}
+			return data, err
 		})
 
 		s.Then("text format is returned", func(t *testcase.T) {
@@ -1671,7 +1697,7 @@ func TestDaytime(t *testing.T) {
 		s.When("location is provided", func(s *testcase.Spec) {
 			dayTime.Let(s, func(t *testcase.T) *timekit.DayTime {
 				d := dayTime.Super(t)
-				d.Location = random.Pick(t.Random, time.Local, time.UTC)
+				d.Location = location.Get(t)
 				return d
 			})
 
@@ -1687,6 +1713,11 @@ func TestDaytime(t *testing.T) {
 	})
 
 	s.Describe("#UnmarshalText", func(s *testcase.Spec) {
+
+		dayTime.Let(s, func(t *testcase.T) *timekit.DayTime {
+			return &timekit.DayTime{}
+		})
+
 		var text = let.Var[[]byte](s, nil)
 		act := let.Act(func(t *testcase.T) error {
 			return dayTime.Get(t).UnmarshalText(text.Get(t))
@@ -1697,7 +1728,7 @@ func TestDaytime(t *testing.T) {
 			minute = let.IntB(s, 0, 59)
 		)
 
-		s.When("HH:mm format is provided", func(s *testcase.Spec) {
+		s.When("HH:mm format is provided (no timezone)", func(s *testcase.Spec) {
 			text.Let(s, func(t *testcase.T) []byte {
 				return []byte(fmt.Sprintf("%02d:%02d", hour.Get(t), minute.Get(t)))
 			})
@@ -1705,24 +1736,157 @@ func TestDaytime(t *testing.T) {
 			s.Then("hour is parsed", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
-				assert.Equal(t, dayTime.Get(t).Hour, hour.Get(t))
+				assert.Equal(t, hour.Get(t), dayTime.Get(t).Hour)
 			})
 
 			s.Then("minute is parsed", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
-				assert.Equal(t, dayTime.Get(t).Minute, minute.Get(t))
+				assert.Equal(t, minute.Get(t), dayTime.Get(t).Minute)
 			})
 
-			s.Then("location set to Local", func(t *testcase.T) {
+			s.Then("location is left unspecified (nil), which DayTime treats as local time", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
-				assert.Equal(t, dayTime.Get(t).Location, time.Local)
+				assert.Nil(t, dayTime.Get(t).Location)
+			})
+		})
+
+		s.When("HH:mmZ format is provided (UTC)", func(s *testcase.Spec) {
+			text.Let(s, func(t *testcase.T) []byte {
+				return []byte(fmt.Sprintf("%02d:%02dZ", hour.Get(t), minute.Get(t)))
+			})
+
+			s.Then("hour is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, hour.Get(t), dayTime.Get(t).Hour)
+			})
+
+			s.Then("minute is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, minute.Get(t), dayTime.Get(t).Minute)
+			})
+
+			s.Then("location is set to UTC", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, time.UTC, dayTime.Get(t).Location)
+			})
+		})
+
+		s.When("HH:mm±hh:mm format is provided (fixed offset)", func(s *testcase.Spec) {
+			// pick a non-zero offset so the zone is encoded as +hh:mm / -hh:mm rather than Z
+			offset := let.Var(s, func(t *testcase.T) *time.Location {
+				mins := t.Random.IntBetween(1, 14*60)
+				if t.Random.Bool() {
+					mins = -mins
+				}
+				return time.FixedZone("", mins*60)
+			})
+
+			text.Let(s, func(t *testcase.T) []byte {
+				zone := offsetOf(offset.Get(t))
+				data := fmt.Sprintf("%02d:%02d%s", hour.Get(t), minute.Get(t), zone)
+				t.OnFail(func() { t.Log("text:", data) })
+				return []byte(data)
+			})
+
+			s.Then("hour is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, hour.Get(t), dayTime.Get(t).Hour)
+			})
+
+			s.Then("minute is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, minute.Get(t), dayTime.Get(t).Minute)
+			})
+
+			s.Then("location preserves the provided offset", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.NotNil(t, dayTime.Get(t).Location)
+				assert.Equal(t, offsetOf(offset.Get(t)), offsetOf(dayTime.Get(t).Location))
+			})
+		})
+
+		s.When("the timezone uses an abbreviated ISO 8601 offset spelling", func(s *testcase.Spec) {
+			// +02, +0200 and +02:00 all denote the same whole-hour offset.
+			hours := let.Var(s, func(t *testcase.T) int {
+				h := t.Random.IntBetween(1, 14)
+				if t.Random.Bool() {
+					h = -h
+				}
+				return h
+			})
+
+			text.Let(s, func(t *testcase.T) []byte {
+				sign := "+"
+				abs := hours.Get(t)
+				if abs < 0 {
+					sign, abs = "-", -abs
+				}
+				zone := random.Pick(t.Random,
+					fmt.Sprintf("%s%02d", sign, abs),    // +02
+					fmt.Sprintf("%s%02d00", sign, abs),  // +0200
+					fmt.Sprintf("%s%02d:00", sign, abs), // +02:00
+				)
+				data := fmt.Sprintf("%02d:%02d%s", hour.Get(t), minute.Get(t), zone)
+				t.OnFail(func() { t.Log("text:", data) })
+				return []byte(data)
+			})
+
+			s.Then("hour is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, hour.Get(t), dayTime.Get(t).Hour)
+			})
+
+			s.Then("minute is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, minute.Get(t), dayTime.Get(t).Minute)
+			})
+
+			s.Then("location preserves the provided offset", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.NotNil(t, dayTime.Get(t).Location)
+				exp := time.FixedZone("", hours.Get(t)*60*60)
+				assert.Equal(t, offsetOf(exp), offsetOf(dayTime.Get(t).Location))
+			})
+		})
+
+		s.When("the input is not a valid day time", func(s *testcase.Spec) {
+			// These also pin down the boundary the zone gate relies on: only "Z",
+			// "+" and "-" introduce a zone. Lowercase "z", named zones and offsets
+			// glued without a sign are unsupported and must error.
+			invalid := let.Var(s, func(t *testcase.T) string {
+				return random.Pick(t.Random,
+					"not-a-day-time",
+					"14:05z",    // lowercase z is not the UTC designator
+					"14:05 MST", // named zones are unsupported
+					"14:05UTC",  // named zones are unsupported
+					"25:00",     // hour out of range
+					"",          // empty
+				)
+			})
+
+			text.Let(s, func(t *testcase.T) []byte {
+				t.OnFail(func() { t.Logf("text: %q", invalid.Get(t)) })
+				return []byte(invalid.Get(t))
+			})
+
+			s.Then("an error is returned", func(t *testcase.T) {
+				assert.Error(t, act(t))
 			})
 		})
 	})
 
-	s.Test("encoding.TextMarshaler", func(t *testcase.T) {
+	s.Test("encoding.TextMarshaler round-trips", func(t *testcase.T) {
 		var exp = timekit.DayTime{
 			Hour:     t.Random.IntBetween(0, 23),
 			Minute:   t.Random.IntBetween(0, 59),
@@ -1735,7 +1899,16 @@ func TestDaytime(t *testing.T) {
 		var got timekit.DayTime
 		assert.NoError(t, got.UnmarshalText(text))
 
-		assert.Equal(t, exp, got)
+		assert.Equal(t, exp.Hour, got.Hour)
+		assert.Equal(t, exp.Minute, got.Minute)
+
+		// time.Local cannot survive a marshal round-trip as a *time.Location: it is
+		// encoded as a numeric UTC offset (or "Z"), which Go decodes back into
+		// time.UTC or an anonymous time.FixedZone. The encoding is still stable,
+		// so re-marshaling the decoded value must reproduce the original text.
+		reText, err := got.MarshalText()
+		assert.NoError(t, err)
+		assert.Equal(t, string(text), string(reText))
 	})
 
 	s.Context("implements tasker.Interval", func(s *testcase.Spec) {
