@@ -50,12 +50,18 @@ func (s Scheduler) WithSchedule(id ScheduleID, interval Interval, job Task) Task
 			return 0, err
 		}
 		if !found {
-			if err := job(ctx); err != nil {
-				return 0, err
-			}
 			state = ScheduleState{
 				ID:        id,
 				Timestamp: clock.Now().UTC(),
+			}
+			// Only run the job right away when the interval opts into an immediate
+			// start. Otherwise we anchor the schedule at the current time and let
+			// the job run when its scheduled occurrence is actually reached.
+			if intervalImmediateStart(interval) {
+				if err := job(ctx); err != nil {
+					return 0, err
+				}
+				state.Timestamp = clock.Now().UTC()
 			}
 			if err := s.States.Create(ctx, &state); err != nil {
 				return 0, err

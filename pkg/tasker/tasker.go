@@ -88,10 +88,12 @@ func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task 
 // WithRepeat will keep repeating a given Task until shutdown is signaled.
 // It is most suitable for Task(s) meant to be short-lived and executed continuously until the shutdown signal.
 func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
+	var task = ToTask(tfn)
 	return func(ctx context.Context) error {
-		var task = ToTask(tfn)
-		if err := task(ctx); err != nil {
-			return err
+		if intervalImmediateStart(interval) {
+			if err := task(ctx); err != nil {
+				return err
+			}
 		}
 		var at = clock.Now()
 	repeat:

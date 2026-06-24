@@ -12,14 +12,26 @@ type Interval interface {
 	UntilNext(lastRanAt time.Time) time.Duration
 }
 
+type IntervalImmediateStart interface {
+	Interval
+	ImmediateStart() bool
+}
+
+func intervalImmediateStart(interval Interval) bool {
+	v, ok := interval.(IntervalImmediateStart)
+	return ok && v.ImmediateStart()
+}
+
 // Every returns an Interval which scheduling frequency is the received time duration.
-func Every(d time.Duration) Interval { return timeDuration(d) }
+func Every(d time.Duration) IntervalImmediateStart { return timeDuration(d) }
 
 type timeDuration time.Duration
 
 func (i timeDuration) UntilNext(lastRanAt time.Time) time.Duration {
 	return lastRanAt.Add(time.Duration(i)).Sub(clock.Now())
 }
+
+func (i timeDuration) ImmediateStart() bool { return true }
 
 type Monthly struct {
 	Day, Hour, Minute int
@@ -33,18 +45,15 @@ func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
 		lastRanAt = now
 	}
 	lastRanAt = lastRanAt.In(loc)
-
 	if lastRanAt.Year() < now.Year() {
 		return 0
 	}
 	if lastRanAt.Month() < now.Month() {
 		return 0
 	}
-
-	occurrenceAt := time.Date(now.Year(), now.Month(), i.Day,
+	var occurrenceAt = time.Date(now.Year(), now.Month(), i.Day,
 		i.Hour, i.Minute, 0, 0, loc).
 		AddDate(0, 1, 0)
-
 	return occurrenceAt.Sub(lastRanAt)
 }
 

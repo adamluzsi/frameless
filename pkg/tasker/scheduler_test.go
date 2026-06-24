@@ -157,6 +157,64 @@ func TestScheduler(t *testing.T) {
 				})
 			})
 		})
+
+		s.When("the interval supports an immediate start", func(s *testcase.Spec) {
+			// tasker.Every implements IntervalImmediateStart with ImmediateStart() == true.
+			anInterval := testcase.Let(s, func(t *testcase.T) tasker.Interval {
+				return tasker.Every(time.Hour)
+			})
+			act := func(t *testcase.T) tasker.Task {
+				return subject.Get(t).WithSchedule(id.Get(t), anInterval.Get(t), task.Get(t))
+			}
+
+			s.Then("the job runs right away on the first schedule, without waiting for the interval", func(t *testcase.T) {
+				timecop.Travel(t, time.Now().UTC(), timecop.Freeze)
+
+				go act(t)(Context.Get(t))
+
+				t.Eventually(func(it *testcase.T) {
+					assert.Equal(it, 1, ran.Get(t),
+						"the job should run immediately on the first schedule")
+				})
+			})
+		})
+
+		s.When("the interval does not support an immediate start", func(s *testcase.Spec) {
+			base := let.Var(s, func(t *testcase.T) time.Time {
+				// base time is 10:00, two hours before the daily 12:00 schedule.
+				return time.Date(2023, time.January, 1, 10, 0, 0, 0, time.UTC)
+			})
+			daily := let.Var(s, func(t *testcase.T) tasker.Daily {
+				// tasker.Daily (timekit.DayTime) is a plain Interval, it does not opt into an immediate start.
+				return tasker.Daily{Hour: 12, Minute: 0, Location: time.UTC}
+			})
+			act := func(t *testcase.T) tasker.Task {
+				return subject.Get(t).WithSchedule(id.Get(t), daily.Get(t), task.Get(t))
+			}
+
+			s.Then("the job does not run until the scheduled time is reached", func(t *testcase.T) {
+				_, isImmediate := any(daily.Get(t)).(tasker.IntervalImmediateStart)
+				assert.False(t, isImmediate,
+					"tasker.Daily is not expected to support an immediate start")
+
+				timecop.Travel(t, base.Get(t), timecop.Freeze)
+
+				go act(t)(Context.Get(t))
+
+				// the scheduled time has not been reached yet, so the job must not run.
+				time.Sleep(blockCheckWaitTime)
+				assert.Equal(t, 0, ran.Get(t),
+					"the job should not run before the scheduled daily time is reached")
+
+				// travel forward past the next daily occurrence.
+				timecop.Travel(t, daily.Get(t).UntilNext(base.Get(t))+time.Minute, timecop.Freeze)
+
+				t.Eventually(func(it *testcase.T) {
+					assert.Equal(it, 1, ran.Get(t),
+						"the job should run once the scheduled daily time has been reached")
+				})
+			})
+		})
 	})
 }
 

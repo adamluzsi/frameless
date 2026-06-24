@@ -797,6 +797,73 @@ func TestWithRepeat_smoke(t *testing.T) {
 		})
 	})
 
+	s.Test("when the interval supports immediate start, the task runs right away on start", func(t *testcase.T) {
+		// freeze the clock so the interval can never elapse on its own during the check.
+		timecop.Travel(t, time.Now().UTC(), timecop.Freeze)
+
+		// tasker.Every implements IntervalImmediateStart and opts into an immediate first run.
+		interval := tasker.Every(time.Hour)
+		assert.True(t, interval.ImmediateStart(),
+			"tasker.Every is expected to allow an immediate start")
+
+		var count int32
+		var task tasker.Task = func(ctx context.Context) error {
+			atomic.AddInt32(&count, 1)
+			return nil
+		}
+
+		task = tasker.WithRepeat(interval, task)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		assert.Must(t).NotWithin(blockCheckWaitTime, func(context.Context) {
+			assert.Should(t).NoError(task(ctx))
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(1), atomic.LoadInt32(&count),
+				"the task should run immediately on start, without waiting for the first interval")
+		})
+	})
+
+	s.Test("when the interval does not support immediate start, the task waits for the scheduled time", func(t *testcase.T) {
+		// base time is 10:00, two hours before the daily 12:00 schedule.
+		base := time.Date(2023, time.January, 1, 10, 0, 0, 0, time.UTC)
+		timecop.Travel(t, base, timecop.Freeze)
+
+		// tasker.Daily (timekit.DayTime) is a plain Interval, it does not opt into an immediate start.
+		daily := tasker.Daily{Hour: 12, Minute: 0, Location: time.UTC}
+		_, isImmediate := any(daily).(tasker.IntervalImmediateStart)
+		assert.False(t, isImmediate,
+			"tasker.Daily is not expected to support an immediate start")
+
+		var count int32
+		var task tasker.Task = func(ctx context.Context) error {
+			atomic.AddInt32(&count, 1)
+			return nil
+		}
+
+		task = tasker.WithRepeat(daily, task)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		assert.Must(t).NotWithin(blockCheckWaitTime, func(context.Context) {
+			assert.Should(t).NoError(task(ctx))
+		})
+
+		// the scheduled time has not been reached yet, so the task must not have run.
+		assert.Equal(t, int32(0), atomic.LoadInt32(&count),
+			"the task should not run before the scheduled daily time is reached")
+
+		// travel forward past the next daily occurrence.
+		timecop.Travel(t, daily.UntilNext(base)+time.Minute, timecop.Freeze)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(1), atomic.LoadInt32(&count),
+				"the task should run once the scheduled daily time has been reached")
+		})
+	})
+
 	s.Test("cancellation is propagated", func(t *testcase.T) {
 		var task tasker.Task = func(ctx context.Context) error {
 			<-ctx.Done()
