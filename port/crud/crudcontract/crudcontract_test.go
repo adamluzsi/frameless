@@ -288,8 +288,13 @@ func Test_NoSkippedTestBecauseShouldStore(t *testing.T) {
 func Test_noIDRepository(t *testing.T) {
 	repo := NoIDRepo{R: &memory.Repository[testent.Foo, testent.FooID]{}}
 	conf := crudcontract.Config[testent.Foo, testent.FooID]{
-		MakeEntity: func(t testing.TB) testent.Foo {
-			return testent.MakeFoo(t)
+		MakeEntity: func(tb testing.TB) testent.Foo {
+			t := testcase.ToT(&tb)
+			v := testent.MakeFoo(t)
+			if t.Random.Bool() {
+				v.ID = testent.FooID(t.Random.UUID())
+			}
+			return v
 		},
 	}
 	testcase.RunSuite(testcase.NewSpec(t),

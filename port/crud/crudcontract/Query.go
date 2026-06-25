@@ -187,15 +187,15 @@ func QueryMany[ENT, ID any](
 		return slicekit.Map(vs, mapper.Get(t))
 	}
 
-	var MakeIncludedEntity = func(t *testcase.T) ENT {
-		assert.NotNil(t, sub.Get(t).IncludedEntity, "MakeIncludedEntity is mandatory for QueryMany")
+	var mkEnt = func(t *testcase.T, mk func() ENT, Case string) ENT {
+		assert.NotNil(t, mk, assert.MessageF("%s", Case))
 
-		if v, ok := tryCreateEntity(t, c, resource, sub.Get(t).IncludedEntity); ok {
+		if v, ok := tryCreateEntity(t, c, resource, mk); ok {
 			return v
 		}
 
 		if batcher, ok := tryBatcher(c, resource); ok {
-			ent := sub.Get(t).IncludedEntity()
+			ent := mk()
 			b := batcher.Batch(c.MakeContext(t))
 			assert.NoError(t, b.Add(ent))
 			assert.NoError(t, b.Close())
@@ -207,10 +207,14 @@ func QueryMany[ENT, ID any](
 			return ent
 		}
 
-		createEntityFailureMessage(t, resource, methodName+" QueryMany IncludedEntity argument")
+		createEntityFailureMessage(t, resource, methodName+" "+Case+" QueryMany argument")
 		t.FailNow()
 		var zero ENT
 		return zero
+	}
+
+	var MakeIncludedEntity = func(t *testcase.T) ENT {
+		return mkEnt(t, sub.Get(t).IncludedEntity, "MakeIncludedEntity")
 	}
 
 	s.Before(func(t *testcase.T) {
@@ -238,9 +242,9 @@ func QueryMany[ENT, ID any](
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
 			t.Eventually(func(it *testcase.T) {
-				ents, err := iterkit.CollectE(act(it))
+				got, err := iterkit.CollectE(act(it))
 				assert.NoError(t, err)
-				assert.Contains(t, format(t, ents), includedEntity.Get(it))
+				assert.Contains(t, format(t, got), mapper.Get(t)(includedEntity.Get(it)))
 			})
 		})
 
@@ -261,8 +265,8 @@ func QueryMany[ENT, ID any](
 					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					got := format(t, ents)
-					assert.Contains(t, got, includedEntity.Get(t))
-					assert.Contains(t, got, additionalEntities.Get(t))
+					assert.Contains(t, got, mapper.Get(t)(includedEntity.Get(t)))
+					assert.Contains(t, got, format(t, additionalEntities.Get(t)))
 				})
 			})
 
@@ -280,8 +284,8 @@ func QueryMany[ENT, ID any](
 					vs2, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					vs2 = format(t, vs2)
-					assert.Contains(t, vs2, includedEntity.Get(t))
-					assert.Contains(t, vs2, additionalEntities.Get(t))
+					assert.Contains(t, vs2, mapper.Get(t)(includedEntity.Get(t)))
+					assert.Contains(t, vs2, format(t, additionalEntities.Get(t)))
 
 					var vs1 []ENT
 					vs1 = append(vs1, vsv1)
@@ -296,8 +300,8 @@ func QueryMany[ENT, ID any](
 
 					vs1 = append(vs1, vsv1)
 					vs1 = format(t, vs1)
-					assert.Contains(t, vs1, includedEntity.Get(t))
-					assert.Contains(t, vs1, additionalEntities.Get(t))
+					assert.Contains(t, vs1, mapper.Get(t)(includedEntity.Get(t)))
+					assert.Contains(t, vs1, format(t, additionalEntities.Get(t)))
 				})
 			})
 
@@ -334,7 +338,7 @@ func QueryMany[ENT, ID any](
 			})
 
 			othEnt := testcase.Let(s, func(t *testcase.T) ENT {
-				return createEntity[ENT, ID](t, t.FailNow, c, resource, sub.Get(t).ExcludedEntity, "QueryMany ExcludedEntity argument")
+				return mkEnt(t, sub.Get(t).ExcludedEntity, "ExcludedEntity")
 			}).EagerLoading(s)
 
 			s.Then(`only the matching entity is returned`, func(t *testcase.T) {
