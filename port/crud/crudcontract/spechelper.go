@@ -104,7 +104,7 @@ func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], resourc
 	return ent
 }
 
-func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], resource any, mk func() ENT, mkFuncName string) ENT {
+func tryCreateEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, mk func() ENT) (ENT, bool) {
 	tb.Helper()
 	assert.NotNil(tb, mk)
 	ent := mk()
@@ -113,24 +113,78 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 		if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
 			_, found, err := finder.FindByID(c.MakeContext(tb), id)
 			if err == nil && found {
-				return ent
+				return ent, true
 			}
 		}
 	}
 	if creator, ok := resource.(crud.Creator[ENT]); ok {
 		c.Helper().Create(tb, creator, c.MakeContext(tb), &ent)
-		return ent
+		return ent, true
 	}
 	if saver, ok := resource.(crud.Saver[ENT]); ok {
 		c.Helper().Save(tb, saver, c.MakeContext(tb), &ent)
+		return ent, true
+	}
+	var zero ENT
+	return zero, false
+}
+
+func createEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], resource any, mk func() ENT, mkFuncName string) ENT {
+	tb.Helper()
+	ent, ok := tryCreateEntity[ENT, ID](tb, c, resource, mk)
+	if !ok {
+		createEntityFailureMessage(tb, resource, mkFuncName)
+		FailNow()
 		return ent
 	}
+	return ent
+}
+
+func createEntityFailureMessage(tb testing.TB, resource any, mkFuncName string) {
+	tb.Helper()
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
 	tb.Log("either ensure that the entity making function persist the entity in the subject")
 	tb.Logf("or make sure that %T implements crud.Creator", resource)
 	tb.Logf("(%s)", mkFuncName)
-	FailNow()
-	return *new(ENT)
+}
+
+func tryBatcher[ENT, ID any](c Config[ENT, ID], resource any) (crud.Batcher[ENT, crud.Batch[ENT]], bool) {
+	batcher, ok := resource.(crud.Batcher[ENT, crud.Batch[ENT]])
+	if ok {
+		return batcher, ok
+	}
+	rv := reflect.ValueOf(resource)
+	if !rv.IsValid() {
+		return nil, false
+	}
+	method := rv.MethodByName("Batch")
+	if !method.IsValid() {
+		return nil, false
+	}
+	mt := method.Type()
+	// bound method value: the receiver is excluded, so only the ctx argument remains
+	if mt.NumIn() != 1 {
+		return nil, false
+	}
+	if !reflectkit.TypeOf[context.Context]().AssignableTo(mt.In(0)) {
+		return nil, false
+	}
+	if mt.NumOut() != 1 {
+		return nil, false
+	}
+	if !mt.Out(0).Implements(reflectkit.TypeOf[crud.Batch[ENT]]()) {
+		return nil, false
+	}
+	return batcherWrapper[ENT, ID]{method: method}, true
+}
+
+type batcherWrapper[ENT, ID any] struct{ method reflect.Value }
+
+func (b batcherWrapper[ENT, ID]) Batch(ctx context.Context) crud.Batch[ENT] {
+	// use the addressable interface value so a nil ctx still yields a valid reflect.Value
+	ctxV := reflect.ValueOf(&ctx).Elem()
+	out := b.method.Call([]reflect.Value{ctxV})
+	return out[0].Interface().(crud.Batch[ENT])
 }
 
 // lookupNonZeroID looks up the ID and report whether it is zero or not

@@ -33,7 +33,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 		mk := func() ENT {
 			return zerokit.Coalesce(c.ExampleEntity, c.MakeEntity)(t)
 		}
-		return makeEntity(t, t.SkipNow, c, subject, mk, "Config.ExampleEntity / Config.MakeEntity")
+		return createEntity(t, t.SkipNow, c, subject, mk, "Config.ExampleEntity / Config.MakeEntity")
 	}
 
 	s.Describe("FindByID", func(s *testcase.Spec) {
@@ -151,7 +151,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 	}
 
 	var mkEnt = func(t *testcase.T) ENT {
-		return makeEntity[ENT, ID](t, t.SkipNow, c, subject, func() ENT {
+		return createEntity[ENT, ID](t, t.SkipNow, c, subject, func() ENT {
 			return zerokit.Coalesce(c.ExampleEntity, c.MakeEntity)(t)
 		}, "Config.ExampleEntity / Config.MakeEntity")
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/option"
@@ -13,6 +14,7 @@ import (
 	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 	"go.llib.dev/testcase/sandbox"
 )
@@ -66,7 +68,7 @@ func QueryOne[ENT, ID any](
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		ent := testcase.Let(s, func(t *testcase.T) ENT {
-			v := makeEntity(t, t.SkipNow, c, resource, func() ENT {
+			v := createEntity(t, t.SkipNow, c, resource, func() ENT {
 				ent := sub.Get(t).ExpectedEntity
 				assert.NotEmpty(t, ent)
 				return ent
@@ -177,9 +179,38 @@ func QueryMany[ENT, ID any](
 		return subject(t)
 	})
 
+	var mapper = let.Var(s, func(t *testcase.T) func(e ENT) ENT {
+		return func(e ENT) ENT { return e }
+	})
+
+	var format = func(t *testcase.T, vs []ENT) []ENT {
+		return slicekit.Map(vs, mapper.Get(t))
+	}
+
 	var MakeIncludedEntity = func(t *testcase.T) ENT {
 		assert.NotNil(t, sub.Get(t).IncludedEntity, "MakeIncludedEntity is mandatory for QueryMany")
-		return makeEntity[ENT, ID](t, t.FailNow, c, resource, sub.Get(t).IncludedEntity, "QueryMany IncludedEntity argument")
+
+		if v, ok := tryCreateEntity(t, c, resource, sub.Get(t).IncludedEntity); ok {
+			return v
+		}
+
+		if batcher, ok := tryBatcher(c, resource); ok {
+			ent := sub.Get(t).IncludedEntity()
+			b := batcher.Batch(c.MakeContext(t))
+			assert.NoError(t, b.Add(ent))
+			assert.NoError(t, b.Close())
+			mapper.Set(t, func(e ENT) ENT {
+				var zero ID
+				assert.NoError(t, c.IDA.Set(&e, zero))
+				return e
+			})
+			return ent
+		}
+
+		createEntityFailureMessage(t, resource, methodName+" QueryMany IncludedEntity argument")
+		t.FailNow()
+		var zero ENT
+		return zero
 	}
 
 	s.Before(func(t *testcase.T) {
@@ -209,7 +240,7 @@ func QueryMany[ENT, ID any](
 			t.Eventually(func(it *testcase.T) {
 				ents, err := iterkit.CollectE(act(it))
 				assert.NoError(t, err)
-				assert.Contains(t, ents, includedEntity.Get(it))
+				assert.Contains(t, format(t, ents), includedEntity.Get(it))
 			})
 		})
 
@@ -229,8 +260,9 @@ func QueryMany[ENT, ID any](
 				t.Eventually(func(t *testcase.T) {
 					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
-					assert.Contains(t, ents, includedEntity.Get(t))
-					assert.Contains(t, ents, additionalEntities.Get(t))
+					got := format(t, ents)
+					assert.Contains(t, got, includedEntity.Get(t))
+					assert.Contains(t, got, additionalEntities.Get(t))
 				})
 			})
 
@@ -247,6 +279,7 @@ func QueryMany[ENT, ID any](
 
 					vs2, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
+					vs2 = format(t, vs2)
 					assert.Contains(t, vs2, includedEntity.Get(t))
 					assert.Contains(t, vs2, additionalEntities.Get(t))
 
@@ -262,6 +295,7 @@ func QueryMany[ENT, ID any](
 					}
 
 					vs1 = append(vs1, vsv1)
+					vs1 = format(t, vs1)
 					assert.Contains(t, vs1, includedEntity.Get(t))
 					assert.Contains(t, vs1, additionalEntities.Get(t))
 				})
@@ -300,7 +334,7 @@ func QueryMany[ENT, ID any](
 			})
 
 			othEnt := testcase.Let(s, func(t *testcase.T) ENT {
-				return makeEntity[ENT, ID](t, t.FailNow, c, resource, sub.Get(t).ExcludedEntity, "QueryMany ExcludedEntity argument")
+				return createEntity[ENT, ID](t, t.FailNow, c, resource, sub.Get(t).ExcludedEntity, "QueryMany ExcludedEntity argument")
 			}).EagerLoading(s)
 
 			s.Then(`only the matching entity is returned`, func(t *testcase.T) {

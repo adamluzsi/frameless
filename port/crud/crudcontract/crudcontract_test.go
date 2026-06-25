@@ -1,6 +1,8 @@
 package crudcontract_test
 
 import (
+	"context"
+	"iter"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -281,4 +283,47 @@ func Test_NoSkippedTestBecauseShouldStore(t *testing.T) {
 
 		check(t, dtb)
 	})
+}
+
+func Test_noIDRepository(t *testing.T) {
+	repo := NoIDRepo{R: &memory.Repository[testent.Foo, testent.FooID]{}}
+	conf := crudcontract.Config[testent.Foo, testent.FooID]{
+		MakeEntity: func(t testing.TB) testent.Foo {
+			return testent.MakeFoo(t)
+		},
+	}
+	testcase.RunSuite(testcase.NewSpec(t),
+		crudcontract.AllDeleter(repo, conf),
+		crudcontract.AllFinder(repo, conf),
+		crudcontract.Batcher(repo, conf),
+		crudcontract.OnePhaseCommitProtocol(repo, repo, conf),
+	)
+}
+
+type NoIDRepo struct {
+	R *memory.Repository[testent.Foo, testent.FooID]
+}
+
+func (r NoIDRepo) FindAll(ctx context.Context) iter.Seq2[testent.Foo, error] {
+	return r.R.FindAll(ctx)
+}
+
+func (r NoIDRepo) DeleteAll(ctx context.Context) error {
+	return r.R.DeleteAll(ctx)
+}
+
+func (r NoIDRepo) Batch(ctx context.Context) crud.Batch[testent.Foo] {
+	return r.R.Batch(ctx)
+}
+
+func (r NoIDRepo) BeginTx(ctx context.Context) (context.Context, error) {
+	return r.R.BeginTx(ctx)
+}
+
+func (r NoIDRepo) CommitTx(ctx context.Context) error {
+	return r.R.CommitTx(ctx)
+}
+
+func (r NoIDRepo) RollbackTx(ctx context.Context) error {
+	return r.R.RollbackTx(ctx)
 }
