@@ -32,10 +32,6 @@ func ToTask[TFN genericTask](tfn TFN) Task {
 	return taskerlite.ToTask[TFN](tfn)
 }
 
-func toTasks[TFN genericTask](tfns []TFN) []Task {
-	return taskerlite.ToTasks[TFN](tfns)
-}
-
 // Sequence is a construct that allows you to execute a list of Task sequentially.
 // If any of the Task fails with an error, it breaks the sequential execution and the error is returned.
 func Sequence[TFN genericTask](tfns ...TFN) Task {

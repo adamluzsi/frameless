@@ -1,1 +1,6 @@
-words = ["summ"]
+words = [
+    "pubsubcontract",
+    "summ",
+    "wftest",
+    "wftesting",
+]
