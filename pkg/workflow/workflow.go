@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit"
@@ -43,7 +44,6 @@ type ConditionConvertible interface {
 type Process struct {
 	ID         ProcessID  `json:"id" ext:"id"`
 	Definition Definition `json:"def"`
-	Events     Events     `json:"events"`
 }
 
 type ProcessID = uuid.UUID
@@ -52,14 +52,14 @@ func MakeProcessID() (ProcessID, error) {
 	return uuid.MakeV7()
 }
 
-// Events is the interactor that holds the event history of a Process.
+// ProcessEvents is the interactor that holds the event history of a Process.
 //
 // Instead of appending into a slice, the engine always creates a new Event in
 // the history. The ordering used during replay (idempotency checks, variable
 // resolution, completion detection) follows the order in which the backing
 // EventsRepository returns the events, which is expected to match their creation
 // order.
-type Events interface {
+type ProcessEvents interface {
 	comproto.OnePhaseCommitProtocol
 	crud.Creator[Event]
 	crud.AllFinder[Event]
@@ -76,6 +76,46 @@ type Event interface {
 	// events scoped to their Process.
 	SetProcessID(ProcessID)
 }
+
+func Events(ctx context.Context, processID ProcessID) (ProcessEvents, error) {
+	repo, ok := historyH.Lookup(ctx)
+	if !ok || repo == nil {
+		return nil, ErrFatal.F("missing EventRepository in workflow context")
+	}
+	return history{EventsRepository: repo, ProcessID: processID}, nil
+}
+
+type history struct {
+	EventsRepository EventsRepository
+	ProcessID        ProcessID
+}
+
+var _ ProcessEvents = history{}
+
+func (h history) BeginTx(ctx context.Context) (context.Context, error) {
+	return h.EventsRepository.BeginTx(ctx)
+}
+
+func (h history) CommitTx(ctx context.Context) error {
+	return h.EventsRepository.CommitTx(ctx)
+}
+
+func (h history) RollbackTx(ctx context.Context) error {
+	return h.EventsRepository.RollbackTx(ctx)
+}
+
+func (h history) Create(ctx context.Context, ptr *Event) error {
+	(*ptr).SetProcessID(h.ProcessID)
+	return h.EventsRepository.Create(ctx, ptr)
+}
+
+func (h history) FindAll(ctx context.Context) iter.Seq2[Event, error] {
+	return h.EventsRepository.FindByProcessID(ctx, h.ProcessID)
+}
+
+type ctxKeyEventRepository struct{}
+
+var historyH contextkit.ValueHandler[ctxKeyEventRepository, EventsRepository]
 
 // EventProcessID carries the owning Process identifier shared by every Event.
 //
@@ -143,7 +183,7 @@ func FilterEvent[T Event](es []Event) iter.Seq[T] {
 // The provided events are stored as-is and replayed in the order given. It is
 // primarily useful to reconstruct a previously recorded history or to set up an
 // explicit history in tests.
-func NewEvents(events ...Event) Events {
+func NewEvents(events ...Event) ProcessEvents {
 	return newEventLog(events...)
 }
 
@@ -161,7 +201,7 @@ type eventLog struct {
 	events []Event
 }
 
-var _ Events = (*eventLog)(nil)
+var _ ProcessEvents = (*eventLog)(nil)
 
 func (el *eventLog) Create(ctx context.Context, ptr *Event) error {
 	if ptr == nil || *ptr == nil {
@@ -264,7 +304,7 @@ type processEvents struct {
 	pid  ProcessID
 }
 
-var _ Events = processEvents{}
+var _ ProcessEvents = processEvents{}
 
 func (pe processEvents) Create(ctx context.Context, ptr *Event) error {
 	if ptr == nil || *ptr == nil {
@@ -292,7 +332,7 @@ func (pe processEvents) RollbackTx(ctx context.Context) error {
 
 // events returns the Process event history, lazily initialising the default
 // in-memory implementation when none was supplied.
-func (p *Process) events() Events {
+func (p *Process) events() ProcessEvents {
 	if p.Events == nil {
 		p.Events = newEventLog()
 	}

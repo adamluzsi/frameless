@@ -98,19 +98,24 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 
 	index := getCallIndex(ei, ie.ID)
 
-	var events []Event
-
 	var (
 		mEvents    []Event
 		matchingEE executionEvent[ID]
 		mIndex     int = -1
 		found      bool
 	)
-	history, err := p.History()
+
+	history, err := Events(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	for _, event := range history {
+
+	var events []Event
+	for event, err := range history.FindAll(ctx) {
+		if err != nil {
+			return nil, err
+		}
+
 		events = append(events, event)
 
 		e, ok := event.(E)
@@ -136,9 +141,8 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) (
 	}
 
 	if found {
-		var mProcess = Process{
-			Events: NewEvents(mEvents...),
-		}
+		// Events: NewEvents(mEvents...),
+		var mProcess = Process{ID: p.ID}
 
 		if len(ie.Input) == len(matchingEE.Input) {
 			for i, key := range ie.Input {

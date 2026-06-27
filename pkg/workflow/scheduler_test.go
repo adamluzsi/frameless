@@ -5,18 +5,51 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftest"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
-
-	"go.llib.dev/frameless/pkg/workflow/wftest"
 )
 
 const timeout = time.Second / 2
+
+func TestScheduler_E2E(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	lastV := let.Var(s, func(t *testcase.T) string {
+		return ""
+	})
+
+	pid := wftest.LetParticipantID(s)
+	par := wftest.LetParticipant(s, c, pid, func(t *testcase.T) func(ctx context.Context, v string) error {
+		return func(ctx context.Context, v string) error {
+			lastV.Set(t, v)
+			return nil
+		}
+	})
+
+	s.Test("scheduled process, eventually runs", func(t *testcase.T) {
+		processID := uuid.Must(uuid.MakeV7)
+
+		process := workflow.Process{
+			ID: processID,
+			Definition: workflow.ExecuteParticipant{
+				ID: pid.Get(t),
+				Input: []workflow.VariableKey{
+					workflow.VariableKey("input"),
+				},
+			},
+		}
+
+		c.Scheduler.Get(t).Schedule(t.Context())
+	})
+}
 
 func TestScheduler(t *testing.T) {
 	s := testcase.NewSpec(t)
