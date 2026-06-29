@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
@@ -74,7 +75,7 @@ func (s *Sequence) UnmarshalJSON(data []byte) error {
 
 type If struct {
 	Cond Condition  `json:"cond"`
-	Then Definition `json:"then"`
+	Then Definition `json:"then,omitempty"`
 	Else Definition `json:"else,omitempty"`
 }
 
@@ -104,76 +105,33 @@ func (d If) Execute(ctx context.Context, p *Process) error {
 	return nil
 }
 
-type dtoJSONIf struct {
-	Type string          `json:"@type"`
-	Cond json.RawMessage `json:"cond,omitempty"`
-	Then json.RawMessage `json:"then,omitempty"`
-	Else json.RawMessage `json:"else,omitempty"`
-}
-
 func (d If) MarshalJSON() ([]byte, error) {
-	var condMsg, thenMsg, elseMsg json.RawMessage
-	var err error
-
-	if d.Cond != nil {
-		condMsg, err = json.Marshal(d.Cond)
-		if err != nil {
-			return nil, err
-		}
+	type DATA If
+	type DTO struct {
+		Type string `json:"@type"`
+		DATA
 	}
-	if d.Then != nil {
-		thenMsg, err = json.Marshal(d.Then)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if d.Else != nil {
-		elseMsg, err = json.Marshal(d.Else)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return json.Marshal(dtoJSONIf{
-		Type: ifJSONType.String(),
-		Cond: condMsg,
-		Then: thenMsg,
-		Else: elseMsg,
-	})
+	return json.Marshal(DTO{Type: ifJSONType.String(), DATA: DATA(d)})
 }
 
 func (d *If) UnmarshalJSON(data []byte) error {
-	var dto dtoJSONIf
+	type DATA If
+	type DTO struct {
+		Type string `json:"@type"`
+		DATA
+	}
+
+	var dto jsonkit.Interface[Definition]
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
 
-	var condIface jsonkit.Interface[Condition]
-	if len(dto.Cond) > 0 {
-		if err := json.Unmarshal(dto.Cond, &condIface); err != nil {
-			return err
-		}
+	dIf, ok := dto.V.(If)
+	if !ok {
+		return fmt.Errorf("invalid type got decoded for workflow.If type")
 	}
 
-	var thenIface jsonkit.Interface[Definition]
-	if len(dto.Then) > 0 {
-		if err := json.Unmarshal(dto.Then, &thenIface); err != nil {
-			return err
-		}
-	}
-
-	var elseIface jsonkit.Interface[Definition]
-	if len(dto.Else) > 0 {
-		if err := json.Unmarshal(dto.Else, &elseIface); err != nil {
-			return err
-		}
-	}
-
-	*d = If{
-		Cond: condIface.V,
-		Then: thenIface.V,
-		Else: elseIface.V,
-	}
+	*d = dIf
 	return nil
 }
 

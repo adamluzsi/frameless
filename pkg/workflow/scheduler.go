@@ -273,6 +273,9 @@ var _ = jsonkit.RegisterTypeID[AwakeByProcessStatus](typeAwakeByProcessStatus)
 
 func (AwakeByProcessStatus) Type() EventType { return typeAwakeByProcessStatus }
 
+func (e AwakeByProcessStatus) GetProcessID() ProcessID { return e.ProcessID }
+func (e AwakeByProcessStatus) GetTimestamp() time.Time { return e.Timestamp }
+
 type ProcessStatusEvent string
 
 const (
@@ -284,7 +287,8 @@ const (
 var _ = enum.Register[ProcessStatusEvent](ProcessCompletion, ProcessCancellation, ProcessProgression)
 
 type AwakeByExternalEvent struct {
-	EventProcessID
+	ProcessID ProcessID `json:"process_id"`
+	Timestamp time.Time `json:"timestamp"`
 	Waiter    ProcessID `json:"waiterID"`
 	EventCode string    `json:"eventCode"`
 }
@@ -295,4 +299,6 @@ const typeAwakeByExternalEvent = "workflow::event::awake-by-external-event"
 
 var _ = jsonkit.RegisterTypeID[AwakeByExternalEvent](typeAwakeByExternalEvent)
 
-func (AwakeByExternalEvent) Type() EventType { return typeAwakeByExternalEvent }
+func (AwakeByExternalEvent) Type() EventType           { return typeAwakeByExternalEvent }
+func (e AwakeByExternalEvent) GetProcessID() ProcessID { return e.ProcessID }
+func (e AwakeByExternalEvent) GetTimestamp() time.Time { return e.Timestamp }

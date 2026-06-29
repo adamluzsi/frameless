@@ -102,7 +102,12 @@ func (h history) RollbackTx(ctx context.Context) error {
 }
 
 func (h history) Create(ctx context.Context, ptr *Event) error {
-	(*ptr).SetProcessID(h.ProcessID)
+	if ptr == nil {
+		return fmt.Errorf("nil %T received", ptr)
+	}
+	if (*ptr).GetProcessID() != h.ProcessID {
+		return fmt.Errorf("process id mismatch, expected %v but got %v", h.ProcessID, (*ptr).GetProcessID())
+	}
 	return h.EventsRepository.Create(ctx, ptr)
 }
 
