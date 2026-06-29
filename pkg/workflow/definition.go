@@ -3,8 +3,10 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
+	"go.llib.dev/testcase/clock"
 )
 
 type Sequence []Definition
@@ -217,9 +219,10 @@ type SetVar struct {
 var _ Event = (*SetVariableFromDefinitionEvent)(nil)
 
 type SetVariableFromDefinitionEvent struct {
-	EventProcessID
-	Key   VariableKey `json:"key"`
-	Value any         `json:"value"`
+	ProcessID ProcessID   `json:"process_id"`
+	Key       VariableKey `json:"key"`
+	Value     any         `json:"value"`
+	Timestamp time.Time   `json:"timestamp"`
 }
 
 const typeSetVariableFromDefinitionEvent = "workflow::event::set-variable-from-definition"
@@ -228,6 +231,14 @@ var _ = jsonkit.RegisterTypeID[SetVariableFromDefinitionEvent](typeSetVariableFr
 
 func (e SetVariableFromDefinitionEvent) Type() EventType {
 	return typeSetVariableFromDefinitionEvent
+}
+
+func (e SetVariableFromDefinitionEvent) GetProcessID() ProcessID {
+	return e.ProcessID
+}
+
+func (e SetVariableFromDefinitionEvent) GetTimestamp() time.Time {
+	return e.Timestamp
 }
 
 var _ Definition = SetVar{}
@@ -243,7 +254,12 @@ func (d SetVar) Execute(ctx context.Context, p *Process) error {
 			return executionEvent[VariableKey]{ID: e.Key}, true
 		},
 		NewEvent: func(id VariableKey, input, output []any) *SetVariableFromDefinitionEvent {
-			return &SetVariableFromDefinitionEvent{Key: d.Key, Value: d.Value}
+			return &SetVariableFromDefinitionEvent{
+				ProcessID: p.ID,
+				Key:       d.Key,
+				Value:     d.Value,
+				Timestamp: clock.Now().UTC(),
+			}
 		},
 	}.Execute(ctx, p)
 }
@@ -285,13 +301,22 @@ func (d Spawn) Execute(ctx context.Context, p *Process) error {
 }
 
 type SpawnEvent struct {
-	EventProcessID
-	SpawnedProcessID ProcessID `json:"spawned-process-id,omitzero"`
+	ProcessID        ProcessID `json:"process_id"`
+	SpawnedProcessID ProcessID `json:"spawned_process_id"`
+	Timestamp        time.Time `json:"timestamp"`
 }
 
 var _ Event = (*SpawnEvent)(nil)
 
 func (e SpawnEvent) Type() EventType { return typeSpawnEvent }
+
+func (e SpawnEvent) GetProcessID() ProcessID {
+	return e.ProcessID
+}
+
+func (e SpawnEvent) GetTimestamp() time.Time {
+	return e.Timestamp
+}
 
 const typeSpawnEvent = "workflow::event:spawn"
 

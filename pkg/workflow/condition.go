@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 )
@@ -276,18 +277,27 @@ func (cs Conditions) Validate(ctx context.Context) error {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type ExecuteConditionEvent struct {
-	EventProcessID
-	ConditionID ConditionID `json:"cid,omitempty"`
+	ProcessID   ProcessID   `json:"process_id"`
+	ConditionID ConditionID `json:"condition_id,omitempty"`
 	Input       []any       `json:"input"`
 	Answer      bool        `json:"answer"`
+	Timestamp   time.Time   `json:"timestamp"`
 }
 
 var _ Event = (*ExecuteConditionEvent)(nil)
 
 var _ = jsonkit.RegisterTypeID[ExecuteConditionEvent]("workflow::execute-condition-event")
 
-const eidExecuteConditionEvent = "execute-condition"
+const eIDExecuteConditionEvent = "execute-condition"
 
 func (ExecuteConditionEvent) Type() EventType {
-	return eidExecuteConditionEvent
+	return eIDExecuteConditionEvent
+}
+
+func (e ExecuteConditionEvent) GetProcessID() ProcessID {
+	return e.ProcessID
+}
+
+func (e ExecuteConditionEvent) GetTimestamp() time.Time {
+	return e.Timestamp
 }

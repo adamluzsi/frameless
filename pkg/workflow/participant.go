@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -175,8 +176,9 @@ func getExecuteParticipantEvents(es []Event) []*ExecuteParticipantEvent {
 }
 
 type ExecuteParticipantEvent struct {
-	EventProcessID
-	ParticipantID ParticipantID `json:"pid,omitempty"`
+	ProcessID     ProcessID     `json:"process_id"`
+	Timestamp     time.Time     `json:"timestamp"`
+	ParticipantID ParticipantID `json:"participant_id,omitempty"`
 	Input         []any         `json:"input"`
 	Output        []any         `json:"output"`
 }
@@ -189,4 +191,12 @@ const eidExecuteParticipantEvent = "execute-participant"
 
 func (ExecuteParticipantEvent) Type() EventType {
 	return eidExecuteParticipantEvent
+}
+
+func (e ExecuteParticipantEvent) GetProcessID() ProcessID {
+	return e.ProcessID
+}
+
+func (e ExecuteParticipantEvent) GetTimestamp() time.Time {
+	return e.Timestamp
 }

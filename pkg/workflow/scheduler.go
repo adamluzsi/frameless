@@ -204,7 +204,7 @@ func (s *Scheduler) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessSched
 		}
 		return nil
 	case errors.As(err, &suspend):
-		if err := s.ProcessRepository.Save(ctx, &p); err != nil {
+		if err := s.ProcessRepository.Update(ctx, &p); err != nil {
 			return err
 		}
 		return s.ProcessQueue.Publish(ctx, ProcessScheduleEntry{
@@ -258,10 +258,11 @@ func (s *Scheduler) lookupRuntime(ctx context.Context) (Runtime, bool) {
 }
 
 type AwakeByProcessStatus struct {
-	EventProcessID
-	Waiter ProcessID          `json:"waiterID"`
-	Target ProcessID          `json:"targetID"`
-	Status ProcessStatusEvent `json:"statusEvent"`
+	ProcessID ProcessID          `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Waiter    ProcessID          `json:"waiter_id"`
+	Target    ProcessID          `json:"targetID"`
+	Status    ProcessStatusEvent `json:"statusEvent"`
 }
 
 var _ Event = (*AwakeByProcessStatus)(nil)

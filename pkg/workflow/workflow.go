@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/contextkit"
@@ -67,14 +68,10 @@ type ProcessEvents interface {
 
 type Event interface {
 	Type() EventType
-	// ProcessID returns the identifier of the Process this Event belongs to.
-	ProcessID() ProcessID
-	// SetProcessID associates the Event with a Process.
-	//
-	// It is called by the engine when the Event is created in a Process event
-	// history, so the backing EventsRepository can persist and retrieve the
-	// events scoped to their Process.
-	SetProcessID(ProcessID)
+	GetProcessID() ProcessID
+	GetTimestamp() time.Time
+
+	// SetProcessID(ProcessID)
 }
 
 func Events(ctx context.Context, processID ProcessID) (ProcessEvents, error) {
@@ -113,32 +110,40 @@ func (h history) FindAll(ctx context.Context) iter.Seq2[Event, error] {
 	return h.EventsRepository.FindByProcessID(ctx, h.ProcessID)
 }
 
+func (h history) History(ctx context.Context) ([]Event, error) {
+	vs, err := iterkit.CollectE(h.FindAll(ctx))
+	if err != nil {
+		return nil, err
+	}
+	slicekit.SortBy(vs, func(a, b Event) bool {
+		return a.Timestamp().Before(b.Timestamp())
+	})
+	return vs, nil
+}
+
 type ctxKeyEventRepository struct{}
 
 var historyH contextkit.ValueHandler[ctxKeyEventRepository, EventsRepository]
 
-// EventProcessID carries the owning Process identifier shared by every Event.
-//
-// Embed EventProcessID by value into an Event implementation to satisfy the
-// ProcessID/SetProcessID part of the Event interface. Because SetProcessID has a
-// pointer receiver, only a pointer to the embedding event type implements Event,
-// so events are passed around as pointers (e.g. &VariableEvent{...}).
-type EventProcessID struct {
-	PID ProcessID `json:"process-id,omitzero"`
-}
-
-func (e EventProcessID) ProcessID() ProcessID { return e.PID }
-
-func (e *EventProcessID) SetProcessID(id ProcessID) { e.PID = id }
-
 type EventType string
 
 // EventCompleted is emitted when a workflow definition successfully completes execution.
-type EventCompleted struct{ EventProcessID }
+type EventCompleted struct {
+	ProcessID ProcessID `json:"process_id"`
+	Timestamp time.Time `json:"timestamp"`
+}
 
 var _ Event = (*EventCompleted)(nil)
 
 func (EventCompleted) Type() EventType { return typeIDCompletedEvent }
+
+func (e EventCompleted) GetProcessID() ProcessID {
+	return e.ProcessID
+}
+
+func (e EventCompleted) GetTimestamp() time.Time {
+	return e.Timestamp
+}
 
 // IsCompleted checks if the given process event history contains an EventCompleted event.
 func IsCompleted[T Process | *Process](v T) bool {
@@ -429,9 +434,9 @@ var _ = jsonkit.RegisterTypeID[VariableEvent](typeIDVariableEvent)
 var _ = jsonkit.RegisterTypeID[EventCompleted](typeIDCompletedEvent)
 
 type VariableEvent struct {
-	EventProcessID
+	ProcessID ProcessID              `json:"process_id"`
 	Operation VariableEventOperation `json:"op"`
-	Key       VariableKey            `json:"var-key"`
+	Key       VariableKey            `json:"var_key"`
 	Value     any                    `json:"value,omitempty"`
 }
 

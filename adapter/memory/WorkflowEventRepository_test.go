@@ -22,11 +22,11 @@ func TestWorkflowEventRepository(t *testing.T) {
 
 	mkEvent := func(pid workflow.ProcessID, key workflow.VariableKey, val any) workflow.Event {
 		var e workflow.Event = &workflow.VariableEvent{
-			Operation: workflow.SetVariableEventOperation,
-			Key:       key,
-			Value:     val,
+			EventProcessID: workflow.EventProcessID{PID: pid},
+			Operation:      workflow.SetVariableEventOperation,
+			Key:            key,
+			Value:          val,
 		}
-		e.SetProcessID(pid)
 		return e
 	}
 
