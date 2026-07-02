@@ -531,12 +531,7 @@ func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
 		if err != nil {
 			return err
 		}
-		defer func() {
-			if rErr == nil {
-			} else {
-			}
-			comproto.FinishOnePhaseCommit(&rErr, b.Repository.Connection, ctx)
-		}()
+		defer comproto.FinishOnePhaseCommit(&rErr, b.Repository.Connection, ctx)
 	}
 
 	columns := mapkit.Keys(args)
