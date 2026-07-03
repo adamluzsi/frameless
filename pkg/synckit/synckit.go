@@ -1056,3 +1056,9 @@ type LimitToNumCPU struct{}
 var _ LimitCeiling = LimitToNumCPU{}
 
 func (LimitToNumCPU) Limit() int { return runtime.NumCPU() }
+
+func synchronise(l sync.Locker, do func()) {
+	l.Lock()
+	defer l.Unlock()
+	do()
+}
