@@ -3,7 +3,6 @@ package synckit_test
 import (
 	"context"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,16 +18,14 @@ import (
 )
 
 func ExampleFan_out() {
+	var ctx = context.Background()
+
 	var g synckit.Group
 	defer g.Wait()
 	defer g.Cancel()
 
-	var (
-		ctx = context.Background()
-
-		fanOut synckit.Fan[string]
-		fanIn  synckit.Fan[string]
-	)
+	var fanOut synckit.Fan[string]
+	defer fanOut.Close()
 
 	for range runtime.NumCPU() {
 		g.Go(ctx, func(ctx context.Context) error {
@@ -36,12 +33,8 @@ func ExampleFan_out() {
 				if err != nil {
 					return err
 				}
-				var data = strings.ToUpper(msg.Data())
-				if err := fanIn.Publish(ctx, data); err != nil {
-					msg.NACK()
-					return err
-				}
-				msg.ACK()
+				_ = msg.Data()
+				_ = msg.ACK()
 			}
 			return nil
 		})
@@ -90,7 +83,7 @@ func ExampleFan() {
 	fanOut.Publish(ctx, "foo") // publish
 }
 
-func TestFanOut(t *testing.T) {
+func TestFan(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	subject := let.Var(s, func(t *testcase.T) *synckit.Fan[string] {
@@ -277,6 +270,53 @@ func TestFanOut(t *testing.T) {
 		})
 	})
 
+	s.Describe("#Close", func(s *testcase.Spec) {
+
+		s.Then("it will cancel waiting publish", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			var gotErr error
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				gotErr = f.Publish(t.Context(), t.Random.Int())
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					assert.NoError(t, f.Close())
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.ErrorIs(t, gotErr, context.Canceled)
+		})
+
+		s.Then("it will cancel subscription", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			var count int
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				for range f.Subscribe(t.Context()) {
+					count++
+				}
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					assert.NoError(t, f.Close())
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.Equal(t, count, 0)
+		})
+	})
+
 	s.Test("implements pubsub Queue contract", func(t *testcase.T) {
 		conf := pubsubcontract.Config[string]{
 			MakeData: func(tb testing.TB) string {
@@ -286,6 +326,59 @@ func TestFanOut(t *testing.T) {
 		var sub = testcase.NewSpec(t)
 		defer sub.Finish()
 		pubsubcontract.Queue[string](subject.Get(t), subject.Get(t), conf).Spec(sub)
+	})
+
+	s.Context("race", func(s *testcase.Spec) {
+		s.Test("pub/sub/close", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			testcase.Race(func() {
+				f.Publish(t.Context(), 42)
+			}, func() {
+				for msg, err := range f.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					msg.NACK()
+				}
+			}, func() {
+				for msg, err := range f.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					msg.ACK()
+				}
+			}, func() {
+				assert.NoError(t, f.Close())
+			})
+		})
+
+		s.Test("close after publish", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			var done = make(chan struct{})
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			testcase.Race(func() {
+				defer close(done)
+				assert.NoError(t, f.Publish(t.Context(), 42))
+			}, func() {
+				defer wg.Done()
+				for msg, err := range f.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					msg.NACK()
+				}
+			}, func() {
+				defer wg.Done()
+				for msg, err := range f.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					msg.ACK()
+				}
+			}, func() {
+				<-done
+				assert.NoError(t, f.Close())
+				assert.Within(t, timeout, func(ctx context.Context) {
+					wg.Wait()
+				})
+			})
+		})
 	})
 }
 

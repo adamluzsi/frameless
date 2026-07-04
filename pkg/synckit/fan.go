@@ -2,30 +2,31 @@ package synckit
 
 import (
 	"context"
+	"io"
 	"sync"
 
 	"go.llib.dev/frameless/port/pubsub"
 )
 
 type Fan[T any] struct {
-	_ch chan T
-	rwm sync.RWMutex
-}
+	o sync.Once
 
-func (ps *Fan[T]) stream() chan T {
-	return Init(&ps.rwm, &ps._ch, func() chan T {
-		return make(chan T)
-	})
+	_n    int
+	_ch   chan T
+	_done chan struct{}
 }
 
 var _ pubsub.Publisher[struct{}] = (*Fan[struct{}])(nil)
 
 func (ps *Fan[T]) Publish(ctx context.Context, vs ...T) error {
+	var ch, dn = ps.init()
 	for _, v := range vs {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case ps.stream() <- v:
+		case <-dn:
+			return context.Canceled
+		case ch <- v:
 		}
 	}
 	return nil
@@ -35,27 +36,25 @@ var _ pubsub.Subscriber[struct{}] = (*Fan[struct{}])(nil)
 
 func (ps *Fan[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
 	return func(yield func(pubsub.Message[T], error) bool) {
+		var ch, dn = ps.init()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case v, ok := <-ps.stream():
+			case <-dn:
+				return
+			case v, ok := <-ch:
 				if !ok {
 					return
 				}
-				var msg = messageFanOut[T]{
+				var msg = fanMessage[T]{
 					ctx:  ctx,
 					data: v,
 					ack: func() error {
 						return nil
 					},
 					nack: func() error {
-						select {
-						case ps.stream() <- v:
-							return nil
-						case <-ctx.Done():
-							return ctx.Err()
-						}
+						return ps.Publish(ctx, v)
 					},
 				}
 				if !yield(&msg, nil) {
@@ -69,7 +68,27 @@ func (ps *Fan[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
 	}
 }
 
-type messageFanOut[T any] struct {
+var _ io.Closer = (*Fan[struct{}])(nil)
+
+func (ps *Fan[T]) Close() error {
+	var _, done = ps.init()
+	select {
+	case <-done:
+	default:
+		close(done)
+	}
+	return nil
+}
+
+func (ps *Fan[T]) init() (chan T, chan struct{}) {
+	ps.o.Do(func() {
+		ps._done = make(chan struct{})
+		ps._ch = make(chan T)
+	})
+	return ps._ch, ps._done
+}
+
+type fanMessage[T any] struct {
 	ctx  context.Context
 	ack  func() error
 	nack func() error
@@ -80,24 +99,24 @@ type messageFanOut[T any] struct {
 	nackErr error
 }
 
-func (msg *messageFanOut[T]) Context() context.Context {
+func (msg *fanMessage[T]) Context() context.Context {
 	return msg.ctx
 }
 
-func (msg *messageFanOut[T]) ACK() error {
+func (msg *fanMessage[T]) ACK() error {
 	msg.done.Do(func() {
 		msg.ackErr = msg.ack()
 	})
 	return msg.ackErr
 }
 
-func (msg *messageFanOut[T]) NACK() error {
+func (msg *fanMessage[T]) NACK() error {
 	msg.done.Do(func() {
 		msg.nackErr = msg.nack()
 	})
 	return msg.nackErr
 }
 
-func (msg *messageFanOut[T]) Data() T {
+func (msg *fanMessage[T]) Data() T {
 	return msg.data
 }

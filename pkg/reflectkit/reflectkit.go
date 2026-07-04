@@ -201,10 +201,10 @@ func SetValue(variable, value reflect.Value) {
 		Elem().Set(value)
 }
 
-var anyInterface = reflect.TypeOf((*any)(nil)).Elem()
+var anyInterface = reflect.TypeFor[any]()
 
 func TypeOf[T any](i ...T) reflect.Type {
-	var typ = reflect.TypeOf((*T)(nil)).Elem()
+	var typ = reflect.TypeFor[T]()
 	if 0 < len(i) && typ == anyInterface {
 		for _, v := range i {
 			if typeOfV := reflect.TypeOf(v); typeOfV != nil {
