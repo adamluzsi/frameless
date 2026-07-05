@@ -6,6 +6,8 @@ import "reflect"
 //
 // The type argument represents the method signature,
 // excluding the receiver from it, akin to how interfaces define method signatures.
+//
+// Deprecated: WIP
 func AssertMethod[Func any /* ~func */](receiver reflect.Value, methodName string) (Func, bool) {
 	var zero Func
 

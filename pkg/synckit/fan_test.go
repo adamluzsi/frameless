@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/synckit"
@@ -15,6 +16,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func ExampleFan_out() {
@@ -212,60 +214,119 @@ func TestFan(t *testing.T) {
 			})
 		})
 
-		s.When("a delivered message gets NACK-ed by a consumer", func(s *testcase.Spec) {
-			value := let.Var(s, func(t *testcase.T) string {
-				return t.Random.UUID()
-			})
-			// handled records the messages that were ultimately acknowledged.
-			handled := let.Var(s, func(t *testcase.T) *results {
-				return &results{}
-			})
+		s.Test("a delivered message is not ACK ed upon finishing the current for round, it gets NACK-ed automatically", func(t *testcase.T) {
+			var f synckit.Fan[int]
+			var g synckit.Group
 
-			// Two consumers subscribe to the queue. The first delivery is NACK-ed
-			// (requeued); every later delivery is acknowledged and recorded. A second
-			// consumer is required so the requeued message has a peer to be handed to,
-			// instead of deadlocking the NACK-ing consumer.
-			s.Before(func(t *testcase.T) {
-				var (
-					wg         sync.WaitGroup
-					nackedOnce atomic.Bool
-				)
-				rec := handled.Get(t)
-				consume := func(sub pubsub.Subscription[string]) {
-					defer wg.Done()
-					for msg, err := range sub {
-						assert.NoError(t, err)
-						if nackedOnce.CompareAndSwap(false, true) {
-							assert.NoError(t, msg.NACK())
-							continue
+			var data = t.Random.Int()
+
+			var n int64
+			for range 2 {
+				g.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range f.Subscribe(ctx) {
+						if err != nil {
+							return err
 						}
-						rec.add(msg.Data())
-						assert.NoError(t, msg.ACK())
+						assert.Equal(t, msg.Data(), data)
+						atomic.AddInt64(&n, 1)
+						continue // without ACK
 					}
-				}
-
-				wg.Add(2)
-				go consume(act(t))
-				go consume(act(t))
-				t.Defer(func() {
-					cancel.Get(t)()
-					wg.Wait()
+					return nil
 				})
+			}
+
+			assert.NoError(t, f.Publish(t.Context(), data))
+
+			t.Eventually(func(t *testcase.T) {
+				assert.True(t, atomic.LoadInt64(&n) > 42,
+					"expected that due to inf loop with constant NACK -s, n keeps incremented")
 			})
 
-			// a message is queued for delivery. The queue hands messages off
-			// synchronously, so publishing runs in the background until a consumer takes it.
-			s.Before(func(t *testcase.T) {
-				fo, v := subject.Get(t), value.Get(t)
-				pubCtx, cancelPub := context.WithCancel(context.Background())
-				t.Defer(cancelPub)
-				go func() { _ = fo.Publish(pubCtx, v) }()
+			g.Cancel()
+		})
+
+		s.When("a delivered message gets NACK-ed by a consumer", func(s *testcase.Spec) {
+			s.Test("single consumer", func(t *testcase.T) {
+				var f synckit.Fan[int]
+				var nackErr error
+				j := synckit.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range f.Subscribe(ctx) {
+						if err != nil {
+							return err
+						}
+						assert.Within(t, timeout, func(ctx context.Context) {
+							nackErr = msg.NACK()
+						})
+						break
+					}
+					return nil
+				})
+
+				assert.NoError(t, f.Publish(t.Context(), 42))
+				time.Sleep(timeout)
+				// nack should be attempted, but since there is only a single subscriber,
+				// nack is not possible
+				// thus it yields an error
+				assert.NoError(t, j.Wait())
+				assert.Error(t, nackErr)
 			})
 
-			s.Then("the message is redelivered until it is acknowledged", func(t *testcase.T) {
-				t.Eventually(func(t *testcase.T) {
-					assert.Contains(t, handled.Get(t).get(), value.Get(t))
+			s.Context(">1 consumers", func(s *testcase.Spec) {
+				value := let.Var(s, func(t *testcase.T) string {
+					return t.Random.UUID()
 				})
+				// handled records the messages that were ultimately acknowledged.
+				handled := let.Var(s, func(t *testcase.T) *results {
+					return &results{}
+				})
+
+				// Two consumers subscribe to the queue. The first delivery is NACK-ed
+				// (requeued); every later delivery is acknowledged and recorded. A second
+				// consumer is required so the requeued message has a peer to be handed to,
+				// instead of deadlocking the NACK-ing consumer.
+				s.Before(func(t *testcase.T) {
+					var (
+						wg         sync.WaitGroup
+						nackedOnce atomic.Bool
+					)
+					rec := handled.Get(t)
+					consume := func(sub pubsub.Subscription[string]) {
+						defer wg.Done()
+						for msg, err := range sub {
+							assert.NoError(t, err)
+							if nackedOnce.CompareAndSwap(false, true) {
+								assert.NoError(t, msg.NACK())
+								continue
+							}
+							rec.add(msg.Data())
+							assert.NoError(t, msg.ACK())
+						}
+					}
+
+					wg.Add(2)
+					go consume(act(t))
+					go consume(act(t))
+					t.Defer(func() {
+						cancel.Get(t)()
+						wg.Wait()
+					})
+				})
+
+				// a message is queued for delivery. The queue hands messages off
+				// synchronously, so publishing runs in the background until a consumer takes it.
+				s.Before(func(t *testcase.T) {
+					fo, v := subject.Get(t), value.Get(t)
+					pubCtx, cancelPub := context.WithCancel(context.Background())
+					t.Defer(cancelPub)
+					go func() { _ = fo.Publish(pubCtx, v) }()
+				})
+
+				s.Then("the message is redelivered until it is acknowledged", func(t *testcase.T) {
+					t.Eventually(func(t *testcase.T) {
+						assert.Contains(t, handled.Get(t).get(), value.Get(t))
+					})
+				})
+
 			})
 		})
 	})
@@ -293,7 +354,7 @@ func TestFan(t *testing.T) {
 			assert.ErrorIs(t, gotErr, context.Canceled)
 		})
 
-		s.Then("it will cancel subscription", func(t *testcase.T) {
+		s.Then("it will cancel subscription when nothing requires processing", func(t *testcase.T) {
 			var f synckit.Fan[int]
 
 			var count int
@@ -314,6 +375,36 @@ func TestFan(t *testing.T) {
 			})
 
 			assert.Equal(t, count, 0)
+		})
+
+		s.Then("it will NOT cancel subscription when value is still needs to be processed", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			expected := random.Slice(t.Random.IntBetween(100, 300), t.Random.Int)
+			var actually []int
+			var m sync.Mutex
+
+			var g synckit.Group
+			n := t.Random.IntBetween(3, 7)
+
+			for range n {
+				g.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range f.Subscribe(t.Context()) {
+						assert.NoError(t, err)
+						assert.NotNil(t, msg)
+
+						m.Lock()
+						actually = append(actually, msg.Data())
+						m.Unlock()
+						msg.ACK()
+					}
+					return nil
+				})
+			}
+
+			assert.NoError(t, f.Publish(t.Context(), expected...))
+			assert.NoError(t, f.Close())
+			assert.NoError(t, g.Wait())
 		})
 	})
 

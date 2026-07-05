@@ -2,14 +2,18 @@ package synckit
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/pubsub"
 )
 
 type Fan[T any] struct {
-	o sync.Once
+	o   sync.Once
+	len int64
 
 	_n    int
 	_ch   chan T
@@ -36,6 +40,8 @@ var _ pubsub.Subscriber[struct{}] = (*Fan[struct{}])(nil)
 
 func (ps *Fan[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
 	return func(yield func(pubsub.Message[T], error) bool) {
+		atomic.AddInt64(&ps.len, 1)
+		defer atomic.AddInt64(&ps.len, -1)
 		var ch, dn = ps.init()
 		for {
 			select {
@@ -54,13 +60,17 @@ func (ps *Fan[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
 						return nil
 					},
 					nack: func() error {
+						if ps.Len() == 1 {
+							return fmt.Errorf("unable to NACK message, no other subscribers")
+						}
 						return ps.Publish(ctx, v)
 					},
 				}
-				if !yield(&msg, nil) {
-					msg.done.Do(func() {
-						msg.nack()
-					})
+				var cont = yield(&msg, nil)
+				msg.done.Do(func() {
+					msg.nack()
+				})
+				if !cont {
 					return
 				}
 			}
@@ -78,6 +88,12 @@ func (ps *Fan[T]) Close() error {
 		close(done)
 	}
 	return nil
+}
+
+var _ ds.Len = (*Fan[any])(nil)
+
+func (ps *Fan[T]) Len() int {
+	return int(atomic.LoadInt64(&ps.len))
 }
 
 func (ps *Fan[T]) init() (chan T, chan struct{}) {

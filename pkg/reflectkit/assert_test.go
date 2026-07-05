@@ -13,20 +13,20 @@ import (
 func TestAssertMethod_smoke(tt *testing.T) {
 	s := testcase.NewSpec(tt)
 
-	s.Test("1:1 function sina")
-	t := testcase.NewT(tt)
-	receiver := reflect.ValueOf(AssertMethodSubject{})
+	s.Test("1:1 function signature", func(t *testcase.T) {
+		receiver := reflect.ValueOf(AssertMethodSubject{})
 
-	fn, ok := reflectkit.AssertMethod[func(int) string](receiver, "NonExistent")
-	assert.False(t, ok)
-	assert.Nil(t, fn)
+		fn, ok := reflectkit.AssertMethod[func(int) string](receiver, "NonExistent")
+		assert.False(t, ok)
+		assert.Nil(t, fn)
 
-	fn, ok = reflectkit.AssertMethod[func(int) string](receiver, "IntToString")
-	assert.True(t, ok)
-	assert.NotNil(t, fn)
+		fn, ok = reflectkit.AssertMethod[func(int) string](receiver, "IntToString")
+		assert.True(t, ok)
+		assert.NotNil(t, fn)
 
-	n := t.Random.Int()
-	assert.Equal(t, strconv.Itoa(n), fn(n))
+		n := t.Random.Int()
+		assert.Equal(t, strconv.Itoa(n), fn(n))
+	})
 }
 
 type AssertMethodSubject struct{}
