@@ -362,6 +362,21 @@ func (m *Map[K, V]) Keys() iter.Seq[K] {
 	}
 }
 
+func (m *Map[K, V]) Values() iter.Seq[V] {
+	var values = func() []V {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		return mapkit.Values(m.vs)
+	}
+	return func(yield func(V) bool) {
+		for _, value := range values() {
+			if !yield(value) {
+				return
+			}
+		}
+	}
+}
+
 func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
 	// TODO: make this operation only block when a specific key is affected
 

@@ -27,7 +27,7 @@ func ExampleFan_out() {
 	defer g.Cancel()
 
 	var fanOut synckit.Fan[string]
-	defer fanOut.Close()
+	defer fanOut.Cancel()
 
 	for range runtime.NumCPU() {
 		g.Go(ctx, func(ctx context.Context) error {
@@ -221,7 +221,9 @@ func TestFan(t *testing.T) {
 			var data = t.Random.Int()
 
 			var n int64
-			for range 2 {
+
+			var sampling = t.Random.IntBetween(2, 5)
+			for range sampling {
 				g.Go(t.Context(), func(ctx context.Context) error {
 					for msg, err := range f.Subscribe(ctx) {
 						if err != nil {
@@ -235,11 +237,19 @@ func TestFan(t *testing.T) {
 				})
 			}
 
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, g.Len(), sampling,
+					"expected that all test goroutine is scheduled and active already")
+				assert.Equal(t, f.Len(), sampling,
+					"expected that all subscriber should be there, ready for receiving a publication")
+			})
+
 			assert.NoError(t, f.Publish(t.Context(), data))
 
 			t.Eventually(func(t *testcase.T) {
-				assert.True(t, atomic.LoadInt64(&n) > 42,
-					"expected that due to inf loop with constant NACK -s, n keeps incremented")
+				var got = atomic.LoadInt64(&n)
+				assert.True(t, 42 < got,
+					assert.MessageF("expected that due to inf loop with constant NACK -s, n (%d) keeps incremented", got))
 			})
 
 			g.Cancel()
@@ -332,18 +342,21 @@ func TestFan(t *testing.T) {
 	})
 
 	s.Describe("#Close", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Close()
+		})
 
 		s.Then("it will cancel waiting publish", func(t *testcase.T) {
-			var f synckit.Fan[int]
+			f := subject.Get(t)
 
 			var gotErr error
 			w := assert.NotWithin(t, timeout, func(context.Context) {
-				gotErr = f.Publish(t.Context(), t.Random.Int())
+				gotErr = f.Publish(t.Context(), t.Random.UUID())
 			})
 
 			assert.Within(t, timeout, func(ctx context.Context) {
 				assert.NotPanic(t, func() {
-					assert.NoError(t, f.Close())
+					assert.NoError(t, act(t))
 				})
 			})
 
@@ -355,7 +368,7 @@ func TestFan(t *testing.T) {
 		})
 
 		s.Then("it will cancel subscription when nothing requires processing", func(t *testcase.T) {
-			var f synckit.Fan[int]
+			f := subject.Get(t)
 
 			var count int
 			w := assert.NotWithin(t, timeout, func(context.Context) {
@@ -366,7 +379,7 @@ func TestFan(t *testing.T) {
 
 			assert.Within(t, timeout, func(ctx context.Context) {
 				assert.NotPanic(t, func() {
-					assert.NoError(t, f.Close())
+					assert.NoError(t, act(t))
 				})
 			})
 
@@ -378,10 +391,10 @@ func TestFan(t *testing.T) {
 		})
 
 		s.Then("it will NOT cancel subscription when value is still needs to be processed", func(t *testcase.T) {
-			var f synckit.Fan[int]
+			f := subject.Get(t)
 
-			expected := random.Slice(t.Random.IntBetween(100, 300), t.Random.Int)
-			var actually []int
+			expected := random.Slice(t.Random.IntBetween(100, 300), t.Random.UUID)
+			var actually []string
 			var m sync.Mutex
 
 			var g synckit.Group
@@ -403,8 +416,152 @@ func TestFan(t *testing.T) {
 			}
 
 			assert.NoError(t, f.Publish(t.Context(), expected...))
-			assert.NoError(t, f.Close())
+			assert.NoError(t, act(t))
 			assert.NoError(t, g.Wait())
+		})
+
+		s.Then("it will NOT cancel the context of an in-flight message that is still being processed", func(t *testcase.T) {
+			f := subject.Get(t)
+
+			var (
+				processing        = make(chan struct{}) // signals that a message delivery began
+				release           = make(chan struct{}) // gate that keeps the message in-flight
+				ctxErrDuringClose error
+				ctxErrAfterClose  error
+			)
+
+			var g synckit.Group
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range f.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					// a message is now in-flight; keep processing it while Close is called.
+					close(processing)
+					ctxErrDuringClose = msg.Context().Err()
+					<-release
+					ctxErrAfterClose = msg.Context().Err()
+					assert.NoError(t, msg.ACK())
+					return nil
+				}
+				return nil
+			})
+
+			// hand a message off to the subscriber; Publish blocks until it is taken.
+			assert.NoError(t, f.Publish(t.Context(), t.Random.UUID()))
+
+			// wait until the subscriber has taken the message and started processing it.
+			<-processing
+
+			// Close while the message is in-flight must not cancel its context.
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NoError(t, act(t))
+			})
+
+			// let the in-flight processing complete after Close returned.
+			close(release)
+			assert.NoError(t, g.Wait())
+
+			assert.NoError(t, ctxErrDuringClose,
+				"the in-flight message context must not be cancelled while Close is called")
+			assert.NoError(t, ctxErrAfterClose,
+				"the in-flight message context must remain valid after Close returned")
+		})
+	})
+
+	// #Cancel behaves like a stronger #Close: besides signalling that no more
+	// values are expected (unblocking pending Publish calls and ending idle
+	// subscriptions), it also cancels the context of any message that is still
+	// in-flight, so consumers are asked to abort their current processing.
+	s.Describe("#Cancel", func(s *testcase.Spec) {
+		act := let.Act0(func(t *testcase.T) {
+			subject.Get(t).Cancel()
+		})
+
+		s.Then("it will cancel waiting publish", func(t *testcase.T) {
+			f := subject.Get(t)
+
+			var gotErr error
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				gotErr = f.Publish(t.Context(), t.Random.UUID())
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					act(t)
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.ErrorIs(t, gotErr, context.Canceled)
+		})
+
+		s.Then("it will cancel subscription when nothing requires processing", func(t *testcase.T) {
+			f := subject.Get(t)
+
+			var count int
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				for range f.Subscribe(t.Context()) {
+					count++
+				}
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					act(t)
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.Equal(t, count, 0)
+		})
+
+		s.Then("it will cancel the context of an in-flight message that is still being processed", func(t *testcase.T) {
+			f := subject.Get(t)
+
+			var (
+				processing = make(chan struct{}) // signals that a message delivery began
+				ctxErr     error
+			)
+
+			var g synckit.Group
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range f.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					// a message is now in-flight; keep processing it until Cancel is called.
+					close(processing)
+					// Cancel must cancel the in-flight message's context, unblocking this wait.
+					assert.Within(t, timeout, func(context.Context) {
+						<-msg.Context().Done()
+					})
+					ctxErr = msg.Context().Err()
+					return nil
+				}
+				return nil
+			})
+
+			// hand a message off to the subscriber; Publish blocks until it is taken.
+			assert.NoError(t, f.Publish(t.Context(), t.Random.UUID()))
+
+			// wait until the subscriber has taken the message and started processing it.
+			<-processing
+
+			// Cancel while the message is in-flight must cancel its context.
+			assert.Within(t, timeout, func(ctx context.Context) {
+				act(t)
+			})
+
+			assert.NoError(t, g.Wait())
+			assert.ErrorIs(t, ctxErr, context.Canceled,
+				"the in-flight message context must be cancelled by Cancel")
 		})
 	})
 
@@ -470,6 +627,87 @@ func TestFan(t *testing.T) {
 				})
 			})
 		})
+	})
+}
+
+// BenchmarkFan measures the synchronous hand-off throughput of Fan across its
+// common topologies. In every case a set of subscribers is drained in the
+// background and the timed section only publishes, so the numbers reflect the
+// cost of a publish -> deliver -> ACK round trip.
+func BenchmarkFan(b *testing.B) {
+	// consume drains a subscription, acknowledging every message, until ctx ends.
+	consume := func(f *synckit.Fan[int]) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			for msg, err := range f.Subscribe(ctx) {
+				if err != nil {
+					return err
+				}
+				_ = msg.Data()
+				_ = msg.ACK()
+			}
+			return nil
+		}
+	}
+
+	b.Run("unicast (1 publisher, 1 subscriber)", func(b *testing.B) {
+		var f synckit.Fan[int]
+		var g synckit.Group
+		g.Go(context.Background(), consume(&f))
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if err := f.Publish(context.Background(), i); err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		b.StopTimer()
+		g.Cancel()
+		_ = g.Wait()
+	})
+
+	b.Run("fan-out (1 publisher, NumCPU subscribers)", func(b *testing.B) {
+		var f synckit.Fan[int]
+		var g synckit.Group
+		for range runtime.NumCPU() {
+			g.Go(context.Background(), consume(&f))
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if err := f.Publish(context.Background(), i); err != nil {
+				b.Fatal(err)
+			}
+		}
+
+		b.StopTimer()
+		g.Cancel()
+		_ = g.Wait()
+	})
+
+	b.Run("parallel (GOMAXPROCS publishers, GOMAXPROCS subscribers)", func(b *testing.B) {
+		var f synckit.Fan[int]
+		var g synckit.Group
+		for range runtime.GOMAXPROCS(0) {
+			g.Go(context.Background(), consume(&f))
+		}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				if err := f.Publish(context.Background(), 42); err != nil {
+					b.Error(err)
+					return
+				}
+			}
+		})
+
+		b.StopTimer()
+		g.Cancel()
+		_ = g.Wait()
 	})
 }
 

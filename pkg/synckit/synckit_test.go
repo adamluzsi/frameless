@@ -343,11 +343,45 @@ func ExampleMap_Do() {
 	_ = err // &errors.errorString{s:"the-error"}
 }
 
+var _ ds.ReadOnlyMap[string, int] = (*synckit.Map[string, int])(nil)
+var _ ds.Values[int] = (*synckit.Map[string, int])(nil)
+var _ ds.Keys[string] = (*synckit.Map[string, int])(nil)
+var _ ds.All[string, int] = (*synckit.Map[string, int])(nil)
+var _ ds.Map[string, int] = (*synckit.Map[string, int])(nil)
+
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	subject := testcase.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
 		return &synckit.Map[string, int]{}
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		var (
+			m   = subject.Get(t)
+			key = t.Random.String()
+			val = t.Random.Int()
+		)
+		t.Random.Repeat(3, 7, func() {
+			m.Set(t.Random.String(), t.Random.Int())
+		})
+		testcase.Race(
+			func() { m.Get(key) },
+			func() { m.Set(key, val) },
+			func() { m.Delete(key) },
+			func() { m.Lookup(key) },
+			func() { m.GetOrInit(key, func() int { return val }) },
+			func() { iterkit.Collect(m.Keys()) },
+			func() { m.Reset() },
+			func() { iterkit.Collect(m.Values()) },
+			func() {
+				ptr, release, ok := m.Borrow(key)
+				if ok {
+					*ptr = t.Random.Int()
+					release()
+				}
+			},
+		)
 	})
 
 	s.Describe("#Do", func(s *testcase.Spec) {
@@ -905,6 +939,41 @@ func TestMap(t *testing.T) {
 		})
 	})
 
+	s.Describe("#Values", func(s *testcase.Spec) {
+		act := func(t *testcase.T) []int {
+			return iterkit.Collect(subject.Get(t).Values())
+		}
+
+		s.When("map is empty", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Reset()
+			})
+
+			s.Then("on an empty Map, an empty keys results returned", func(t *testcase.T) {
+				assert.Empty(t, act(t))
+			})
+		})
+
+		s.When("values are present in the Map", func(s *testcase.Spec) {
+			var keys = testcase.Let(s, func(t *testcase.T) []string {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.String, random.UniqueValues)
+			})
+			var expValues = testcase.Let(s, func(t *testcase.T) []int {
+				return random.Slice(len(keys.Get(t)), t.Random.Int, random.UniqueValues)
+			})
+			s.Before(func(t *testcase.T) {
+				for i, k := range keys.Get(t) {
+					subject.Get(t).Set(k, expValues.Get(t)[i])
+				}
+				assert.NotEqual(t, subject.Get(t).Len(), 0)
+			})
+
+			s.Then("the result contains all the stored values", func(t *testcase.T) {
+				assert.ContainsExactly(t, act(t), expValues.Get(t))
+			})
+		})
+	})
+
 	s.Describe("#Borrow", func(s *testcase.Spec) {
 		var (
 			key = let.String(s)
@@ -1078,33 +1147,6 @@ func TestMap(t *testing.T) {
 				w.Wait()
 			})
 		})
-	})
-
-	s.Test("race", func(t *testcase.T) {
-		var (
-			m   = subject.Get(t)
-			key = t.Random.String()
-			val = t.Random.Int()
-		)
-		t.Random.Repeat(3, 7, func() {
-			m.Set(t.Random.String(), t.Random.Int())
-		})
-		testcase.Race(
-			func() { m.Get(key) },
-			func() { m.Set(key, val) },
-			func() { m.Delete(key) },
-			func() { m.Lookup(key) },
-			func() { m.GetOrInit(key, func() int { return val }) },
-			func() { m.Keys() },
-			func() { m.Reset() },
-			func() {
-				ptr, release, ok := m.Borrow(key)
-				if ok {
-					*ptr = t.Random.Int()
-					release()
-				}
-			},
-		)
 	})
 
 	s.Describe("#All", func(s *testcase.Spec) {
