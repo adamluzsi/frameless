@@ -163,9 +163,10 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 }
 
 func TestQueue_smoke(t *testing.T) {
+	s := testcase.NewSpec(t)
 	rnd := random.New(random.CryptoSeed{})
 	cm := GetConnection(t)
-	t.Run("single", func(t *testing.T) {
+	s.Test("single", func(t *testcase.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:       "42",
 			Connection: cm,
@@ -181,13 +182,19 @@ func TestQueue_smoke(t *testing.T) {
 			expected1 = []testent.Foo{ent1A, ent1B, ent1C}
 		)
 
-		assert.NoError(t, q1.Publish(context.Background(), ent1A, ent1B, ent1C))
+		if t.Random.Bool() {
+			assert.NoError(t, q1.PublishMany(context.Background(), ent1A, ent1B, ent1C))
+		} else {
+			assert.NoError(t, q1.PublishMany(context.Background(), ent1A))
+			assert.NoError(t, q1.PublishMany(context.Background(), ent1B))
+			assert.NoError(t, q1.PublishMany(context.Background(), ent1C))
+		}
 
 		res1.Eventually(t, func(tb testing.TB, foos []testent.Foo) {
 			assert.ContainsExactly(tb, expected1, foos)
 		})
 	})
-	t.Run("multi", func(t *testing.T) {
+	s.Test("multi", func(t *testcase.T) {
 		cm := GetConnection(t)
 
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
@@ -219,8 +226,10 @@ func TestQueue_smoke(t *testing.T) {
 			expected2 = []testent.Foo{ent2A, ent2B, ent2C}
 		)
 
-		assert.NoError(t, q1.Publish(context.Background(), ent1A, ent1B, ent1C))
-		assert.NoError(t, q2.Publish(context.Background(), ent2A, ent2B, ent2C))
+		assert.NoError(t, q1.Publish(context.Background(), ent1A))
+		assert.NoError(t, q1.Publish(context.Background(), ent1B))
+		assert.NoError(t, q1.Publish(context.Background(), ent1C))
+		assert.NoError(t, q2.PublishMany(context.Background(), ent2A, ent2B, ent2C))
 
 		t.Cleanup(func() {
 			if !t.Failed() {
@@ -271,7 +280,7 @@ func BenchmarkQueue(b *testing.B) {
 
 	b.Run("single element fetch", func(b *testing.B) {
 		assert.NoError(b, q.Purge(ctx))
-		assert.NoError(b, q.Publish(ctx, random.Slice(b.N, func() Entity {
+		assert.NoError(b, q.PublishMany(ctx, random.Slice(b.N, func() Entity {
 			return Entity{
 				ID:  rnd.UUID(),
 				Foo: rnd.UUID(),
@@ -306,7 +315,7 @@ func BenchmarkQueue(b *testing.B) {
 		})
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = q.Publish(ctx, msgs...)
+			_ = q.PublishMany(ctx, msgs...)
 		}
 	})
 }

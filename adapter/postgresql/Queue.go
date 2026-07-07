@@ -43,10 +43,11 @@ func (q Queue[Entity, JSONDTO]) Purge(ctx context.Context) error {
 	return err
 }
 
-func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error {
-	if len(vs) == 0 {
-		return ctx.Err()
-	}
+func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, v Entity) error {
+	return q.PublishMany(ctx, v)
+}
+
+func (q Queue[Entity, JSONDTO]) PublishMany(ctx context.Context, vs ...Entity) error {
 	if q.Name == "" {
 		return fmt.Errorf("missing queue name")
 	}
@@ -163,12 +164,12 @@ func (qs *queueSubscription[Entity, JSONDTO]) Err() error {
 }
 
 const queryQueuePopMessage = `
-DELETE FROM ` + queueTableName + ` 
+DELETE FROM ` + queueTableName + `
     WHERE id = (
       SELECT id
       FROM ` + queueTableName + `
       WHERE queue = $1
-      ORDER BY created_at %s 
+      ORDER BY created_at %s
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
