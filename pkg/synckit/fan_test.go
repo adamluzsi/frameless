@@ -101,35 +101,54 @@ func TestFan(t *testing.T) {
 	}
 
 	s.Describe("#Publish", func(s *testcase.Spec) {
+		var method = func(t *testcase.T, ctx context.Context, data string) error {
+			return subject.Get(t).Publish(ctx, data)
+		}
 		var (
 			ctx, cancel = let.ContextWithCancel(s)
-			values      = let.VarOf[[]string](s, nil)
+			data        = let.String(s)
 		)
 		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Publish(ctx.Get(t), values.Get(t)...)
+			return method(t, ctx.Get(t), data.Get(t))
 		})
 
 		s.When("there are messages to publish", func(s *testcase.Spec) {
-			values.Let(s, func(t *testcase.T) []string {
+			values := let.Var(s, func(t *testcase.T) []string {
 				var vs []string
 				t.Random.Repeat(3, 7, func() {
 					vs = append(vs, t.Random.UUID())
 				})
 				return vs
 			})
+			s.Before(func(t *testcase.T) {
+				// Fan.Publish is a synchronous handoff, so seeding the queue must not
+				// block the setup: publish the values in the background where they
+				// wait until a subscriber consumes them (draining on ctx cancel).
+				fan := subject.Get(t)
+				publishCtx := ctx.Get(t)
+				for _, data := range values.Get(t) {
+					go func(data string) {
+						_ = fan.Publish(publishCtx, data)
+					}(data)
+				}
+			})
+
+			var allValues = func(t *testcase.T) []string {
+				var vs []string
+				vs = append(vs, values.Get(t)...)
+				vs = append(vs, data.Get(t))
+				return vs
+			}
 
 			s.And("a subscriber is consuming the queue", func(s *testcase.Spec) {
 				res := subscribe(s).EagerLoading(s)
 
-				s.Then("it publishes without an error", func(t *testcase.T) {
-					assert.NoError(t, act(t))
-				})
-
 				s.Then("the subscriber receives the published messages", func(t *testcase.T) {
 					assert.NoError(t, act(t))
 
+					expected := allValues(t)
 					res.Get(t).Eventually(t, func(tb testing.TB, got []string) {
-						assert.ContainsExactly(tb, values.Get(t), got)
+						assert.ContainsExactly(tb, expected, got)
 					})
 				})
 			})
@@ -143,40 +162,42 @@ func TestFan(t *testing.T) {
 				s.Then("each message is handled by exactly one subscriber (unicast, not broadcast)", func(t *testcase.T) {
 					assert.NoError(t, act(t))
 
+					expected := allValues(t)
 					t.Eventually(func(t *testcase.T) {
 						var got []string
 						for _, sub := range subs {
 							got = append(got, sub.Get(t).Values()...)
 						}
-						assert.ContainsExactly(t, values.Get(t), got)
+						assert.ContainsExactly(t, expected, got)
 					})
 				})
 			})
 
 			s.And("no subscriber is consuming the queue", func(s *testcase.Spec) {
 				s.Then("it blocks until a subscriber becomes available to take the message", func(t *testcase.T) {
-					done := make(chan error, 1)
-					go func() { done <- act(t) }()
+					var gotErr error
 
-					// without a consumer the handoff cannot happen, so publish stays blocked.
-					pubsubtest.Waiter.Wait()
-					assert.False(t, isFinished(done), "expected Publish to block while there is no subscriber")
+					w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+						gotErr = act(t)
+					}, "expected Publish to block while there is no subscriber")
 
 					// once a subscriber consumes the queue, the handoff completes and publish returns.
-					pubsubtest.Subscribe[string](t, subject.Get(t), context.Background())
+					async := pubsubtest.Subscribe[string](t, subject.Get(t), t.Context())
 
-					t.Eventually(func(t *testcase.T) {
-						assert.True(t, isFinished(done), "expected Publish to unblock once a subscriber is available")
+					assert.Within(t, deadline, func(ctx context.Context) {
+						w.Wait()
+					}, "expected Publish to unblock once a subscriber is available")
+
+					assert.NoError(t, gotErr)
+
+					async.Eventually(t, func(tb testing.TB, values []string) {
+						assert.Contains(tb, values, data.Get(t))
 					})
 				})
 			})
 		})
 
 		s.When("the context is cancelled", func(s *testcase.Spec) {
-			values.Let(s, func(t *testcase.T) []string {
-				return []string{t.Random.UUID()}
-			})
-
 			s.Before(func(t *testcase.T) {
 				cancel.Get(t)()
 			})
@@ -285,9 +306,10 @@ func TestFan(t *testing.T) {
 				value := let.Var(s, func(t *testcase.T) string {
 					return t.Random.UUID()
 				})
-				// handled records the messages that were ultimately acknowledged.
-				handled := let.Var(s, func(t *testcase.T) *results {
-					return &results{}
+
+				// ackedValues records the messages that were ultimately acknowledged.
+				ackedValues := let.Var(s, func(t *testcase.T) *synckit.Slice[string] {
+					return &synckit.Slice[string]{}
 				})
 
 				// Two consumers subscribe to the queue. The first delivery is NACK-ed
@@ -295,31 +317,44 @@ func TestFan(t *testing.T) {
 				// consumer is required so the requeued message has a peer to be handed to,
 				// instead of deadlocking the NACK-ing consumer.
 				s.Before(func(t *testcase.T) {
-					var (
-						wg         sync.WaitGroup
-						nackedOnce atomic.Bool
-					)
-					rec := handled.Get(t)
-					consume := func(sub pubsub.Subscription[string]) {
-						defer wg.Done()
-						for msg, err := range sub {
-							assert.NoError(t, err)
-							if nackedOnce.CompareAndSwap(false, true) {
-								assert.NoError(t, msg.NACK())
-								continue
-							}
-							rec.add(msg.Data())
-							assert.NoError(t, msg.ACK())
-						}
-					}
+					var fan = subject.Get(t)
 
-					wg.Add(2)
-					go consume(act(t))
-					go consume(act(t))
-					t.Defer(func() {
-						cancel.Get(t)()
-						wg.Wait()
+					var g synckit.Group
+					t.Cleanup(g.Cancel)
+
+					var nackFirst atomic.Bool
+
+					n := t.Random.Repeat(2, 7, func() {
+						g.Go(t.Context(), func(ctx context.Context) error {
+							for msg, err := range fan.Subscribe(ctx) {
+								if err != nil {
+									t.Error(err)
+									return err
+								}
+								if nackFirst.CompareAndSwap(false, true) {
+									if err := msg.NACK(); err != nil {
+										t.Error(err)
+										return err
+									}
+								} else {
+									ackedValues.Get(t).Append(msg.Data())
+									if err := msg.ACK(); err != nil {
+										t.Error(err)
+										return err
+									}
+								}
+							}
+							return nil
+						})
 					})
+
+					t.Eventually(func(t *testcase.T) {
+						assert.Equal(t, g.Len(), n)
+					})
+					t.Eventually(func(t *testcase.T) {
+						assert.Equal(t, fan.Len(), n)
+					})
+
 				})
 
 				// a message is queued for delivery. The queue hands messages off
@@ -333,7 +368,8 @@ func TestFan(t *testing.T) {
 
 				s.Then("the message is redelivered until it is acknowledged", func(t *testcase.T) {
 					t.Eventually(func(t *testcase.T) {
-						assert.Contains(t, handled.Get(t).get(), value.Get(t))
+						ackedValues.Get(t)
+						assert.Contains(t, ackedValues.Get(t).ToSlice(), value.Get(t))
 					})
 				})
 
@@ -415,7 +451,9 @@ func TestFan(t *testing.T) {
 				})
 			}
 
-			assert.NoError(t, f.Publish(t.Context(), expected...))
+			for _, data := range expected {
+				assert.NoError(t, f.Publish(t.Context(), data))
+			}
 			assert.NoError(t, act(t))
 			assert.NoError(t, g.Wait())
 		})

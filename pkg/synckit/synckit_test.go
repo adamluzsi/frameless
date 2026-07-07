@@ -23,6 +23,7 @@ import (
 )
 
 const timeout = time.Second / 25
+const deadline = 5 * time.Second
 
 func TestRWLockerFactory(t *testing.T) {
 	s := testcase.NewSpec(t)

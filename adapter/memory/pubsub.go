@@ -35,53 +35,51 @@ type Queue[Data any] struct {
 	subs map[subscriptionID]*QueueSubscription[Data]
 }
 
-func (q *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
+func (q *Queue[Data]) Publish(ctx context.Context, data Data) (rErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(vs) == 0 {
-		return nil
-	}
-	var msgs = q.publish(ctx, vs)
-	q.blockingWait(ctx, msgs)
+	var msg = q.publish(ctx, data)
+	q.blockingWait(ctx, msg)
 	return nil
 }
 
 var msgIDIndex uint64
 
-func (q *Queue[Data]) publish(ctx context.Context, vs []Data) []*queueMessage[Data] {
+func (q *Queue[Data]) publish(ctx context.Context, v Data) *queueMessage[Data] {
 	q.m.Lock()
 	defer q.m.Unlock()
-	var msgs = slicekit.Map(vs, func(v Data) *queueMessage[Data] {
-		return &queueMessage[Data]{
-			q:         q,
-			v:         v,
-			id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
-			timestamp: clock.Now(),
-		}
-	})
-	q.msgs = append(q.msgs, msgs...)
-	return msgs
+	var msg = &queueMessage[Data]{
+		q:         q,
+		v:         v,
+		id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
+		timestamp: clock.Now(),
+	}
+	q.msgs = append(q.msgs, msg)
+	return msg
 }
-func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessages []*queueMessage[Data]) {
+func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessage *queueMessage[Data]) {
 	if !q.Blocking {
 		return
 	}
+	// wait until the published message is acknowledged,
+	// which is signalled by the message no longer being present in the queue.
 	for ctx.Err() == nil {
-		check := make(map[string]struct{})
-		for _, msg := range publishedMessages {
-			check[msg.id] = struct{}{}
+		var found bool
+		for msg := range q.rIter() {
+			if msg.id == publishedMessage.id {
+				found = true
+				break
+			}
 		}
-		for msg := range q.riter() {
-			delete(check, msg.id)
+		if !found {
+			return
 		}
-		if len(check) == len(publishedMessages) { // all processed since nothing was found
-			break
-		}
+		runtime.Gosched()
 	}
 }
 
-func (q *Queue[Data]) riter() iter.Seq[*queueMessage[Data]] {
+func (q *Queue[Data]) rIter() iter.Seq[*queueMessage[Data]] {
 	return func(yield func(*queueMessage[Data]) bool) {
 		q.m.Lock()
 		q.sort(q.msgs)
@@ -103,7 +101,7 @@ do:
 		return nil, nil, nil, err
 	}
 
-	msgs := q.riter()
+	msgs := q.rIter()
 
 	if q.Volatile {
 		msgs = iterkit.Filter(msgs, func(qm *queueMessage[Data]) bool {
@@ -160,7 +158,7 @@ type queueTx[Data any] struct {
 }
 
 type qpub[Data any] struct {
-	Publish func(ctx context.Context, ds ...Data) error
+	Publish func(ctx context.Context, data Data) error
 }
 
 func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]] {
@@ -168,10 +166,10 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]
 		DB: q,
 		TxAdapter: func(tx *queueTx[Data]) qpub[Data] {
 			return qpub[Data]{
-				Publish: func(ctx context.Context, ds ...Data) error {
+				Publish: func(ctx context.Context, data Data) error {
 					tx.m.Lock()
 					defer tx.m.Unlock()
-					tx.msgs = append(tx.msgs, ds...)
+					tx.msgs = append(tx.msgs, data)
 					return nil
 				},
 			}
@@ -185,7 +183,13 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]
 		Commit: func(ctx context.Context, tx *queueTx[Data]) error {
 			tx.m.Lock()
 			defer tx.m.Unlock()
-			return tx.q.Publish(ctx, tx.msgs...)
+			for _, msg := range tx.msgs {
+				if err := tx.q.Publish(ctx, msg); err != nil {
+					return err
+				}
+			}
+			return nil
+
 		},
 		Rollback: func(ctx context.Context, tx *queueTx[Data]) error {
 			tx.m.Lock()
@@ -436,9 +440,9 @@ type FanOutExchange[Data any] struct {
 
 // Publish will publish all data to all FanOutExchange.Queues in an atomic fashion.
 // It will either all succeed or all fail together.
-func (e *FanOutExchange[Data]) Publish(ctx context.Context, data ...Data) (rErr error) {
+func (e *FanOutExchange[Data]) Publish(ctx context.Context, data Data) (rErr error) {
 	return e.eachQueue(ctx, func(ctx context.Context, q *Queue[Data]) error {
-		return q.Publish(ctx, data...)
+		return q.Publish(ctx, data)
 	})
 }
 

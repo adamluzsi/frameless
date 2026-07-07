@@ -51,16 +51,12 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 				ctx = testcase.Let(s, func(t *testcase.T) context.Context {
 					return c.subject().Get(t).MakeContext(t)
 				})
-				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
-					var vs []Data
-					for i, l := 0, t.Random.IntB(3, 7); i < l; i++ {
-						vs = append(vs, c.subject().Get(t).MakeData(t))
-					}
-					return vs
+				data = testcase.Let[Data](s, func(t *testcase.T) Data {
+					return c.subject().Get(t).MakeData(t)
 				})
 			)
 			act := func(t *testcase.T) error {
-				return c.subject().Get(t).Publisher.Publish(ctx.Get(t), data.Get(t)...)
+				return c.subject().Get(t).Publisher.Publish(ctx.Get(t), data.Get(t))
 			}
 
 			s.Then("it publish without an error", func(t *testcase.T) {
@@ -85,7 +81,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 
 			s.Then("subscription didn't received anything", func(t *testcase.T) {
 				pubsubtest.Waiter.Wait()
-				assert.Must(t).Empty(sub.Get(t).Values())
+				assert.Empty(t, sub.Get(t).Values())
 			})
 		})
 

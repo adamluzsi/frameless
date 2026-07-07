@@ -6,7 +6,7 @@ import (
 )
 
 type Publisher[Data any] interface {
-	Publish(context.Context, ...Data) error
+	Publish(context.Context, Data) error
 }
 
 type Subscriber[Data any] interface {

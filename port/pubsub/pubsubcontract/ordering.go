@@ -51,7 +51,9 @@ func Ordering[Data any](
 
 			sub := subscriber.Subscribe(ctx)
 
-			assert.Must(t).NoError(publisher.Publish(ctx, val1, val2, val3))
+			assert.Must(t).NoError(publisher.Publish(ctx, val1))
+			assert.Must(t).NoError(publisher.Publish(ctx, val2))
+			assert.Must(t).NoError(publisher.Publish(ctx, val3))
 			pubsubtest.Waiter.Wait()
 
 			expected := []Data{val1, val2, val3}
@@ -169,7 +171,9 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
 			sub := subscriber.Subscribe(c.MakeContext(t))
 
-			assert.Must(t).NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
+			assert.Must(t).NoError(publisher.Publish(c.MakeContext(t), val1.Get(t)))
+			assert.Must(t).NoError(publisher.Publish(c.MakeContext(t), val2.Get(t)))
+			assert.Must(t).NoError(publisher.Publish(c.MakeContext(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
 			next, stop := iter.Pull2(iter.Seq2[pubsub.Message[Data], error](sub))

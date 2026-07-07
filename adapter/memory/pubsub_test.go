@@ -174,7 +174,8 @@ func TestQueue_smoke(t *testing.T) {
 	}
 
 	t.Log("publish entities (ent1, ent2)")
-	assert.NoError(t, q.Publish(ctx, ent1, ent2))
+	assert.NoError(t, q.Publish(ctx, ent1))
+	assert.NoError(t, q.Publish(ctx, ent2))
 	// t.Log(pp.Format(q))
 
 	t.Log("#1 subscribe to queue")

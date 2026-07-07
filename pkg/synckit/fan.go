@@ -31,16 +31,14 @@ func (fan *Fan[T]) init() {
 
 var _ pubsub.Publisher[struct{}] = (*Fan[struct{}])(nil)
 
-func (fan *Fan[T]) Publish(ctx context.Context, vs ...T) error {
+func (fan *Fan[T]) Publish(ctx context.Context, v T) error {
 	fan.init()
-	for _, v := range vs {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-fan.closed:
-			return context.Canceled
-		case fan.channel <- v:
-		}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-fan.closed:
+		return context.Canceled
+	case fan.channel <- v:
 	}
 	return nil
 }
