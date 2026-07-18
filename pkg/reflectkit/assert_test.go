@@ -2,10 +2,12 @@ package reflectkit_test
 
 import (
 	"fmt"
+	"iter"
 	"reflect"
 	"strconv"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
@@ -234,11 +236,86 @@ func TestAssertMethod(t *testing.T) {
 		assert.NotNil(t, fn)
 		assert.Equal(t, "ptr", fn())
 	})
+
+	s.Test("iterator with concrete type that implements a contract can be used with the contract interface as type", func(t *testcase.T) {
+		receiver := reflect.ValueOf(AssertMethodSubject{})
+
+		fn, ok := reflectkit.AssertMethod[func() iter.Seq2[KeyValuePair[string, int], error]](receiver, "KVE")
+		assert.True(t, ok)
+
+		kvs, err := iterkit.CollectE(fn())
+		assert.NoError(t, err)
+
+		assert.OneOf(t, kvs, func(t testing.TB, kv KeyValuePair[string, int]) {
+			assert.NotNil(t, kv)
+			assert.Equal(t, kv.Key(), "42")
+			assert.Equal(t, kv.Value(), 42)
+		})
+	})
+
+	s.Test("return value is a struct type with type parameter a contract, then through the contract of the type parameter, it can be referenced", func(t *testcase.T) {
+		receiver := reflect.ValueOf(AssertMethodSubject{})
+
+		fn, ok := reflectkit.AssertMethod[func() AssertMethodSubjectGenSub[testent.Fooer]](receiver, "GetFooerStruct")
+		assert.True(t, ok)
+
+		var v1 = fn()
+		assert.Equal[testent.Fooer](t, v1.Fooer, testent.Foo{
+			ID:  "42",
+			Foo: "foo",
+			Bar: "bar",
+			Baz: "baz",
+		})
+	})
+
+	s.Test("return value is a struct type, all fields match with another struct type, then they are interchangeable in the signature usage", func(t *testcase.T) {
+		receiver := reflect.ValueOf(AssertMethodSubject{})
+
+		fn, ok := reflectkit.AssertMethod[func() AssertMethodSubjectGenSubAlt](receiver, "GetFooerStruct")
+		assert.True(t, ok)
+
+		var v1 = fn()
+		assert.Equal[testent.Fooer](t, v1.Fooer, testent.Foo{
+			ID:  "42",
+			Foo: "foo",
+			Bar: "bar",
+			Baz: "baz",
+		})
+	})
+
+	s.Test("return value is a struct type with type parameter a contract, but unrelated to the given function signature", func(t *testcase.T) {
+		receiver := reflect.ValueOf(AssertMethodSubject{})
+
+		fn, ok := reflectkit.AssertMethod[func() AssertMethodSubjectGenSubUnrelated[testent.Fooer]](receiver, "GetFooerStruct")
+		assert.False(t, ok)
+		assert.Nil(t, fn)
+	})
 }
 
 type AssertMethodSubject struct {
 	Foo testent.Foo
 }
+
+type AssertMethodSubjectGenSub[Fooer testent.Fooer] struct {
+	Fooer Fooer
+}
+
+func (s AssertMethodSubject) GetFooerStruct() AssertMethodSubjectGenSub[testent.Foo] {
+	return AssertMethodSubjectGenSub[testent.Foo]{
+		Fooer: testent.Foo{
+			ID:  "42",
+			Foo: "foo",
+			Bar: "bar",
+			Baz: "baz",
+		},
+	}
+}
+
+type AssertMethodSubjectGenSubAlt struct {
+	Fooer testent.Fooer
+}
+
+type AssertMethodSubjectGenSubUnrelated[Fooer testent.Fooer] struct{}
 
 func (s AssertMethodSubject) IntToString(n int) string { return strconv.Itoa(n) }
 
@@ -269,3 +346,22 @@ func (s AssertMethodSubject) FromFooer(f testent.Fooer) string { return f.GetFoo
 func (s AssertMethodSubject) FromFoo(f testent.Foo) string { return f.GetFoo() }
 
 func (s *AssertMethodSubject) PtrOnly() string { return "ptr" }
+
+type KeyValuePair[K, V any] interface {
+	Key() K
+	Value() V
+}
+
+type KV[K, V any] struct {
+	K K
+	V V
+}
+
+func (kv KV[K, V]) Key() K   { return kv.K }
+func (kv KV[K, V]) Value() V { return kv.V }
+
+func (s AssertMethodSubject) KVE() iter.Seq2[KV[string, int], error] {
+	return func(yield func(KV[string, int], error) bool) {
+		yield(KV[string, int]{K: "42", V: 42}, nil)
+	}
+}
