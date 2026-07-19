@@ -35,11 +35,11 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			ctx := ctxVar.Get(t)
 			err := subject.Create(ctx, ptr.Get(t))
 			if err == nil {
-				id := c.Helper().HasID(t, ptr.Get(t))
-				if byIDDeleterOK {
+				id, hasID := lookupNonZeroID(c, pointer.Deref(ptr.Get(t)))
+				if hasID && byIDDeleterOK {
 					t.Defer(byIDD.DeleteByID, ctx, id)
 				}
-				if ByIDFinderOK {
+				if hasID && ByIDFinderOK {
 					c.Helper().IsPresent(t, byIDF, ctx, id)
 				}
 			}
@@ -51,20 +51,22 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		}
 
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {
-			s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
-				assert.Must(t).NoError(act(t))
-				assert.Must(t).NotEmpty(getID(t))
-			})
-
 			s.Then("it should call Create successfully", func(t *testcase.T) {
 				assert.Must(t).NoError(act(t))
 			})
 
-			if ByIDFinderOK {
-				s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
+			if _, ok := c.IDA.Lookup(*new(ENT)); ok {
+				s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
 					assert.Must(t).NoError(act(t))
-					assert.Must(t).Equal(ptr.Get(t), c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t)))
+					assert.Must(t).NotEmpty(getID(t))
 				})
+
+				if ByIDFinderOK {
+					s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
+						assert.Must(t).NoError(act(t))
+						assert.Must(t).Equal(ptr.Get(t), c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t)))
+					})
+				}
 			}
 		})
 
@@ -187,9 +189,9 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 
 					ptr := pointer.Of(c.MakeEntity(t))
 					assert.NoError(t, subject.Create(tx, ptr))
-					id := c.Helper().HasID(t, ptr)
+					id, hasID := lookupNonZeroID(c, *ptr)
 
-					if ByIDFinderOK {
+					if hasID && ByIDFinderOK {
 						t.Eventually(func(t *testcase.T) {
 							got, found, err := byIDF.FindByID(tx, id)
 							assert.NoError(t, err)
@@ -206,7 +208,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 					assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
 					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
 
-					if ByIDFinderOK {
+					if hasID && ByIDFinderOK {
 						t.Eventually(func(t *testcase.T) {
 							got, found, err := byIDF.FindByID(c.MakeContext(t), id)
 							assert.NoError(t, err)
@@ -222,9 +224,10 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 
 					ptr := pointer.Of(c.MakeEntity(t))
 					assert.NoError(t, subject.Create(tx, ptr))
-					id := c.Helper().HasID(t, ptr)
 
-					if ByIDFinderOK {
+					id, hasID := lookupNonZeroID(c, *ptr)
+
+					if hasID && ByIDFinderOK {
 						t.Eventually(func(t *testcase.T) {
 							got, found, err := byIDF.FindByID(tx, id)
 							assert.NoError(t, err)
@@ -241,7 +244,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 					assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
 					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
 
-					if ByIDFinderOK {
+					if hasID && ByIDFinderOK {
 						t.Random.Repeat(1, 3, func() {
 							_, found, err := byIDF.FindByID(c.MakeContext(t), id)
 							assert.NoError(t, err)

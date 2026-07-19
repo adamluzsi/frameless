@@ -34,7 +34,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			assert.Must(t).NoError(err)
 			assert.Must(t).NoError(subject.CommitTx(tx))
-			assert.Must(t).NotNil(subject.CommitTx(tx))
+			assert.Must(t).Error(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
@@ -54,21 +54,21 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			assert.Must(t).NoError(err)
 			assert.Must(t).NoError(subject.RollbackTx(tx))
-			assert.Must(t).NotNil(subject.RollbackTx(tx))
+			assert.Must(t).Error(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			assert.Must(t).NoError(err)
 			assert.Must(t).NoError(subject.RollbackTx(tx))
-			assert.Must(t).NotNil(subject.CommitTx(tx))
+			assert.Must(t).Error(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			assert.Must(t).NoError(err)
 			assert.Must(t).NoError(subject.CommitTx(tx))
-			assert.Must(t).NotNil(subject.RollbackTx(tx))
+			assert.Must(t).Error(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure an emulated multi level transaction`, func(t *testcase.T) {
@@ -94,10 +94,10 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			t.Log(`and tx2 is began using tx1 as a base`)
 
 			assert.Must(t).NoError(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-			assert.Must(t).NotNil(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
+			assert.Must(t).Error(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
 
 			assert.Must(t).NoError(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
-			assert.Must(t).NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
+			assert.Must(t).Error(subject.CommitTx(tx1), `"outer" comproto should be already done`)
 		})
 
 		s.Test("CommitTx and context cancellation behaviour with nested context", func(t *testcase.T) {

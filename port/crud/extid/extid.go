@@ -78,8 +78,13 @@ func Get[ID, ENT any](ent ENT) ID {
 //
 // This function helps identify the primary ID field in ENT structs consistently.
 func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
-	str := reflectkit.BaseValueOf(ent)
-	if tr, ok := register[str.Type()]; ok {
+	var typ = reflectkit.TypeOf[ENT](ent)
+	var str = reflect.ValueOf(ent)
+	if typ == nil {
+		var zero ID
+		return zero, false
+	}
+	if tr, ok := register[typ]; ok {
 		id, ok := tr.Get(str.Interface()).(ID)
 		return id, ok
 	}
@@ -90,7 +95,7 @@ func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
 		id, ok = value.Interface().(ID)
 		return id, ok
 	}
-	if _, value, ok := ExtractIdentifierField(str); ok {
+	if _, value, ok := extractIdentifierField(typ, str); ok {
 		id, ok = value.Interface().(ID)
 		return id, ok
 	}
@@ -181,10 +186,17 @@ var cacheExtractIdentifierField synckit.Map[reflect.Type, func(reflect.Value) (r
 func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) {
 	val := reflectkit.ToValue(ent)
 	val = reflectkit.BaseValue(val)
+	if !val.IsValid() {
+		return reflect.StructField{}, reflect.Value{}, false
+	}
+	return extractIdentifierField(val.Type(), val)
+}
+
+func extractIdentifierField(typ reflect.Type, val reflect.Value) (reflect.StructField, reflect.Value, bool) {
 	init := func() func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
 		return refMakeExtractFunc(val)
 	}
-	return cacheExtractIdentifierField.GetOrInit(val.Type(), init)(val)
+	return cacheExtractIdentifierField.GetOrInit(typ, init)(val)
 }
 
 type extTagField struct {

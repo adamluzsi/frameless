@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
@@ -137,6 +139,12 @@ func (a Helper[ENT, ID]) Save(tb testing.TB, resource crud.Saver[ENT], ctx conte
 	tb.Helper()
 	assert.NoError(tb, resource.Save(ctx, ptr))
 	a.cleanupENT(tb, resource, ctx, ptr)
+
+	if id, ok := lookupNonZeroID(a.IDA, *ptr); ok {
+		if byIDFinder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+			a.IsPresent(tb, byIDFinder, ctx, id)
+		}
+	}
 }
 
 func Create[ENT, ID any](tb testing.TB, resource crud.Creator[ENT], ctx context.Context, ptr *ENT, opts ...Option[ENT, ID]) {
@@ -149,7 +157,7 @@ func (a Helper[ENT, ID]) Create(tb testing.TB, resource crud.Creator[ENT], ctx c
 	assert.NoError(tb, resource.Create(ctx, ptr))
 	a.cleanupENT(tb, resource, ctx, ptr)
 
-	if id, ok := a.IDA.Lookup(*ptr); ok {
+	if id, ok := lookupNonZeroID(a.IDA, *ptr); ok {
 		if byIDFinder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
 			a.IsPresent(tb, byIDFinder, ctx, id)
 		}
@@ -231,20 +239,35 @@ func (a Helper[ENT, ID]) CountIs(tb testing.TB, iter iter.Seq[ENT], expected int
 
 func (a Helper[ENT, ID]) cleanupENT(tb testing.TB, resource any, ctx context.Context, ptr *ENT) {
 	tb.Helper()
-	id := a.HasID(tb, ptr)
+	id, hasID := lookupNonZeroID(a.IDA, pointer.Deref(ptr))
 	tb.Cleanup(func() {
-		if del, ok := resource.(crud.ByIDDeleter[ID]); ok {
+		if del, ok := resource.(crud.ByIDDeleter[ID]); ok && hasID {
 			_ = del.DeleteByID(ctx, id)
 			return
 		}
-		if del, ok := resource.(crud.AllDeleter); ok {
+		if del, ok := resource.(crud.AllDeleter); ok && hasID {
 			_ = del.DeleteAll(ctx)
 			return
 		}
 		tb.Logf("skipping cleanup as %T doesn't implement crud.ByIDDeleter", resource)
 		tb.Logf("make sure to manually clean up %T#%v", *new(ENT), id)
 	})
-	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok && hasID {
 		a.IsPresent(tb, finder, ctx, id)
 	}
+}
+
+// lookupNonZeroID looks up the ID and report whether it is zero or not
+func lookupNonZeroID[ID, ENT any](ida extid.Accessor[ENT, ID], ent ENT) (ID, bool) {
+	id, ok := ida.Lookup(ent)
+	if !ok {
+		return id, false
+	}
+	if zerokit.IsZero(id) {
+		ok = false
+	}
+	if !ok && reflect.ValueOf(id).CanInt() {
+		ok = true
+	}
+	return id, ok
 }
