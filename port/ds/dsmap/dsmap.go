@@ -2,23 +2,14 @@
 package dsmap
 
 import (
+	"context"
+	"fmt"
 	"iter"
+	"reflect"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/ds"
 )
-
-func Keys[KVS ds.ReadOnlyMap[K, V], K comparable, V any](kvs KVS) iter.Seq[K] {
-	if kvk, ok := any(kvs).(ds.Keys[K]); ok {
-		return kvk.Keys()
-	}
-	return func(yield func(K) bool) {
-		for k, _ := range kvs.All() {
-			if !yield(k) {
-				return
-			}
-		}
-	}
-}
 
 func Len[Map ds.ReadOnlyMap[K, V], K comparable, V any](m Map) int {
 	switch kvst := any(m).(type) {
@@ -37,6 +28,34 @@ func Len[Map ds.ReadOnlyMap[K, V], K comparable, V any](m Map) int {
 		}
 		return n
 	}
+}
+
+func LenE[Map ds.ReadOnlyMapE[K, V], K comparable, V any](ctx context.Context, m Map) (int, error) {
+	switch kvst := any(m).(type) {
+	case ds.LenE:
+		return kvst.Len(ctx)
+	case ds.KeysE[K]:
+		var n int
+		for _, err := range kvst.Keys(ctx) {
+			if err != nil {
+				return n, err
+			}
+			n++
+		}
+		return n, nil
+	}
+	type allEFunc = func(ctx context.Context) iter.Seq2[ds.KeyValuePair[K, V], error]
+	if allE, ok := reflectkit.AssertMethod[allEFunc](reflect.ValueOf(m), "AllE"); ok {
+		var n int
+		for _, err := range allE(ctx) {
+			if err != nil {
+				return n, err
+			}
+			n++
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("dsmap.LenE: %T does not support length calculation", m)
 }
 
 type Map[K comparable, V any] map[K]V

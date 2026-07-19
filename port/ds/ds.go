@@ -1,11 +1,14 @@
 // Package ds contains common interfaces when we wish to express datastruct behaviours
 package ds
 
-import "iter"
+import (
+	"iter"
+)
 
 type ReadOnlyMap[K comparable, V any] interface {
 	Lookup(key K) (V, bool)
 	Get(key K) V
+	Keys[K]
 	All[K, V]
 }
 

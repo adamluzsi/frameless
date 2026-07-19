@@ -5,7 +5,6 @@ import (
 	"iter"
 	"testing"
 
-	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/mapkit"
@@ -17,20 +16,19 @@ import (
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/random"
 )
 
-func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVSOption[K, V]) contract.Contract {
+func Map[K comparable, V any](mk func(tb testing.TB) ds.Map[K, V], opts ...MapOption[K, V]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
 	s.Test("smoke", func(t *testcase.T) {
-		var kvs = make(t)
+		var kvs = mk(t)
 
 		expected := map[K]V{}
 		t.Random.Repeat(3, 7, func() {
-			key := c.makeUniqueK(t)
-			expected[key] = c.makeV(t)
+			key := makeUniqueValue(t, c.MakeKey)
+			expected[key] = makeValue(t, c.MakeValue)
 		})
 
 		var expLen int
@@ -50,7 +48,7 @@ func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVS
 			assert.Equal(t, v, kvs.Get(k))
 		}
 
-		kNoise, vNoise := c.makeUniqueK(t), c.makeV(t)
+		kNoise, vNoise := makeUniqueValue(t, c.MakeKey), makeValue(t, c.MakeValue)
 		kvs.Set(kNoise, vNoise)
 		assert.Equal(t, expLen+1, dsmap.Len(kvs))
 		kvs.Delete(kNoise)
@@ -59,18 +57,18 @@ func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVS
 		assert.False(t, ok)
 		assert.Empty(t, kvs.Get(kNoise))
 
-		assert.ContainsExactly(t, mapkit.Keys(expected), iterkit.Collect(dsmap.Keys(kvs)))
+		assert.ContainsExactly(t, mapkit.Keys(expected), iterkit.Collect(kvs.Keys()))
 		assert.ContainsExactly(t, expected, iterkit.Collect2Map(kvs.All()))
 	})
 
 	s.Test("keys are unique in the store", func(t *testcase.T) {
-		var kvs = make(t)
-		k := c.makeK(t)
+		var kvs = mk(t)
+		k := makeValue(t, c.MakeKey)
 		t.Random.Repeat(3, 7, func() {
-			kvs.Set(k, c.makeV(t))
+			kvs.Set(k, makeValue(t, c.MakeValue))
 		})
 		assert.Equal(t, 1, dsmap.Len(kvs))
-		exp := c.makeV(t)
+		exp := makeValue(t, c.MakeValue)
 		kvs.Set(k, exp)
 		assert.Equal(t, 1, dsmap.Len(kvs))
 		assert.Equal(t, exp, kvs.Get(k))
@@ -78,12 +76,27 @@ func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVS
 		assert.Equal(t, 0, dsmap.Len(kvs))
 	})
 
-	s.Describe("#Values", iterkitcontract.IterSeq2(func(tb testing.TB) iter.Seq2[K, V] {
+	s.Describe("#Values", iterkitcontract.IterSeq(func(tb testing.TB) iter.Seq[V] {
 		t := testcase.ToT(&tb)
-		kvs := make(t)
+		kvs := mk(t)
+		vs, ok := kvs.(ds.Values[V])
+		if !ok {
+			tb.Skipf("ds.ValuesE[%s] is not supported by %T", reflectkit.TypeOf[V]().String(), kvs)
+		}
 		t.Random.Repeat(3, 7, func() {
-			k := c.makeK(t)
-			v := c.makeV(t)
+			k := makeValue(t, c.MakeKey)
+			v := makeValue(t, c.MakeValue)
+			kvs.Set(k, v)
+		})
+		return vs.Values()
+	}).Spec)
+
+	s.Describe("#All", iterkitcontract.IterSeq2(func(tb testing.TB) iter.Seq2[K, V] {
+		t := testcase.ToT(&tb)
+		kvs := mk(t)
+		t.Random.Repeat(3, 7, func() {
+			k := makeValue(t, c.MakeKey)
+			v := makeValue(t, c.MakeValue)
 			kvs.Set(k, v)
 		})
 		return kvs.All()
@@ -94,41 +107,16 @@ func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVS
 	return s.AsSuite(fmt.Sprintf("Map[%s, %s]", kName, vName))
 }
 
-type KVSOption[K comparable, V any] interface {
-	option.Option[KVSConfig[K, V]]
+type MapOption[K comparable, V any] option.Option[MapConfig[K, V]]
+
+type MapConfig[K comparable, V any] struct {
+	MakeKey   func(testing.TB) K
+	MakeValue func(testing.TB) V
 }
 
-type KVSConfig[K comparable, V any] struct {
-	MakeK func(testing.TB) K
-	MakeV func(testing.TB) V
-}
+var _ MapOption[string, int] = MapConfig[string, int]{}
 
-var _ KVSOption[string, int] = KVSConfig[string, int]{}
-
-func (c KVSConfig[K, V]) Configure(o *KVSConfig[K, V]) {
-	o.MakeK = zerokit.Coalesce(c.MakeK, o.MakeK)
-	o.MakeV = zerokit.Coalesce(c.MakeV, o.MakeV)
-}
-
-func (c KVSConfig[K, V]) keys() testcase.Var[[]K] {
-	return testcase.Var[[]K]{
-		ID: "kvs generated keys",
-		Init: func(t *testcase.T) []K {
-			return []K{}
-		},
-	}
-}
-
-func (c KVSConfig[K, V]) makeUniqueK(t *testcase.T) K {
-	key := random.Unique(func() K { return c.makeK(t) }, c.keys().Get(t)...)
-	testcase.Append(t, c.keys(), key)
-	return key
-}
-
-func (c KVSConfig[K, V]) makeK(tb testing.TB) K {
-	return zerokit.Coalesce(c.MakeK, spechelper.MakeValue[K])(tb)
-}
-
-func (c KVSConfig[K, V]) makeV(tb testing.TB) V {
-	return zerokit.Coalesce(c.MakeV, spechelper.MakeValue[V])(tb)
+func (c MapConfig[K, V]) Configure(o *MapConfig[K, V]) {
+	o.MakeKey = zerokit.Coalesce(c.MakeKey, o.MakeKey)
+	o.MakeValue = zerokit.Coalesce(c.MakeValue, o.MakeValue)
 }

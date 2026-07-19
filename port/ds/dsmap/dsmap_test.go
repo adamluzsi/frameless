@@ -129,6 +129,7 @@ func (m dummyMap[K, V]) Lookup(key K) (V, bool) { return *new(V), false }
 func (m dummyMap[K, V]) Get(key K) V            { return *new(V) }
 func (m dummyMap[K, V]) Set(key K, val V)       {}
 func (m dummyMap[K, V]) Delete(key K)           {}
+func (m dummyMap[K, V]) Keys() iter.Seq[K]      { return func(yield func(K) bool) {} }
 func (m dummyMap[K, V]) All() iter.Seq2[K, V]   { return func(yield func(K, V) bool) {} }
 
 type KVSSizer struct {
