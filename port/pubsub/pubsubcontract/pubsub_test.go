@@ -1,6 +1,7 @@
 package pubsubcontract_test
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -137,6 +138,40 @@ func TestFanOutExchange(t *testing.T) {
 		pubsubcontract.FanOut[Foo](exchange, MakeQueue),
 		//pubsubcontracts.OnePhaseCommitProtocol
 	)
+}
+
+func TestTransactionalMessageContext(t *testing.T) {
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeData: func(tb testing.TB) TestEntity {
+			v := makeTestEntity(tb)
+			v.Data = testcase.ToT(&tb).Random.UUID()
+			return v
+		},
+	}
+
+	q := &memory.Queue[TestEntity]{}
+
+	pubsubcontract.TransactionalMessageContext(q, q, pubsubConfig).Test(t)
+}
+
+func TestTransactionalPublisher(t *testing.T) {
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeData: func(tb testing.TB) TestEntity {
+			v := makeTestEntity(tb)
+			v.Data = testcase.ToT(&tb).Random.UUID()
+			return v
+		},
+	}
+
+	q := &memory.Queue[TestEntity]{}
+
+	pubsubcontract.TransactionalPublisher(q, q, q, pubsubConfig).Test(t)
 }
 
 // Entity is an example entity that can be used for testing

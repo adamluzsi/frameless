@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/txkit"
@@ -24,7 +26,8 @@ type Queue[Data any] struct {
 	LIFO bool
 	// Volatile will flag the Queue to act like a Volatile queue
 	Volatile bool
-	// blocking will cause the Queue to wait until the published messages are ACK -ed.
+	// Blocking will cause the Queue to wait until the published messages are ACK -ed.
+	// A blocking queue is not compatible with transactions and will error on them.
 	Blocking bool
 	// SortLessFunc will define how to sort data, when we look for what message to handle next.
 	// if not supplied FIFO is the default ordering.
@@ -39,44 +42,47 @@ func (q *Queue[Data]) Publish(ctx context.Context, data Data) (rErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var msg = q.publish(ctx, data)
-	q.blockingWait(ctx, msg)
-	return nil
+	if q.Blocking {
+		if _, ok := q.txm().LookupTx(ctx); ok {
+			return errBlockingQueueCannotBeUsedInTransaction
+		}
+		return q.blockingWait(ctx, data)
+	}
+	return q.txm().Q(ctx).Publish(ctx, data)
 }
 
 var msgIDIndex uint64
 
-func (q *Queue[Data]) publish(ctx context.Context, v Data) *queueMessage[Data] {
+func (q *Queue[Data]) publish(ctx context.Context, data Data) *queueMessage[Data] {
 	q.m.Lock()
 	defer q.m.Unlock()
 	var msg = &queueMessage[Data]{
 		q:         q,
-		v:         v,
+		v:         data,
 		id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
 		timestamp: clock.Now(),
 	}
 	q.msgs = append(q.msgs, msg)
 	return msg
 }
-func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessage *queueMessage[Data]) {
-	if !q.Blocking {
-		return
-	}
+func (q *Queue[Data]) blockingWait(ctx context.Context, data Data) error {
 	// wait until the published message is acknowledged,
 	// which is signalled by the message no longer being present in the queue.
+	var target = q.publish(ctx, data)
 	for ctx.Err() == nil {
 		var found bool
 		for msg := range q.rIter() {
-			if msg.id == publishedMessage.id {
+			if msg.id == target.id {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return
+			return nil
 		}
 		runtime.Gosched()
 	}
+	return ctx.Err()
 }
 
 func (q *Queue[Data]) rIter() iter.Seq[*queueMessage[Data]] {
@@ -95,10 +101,10 @@ func (q *Queue[Data]) rIter() iter.Seq[*queueMessage[Data]] {
 	}
 }
 
-func (q *Queue[Data]) take(ctx context.Context, s *QueueSubscription[Data]) (_ *queueMessage[Data], ack, nack func() error, _ error) {
+func (q *Queue[Data]) take(ctx context.Context, s *QueueSubscription[Data]) (_ *queueMessage[Data], _ context.Context, ack, nack func() error, _ error) {
 do:
 	if err := ctx.Err(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	msgs := q.rIter()
@@ -109,9 +115,44 @@ do:
 		})
 	}
 
+	// TransactionalMessageContext support
+	var tx context.Context = ctx
+	var txCommit, txRollback func() error
+	txCommit = func() error { return nil }
+	txRollback = func() error { return nil }
+	if !q.Blocking {
+		var err error
+		tx, err = q.BeginTx(tx)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		// Use a detached context for commit/rollback so that subscription
+		// cancellation does not interfere with the transaction lifecycle.
+		// The detached context still carries all values (including the tx)
+		// but ignores the parent's cancellation.
+		txForTxOps := contextkit.WithoutCancel(tx)
+		txCommit = func() error {
+			return q.CommitTx(txForTxOps)
+		}
+		txRollback = func() error {
+			return q.RollbackTx(txForTxOps)
+		}
+	}
+
 	for msg := range msgs {
 		if msg.take(s.id) {
-			ack := func() error {
+			var ack, nack func() error
+
+			ack = func() error {
+				if err := txCommit(); err != nil {
+					// Transaction commit failed, so the message should be released
+					// so it can be picked up again. We cannot call nack() because
+					// the transaction is already marked as done by the failed commit.
+					q.m.Lock()
+					msg.release(s.id)
+					q.m.Unlock()
+					return err
+				}
 				q.m.Lock()
 				defer q.m.Unlock()
 				q.msgs = slicekit.Filter(q.msgs, func(m *queueMessage[Data]) bool {
@@ -121,19 +162,20 @@ do:
 				return nil
 			}
 
-			nack := func() error {
+			nack = func() error {
 				q.m.Lock()
 				defer q.m.Unlock()
 				msg.release(s.id)
-				return nil
+				return txRollback()
 			}
 
-			return msg, ack, nack, nil
+			return msg, tx, ack, nack, nil
 		}
 
 		runtime.Gosched()
 	}
 
+	_ = txRollback()
 	goto do
 }
 
@@ -154,47 +196,72 @@ type queueTx[Data any] struct {
 	m sync.Mutex
 	q *Queue[Data]
 
-	msgs []Data
+	ds   []Data
+	done bool
 }
 
 type qpub[Data any] struct {
 	Publish func(ctx context.Context, data Data) error
 }
 
-func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]] {
-	return txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]]{
+type qPublisher[Data any] func(ctx context.Context, data Data) error
+
+var _ pubsub.Publisher[int] = (*qPublisher[int])(nil)
+
+func (fn qPublisher[Data]) Publish(ctx context.Context, data Data) error {
+	return fn(ctx, data)
+}
+
+func (q *Queue[Data]) dbPublish(ds ...Data) error {
+	return q.dbPublishMessages(slicekit.Map(ds, func(v Data) *queueMessage[Data] {
+		return &queueMessage[Data]{
+			q:         q,
+			v:         v,
+			id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
+			timestamp: clock.Now(),
+		}
+	})...)
+}
+
+func (q *Queue[Data]) dbPublishMessages(msgs ...*queueMessage[Data]) error {
+	q.m.Lock()
+	defer q.m.Unlock()
+	q.msgs = append(q.msgs, msgs...)
+	return nil
+}
+
+func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qPublisher[Data]] {
+	return txkit.Manager[Queue[Data], queueTx[Data], qPublisher[Data]]{
 		DB: q,
-		TxAdapter: func(tx *queueTx[Data]) qpub[Data] {
-			return qpub[Data]{
-				Publish: func(ctx context.Context, data Data) error {
-					tx.m.Lock()
-					defer tx.m.Unlock()
-					tx.msgs = append(tx.msgs, data)
-					return nil
-				},
+		TxAdapter: func(tx *queueTx[Data]) qPublisher[Data] {
+			return func(ctx context.Context, data Data) error {
+				tx.m.Lock()
+				defer tx.m.Unlock()
+				tx.ds = append(tx.ds, data)
+				return nil
 			}
 		},
-		DBAdapter: func(db *Queue[Data]) qpub[Data] {
-			return qpub[Data]{Publish: db.Publish}
+		DBAdapter: func(db *Queue[Data]) qPublisher[Data] {
+			return qPublisher[Data](func(ctx context.Context, ds Data) error {
+				return db.dbPublish(ds)
+			})
 		},
 		Begin: func(ctx context.Context, db *Queue[Data]) (*queueTx[Data], error) {
-			return &queueTx[Data]{q: db, msgs: []Data{}}, nil
+			return &queueTx[Data]{q: db, ds: []Data{}}, nil
 		},
 		Commit: func(ctx context.Context, tx *queueTx[Data]) error {
 			tx.m.Lock()
 			defer tx.m.Unlock()
-			for _, msg := range tx.msgs {
-				if err := tx.q.Publish(ctx, msg); err != nil {
-					return err
-				}
-			}
-			return nil
-
+			// Flush the buffered data directly to the underlying queue.
+			// We must not go through tx.q.Publish here, because the context
+			// still carries this transaction, which would route the publish
+			// back into the tx buffer and re-acquire tx.m, causing a deadlock.
+			return tx.q.dbPublish(tx.ds...)
 		},
 		Rollback: func(ctx context.Context, tx *queueTx[Data]) error {
 			tx.m.Lock()
 			defer tx.m.Unlock()
-			tx.msgs = nil
+			tx.ds = nil
 			return nil
 		},
 	}
@@ -241,6 +308,8 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 	}
 }
 
+const errBlockingQueueCannotBeUsedInTransaction errorkit.Error = "A blocking queue can't publish message as part of a transaction, as it would lead to a DEAD LOCK"
+
 // BeginTx creates a context with a transaction.
 // All statements that receive this context should be executed within the given transaction in the context.
 // After a BeginTx command will be executed in a single transaction until an explicit COMMIT or ROLLBACK is given.
@@ -255,6 +324,9 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 //	ctx = r.ContextWithIsolationLevel(ctx, sql.LevelSerializable)
 //	ctx, err = r.BeginTx(ctx)
 func (q *Queue[Data]) BeginTx(ctx context.Context) (context.Context, error) {
+	if q.Blocking {
+		return nil, errBlockingQueueCannotBeUsedInTransaction
+	}
 	return q.txm().BeginTx(ctx)
 }
 
@@ -325,14 +397,14 @@ func (s *QueueSubscription[Data]) Next() bool {
 		return false
 	}
 
-	msg, ack, nack, err := s.q.take(s.ctx, s)
+	msg, ctx, ack, nack, err := s.q.take(s.ctx, s)
 	if err != nil {
 		s.err = err
 		return false
 	}
 
 	s.value = &pubsubMessage[Data]{
-		ctx:  s.ctx,
+		ctx:  ctx,
 		q:    s.q,
 		sub:  s,
 		msg:  msg,
