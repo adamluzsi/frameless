@@ -33,6 +33,9 @@ var _ pubsub.Publisher[struct{}] = (*Fan[struct{}])(nil)
 
 func (fan *Fan[T]) Publish(ctx context.Context, v T) error {
 	fan.init()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

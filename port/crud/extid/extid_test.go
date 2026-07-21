@@ -288,6 +288,20 @@ func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	assert.Equal(t, "KO", id)
 }
 
+func TestLookup_InterfaceBoxingPointerToStructWithTaggedID_IDReturned(t *testing.T) {
+	type EntID string
+	type Ent struct {
+		ID  EntID `ext:"id"`
+		Foo string
+	}
+
+	var boxed interface{} = &Ent{ID: "42", Foo: "foo"}
+
+	id, ok := extid.Lookup[EntID](boxed)
+	assert.True(t, ok, "expected the ext:\"id\" field to be found through the interface-boxed pointer")
+	assert.Equal(t, EntID("42"), id)
+}
+
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	id, ok := extid.Lookup[any](testhelper.UnidentifiableID{UserID: 42.24})
 	assert.Must(t).False(ok)

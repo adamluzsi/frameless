@@ -84,12 +84,25 @@ func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
 		var zero ID
 		return zero, false
 	}
+	// Dereference pointer(s) to reach the underlying value.
+	// This mirrors extid.Set, which operates through *ENT,
+	// so that Lookup can locate the ID field regardless of whether
+	// ENT is a value, a pointer, a pointer-of-pointer,
+	// or an interface boxing any of those.
+	for typ.Kind() == reflect.Pointer {
+		if str.IsNil() {
+			var zero ID
+			return zero, false
+		}
+		typ = typ.Elem()
+		str = str.Elem()
+	}
 	if tr, ok := register[typ]; ok {
 		id, ok := tr.Get(str.Interface()).(ID)
 		return id, ok
 	}
 	if _, value, ok := extractIdentifierFieldByType(idByTypeKey{
-		ENT: reflectkit.TypeOf[ENT](),
+		ENT: typ,
 		ID:  reflectkit.TypeOf[ID](),
 	})(str); ok {
 		id, ok = value.Interface().(ID)

@@ -5,6 +5,7 @@
 package slicekit
 
 import (
+	"fmt"
 	"iter"
 	"sort"
 
@@ -199,10 +200,16 @@ func Shift[S ~[]T, T any](vs *S) (T, bool) {
 }
 
 func Unshift[S ~[]T, T any](vs *S, nvs ...T) {
+	if vs == nil {
+		panic(fmt.Sprintf("slicekit.Unshift: nil %T", vs))
+	}
 	if len(nvs) == 0 {
 		return
 	}
-	*vs = append(nvs, *vs...)
+	out := make(S, 0, len(nvs)+len(*vs))
+	out = append(out, nvs...)
+	out = append(out, *vs...)
+	*vs = out
 }
 
 func Insert[S ~[]T, T any](vs *S, index int, nvs ...T) bool {
