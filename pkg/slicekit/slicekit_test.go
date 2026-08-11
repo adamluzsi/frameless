@@ -3,6 +3,8 @@ package slicekit_test
 import (
 	"fmt"
 	"iter"
+	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -457,17 +459,6 @@ func ExampleContains() {
 	_ = slicekit.Contains([]string{"foo", "bar", "baz"}, "bar") // true
 	_ = slicekit.Contains([]int{7, 42, 128}, 128)               // true
 	_ = slicekit.Contains([]int{7, 42, 128}, 32)                // false
-}
-
-func TestContains(t *testing.T) {
-	t.Run("contains", func(t *testing.T) {
-		assert.True(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "bar"))
-		assert.True(t, slicekit.Contains([]int{7, 42, 128}, 128))
-	})
-	t.Run("does not contain", func(t *testing.T) {
-		assert.False(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "qux"))
-		assert.False(t, slicekit.Contains([]int{7, 42, 128}, 32))
-	})
 }
 
 func ExampleBatch() {
@@ -1533,6 +1524,8 @@ func Test_sequence(t *testing.T) {
 	}).Test(t)
 }
 
+// Sequence is a sample implementation using slicekit helper functions
+// to implement the Sequence data structure.
 type Sequence[T any] []T
 
 func (seq *Sequence[T]) Lookup(index int) (T, bool) {
@@ -1565,4 +1558,528 @@ func (seq *Sequence[T]) Values() iter.Seq[T] {
 
 func (seq *Sequence[T]) Len() int {
 	return len(*seq)
+}
+
+func TestContains(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("contains a value in a non-empty slice", func(t *testcase.T) {
+		sVS := random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+		assert.True(t, slicekit.Contains(sVS, random.Pick(t.Random, sVS...)))
+
+		iVS := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+		assert.True(t, slicekit.Contains(iVS, random.Pick(t.Random, iVS...)))
+	})
+
+	s.Test("contains the first element", func(t *testcase.T) {
+		assert.True(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "foo"))
+
+		vs := random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+		assert.True(t, slicekit.Contains(vs, vs[0]))
+	})
+
+	s.Test("contains the last element", func(t *testcase.T) {
+		assert.True(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "baz"))
+
+		vs := random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+		assert.True(t, slicekit.Contains(vs, vs[len(vs)-1]))
+	})
+
+	s.Test("does not contain a value that is not in the slice", func(t *testcase.T) {
+		assert.False(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "qux"))
+		assert.False(t, slicekit.Contains([]int{7, 42, 128}, 32))
+
+		vs := random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+		oth := random.Unique(t.Random.String, vs...)
+		assert.False(t, slicekit.Contains(vs, oth))
+	})
+
+	s.Test("does not contain any value in an empty slice", func(t *testcase.T) {
+		assert.False(t, slicekit.Contains([]string{}, "foo"))
+		assert.False(t, slicekit.Contains([]string{}, ""))
+	})
+
+	s.Test("does not contain any value in a nil slice", func(t *testcase.T) {
+		assert.False(t, slicekit.Contains([]string(nil), "foo"))
+	})
+
+	s.Test("duplicate values are still contained", func(t *testcase.T) {
+		// Membership is a logical predicate: if the value is present at
+		// any index, Contains returns true regardless of how many times
+		// it appears.
+		assert.True(t, slicekit.Contains([]string{"foo", "foo", "bar"}, "foo"))
+	})
+
+	s.Test("time.Time values that are Equal but not == are matched", func(t *testcase.T) {
+		// time.Time is a comparable type but its == operator is strict:
+		// two time.Time values that denote the same instant in different
+		// *Location zones are NOT equal under == but ARE equal under
+		// .Equal. The desired contract for Contains is to honour
+		// predicate.Equatable[T].Equal, mirroring ContainsExactly.
+		//
+		// This subtest is the spec for that contract. Until Contains
+		// is updated to dispatch to Equal, the Equal-but-not-==
+		// assertion below will fail and surface the gap.
+		utc := time.UTC
+		fixed := time.FixedZone("fixed-utc", 0)
+		when := time.Date(2024, 1, 2, 0, 0, 0, 0, utc)
+		whenAlt := time.Date(2024, 1, 2, 0, 0, 0, 0, fixed)
+		otherInstant := time.Date(2024, 6, 15, 0, 0, 0, 0, utc)
+
+		// Sanity-check the precondition that makes this test meaningful.
+		if when == whenAlt {
+			t.Fatalf("test precondition broken: when == whenAlt under ==")
+		}
+		if !when.Equal(whenAlt) {
+			t.Fatalf("test precondition broken: !when.Equal(whenAlt)")
+		}
+		if when.Equal(otherInstant) {
+			t.Fatalf("test precondition broken: when.Equal(otherInstant)")
+		}
+
+		// Exact == match.
+		assert.True(t, slicekit.Contains([]time.Time{when}, when))
+
+		// Equal-but-not-== match: should be found under the Equatable contract.
+		assert.True(t, slicekit.Contains([]time.Time{when}, whenAlt))
+
+		// A genuinely different value (different instant) must still differ.
+		assert.False(t, slicekit.Contains([]time.Time{when}, otherInstant))
+	})
+
+	s.Test("user-defined Equatable", func(t *testcase.T) {
+		// namedEntry.Equal compares only the name field, so two entries
+		// with the same name but different ids are Equal (but not ==).
+		// The desired contract is that Contains dispatches to Equal and
+		// finds them. Until the implementation is updated, the
+		// "an Equal match is found" assertion below will fail and surface
+		// the gap.
+		vs := []namedEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+
+		assert.True(t, slicekit.Contains(vs, namedEntry{id: 1, name: "foo"}),
+			"an exact == match is found")
+		assert.True(t, slicekit.Contains(vs, namedEntry{id: 42, name: "foo"}),
+			"an Equal match is found")
+
+		// Negative case: a needle that is neither == nor Equal to any
+		// element in the slice is not found.
+		needle := namedEntry{id: 99, name: "baz"}
+		assert.False(t, slicekit.Contains(vs, needle))
+	})
+
+	s.Test("user-defined Comparable", func(t *testcase.T) {
+		// comparableEntry implements predicate.Comparable[T] but NOT
+		// predicate.Equatable[T]. Compare returns 0 for entries with
+		// the same name, so a needle with a different id but the same
+		// name should be found when Contains dispatches to Compare.
+		//
+		// This subtest proves the dispatch reaches for Compare
+		// specifically. Until the implementation dispatches to
+		// Comparable, the positive assertion below will fail and
+		// surface the gap.
+		vs := []comparableEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+
+		assert.True(t, slicekit.Contains(vs, comparableEntry{id: 1, name: "foo"}),
+			"an exact == match is found")
+		assert.True(t, slicekit.Contains(vs, comparableEntry{id: 42, name: "foo"}),
+			"an Equal-under-Compare match is found")
+
+		// Negative case: a needle that is not Compare-equal to any
+		// element in the slice is not found.
+		assert.False(t, slicekit.Contains(vs, comparableEntry{id: 99, name: "baz"}))
+	})
+
+	s.Test("user-defined ComparableShort", func(t *testcase.T) {
+		// comparableShortEntry implements predicate.ComparableShort[T]
+		// but NOT predicate.Equatable[T]. Cmp returns 0 for entries
+		// with the same name, so a needle with a different id but the
+		// same name should be found when Contains dispatches to Cmp.
+		//
+		// This subtest proves the dispatch reaches for Cmp
+		// specifically. Until the implementation dispatches to
+		// ComparableShort, the positive assertion below will fail and
+		// surface the gap.
+		vs := []comparableShortEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+
+		assert.True(t, slicekit.Contains(vs, comparableShortEntry{id: 1, name: "foo"}),
+			"an exact == match is found")
+		assert.True(t, slicekit.Contains(vs, comparableShortEntry{id: 42, name: "foo"}),
+			"an Equal-under-Cmp match is found")
+
+		// Negative case: a needle that is not Cmp-equal to any
+		// element in the slice is not found.
+		assert.False(t, slicekit.Contains(vs, comparableShortEntry{id: 99, name: "baz"}))
+	})
+
+	s.Test("NaN", func(t *testcase.T) {
+		var nan = math.NaN()
+		assert.True(t, slicekit.Contains([]float64{42.24, nan}, nan))
+		assert.True(t, slicekit.Contains([]float64{42.24, nan}, 42.24))
+	})
+}
+
+func TestContainsExactly(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("1:1 match non-empty", func(t *testcase.T) {
+		assert.True(t, slicekit.ContainsExactly([]string{"foo", "bar", "baz"}, []string{"foo", "bar", "baz"}))
+	})
+
+	s.Test("1:1 match, but different order", func(t *testcase.T) {
+		assert.True(t, slicekit.ContainsExactly([]string{"foo", "bar", "baz"}, []string{"bar", "baz", "foo"}))
+	})
+
+	s.Test("1:1 match, empty", func(t *testcase.T) {
+		assert.True(t, slicekit.ContainsExactly([]string{}, []string{}))
+		assert.True(t, slicekit.ContainsExactly([]string{}, nil))
+		assert.True(t, slicekit.ContainsExactly(nil, []string{}))
+	})
+
+	s.Test("no match, length", func(t *testcase.T) {
+		assert.False(t, slicekit.ContainsExactly([]string{"foo", "bar", "baz"}, []string{"foo", "bar", "baz", "baz"}))
+	})
+
+	s.Test("no match, different element", func(t *testcase.T) {
+		assert.False(t, slicekit.ContainsExactly([]string{"foo", "bar", "baz"}, []string{"foo", "qux", "baz"}))
+	})
+
+	s.Test("no match, different content", func(t *testcase.T) {
+		assert.False(t, slicekit.ContainsExactly(
+			[]string{"foo", "foo", "bar"},
+			[]string{"foo", "bar", "bar"},
+		))
+	})
+
+	s.Test("NaN float values are compared correctly", func(t *testcase.T) {
+		var nan = math.NaN()
+
+		assert.True(t, slicekit.ContainsExactly([]float64{nan}, []float64{nan}))
+		assert.True(t, slicekit.ContainsExactly([]float64{42.24, nan}, []float64{nan, 42.24}))
+		// [1.0] and [NaN] clearly do not contain the same values,
+		// yet the current implementation reports them as equal.
+		//
+		// Root cause: the values are used as map keys, but NaN != NaN in Go,
+		// so a NaN key can never be found again on lookup. The decrement guard
+		// `counts[v]--; if counts[v] < 0` therefore never trips for NaN, and a
+		// fresh (invisible) key is inserted on every access instead.
+
+		assert.False(t, slicekit.ContainsExactly([]float64{1.0}, []float64{nan}))
+
+		// Same defect with a duplicated NaN: these multisets differ.
+		assert.False(t, slicekit.ContainsExactly(
+			[]float64{nan, 1.0},
+			[]float64{nan, nan},
+		))
+
+		// The contract is order-independent (hence symmetric) value comparison,
+		// but with NaN the answer depends on the argument order.
+		assert.True(t, slicekit.ContainsExactly([]float64{1.0}, []float64{nan}) ==
+			slicekit.ContainsExactly([]float64{nan}, []float64{1.0}))
+	})
+
+	s.Test("Inf float values are compared correctly", func(t *testcase.T) {
+		var posInf = math.Inf(+1)
+		var negInf = math.Inf(-1)
+
+		assert.True(t, posInf == posInf)
+		assert.True(t, negInf == negInf)
+
+		// +Inf == +Inf and -Inf == -Inf in Go, so the generic == path
+		// behaves correctly for these values; the float64 specialisation
+		// must preserve that.
+		assert.True(t, slicekit.ContainsExactly(
+			[]float64{posInf, 1.0},
+			[]float64{1.0, posInf},
+		))
+		assert.True(t, slicekit.ContainsExactly(
+			[]float64{negInf, negInf, 2.0},
+			[]float64{negInf, 2.0, negInf},
+		))
+
+		// +Inf and -Inf are distinct.
+		assert.False(t, slicekit.ContainsExactly(
+			[]float64{posInf},
+			[]float64{negInf},
+		))
+
+		// Inf counts must match.
+		assert.False(t, slicekit.ContainsExactly(
+			[]float64{posInf, 1.0},
+			[]float64{1.0, 1.0},
+		))
+
+		// Symmetric across argument order.
+		assert.True(t, slicekit.ContainsExactly(
+			[]float64{posInf, negInf},
+			[]float64{negInf, posInf},
+		) == slicekit.ContainsExactly(
+			[]float64{negInf, posInf},
+			[]float64{posInf, negInf},
+		))
+	})
+
+	s.Test("time.Time values that are Equal but not == are matched", func(t *testcase.T) {
+		// time.Time is a comparable type but its == operator is strict:
+		// two time.Time values that denote the same instant in different
+		// *Location zones are NOT equal under == but ARE equal under .Equal.
+		//
+		// The two locations below represent the same wall-clock instant
+		// (00:00 UTC on 2024-01-02) but use different *Location pointers.
+		utc := time.UTC
+		fixed := time.FixedZone("fixed-utc", 0)
+
+		t1 := time.Date(2024, 1, 2, 0, 0, 0, 0, utc)
+		t1Alt := time.Date(2024, 1, 2, 0, 0, 0, 0, fixed)
+		t2 := time.Date(2024, 1, 2, 1, 0, 0, 0, utc)
+		t2Alt := time.Date(2024, 1, 2, 1, 0, 0, 0, fixed)
+
+		// Sanity-check the precondition that makes this test meaningful.
+		assert.True(t, !t1.Equal(t1Alt) == false) // tautology, just to anchor
+		assert.True(t, t1.Equal(t1Alt))
+		assert.True(t, !t1.Equal(t2Alt))
+		if t1 == t1Alt {
+			t.Fatalf("test precondition broken: t1 == t1Alt under ==")
+		}
+
+		// Slices whose only pairwise difference is the *Location pointer
+		// should be considered to contain the same values.
+		assert.True(t, slicekit.ContainsExactly(
+			[]time.Time{t1, t2},
+			[]time.Time{t1Alt, t2Alt},
+		))
+
+		// And the order must not matter.
+		assert.True(t, slicekit.ContainsExactly(
+			[]time.Time{t1, t2},
+			[]time.Time{t2Alt, t1Alt},
+		))
+
+		// Symmetric: the Equal-based comparison must not depend on which
+		// side is the receiver.
+		assert.True(t, slicekit.ContainsExactly(
+			[]time.Time{t1, t2},
+			[]time.Time{t1Alt, t2Alt},
+		) == slicekit.ContainsExactly(
+			[]time.Time{t1Alt, t2Alt},
+			[]time.Time{t1, t2},
+		))
+
+		// A genuinely different value (different instant) must still differ.
+		assert.False(t, slicekit.ContainsExactly(
+			[]time.Time{t1, t2},
+			[]time.Time{t1Alt, t1Alt},
+		))
+	})
+
+	s.Test("user-defined type with Equal method", func(t *testcase.T) {
+		// A custom comparable type that defines a custom Equal that is
+		// broader than ==. The id field is intentionally ignored by
+		// Equal so that two entries with the same name but different
+		// ids are still considered equal.
+		vs := []namedEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+		oth := []namedEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+		}
+		assert.True(t, slicekit.ContainsExactly(vs, oth))
+
+		vs = []namedEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "foo"},
+			{id: 3, name: "bar"},
+		}
+		oth = []namedEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+		}
+		assert.True(t, slicekit.ContainsExactly(vs, oth))
+
+		vs = []namedEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "foo"},
+			{id: 3, name: "bar"},
+		}
+		oth = []namedEntry{
+			{id: 1, name: "foo"},
+			{id: 3, name: "bar"},
+			{id: 4, name: "bar"},
+		}
+		assert.False(t, slicekit.ContainsExactly(vs, oth))
+	})
+
+	s.Test("user-defined Comparable type", func(t *testcase.T) {
+		// comparableEntry implements predicate.Comparable[T] but NOT
+		// predicate.Equatable[T]. Compare returns 0 for entries with
+		// the same name, so two values with different ids but the
+		// same name are equal under Compare but not under ==.
+		//
+		// This subtest proves the dispatch reaches for Compare
+		// specifically: if ContainsExactly were using == (or Even if
+		// it implemented an Equatable fallback), the matching would
+		// fail here because the entries have different ids.
+		//
+		// Until the implementation dispatches to Comparable, this test
+		// will fail and surface the gap.
+		vs := []comparableEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+		oth := []comparableEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+		}
+		assert.True(t, slicekit.ContainsExactly(vs, oth))
+
+		// Compare-equal entries with different counts must still differ.
+		vs = []comparableEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "foo"},
+			{id: 3, name: "bar"},
+		}
+		oth = []comparableEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+			{id: 99, name: "bar"},
+		}
+		assert.False(t, slicekit.ContainsExactly(vs, oth))
+	})
+
+	s.Test("user-defined ComparableShort type", func(t *testcase.T) {
+		// comparableShortEntry implements predicate.ComparableShort[T]
+		// but NOT predicate.Equatable[T]. Cmp returns 0 for entries
+		// with the same name, so two values with different ids but
+		// the same name are equal under Cmp but not under ==.
+		//
+		// This subtest proves the dispatch reaches for Cmp
+		// specifically. Until the implementation dispatches to
+		// ComparableShort, this test will fail and surface the gap.
+		vs := []comparableShortEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "bar"},
+		}
+		oth := []comparableShortEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+		}
+		assert.True(t, slicekit.ContainsExactly(vs, oth))
+
+		// Cmp-equal entries with different counts must still differ.
+		vs = []comparableShortEntry{
+			{id: 1, name: "foo"},
+			{id: 2, name: "foo"},
+			{id: 3, name: "bar"},
+		}
+		oth = []comparableShortEntry{
+			{id: 99, name: "foo"},
+			{id: 99, name: "bar"},
+			{id: 99, name: "bar"},
+		}
+		assert.False(t, slicekit.ContainsExactly(vs, oth))
+	})
+}
+
+// namedEntry is a comparable type whose Equal method deliberately
+// ignores the id field, so two entries with the same name compare
+// equal under ContainsExactly even when their ids differ.
+type namedEntry struct {
+	id   int
+	name string
+}
+
+func (e namedEntry) Equal(oth namedEntry) bool {
+	return e.name == oth.name
+}
+
+// comparableEntry implements predicate.Comparable[T] but NOT
+// predicate.Equatable[T]. Compare returns 0 for entries with the
+// same name regardless of id, so two values with different ids but
+// the same name are "equal" under Compare but not under ==.
+//
+// This shape lets the test prove that the dispatch reaches for Compare
+// specifically: if ContainsExactly/Contains were using == or Equal
+// (which this type does not implement), the matching would fail.
+type comparableEntry struct {
+	id   int
+	name string
+}
+
+func (e comparableEntry) Compare(oth comparableEntry) int {
+	switch {
+	case e.name < oth.name:
+		return -1
+	case e.name > oth.name:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// comparableShortEntry implements predicate.ComparableShort[T] but
+// NOT predicate.Equatable[T]. Cmp returns 0 for entries with the
+// same name regardless of id, with the same semantics as
+// comparableEntry but using the Cmp short-form signature.
+type comparableShortEntry struct {
+	id   int
+	name string
+}
+
+func (e comparableShortEntry) Cmp(oth comparableShortEntry) int {
+	switch {
+	case e.name < oth.name:
+		return -1
+	case e.name > oth.name:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func BenchmarkContainsExactly(b *testing.B) {
+	src := rand.NewSource(42)
+	rnd := random.New(src)
+
+	const sampling = 1000
+
+	b.Run("string", func(b *testing.B) {
+		vs, oth := mkBenchSlices(b, rnd, sampling, rnd.String)
+		for b.Loop() {
+			slicekit.ContainsExactly(vs, oth)
+		}
+	})
+
+	b.Run("int", func(b *testing.B) {
+		vs, oth := mkBenchSlices(b, rnd, sampling, rnd.Int)
+		for b.Loop() {
+			slicekit.ContainsExactly(vs, oth)
+		}
+	})
+
+	b.Run("float", func(b *testing.B) {
+		vs, oth := mkBenchSlices(b, rnd, sampling, rnd.Float64)
+		for b.Loop() {
+			slicekit.ContainsExactly(vs, oth)
+		}
+	})
+}
+
+func mkBenchSlices[T any](b *testing.B, rnd *random.Random, sampling int, mk func() T) ([]T, []T) {
+	b.StopTimer()
+	defer b.StartTimer()
+	vs := random.Slice(sampling, mk)
+	oth := slicekit.Clone(vs)
+	random.Shuffle(rnd, oth)
+	return vs, oth
 }

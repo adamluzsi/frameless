@@ -39,7 +39,7 @@ func example() {
 		},
 
 		MediaTypeCodecs: httpkit.MediaTypeCodecs{ // we can populate with any custom codec for any custom media type
-			mediatype.JSON: jsonkit.Codec{},
+			mediatype.JSON: &jsonkit.Codec{},
 		},
 	}
 

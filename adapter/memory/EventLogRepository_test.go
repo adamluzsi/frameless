@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -328,11 +329,10 @@ func TestEventLogRepository_LookupTx(t *testing.T) {
 func TestEventLogRepository_SaveEntityWithCustomKeyType(t *testing.T) {
 
 	repository := memory.NewEventLogRepository[EntityWithStructID, StructID](memory.NewEventLog())
-	var counter int
+	var counter atomic.Int64
 	repository.MakeID = func(ctx context.Context) (StructID, error) {
-		counter++
 		var id StructID
-		id.V = counter
+		id.V = int(counter.Add(1))
 		return id, nil
 	}
 

@@ -76,10 +76,10 @@ type Cache[ENT any, ID comparable] struct {
 }
 
 type Locks interface {
-	guard.NonBlockingLockerFactory[HitID]
+	guard.LockerFactory[HitID, guard.NonBlockingLocker]
 }
 
-var defaultLockerFactory = memory.NewLockerFactory[HitID]()
+var defaultLockerFactory = memory.NewLockerFactory[HitID, guard.NonBlockingLocker]()
 
 // Invalidator is a list of invalidation rule which is being used whenever an entity is being invalidated.
 // It is ideal to invalidate a query by reconstucting the cache.HitID using the contents of the ENT OR ID.
@@ -381,7 +381,7 @@ func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query
 	ctx = contextkit.WithoutCancel(ctx)
 	// we want to avoid that the same query is continously executed parallel,
 	// since we expect that the result would be the same.
-	queryLock := m.locks().NonBlockingLockerFor(hitID)
+	queryLock := m.locks().LockerFor(hitID)
 	// tasker.WithNoOverlap ensures using the query lock that it actualy won't overlap
 	task := tasker.WithNoOverlap(queryLock, func(ctx context.Context) error {
 		_, err := m.cacheQuery(ctx, hitID, query)
@@ -589,7 +589,7 @@ func (m *Cache[ENT, ID]) DeleteAll(ctx context.Context) error {
 	return m.DropCachedValues(ctx)
 }
 
-func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
+func (m *Cache[ENT, ID]) locks() guard.LockerFactory[HitID, guard.NonBlockingLocker] {
 	if m.Locks != nil {
 		return m.Locks
 	}

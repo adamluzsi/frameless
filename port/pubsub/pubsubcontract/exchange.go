@@ -12,14 +12,14 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-// FanOut defines an exchange behaviour where messages are published to all the associated pubsub.Queue.
-func FanOut[Data any](
+// Broadcast ensures that an identical data is sent to every subscriber.
+func Broadcast[Data any](
 	// Exchange is the publisher that suppose to publish to all queue made with MakeQueue.
 	Exchange pubsub.Publisher[Data],
-	// MakeQueue creates a queue and binds it to the Exchange to receive events.
-	// Queues made with MakeQueue suppose to be cleaned up after the test.
+	// MakeSubscriber creates a queue and binds it to the Exchange to receive events.
+	// Subs made with MakeSubscriber suppose to be cleaned up after the test.
 	// For the cleanup purpose, use the testing.TB received as part of FanOut.
-	MakeQueue func(testing.TB) pubsub.Subscriber[Data],
+	MakeSubscriber func(testing.TB) pubsub.Subscriber[Data],
 	opts ...Option[Data]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig[Config[Data]](opts)
@@ -27,7 +27,7 @@ func FanOut[Data any](
 	b := base[Data](func(tb testing.TB) baseSubject[Data] {
 		return baseSubject[Data]{
 			Publisher:   Exchange,
-			Subscriber:  MakeQueue(tb),
+			Subscriber:  MakeSubscriber(tb),
 			MakeContext: c.MakeContext,
 			MakeData:    c.MakeData,
 		}
@@ -45,8 +45,8 @@ func FanOut[Data any](
 			return c.MakeData(t)
 		})
 
-		s.Test("with a single queue, a consumer will receives all the messages", func(t *testcase.T) {
-			q1 := MakeQueue(t)
+		s.Test("with a single sub, a consumer will receives all the messages", func(t *testcase.T) {
+			q1 := MakeSubscriber(t)
 
 			assert.Must(t).NoError(Exchange.Publish(c.MakeContext(t), val1.Get(t)))
 			assert.Must(t).NoError(Exchange.Publish(c.MakeContext(t), val2.Get(t)))
@@ -60,12 +60,12 @@ func FanOut[Data any](
 			})
 		})
 
-		s.Test("with multiple queues on the exchange, all consumer will receives every messages", func(t *testcase.T) {
+		s.Test("with multiple subs on the exchange, subscribers will receive identical messages", func(t *testcase.T) {
 			var results []*pubsubtest.AsyncResults[Data]
 
 			t.Random.Repeat(2, 7, func() {
 				results = append(results,
-					pubsubtest.Subscribe(t, MakeQueue(t), c.MakeContext(t)))
+					pubsubtest.Subscribe(t, MakeSubscriber(t), c.MakeContext(t)))
 			})
 
 			expected := []Data{val1.Get(t), val2.Get(t), val3.Get(t)}
@@ -82,5 +82,5 @@ func FanOut[Data any](
 		})
 	})
 
-	return s.AsSuite("FanOut")
+	return s.AsSuite("Broadcast")
 }

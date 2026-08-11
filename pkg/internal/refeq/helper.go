@@ -1,13 +1,13 @@
-package internal
+package refeq
 
 import (
 	"reflect"
 	"unsafe"
 
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
-const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
+const ErrTypeMismatch errorkitlite.Error = "ErrTypeMismatch"
 
 func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
 	if !rv.IsValid() {
@@ -115,8 +115,8 @@ func (i *refMem) addr(v reflect.Value) (uintptr, bool) {
 }
 
 var (
-	boolType = reflect.TypeOf((*bool)(nil)).Elem()
-	intType  = reflect.TypeOf((*int)(nil)).Elem()
+	boolType = reflect.TypeFor[bool]()
+	intType  = reflect.TypeFor[int]()
 )
 
 func ptrOf(v reflect.Value) reflect.Value {

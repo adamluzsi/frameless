@@ -16,7 +16,7 @@ type Scheduler struct {
 }
 
 type SchedulerLocks interface {
-	guard.LockerFactory[ScheduleID]
+	guard.LockerFactory[ScheduleID, guard.Locker]
 	// guard.NonBlockingLockerFactory[ScheduleID]
 }
 

@@ -2,4 +2,4 @@ module go.llib.dev/frameless
 
 go 1.25
 
-require go.llib.dev/testcase v0.192.0
+require go.llib.dev/testcase v0.193.0

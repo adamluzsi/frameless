@@ -40,7 +40,9 @@ type Unlocker interface {
 
 const ErrNoLock constant.Error = "ErrNoLock"
 
-type LockerFactory[Key comparable] interface {
+// LockerFactory is a factory that can issue out lockers on a per Key basis.
+// The second type argument is expected to be either guard.Locker or guard.NonBlockingLocker
+type LockerFactory[Key any, L Unlocker] interface {
 	// LockerFor returns a Locker associated with the given key.
 	//
 	// The returned Locker can be used to acquire and release locks on the key.
@@ -49,9 +51,12 @@ type LockerFactory[Key comparable] interface {
 	// Note: The name "LockerFor" is chosen instead of "LockFor" to emphasize that
 	// this method returns a Locker object, which provides locking functionality,
 	// rather than directly acquiring a lock.
-	LockerFor(Key) Locker
+	LockerFor(Key) L
 }
 
-type NonBlockingLockerFactory[Key comparable] interface {
+// NonBlockingLockerFactory
+//
+// Deprecated: use LockerFactory with a
+type NonBlockingLockerFactory[Key any] interface {
 	NonBlockingLockerFor(Key) NonBlockingLocker
 }

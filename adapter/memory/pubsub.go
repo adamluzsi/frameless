@@ -268,11 +268,17 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qPublisher
 }
 
 func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
+	// createdAt is set before returning the closure so that any publish that
+	// races with Subscribe (i.e. happens after Subscribe returns but before
+	// the goroutine starts iterating the subscription) is correctly included
+	// under Volatile semantics. If we set createdAt inside the closure body,
+	// such a publish would have qm.timestamp < s.createdAt and be filtered out.
+	createdAt := clock.Now()
 	return func(yield func(pubsub.Message[Data], error) bool) {
 		sub := &QueueSubscription[Data]{
 			ctx:       ctx,
 			q:         q,
-			createdAt: clock.Now(),
+			createdAt: createdAt,
 		}
 		for i := 1; i < math.MaxInt; i++ {
 			q.m.Lock()

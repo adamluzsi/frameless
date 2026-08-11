@@ -59,6 +59,43 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 		})
 
+		// "Concurrent calls are race-free" is a happy-case concurrency check.
+		// Each goroutine Saves a distinct entity concurrently.
+		// The implementation must persist every entity without race.
+		s.Test(`concurrent calls to Save are race-free`, func(t *testcase.T) {
+			ctx := c.MakeContext(t)
+
+			type pair struct{ ptr *ENT }
+			var pairs []pair
+			t.Random.Repeat(2, 5, func() {
+				v := c.MakeEntity(t)
+				pairs = append(pairs, pair{ptr: &v})
+			})
+
+			var ops []func()
+			for i := range pairs {
+				p := pairs[i]
+				ops = append(ops, func() {
+					assert.NoError(t, subject.Save(ctx, p.ptr))
+				})
+				t.Cleanup(func() {
+					if v, ok := lookupNonZeroID[ID](c, *p.ptr); ok {
+						tryDelete(t, c, subject, *p.ptr)
+						_ = v
+					}
+				})
+			}
+			raceConcurrently(ops)
+
+			if ByIDFinderOK {
+				for _, p := range pairs {
+					if id, ok := lookupNonZeroID[ID](c, *p.ptr); ok {
+						c.Helper().IsPresent(t, byIDF, ctx, id)
+					}
+				}
+			}
+		})
+
 		s.When(`entity has an ext id that no longer points to a findable record`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				if _, ok := lookupNonZeroID[ID](c, *ptr.Get(t)); ok {

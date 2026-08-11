@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	"go.llib.dev/frameless/pkg/reflectkit/internal"
+	"go.llib.dev/frameless/pkg/internal/refeq"
 )
 
 // Equal will compare two value deeply.
@@ -16,11 +16,11 @@ func Equal[T any](x, y T) bool {
 	if cmp, ok := tryTypedCompare[T](x, y); ok {
 		return cmp == 0
 	}
-	return internal.Equal(ToValue(x), ToValue(y))
+	return refeq.Equal(ToValue(x), ToValue(y))
 }
 
 func RegisterEqual[T any](fn func(x, y T) bool) struct{} {
-	internal.RegisterIsEqual(TypeOf[T](), func(x, y reflect.Value) bool {
+	refeq.RegisterIsEqual(TypeOf[T](), func(x, y reflect.Value) bool {
 		return fn(x.Interface().(T), y.Interface().(T))
 	})
 	return struct{}{}

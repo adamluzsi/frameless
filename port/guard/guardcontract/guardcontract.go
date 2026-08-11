@@ -347,7 +347,9 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 			s.Then("it will return back with the context error while also unlocking itself", func(t *testcase.T) {
 				assert.Must(t).ErrorIs(Context.Get(t).Err(), act(t))
 				assert.Must(t).Within(3*time.Second, func(ctx context.Context) {
-					lock(ctx)
+					lctx, err := lock(ctx)
+					assert.Must(t).NoError(err)
+					t.Defer(subject.Unlock, lctx)
 				})
 			})
 		})
@@ -389,36 +391,88 @@ func (c LockerConfig) Configure(t *LockerConfig) {
 	*t = reflectkit.MergeStruct(*t, c)
 }
 
-func LockerFactory[Key comparable](subject guard.LockerFactory[Key], opts ...LockerFactoryOption[Key]) contract.Contract {
+func LockerFactory[Key any, L guard.Unlocker](subject guard.LockerFactory[Key, L], opts ...LockerFactoryOption[Key]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
-	s.Test("returned value behaves like a locks.Locker", func(t *testcase.T) {
-		testcase.RunSuite(t, Locker(subject.LockerFor(c.MakeKey(t))))
-	})
+	if reflectkit.TypeImplements[L, guard.Locker]() {
+		var getLocker = func(t *testcase.T, key Key) guard.Locker {
+			var ul guard.Unlocker = subject.LockerFor(key)
+			l, ok := ul.(guard.Locker)
+			if !ok {
+				t.Skipf("expected that %T implements guard.Locker", ul)
+			}
+			return l
+		}
 
-	s.Test("result Lock with different name don't interfere with each other", func(t *testcase.T) {
-		var (
-			ctx = c.MakeContext(t)
-			k1  = c.MakeKey(t)
-			k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
-			l1  = subject.LockerFor(k1)
-			l2  = subject.LockerFor(k2)
-		)
-		assert.Must(t).Within(3*time.Second, func(context.Context) {
-			lockCtx1, err := l1.Lock(ctx)
-			assert.Must(t).NoError(err)
-			lockCtx2, err := l2.Lock(ctx)
-			assert.Must(t).NoError(err)
-			assert.Must(t).NoError(l2.Unlock(lockCtx1))
-			assert.Must(t).NoError(l1.Unlock(lockCtx2))
+		s.Test("returned value behaves like a locks.Locker", func(t *testcase.T) {
+			testcase.RunSuite(t, Locker(getLocker(t, c.MakeKey(t)), LockerConfig{
+				MakeContext: c.MakeContext,
+				Waiter:      c.Waiter,
+			}))
 		})
-	})
+
+		s.Test("result Lock with different name don't interfere with each other", func(t *testcase.T) {
+			var (
+				ctx = c.MakeContext(t)
+				k1  = c.MakeKey(t)
+				k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+				l1  = getLocker(t, k1)
+				l2  = getLocker(t, k2)
+			)
+			assert.Must(t).Within(3*time.Second, func(context.Context) {
+				lockCtx1, err := l1.Lock(ctx)
+				assert.Must(t).NoError(err)
+				lockCtx2, err := l2.Lock(ctx)
+				assert.Must(t).NoError(err)
+				assert.Must(t).NoError(l1.Unlock(lockCtx1))
+				assert.Must(t).NoError(l2.Unlock(lockCtx2))
+			})
+		})
+
+		s.Test("a lock taken with an already-locked context can be unlocked without invalidating the outer lock context", func(t *testcase.T) {
+			var (
+				ctx = c.MakeContext(t)
+				k1  = c.MakeKey(t)
+				k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+				l1  = getLocker(t, k1)
+				l2  = getLocker(t, k2)
+			)
+			assert.Must(t).Within(3*time.Second, func(context.Context) {
+				outerCtx, err := l1.Lock(ctx)
+				assert.Must(t).NoError(err)
+				t.Cleanup(func() { _ = l1.Unlock(outerCtx) })
+
+				innerCtx, err := l2.Lock(outerCtx)
+				assert.Must(t).NoError(err)
+
+				// releasing the inner lock must not poison the outer lock context.
+				assert.Must(t).NoError(l2.Unlock(innerCtx))
+				assert.Must(t).NoError(outerCtx.Err(),
+					"unlocking a nested lock context must not cancel its parent lock context")
+			})
+		})
+	}
+
+	if reflectkit.TypeImplements[L, guard.NonBlockingLocker]() {
+		s.Context("factory also supports non-blocking lock issuing with LockerFor",
+			NonBlockingLockerFactory[Key](wNonBlockingLockerFactory[Key, L]{factory: subject}, c).Spec)
+
+	}
 
 	return s.AsSuite("LockerFactory")
 }
 
-func NonBlockingLockerFactory[Key comparable](subject guard.NonBlockingLockerFactory[Key], opts ...LockerFactoryOption[Key]) contract.Contract {
+type wNonBlockingLockerFactory[Key any, L guard.Unlocker] struct {
+	factory guard.LockerFactory[Key, L]
+}
+
+func (f wNonBlockingLockerFactory[Key, L]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
+	var l guard.Unlocker = f.factory.LockerFor(key)
+	return l.(guard.NonBlockingLocker)
+}
+
+func NonBlockingLockerFactory[Key any](subject guard.NonBlockingLockerFactory[Key], opts ...LockerFactoryOption[Key]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
@@ -448,11 +502,11 @@ func NonBlockingLockerFactory[Key comparable](subject guard.NonBlockingLockerFac
 	return s.AsSuite("NonBlockingLockerFactory")
 }
 
-type LockerFactoryOption[Key comparable] interface {
+type LockerFactoryOption[Key any] interface {
 	option.Option[LockerFactoryConfig[Key]]
 }
 
-type LockerFactoryConfig[Key comparable] struct {
+type LockerFactoryConfig[Key any] struct {
 	MakeKey func(testing.TB) Key
 	LockerConfig
 }

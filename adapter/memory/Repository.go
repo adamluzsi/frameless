@@ -43,6 +43,8 @@ type Repository[ENT, ID any] struct {
 	ExpectID bool
 
 	m sync.Mutex
+
+	namespaceOnce sync.Once
 }
 
 const ErrMissingID errorkit.Error = "ErrMissingID"
@@ -82,7 +84,7 @@ func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		return errorkit.WithContext(crud.ErrAlreadyExists.F(`%T already exists with id: %v`, *new(ENT), id), ctx)
 	}
 
-	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id), *ptr)
+	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce), r.IDToMemoryKey(id), *ptr)
 	return nil
 }
 
@@ -119,7 +121,7 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 		return _ent, false, err
 	}
 
-	ent, ok := r.memory().Get(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id))
+	ent, ok := r.memory().Get(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce), r.IDToMemoryKey(id))
 	if !ok {
 		return _ent, false, nil
 	}
@@ -134,7 +136,7 @@ func (r *Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error]
 		if err := r.isDoneTx(ctx); err != nil {
 			return err
 		}
-		all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
+		all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce))
 		for v := range all {
 			if !yield(v) {
 				return nil
@@ -151,7 +153,7 @@ func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := r.isDoneTx(ctx); err != nil {
 		return err
 	}
-	if r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id)) {
+	if r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce), r.IDToMemoryKey(id)) {
 		return nil
 	}
 	return errNotFound(*new(ENT), id)
@@ -167,7 +169,7 @@ func (r *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		_ = r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id))
+		_ = r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce), r.IDToMemoryKey(id))
 	}
 	return nil
 }
@@ -186,7 +188,7 @@ func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return errNotFound(*new(ENT), id)
 	}
 
-	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id), *ptr)
+	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce), r.IDToMemoryKey(id), *ptr)
 	return nil
 }
 
@@ -196,7 +198,7 @@ func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq
 		if tx, ok := r.memory().LookupTx(ctx); ok {
 			m = tx
 		}
-		all := m.all(getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
+		all := m.all(getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce))
 		var vs = make(map[string]ENT, len(ids))
 		for _, id := range ids {
 			key := r.IDToMemoryKey(id)
@@ -376,8 +378,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 }
 
 func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iter.Seq[ENT] {
-	var T ENT
-	return iterkit.FromSlice[ENT](m.All(T, ctx, namespace).([]ENT))
+	return iterkit.FromSlice[ENT](m.All(reflectkit.TypeOf[ENT](), ctx, namespace).([]ENT))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {
@@ -388,11 +389,11 @@ func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT int
 }
 
 func (m *Memory) toTSlice(T any, vs map[string]interface{}) interface{} {
-	rslice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(T)), 0, len(vs))
+	rSlice := reflect.MakeSlice(reflect.SliceOf(reflectkit.ToType(T)), 0, len(vs))
 	for _, v := range vs {
-		rslice = reflect.Append(rslice, reflect.ValueOf(v))
+		rSlice = reflect.Append(rSlice, reflect.ValueOf(v))
 	}
-	return rslice.Interface()
+	return rSlice.Interface()
 }
 
 func (m *Memory) all(namespace string) map[string]interface{} {

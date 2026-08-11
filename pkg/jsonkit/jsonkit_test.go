@@ -12,7 +12,62 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-var rnd = random.New(random.CryptoSeed{})
+var (
+	rnd = random.New(random.CryptoSeed{})
+	_   = jsonkit.RegisterTypeID[withTypeStruct]("with_type_struct")
+	_   = jsonkit.RegisterTypeID[withTypeString]("with_type_string")
+	_   = jsonkit.RegisterTypeID[map[string]int]("with_type_map")
+	_   = jsonkit.RegisterTypeID[withTypeSlice]("with_type_slice")
+	_   = jsonkit.RegisterTypeID[withTypeNested]("with_type_nested")
+	_   = jsonkit.RegisterTypeID[withTypePointerImpl]("with_type_pointer_impl")
+	_   = jsonkit.RegisterTypeID[withTypeCustomJSON]("with_type_custom_json")
+)
+
+type withTypeInterface interface{ String() string }
+
+type withTypeString string
+
+func (v withTypeString) String() string { return string(v) }
+
+type withTypeStruct struct {
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+type withTypeSlice []int
+
+type withTypeNested struct {
+	Value  *withTypeStruct   `json:"value"`
+	Labels map[string]string `json:"labels"`
+	Items  []withTypeStruct  `json:"items"`
+}
+
+type withTypePointerImpl struct{ Value string }
+
+func (v *withTypePointerImpl) String() string { return v.Value }
+
+type withTypeInt int
+type withTypeBool bool
+type withTypeFloat float64
+
+type withTypeCustomJSON struct{ Value string }
+
+func (v withTypeCustomJSON) MarshalJSON() ([]byte, error) {
+	return json.Marshal("encoded:" + v.Value)
+}
+
+func (v *withTypeCustomJSON) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	const prefix = "encoded:"
+	if len(value) < len(prefix) || value[:len(prefix)] != prefix {
+		return fmt.Errorf("invalid custom JSON value %q", value)
+	}
+	v.Value = value[len(prefix):]
+	return nil
+}
 
 func ExampleArray() {
 	var greeters = jsonkit.Array[Greeter]{

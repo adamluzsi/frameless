@@ -67,6 +67,45 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 						})
 					}
 
+					// "Concurrent calls are race-free" is a happy-case concurrency check.
+					// Each goroutine updates a distinct entity concurrently.
+					// The implementation must persist every update without race.
+					s.Test(`concurrent calls to Update are race-free`, func(t *testcase.T) {
+						ctx := c.MakeContext(t)
+
+						type pair struct {
+							ptr *ENT
+							id  ID
+						}
+						var pairs []pair
+						t.Random.Repeat(2, 5, func() {
+							ent := pointer.Of(c.MakeEntity(t))
+							store(t, ent)
+							c.ModifyEntity(t, ent)
+							if id, ok := lookupNonZeroID(c, *ent); ok {
+								pairs = append(pairs, pair{ptr: ent, id: id})
+							}
+						})
+
+						var ops []func()
+						for i := range pairs {
+							p := pairs[i]
+							ops = append(ops, func() {
+								assert.NoError(t, subject.Update(ctx, p.ptr))
+							})
+							t.Cleanup(func() {
+								tryDelete(t, c, subject, *p.ptr)
+							})
+						}
+						raceConcurrently(ops)
+
+						if fOK {
+							for _, p := range pairs {
+								c.Helper().HasEntity(t, f, ctx, p.ptr)
+							}
+						}
+					})
+
 					s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
 						requestContext.Let(s, func(t *testcase.T) context.Context {
 							ctx, cancel := context.WithCancel(c.MakeContext(t))

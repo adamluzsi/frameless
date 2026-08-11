@@ -184,7 +184,7 @@ func TestCast(t *testing.T) {
 type SampleType struct{}
 
 func TestFullyQualifiedName(t *testing.T) {
-	act := reflectkit.FullyQualifiedName
+	act := reflectkit.FullyQualifiedName[any]
 
 	SpecForPrimitiveNames(t, act)
 
@@ -222,6 +222,12 @@ func TestFullyQualifiedName(t *testing.T) {
 	t.Run("when the given object is a reflect value", func(t *testing.T) {
 		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflect.ValueOf(StructObject{})))
 		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflect.ValueOf(&StructObject{})))
+	})
+
+	t.Run("named interface type, nil value", func(t *testing.T) {
+		var v InterfaceObject
+		name := reflectkit.FullyQualifiedName[InterfaceObject](v)
+		assert.Equal(t, name, "\"go.llib.dev/frameless/pkg/reflectkit_test\".InterfaceObject")
 	})
 
 	t.Run("non-defined types", func(t *testing.T) {
@@ -852,7 +858,7 @@ func TestLink(t *testing.T) {
 }
 
 func TestSymbolicName(t *testing.T) {
-	subject := reflectkit.SymbolicName
+	subject := reflectkit.SymbolicName[any]
 
 	SpecForPrimitiveNames(t, subject)
 
@@ -1005,7 +1011,7 @@ func TestCanElem(t *testing.T) {
 		assert.True(t, reflectkit.CanElem(val))
 	})
 
-	t.Run("nil interface", func(t *testing.T) {
+	t.Run("nil any interface", func(t *testing.T) {
 		var iface any
 		val := reflect.ValueOf(iface)
 		assert.False(t, reflectkit.CanElem(val))
@@ -3146,4 +3152,37 @@ func TestMergeStruct(t *testing.T) {
 		})
 	})
 
+}
+
+func TestTypeImplements(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("type implements the interface", func(t *testcase.T) {
+		assert.True(t, reflectkit.TypeImplements[testent.Foo, testent.Fooer]())
+	})
+
+	s.Test("type does not implement the interface", func(t *testcase.T) {
+		assert.False(t, reflectkit.TypeImplements[testent.Bar, testent.Fooer]())
+	})
+
+	s.Test("type is an interface that embeds the sub interface", func(t *testcase.T) {
+		type MyInterface interface {
+			testent.Fooer
+			Hello()
+		}
+
+		assert.True(t, reflectkit.TypeImplements[MyInterface, testent.Fooer]())
+	})
+
+	s.Test("type is an interface that doesn't embeds the sub interface", func(t *testcase.T) {
+		type MyInterface interface{ Hello() }
+
+		assert.False(t, reflectkit.TypeImplements[MyInterface, testent.Fooer]())
+	})
+
+	s.Test("second type argument is not an interface type", func(t *testcase.T) {
+		assert.Panic(t, func() {
+			reflectkit.TypeImplements[testent.Foo, testent.Bar]()
+		})
+	})
 }

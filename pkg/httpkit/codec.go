@@ -38,14 +38,14 @@ func defaultCodec() (codec.Codec, MediaType) {
 	return defaultCodecBundle, mediatype.JSON
 }
 
-var defaultCodecBundle jsonkit.Codec
+var defaultCodecBundle = &jsonkit.Codec{}
 
 var defaultCodecs Codecs = makeDefaultCodecs()
 
 func makeDefaultCodecs() Codecs {
-	var jsonB jsonkit.Codec
-	var jsonLinesB jsonkit.LinesCodec
-	var formURLEncodedB formurlencoded.Codec
+	var jsonB = &jsonkit.Codec{}
+	var jsonLinesB = &jsonkit.LinesCodec{}
+	var formURLEncodedB = &formurlencoded.Codec{}
 	return Codecs{
 		"application/json":                  jsonB,
 		"application/problem+json":          jsonB,

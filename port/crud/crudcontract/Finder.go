@@ -112,6 +112,29 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 				},
 			}
 		}, opts...)
+
+		// "Concurrent calls are race-free" is a happy-case concurrency check.
+		// We pre-resolve every testcase variable (ctx, id, entity) before
+		// racing, then race a handful of FindByID calls against the same
+		// existing entity. Each goroutine must observe the entity as found,
+		// proving the implementation tolerates concurrent read traffic.
+		// Run with `-race` to catch a regression.
+		s.Test(`concurrent calls to FindByID are race-free`, func(t *testcase.T) {
+			ent := ensureExistingEntity(t, c, subject, nil)
+			id := c.IDA.Get(ent)
+			ctx := c.MakeContext(t)
+
+			var ops []func()
+			t.Random.Repeat(2, 5, func() {
+				ops = append(ops, func() {
+					got, found, err := subject.FindByID(ctx, id)
+					assert.NoError(t, err)
+					assert.True(t, found)
+					assert.Equal(t, ent, got)
+				})
+			})
+			raceConcurrently(ops)
+		})
 	})
 
 	return s.AsSuite("ByIDFinder")

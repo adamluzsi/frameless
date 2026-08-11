@@ -135,7 +135,7 @@ func TestFanOutExchange(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		pubsubcontract.FanOut[Foo](exchange, MakeQueue),
+		pubsubcontract.Broadcast[Foo](exchange, MakeQueue),
 		//pubsubcontracts.OnePhaseCommitProtocol
 	)
 }

@@ -70,6 +70,47 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			}
 		})
 
+		// "Concurrent calls are race-free" is a happy-case concurrency check.
+		// Each goroutine Creates a distinct entity concurrently.
+		// The implementation must persist every entity without race.
+		s.Test(`concurrent calls to Create are race-free`, func(t *testcase.T) {
+			ctx := c.MakeContext(t)
+
+			type pair struct {
+				ptr *ENT
+				id  ID
+			}
+			var pairs []pair
+			t.Random.Repeat(2, 5, func() {
+				v := c.MakeEntity(t)
+				id, hasID := lookupNonZeroID(c, v)
+				if !hasID {
+					return
+				}
+				pairs = append(pairs, pair{ptr: &v, id: id})
+			})
+
+			var ops []func()
+			for i := range pairs {
+				p := pairs[i]
+				ops = append(ops, func() {
+					assert.NoError(t, subject.Create(ctx, p.ptr))
+				})
+				t.Cleanup(func() {
+					if byIDDeleter, ok := subject.(crud.ByIDDeleter[ID]); ok {
+						_ = byIDDeleter.DeleteByID(ctx, p.id)
+					}
+				})
+			}
+			raceConcurrently(ops)
+
+			if ByIDFinderOK {
+				for _, p := range pairs {
+					c.Helper().IsPresent(t, byIDF, ctx, p.id)
+				}
+			}
+		})
+
 		if c.SupportIDReuse && byIDDeleterOK {
 			s.When(`entity ID is provided ahead of time`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {

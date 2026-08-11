@@ -9,7 +9,7 @@ import (
 
 func Test_memory(t *testing.T) {
 	l := memory.NewLocker()
-	f := memory.NewLockerFactory[string]()
+	f := memory.NewLockerFactory[string, *memory.Lock]()
 	t.Run("Locker", guardcontract.Locker(l).Test)
 	t.Run("NonBlockingLocker", guardcontract.NonBlockingLocker(l).Test)
 	t.Run("LockerFactory", guardcontract.LockerFactory[string](f).Test)

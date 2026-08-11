@@ -14,199 +14,6 @@ import (
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
-type typed struct {
-	Type  reflect.Type
-	Value any
-	Force bool
-}
-
-type typedContainer struct {
-	Type  TypeID          `json:"@type"`
-	Value json.RawMessage `json:"@value"`
-}
-
-// MarshalJSON will marshal Typed T value with a @type property
-//
-//goland:noinspection GoMixedReceiverTypes
-func (v typed) MarshalJSON() ([]byte, error) {
-	const __type = `@type`
-
-	var (
-		rVal = reflect.ValueOf(v.Value)
-		data []byte
-		err  error
-	)
-	switch rVal.Kind() {
-	case reflect.Slice:
-		var ary jsonArray
-		ary.ptr = reflectkit.PointerOf(rVal)
-		data, err = json.Marshal(ary)
-	default:
-		data, err = json.Marshal(v.Value)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	if !isInterfaceType(v.Type) {
-		switch {
-		case isNull(data), isPrimitive(data) && !v.Force:
-			return data, nil
-		}
-	}
-
-	var (
-		typeID    TypeID
-		gotTypeID bool
-	)
-	if typeID.IsZero() {
-		typeID, gotTypeID = typeIDRegistry.TypeIDFor(v.Value)
-	}
-
-	switch {
-	case isObject(data) && (isInterfaceType(v.Type) || v.Force):
-		data = bytes.TrimPrefix(data, curlyBracketOpen)
-		if !bytes.HasPrefix(data, curlyBracketClose) {
-			data = append(append([]byte{}, fieldSep...), data...)
-		}
-		if !gotTypeID {
-			return nil, fmt.Errorf("missing @type id alias for %T", v.Value)
-		}
-		typeIDPart, err := json.Marshal(map[string]TypeID{"@type": typeID})
-		if err != nil {
-			return nil, err
-		}
-		typeIDPart = bytes.TrimSuffix(typeIDPart, curlyBracketClose)
-		data = append(append([]byte{}, typeIDPart...), data...)
-
-	case v.Force:
-		data, err = json.Marshal(typedContainer{
-			Type:  zerokit.Coalesce(typeID, TypeID(v.Type.String())),
-			Value: data,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if !json.Valid(data) {
-		return nil, fmt.Errorf("json marshaling failed for %T.\n%s",
-			v.Value, string(data))
-	}
-
-	return data, nil
-}
-
-// UnmarshalJSON will unserialize the T from data.
-//
-//goland:noinspection GoMixedReceiverTypes
-func (v *typed) UnmarshalJSON(data []byte) error {
-	isInterfaceType := v.Type.Kind() == reflect.Interface
-
-	if !isInterfaceType {
-		switch {
-		case isNull(data), isPrimitive(data) && !v.Force:
-			var val typed
-			if err := json.Unmarshal(data, &val.Value); err != nil {
-				return err
-			}
-			*v = val
-			return nil
-		}
-	}
-
-	if isObject(data) {
-		return v.unmarshalObject(data)
-	}
-
-	var val typed
-	if err := json.Unmarshal(data, &val.Value); err != nil {
-		return err
-	}
-	*v = val
-	return nil
-}
-
-//goland:noinspection GoMixedReceiverTypes
-func (v *typed) unmarshalObject(data []byte) error {
-	var typeID TypeID
-
-	if v.Force {
-		d := json.NewDecoder(bytes.NewReader(data))
-		d.DisallowUnknownFields()
-		var tc typedContainer
-		err := d.Decode(&tc)
-		if err == nil {
-			data = tc.Value
-			typeID = tc.Type
-		}
-	}
-
-	if typeID.IsZero() {
-		type Probe struct {
-			TypeID *TypeID `json:"@type,omitempty"`
-		}
-
-		var p Probe
-		if err := json.Unmarshal(data, &p); err != nil {
-			return fmt.Errorf("unable to unmarshal @type field for:\n%s", string(data))
-		}
-		if p.TypeID == nil {
-			return fmt.Errorf("@type is not set")
-		}
-		if *p.TypeID == "" {
-			return fmt.Errorf("@type is empty")
-		}
-		typeID = *p.TypeID
-	}
-
-	var value reflect.Value
-	rType, ok := typeIDRegistry.TypeByID(typeID)
-	if ok {
-		switch rType.Kind() {
-		case reflect.Slice:
-			slice := reflect.MakeSlice(rType, 0, 0)
-			ptr := reflect.New(rType)
-			ptr.Elem().Set(slice)
-
-			var ary jsonArray
-			ary.ptr = ptr
-			if err := json.Unmarshal(data, &ary); err != nil {
-				return err
-			}
-			value = ptr.Elem()
-
-		default: // try for primitives
-			ptr, err := newImpl(v.Type, rType)
-			if err != nil {
-				return err
-			}
-			if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-				return err
-			}
-			value = ptr.Elem()
-		}
-	} else {
-		var val any
-		if err := json.Unmarshal(data, &val); err != nil {
-			return err
-		}
-		if TypeID(v.Type.String()) != typeID {
-			return fmt.Errorf("%s is not a recognised primitive type", typeID)
-		}
-		if val == nil {
-			value = reflect.Zero(v.Type)
-		} else {
-			value = reflect.ValueOf(val)
-		}
-	}
-
-	vT := reflect.New(v.Type)
-	vT.Elem().Set(value)
-	v.Value = vT.Elem().Interface()
-	return nil
-}
-
 type Array[T any] []T
 
 func (ary Array[T]) MarshalJSON() ([]byte, error) {
@@ -261,6 +68,15 @@ func (ary *Array[T]) UnmarshalJSON(data []byte) error {
 type jsonArray struct {
 	// ptr is a *[]T pointer value
 	ptr reflect.Value
+	// reg is the codec's per-instance type registry. May be nil, in which
+	// case the package-level registry is consulted.
+	reg *_TypeRegistry
+	// codec is the originating *Codec when jsonArray is constructed during
+	// unmarshal dispatch. It is forwarded into each per-element typed
+	// dispatch so user-registered custom Unmarshal closures receive the
+	// same codec instance, not a freshly-zero Codec that has lost its
+	// registry.
+	codec *Codec
 }
 
 func (ary jsonArray) MarshalJSON() ([]byte, error) {
@@ -281,7 +97,7 @@ func (ary jsonArray) MarshalJSON() ([]byte, error) {
 	var vs = make([]json.RawMessage, slice.Len())
 	for i := 0; i < slice.Len(); i++ {
 		v := slice.Index(i)
-		data, err := json.Marshal(typed{Type: ET, Value: v.Interface()})
+		data, err := json.Marshal(typed{Type: ET, Value: v.Interface(), reg: ary.reg})
 		if err != nil {
 			return nil, err
 		}
@@ -313,7 +129,7 @@ func (ary *jsonArray) UnmarshalJSON(data []byte) error {
 
 	var vs = reflect.MakeSlice(reflect.SliceOf(ET), 0, len(raws))
 	for _, data := range raws {
-		var tv = typed{Type: ET}
+		var tv = typed{Type: ET, reg: ary.reg, codec: ary.codec}
 		if err := json.Unmarshal(data, &tv); err != nil {
 			return err
 		}

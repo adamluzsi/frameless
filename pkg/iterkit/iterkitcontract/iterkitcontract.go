@@ -74,7 +74,7 @@ func IterSeq2[K, V any](mk func(testing.TB) iter.Seq2[K, V]) contract.Contract {
 		assert.NotEmpty(t, vs)
 	})
 
-	s.Then("iteration can be interupted", func(t *testcase.T) {
+	s.Then("iteration can be interrupted", func(t *testcase.T) {
 		assert.NotPanic(t, func() {
 			for _, _ = range mk(t) {
 				break

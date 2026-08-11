@@ -78,6 +78,37 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 						c.Helper().IsAbsent(t, byIDFinder, c.MakeContext(t), id.Get(t))
 					})
 
+					// "Concurrent calls are race-free" is a happy-case concurrency check.
+					// Each goroutine deletes a distinct entity concurrently.
+					// The implementation must remove every entity without race.
+					s.Test(`concurrent calls to DeleteByID are race-free`, func(t *testcase.T) {
+						ctx := c.MakeContext(t)
+
+						type pair struct {
+							id  ID
+							ptr *ENT
+						}
+						var pairs []pair
+						t.Random.Repeat(2, 5, func() {
+							ent := c.MakeEntity(t)
+							c.Helper().Create(t, creator, ctx, &ent)
+							pairs = append(pairs, pair{id: c.IDA.Get(ent), ptr: &ent})
+						})
+
+						var ops []func()
+						for i := range pairs {
+							p := pairs[i]
+							ops = append(ops, func() {
+								assert.NoError(t, subject.DeleteByID(ctx, p.id))
+							})
+						}
+						raceConcurrently(ops)
+
+						for _, p := range pairs {
+							c.Helper().IsAbsent(t, byIDFinder, ctx, p.id)
+						}
+					})
+
 					s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 						othEntPtr := testcase.Let(s, func(t *testcase.T) ENT {
 							var ent = c.MakeEntity(t)
@@ -301,6 +332,34 @@ func AllDeleter[ENT, ID any](subject crud.AllDeleter, opts ...Option[ENT, ID]) c
 
 				t.Eventually(func(t *testcase.T) {
 					n, err := iterkit.CountE(allFinder.FindAll(c.MakeContext(t)))
+					assert.NoError(t, err)
+					assert.Empty(t, n)
+				})
+			})
+
+			// "Concurrent calls are race-free" is a happy-case concurrency check.
+			// Several goroutines call DeleteAll on a freshly populated resource.
+			// The implementation must leave the resource empty, regardless of how
+			// many concurrent callers race to delete.
+			s.Test(`concurrent calls to DeleteAll are race-free`, func(t *testcase.T) {
+				ctx := c.MakeContext(t)
+				if creator, ok := subject.(crud.Creator[ENT]); ok {
+					t.Random.Repeat(3, 7, func() {
+						ent := c.MakeEntity(t)
+						c.Helper().Create(t, creator, ctx, &ent)
+					})
+				}
+
+				var ops []func()
+				t.Random.Repeat(2, 4, func() {
+					ops = append(ops, func() {
+						assert.NoError(t, subject.DeleteAll(ctx))
+					})
+				})
+				raceConcurrently(ops)
+
+				t.Eventually(func(t *testcase.T) {
+					n, err := iterkit.CountE(allFinder.FindAll(ctx))
 					assert.NoError(t, err)
 					assert.Empty(t, n)
 				})

@@ -33,6 +33,54 @@ func Set[ID any](ptr any, id ID) error {
 		return fmt.Errorf("nil pointer given for extid.Set[%T]", reflectkit.TypeOf[ID]().String())
 	}
 
+	// When ENT is an interface type (e.g. workflow.Event), dereference
+	// through the interface to reach the underlying concrete struct, mutate
+	// a copy of that struct with the new ID, then write it back into the
+	// interface value. The interface value obtained via a pointer
+	// dereference is addressable, while the struct value held inside the
+	// interface is not, hence the copy-and-reassign pattern.
+	if rt.Elem().Kind() == reflect.Interface {
+		ifaceVal := r.Elem()
+		if ifaceVal.IsNil() {
+			return fmt.Errorf("nil interface value given for extid.Set[%T]", reflectkit.TypeOf[ID]().String())
+		}
+		structVal := ifaceVal.Elem()
+		if structVal.Kind() != reflect.Struct {
+			return errSetWithNonStructENT
+		}
+		concreteType := structVal.Type()
+
+		tr, ok := register[concreteType]
+		if ok {
+			newStruct := reflect.New(concreteType).Elem()
+			newStruct.Set(structVal)
+			tr.Set(newStruct.Addr().Interface(), id)
+			ifaceVal.Set(newStruct)
+			return nil
+		}
+
+		lookupByIDType := extractIdentifierFieldByType(idByTypeKey{
+			ENT: concreteType,
+			ID:  reflectkit.TypeOf[ID](),
+		})
+
+		newStruct := reflect.New(concreteType).Elem()
+		newStruct.Set(structVal)
+		if _, val, ok := lookupByIDType(newStruct); ok {
+			val.Set(reflect.ValueOf(id))
+			ifaceVal.Set(newStruct)
+			return nil
+		}
+
+		if _, val, ok := extractIdentifierField(concreteType, newStruct); ok {
+			val.Set(reflect.ValueOf(id))
+			ifaceVal.Set(newStruct)
+			return nil
+		}
+
+		return ErrIDFieldNotFound
+	}
+
 	if rt.Elem().Kind() != reflect.Struct {
 		return errSetWithNonStructENT
 	}
@@ -206,6 +254,17 @@ func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) 
 }
 
 func extractIdentifierField(typ reflect.Type, val reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	// When ENT is an interface type, the cache key must reflect the concrete
+	// dynamic type carried by val (e.g. VariableEvent, ExecuteParticipantEvent),
+	// not the interface type itself. Otherwise a closure built for one concrete
+	// type would be reused for a different one (or for a zero value), which
+	// leads to panics such as "reflect: call of reflect.Value.Type on zero Value".
+	if typ.Kind() == reflect.Interface {
+		if !val.IsValid() || val.Kind() == reflect.Interface && val.IsNil() {
+			return reflect.StructField{}, reflect.Value{}, false
+		}
+		typ = val.Type()
+	}
 	init := func() func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
 		return refMakeExtractFunc(val)
 	}

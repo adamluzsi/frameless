@@ -293,13 +293,32 @@ func TestFan(t *testing.T) {
 					return nil
 				})
 
-				assert.NoError(t, f.Publish(t.Context(), 42))
+				var expData int = t.Random.Int()
+
+				assert.NoError(t, f.Publish(t.Context(), expData))
 				time.Sleep(timeout)
-				// nack should be attempted, but since there is only a single subscriber,
-				// nack is not possible
-				// thus it yields an error
 				assert.NoError(t, j.Wait())
-				assert.Error(t, nackErr)
+				t.Log("nack should yield no error")
+				assert.NoError(t, nackErr)
+
+				t.Log("and upon resubscribing, it should be received again")
+				assert.Within(t, deadline, func(ctx context.Context) {
+					for msg, err := range f.Subscribe(ctx) {
+						assert.NoError(t, err)
+						assert.Equal(t, msg.Data(), expData)
+						assert.NoError(t, msg.ACK())
+						break
+					}
+				})
+
+				t.Log("but only once, and after ack, it should be considered done")
+				assert.NotWithin(t, timeout, func(ctx context.Context) {
+					for msg, err := range f.Subscribe(ctx) { // should hang until context cancel
+						assert.NoError(t, err)
+						assert.NotNil(t, msg)
+						break
+					}
+				})
 			})
 
 			s.Context(">1 consumers", func(s *testcase.Spec) {
@@ -372,7 +391,6 @@ func TestFan(t *testing.T) {
 						assert.Contains(t, ackedValues.Get(t).ToSlice(), value.Get(t))
 					})
 				})
-
 			})
 		})
 	})
@@ -774,4 +792,648 @@ func isFinished[T any](ch <-chan T) bool {
 	default:
 		return false
 	}
+}
+
+// --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
+
+func ExampleBroadcast() {
+	var (
+		ctx context.Context = context.Background()
+		bc  synckit.Broadcast[string]
+	)
+
+	bc.Subscribe(ctx)      // every subscriber receives its own copy
+	bc.Publish(ctx, "foo") // delivered identically to all current subscribers
+}
+
+// TestBroadcast documents the behaviour of synckit.Broadcast.
+//
+// Broadcast is a broadcasting unit: every value handed to Publish is delivered,
+// identical, to every currently subscribed consumer (fan-out). In every other
+// respect it behaves like synckit.Fan - a synchronous hand-off with back
+// pressure to the active subscribers, context aware Publish/Subscribe, and
+// Close/Cancel life-cycle control.
+//
+// Unlike a durable queue, Broadcast is volatile: it delivers only to the
+// consumers subscribed at the moment of publishing. A consumer that subscribes
+// later does not receive earlier messages.
+func TestBroadcast(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := let.Var(s, func(t *testcase.T) *synckit.Broadcast[string] {
+		return &synckit.Broadcast[string]{}
+	})
+
+	// subscribe registers a background consumer bound to the subject that
+	// acknowledges and records every message it receives.
+	subscribe := func(s *testcase.Spec) testcase.Var[*pubsubtest.AsyncResults[string]] {
+		return let.Var(s, func(t *testcase.T) *pubsubtest.AsyncResults[string] {
+			return pubsubtest.Subscribe[string](t, subject.Get(t), context.Background())
+		})
+	}
+
+	// waitForSubscribers blocks until the subject reports exactly n active
+	// subscriptions, so a publication is never raced against subscriber
+	// registration (a broadcast only reaches the consumers subscribed at
+	// publish time).
+	waitForSubscribers := func(t *testcase.T, n int) {
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, subject.Get(t).Len(), n)
+		})
+	}
+
+	s.Describe("#Publish", func(s *testcase.Spec) {
+		var (
+			ctx, cancel = let.ContextWithCancel(s)
+			data        = let.String(s)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Publish(ctx.Get(t), data.Get(t))
+		})
+
+		// By default a single subscriber is consuming the broadcast, so the happy
+		// path can assert delivery without any additional arrangement.
+		res := subscribe(s)
+		s.Before(func(t *testcase.T) {
+			res.Get(t) // start the default subscriber
+			waitForSubscribers(t, 1)
+		})
+
+		s.Then("the subscribed consumer receives the published message", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			res.Get(t).Eventually(t, func(tb testing.TB, got []string) {
+				assert.Contains(tb, got, data.Get(t))
+			})
+		})
+
+		s.When("multiple subscribers are consuming", func(s *testcase.Spec) {
+			const extraCount = 2
+			var extra []testcase.Var[*pubsubtest.AsyncResults[string]]
+			for i := 0; i < extraCount; i++ {
+				extra = append(extra, subscribe(s))
+			}
+
+			// all returns every subscriber bound to the subject (default + extra).
+			all := func(t *testcase.T) []*pubsubtest.AsyncResults[string] {
+				rs := []*pubsubtest.AsyncResults[string]{res.Get(t)}
+				for _, v := range extra {
+					rs = append(rs, v.Get(t))
+				}
+				return rs
+			}
+
+			s.Before(func(t *testcase.T) {
+				for _, v := range extra {
+					v.Get(t) // start the additional subscribers
+				}
+				waitForSubscribers(t, 1+extraCount)
+			})
+
+			s.Then("every subscriber receives an identical copy of the message (broadcast, not unicast)", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				for i, r := range all(t) {
+					r.Eventually(t, func(tb testing.TB, got []string) {
+						assert.Contains(tb, got, data.Get(t),
+							assert.MessageF("expected subscriber #%d to also receive the broadcast", i+1))
+					})
+				}
+			})
+
+			s.And("several distinct messages are published", func(s *testcase.Spec) {
+				values := let.Var(s, func(t *testcase.T) []string {
+					var vs []string
+					t.Random.Repeat(3, 7, func() {
+						vs = append(vs, t.Random.UUID())
+					})
+					return vs
+				})
+
+				s.Then("every subscriber receives all of them", func(t *testcase.T) {
+					for _, v := range values.Get(t) {
+						assert.Within(t, deadline, func(ctx context.Context) {
+							assert.NoError(t, subject.Get(t).Publish(ctx, v))
+						})
+					}
+
+					for i, r := range all(t) {
+						r.Eventually(t, func(tb testing.TB, got []string) {
+							assert.ContainsExactly(tb, values.Get(t), got,
+								assert.MessageF("expected subscriber #%d to receive every broadcast message", i+1))
+						})
+					}
+				})
+			})
+		})
+
+		s.When("the context is cancelled", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				cancel.Get(t)()
+			})
+
+			s.Then("it returns the context's error", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), ctx.Get(t).Err())
+			})
+		})
+
+		// The no-subscriber scenario uses a fresh broadcast so the default
+		// subscriber above is not involved.
+		s.Test("with no subscriber consuming, publishing is a no-op and a later subscriber does not receive the message", func(t *testcase.T) {
+			var bc synckit.Broadcast[string]
+			value := t.Random.UUID()
+
+			// a broadcast delivers only to currently-subscribed consumers, so with
+			// none present the publish returns immediately without blocking.
+			assert.Within(t, timeout, func(context.Context) {
+				assert.NoError(t, bc.Publish(t.Context(), value))
+			})
+
+			// a subscriber that joins afterwards must not receive the earlier message.
+			async := pubsubtest.Subscribe[string](t, &bc, t.Context())
+			async.AssertEmpty(t)
+		})
+	})
+
+	s.Describe("#Subscribe", func(s *testcase.Spec) {
+		var (
+			ctx, cancel = let.ContextWithCancel(s)
+		)
+		act := let.Act(func(t *testcase.T) pubsub.Subscription[string] {
+			return subject.Get(t).Subscribe(ctx.Get(t))
+		})
+
+		s.When("the context is cancelled", func(s *testcase.Spec) {
+			s.Then("the subscription ends", func(t *testcase.T) {
+				sub := act(t)
+
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					for range sub {
+					}
+				}()
+
+				cancel.Get(t)()
+
+				t.Eventually(func(t *testcase.T) {
+					assert.True(t, isFinished(done), "expected the subscription to stop after the context is cancelled")
+				})
+			})
+		})
+
+		s.Test("a subscriber only receives messages published while it is subscribed", func(t *testcase.T) {
+			early := pubsubtest.Subscribe[string](t, subject.Get(t), t.Context())
+			waitForSubscribers(t, 1)
+
+			before := t.Random.UUID()
+			assert.Within(t, deadline, func(ctx context.Context) {
+				assert.NoError(t, subject.Get(t).Publish(ctx, before))
+			})
+			early.Eventually(t, func(tb testing.TB, got []string) {
+				assert.Contains(tb, got, before)
+			})
+
+			// a second subscriber joins only after `before` was already broadcast.
+			late := pubsubtest.Subscribe[string](t, subject.Get(t), t.Context())
+			waitForSubscribers(t, 2)
+
+			after := t.Random.UUID()
+			assert.Within(t, deadline, func(ctx context.Context) {
+				assert.NoError(t, subject.Get(t).Publish(ctx, after))
+			})
+
+			early.Eventually(t, func(tb testing.TB, got []string) {
+				assert.ContainsExactly(tb, []string{before, after}, got)
+			})
+			late.Eventually(t, func(tb testing.TB, got []string) {
+				assert.Contains(tb, got, after)
+			})
+			assert.NotContains(t, late.Values(), before,
+				"the late subscriber must not receive a message published before it subscribed")
+		})
+
+		s.Test("a delivered message that is not ACK-ed by the end of the for-round is redelivered, not lost", func(t *testcase.T) {
+			var bc synckit.Broadcast[int]
+			var g synckit.Group
+			t.Cleanup(g.Cancel)
+
+			var data = t.Random.Int()
+			var n int64
+
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range bc.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					assert.Equal(t, msg.Data(), data)
+					atomic.AddInt64(&n, 1)
+					continue // move on without ACK-ing
+				}
+				return nil
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bc.Len(), 1,
+					"expected the subscriber to be ready to receive a publication")
+			})
+
+			assert.NoError(t, bc.Publish(t.Context(), data))
+
+			// Not ACK-ing a delivered message must not consume it: the broadcast
+			// re-queues it for the same subscriber, so it is delivered again.
+			t.Eventually(func(t *testcase.T) {
+				var got = atomic.LoadInt64(&n)
+				assert.True(t, 1 < got,
+					assert.MessageF("expected the un-ACK-ed message to be redelivered to the same subscriber, n=%d", got))
+			})
+
+			g.Cancel()
+		})
+
+		s.When("a delivered message gets NACK-ed by the consumer", func(s *testcase.Spec) {
+			s.Test("it is redelivered to the same subscriber and, after ACK, is considered done", func(t *testcase.T) {
+				var bc synckit.Broadcast[int]
+				var nackErr error
+				j := synckit.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range bc.Subscribe(ctx) {
+						if err != nil {
+							return err
+						}
+						assert.Within(t, timeout, func(ctx context.Context) {
+							nackErr = msg.NACK()
+						})
+						break
+					}
+					return nil
+				})
+
+				var expData = t.Random.Int()
+
+				// wait for the subscriber to register before publishing, otherwise the
+				// volatile broadcast would drop the message.
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, bc.Len(), 1)
+				})
+
+				assert.NoError(t, bc.Publish(t.Context(), expData))
+				time.Sleep(timeout)
+				assert.NoError(t, j.Wait())
+				t.Log("nack should yield no error")
+				assert.NoError(t, nackErr)
+
+				t.Log("and upon resubscribing, it should be received again")
+				assert.Within(t, deadline, func(ctx context.Context) {
+					for msg, err := range bc.Subscribe(ctx) {
+						assert.NoError(t, err)
+						assert.Equal(t, msg.Data(), expData)
+						assert.NoError(t, msg.ACK())
+						break
+					}
+				})
+
+				t.Log("but only once, and after ack, it should be considered done")
+				assert.NotWithin(t, timeout, func(ctx context.Context) {
+					for msg, err := range bc.Subscribe(ctx) { // should hang until context cancel
+						assert.NoError(t, err)
+						assert.NotNil(t, msg)
+						break
+					}
+				})
+			})
+		})
+	})
+
+	s.Describe("#Close", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Close()
+		})
+
+		s.Then("it unblocks a publish that is waiting on a busy subscriber", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			var (
+				processing = make(chan struct{}) // signals the first delivery began
+				release    = make(chan struct{}) // keeps the subscriber busy, off the receive path
+			)
+
+			var g synckit.Group
+			t.Cleanup(g.Cancel)
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range bc.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					close(processing)
+					<-release // stay busy so a subsequent publish blocks on the hand-off
+					_ = msg.ACK()
+					return nil
+				}
+				return nil
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bc.Len(), 1)
+			})
+
+			// the first publish is taken by the subscriber, which then becomes busy.
+			assert.Within(t, deadline, func(ctx context.Context) {
+				assert.NoError(t, bc.Publish(ctx, t.Random.UUID()))
+			})
+			<-processing
+
+			// the second publish now blocks on the busy subscriber's hand-off.
+			var gotErr error
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				gotErr = bc.Publish(t.Context(), t.Random.UUID())
+			})
+
+			// Close signals shutdown, so the blocked publish returns with an error.
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					assert.NoError(t, act(t))
+				})
+			})
+
+			assert.Within(t, deadline, func(ctx context.Context) {
+				w.Wait()
+			})
+			assert.ErrorIs(t, gotErr, context.Canceled)
+
+			close(release)
+		})
+
+		s.Then("it ends a subscription when nothing requires processing", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			var count int
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				for range bc.Subscribe(t.Context()) {
+					count++
+				}
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					assert.NoError(t, act(t))
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.Equal(t, count, 0)
+		})
+
+		s.Then("it will NOT end subscriptions while values still need to be processed", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			expected := random.Slice(t.Random.IntBetween(100, 300), t.Random.UUID)
+			var actually []string
+			var m sync.Mutex
+
+			var g synckit.Group
+			n := t.Random.IntBetween(3, 7)
+
+			for range n {
+				g.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range bc.Subscribe(t.Context()) {
+						assert.NoError(t, err)
+						assert.NotNil(t, msg)
+
+						m.Lock()
+						actually = append(actually, msg.Data())
+						m.Unlock()
+						msg.ACK()
+					}
+					return nil
+				})
+			}
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bc.Len(), n)
+			})
+
+			for _, data := range expected {
+				assert.NoError(t, bc.Publish(t.Context(), data))
+			}
+			assert.NoError(t, act(t))
+			assert.NoError(t, g.Wait())
+		})
+
+		s.Then("it will NOT cancel the context of an in-flight message that is still being processed", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			var (
+				processing        = make(chan struct{}) // signals that a message delivery began
+				release           = make(chan struct{}) // gate that keeps the message in-flight
+				ctxErrDuringClose error
+				ctxErrAfterClose  error
+			)
+
+			var g synckit.Group
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range bc.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					close(processing)
+					ctxErrDuringClose = msg.Context().Err()
+					<-release
+					ctxErrAfterClose = msg.Context().Err()
+					assert.NoError(t, msg.ACK())
+					return nil
+				}
+				return nil
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bc.Len(), 1)
+			})
+
+			assert.NoError(t, bc.Publish(t.Context(), t.Random.UUID()))
+			<-processing
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NoError(t, act(t))
+			})
+
+			close(release)
+			assert.NoError(t, g.Wait())
+
+			assert.NoError(t, ctxErrDuringClose,
+				"the in-flight message context must not be cancelled while Close is called")
+			assert.NoError(t, ctxErrAfterClose,
+				"the in-flight message context must remain valid after Close returned")
+		})
+	})
+
+	// #Cancel behaves like a stronger #Close: besides signalling that no more
+	// values are expected (ending idle subscriptions), it also cancels the
+	// context of any message that is still in-flight, so consumers are asked to
+	// abort their current processing.
+	s.Describe("#Cancel", func(s *testcase.Spec) {
+		act := let.Act0(func(t *testcase.T) {
+			subject.Get(t).Cancel()
+		})
+
+		s.Then("it ends a subscription when nothing requires processing", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			var count int
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				for range bc.Subscribe(t.Context()) {
+					count++
+				}
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NotPanic(t, func() {
+					act(t)
+				})
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+
+			assert.Equal(t, count, 0)
+		})
+
+		s.Then("it will cancel the context of an in-flight message that is still being processed", func(t *testcase.T) {
+			bc := subject.Get(t)
+
+			var (
+				processing = make(chan struct{}) // signals that a message delivery began
+				ctxErr     error
+			)
+
+			var g synckit.Group
+			g.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range bc.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					close(processing)
+					assert.Within(t, timeout, func(context.Context) {
+						<-msg.Context().Done()
+					})
+					ctxErr = msg.Context().Err()
+					return nil
+				}
+				return nil
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bc.Len(), 1)
+			})
+
+			assert.NoError(t, bc.Publish(t.Context(), t.Random.UUID()))
+			<-processing
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				act(t)
+			})
+
+			assert.NoError(t, g.Wait())
+			assert.ErrorIs(t, ctxErr, context.Canceled,
+				"the in-flight message context must be cancelled by Cancel")
+		})
+	})
+
+	s.Describe("#Len", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) int {
+			return subject.Get(t).Len()
+		})
+
+		s.Then("it reports zero when there is no subscriber", func(t *testcase.T) {
+			assert.Equal(t, act(t), 0)
+		})
+
+		s.When("subscribers are consuming", func(s *testcase.Spec) {
+			count := let.Var(s, func(t *testcase.T) int {
+				return t.Random.IntBetween(2, 5)
+			})
+
+			s.Before(func(t *testcase.T) {
+				for i := 0; i < count.Get(t); i++ {
+					pubsubtest.Subscribe[string](t, subject.Get(t), t.Context())
+				}
+			})
+
+			s.Then("it reports the number of active subscribers", func(t *testcase.T) {
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, act(t), count.Get(t))
+				})
+			})
+		})
+	})
+
+	s.Context("race", func(s *testcase.Spec) {
+		s.Test("concurrent publish, subscribe and close", func(t *testcase.T) {
+			var bc synckit.Broadcast[int]
+
+			testcase.Race(func() {
+				for bc.Len() != 2 {
+					runtime.Gosched()
+				}
+				_ = bc.Publish(t.Context(), 42)
+			}, func() {
+				for msg, err := range bc.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					assert.NoError(t, msg.ACK())
+				}
+			}, func() {
+				var o sync.Once
+				for msg, err := range bc.Subscribe(t.Context()) {
+					assert.NoError(t, err)
+					var ok bool
+					o.Do(func() {
+						msg.NACK()
+						ok = true
+					})
+					if ok {
+						continue
+					}
+					assert.NoError(t, msg.ACK())
+				}
+			}, func() {
+				<-time.After(timeout)
+				_ = bc.Close()
+			}, func() {
+				<-time.After(timeout)
+				bc.Cancel()
+			})
+		})
+	})
+
+	s.Test("nack w cancel should not result in any issue", func(t *testcase.T) {
+		var b synckit.Broadcast[int]
+		job := t.Go(func(ctx context.Context) {
+			for msg, err := range b.Subscribe(ctx) {
+				assert.NoError(t, err)
+				assert.Within(t, timeout, func(ctx context.Context) {
+					assert.NoError(t, msg.NACK()) // nack so the message is requeued
+				})
+				return
+			}
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, b.Len(), 1)
+		})
+
+		assert.NoError(t, b.Publish(t.Context(), 42)) // send first message in the broadcast
+
+		job.Wait()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			b.Cancel() // cancel
+		}, "cancel should not block")
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, b.Len(), 0)
+		})
+	})
 }

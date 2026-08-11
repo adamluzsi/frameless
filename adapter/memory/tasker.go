@@ -1,6 +1,9 @@
 package memory
 
-import "go.llib.dev/frameless/pkg/tasker"
+import (
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/port/guard"
+)
 
 func Scheduler() tasker.Scheduler {
 	return tasker.Scheduler{
@@ -13,6 +16,6 @@ func NewTaskerSchedulerStateRepository() *Repository[tasker.ScheduleState, taske
 	return NewRepository[tasker.ScheduleState, tasker.ScheduleID](NewMemory())
 }
 
-func NewTaskerSchedulerLocks() *LockerFactory[tasker.ScheduleID] {
-	return NewLockerFactory[tasker.ScheduleID]()
+func NewTaskerSchedulerLocks() *LockerFactory[tasker.ScheduleID, guard.Locker] {
+	return NewLockerFactory[tasker.ScheduleID, guard.Locker]()
 }

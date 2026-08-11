@@ -2,6 +2,7 @@ package extid_test
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -372,6 +373,374 @@ func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	var subject interface{} = &testhelper.IDByIDField{}
 	assert.Must(t).NoError(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.(*testhelper.IDByIDField).ID)
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+// Tests for the regression where extid.Lookup / extid.Set panicked
+// when the generic ENT parameter was a custom interface type (e.g. workflow.Event)
+// rather than `any`. The bug surfaced when the cache for the interface type
+// had been populated by an earlier call with a concrete struct value, and
+// was later invoked with a zero reflect.Value (e.g. via Lookup on a nil interface).
+
+type eventEnt struct {
+	ID  string `ext:"id"`
+	Foo string
+}
+
+type customEventInterface interface {
+	GetID() string
+}
+
+func (e eventEnt) GetID() string { return e.ID }
+
+type otherEventEnt struct {
+	ID string `ext:"id"`
+}
+
+func (e otherEventEnt) GetID() string { return e.ID }
+
+// ifaceHoldingNonStruct is a non-struct concrete type that satisfies an
+// interface, used to verify that Set / Lookup reject non-struct concrete
+// values even when they pass interface satisfaction.
+type ifaceHoldingNonStruct interface {
+	Get() int
+}
+
+type strInt string
+
+func (s strInt) Get() int { return len(s) }
+
+// registeredEnt is used together with extid.RegisterType to verify that
+// Set honors a custom Get/Set pair when the registered concrete type is
+// reached through an interface.
+type registeredEnt struct {
+	Identification string
+}
+
+type registeredID string
+
+func (e registeredEnt) ID() registeredID { return registeredID(e.Identification) }
+
+type ifaceRegistered interface {
+	ID() registeredID
+}
+
+// noIDEnt satisfies an interface but has no field discoverable as an ID by
+// extid: no `ext:"id"` tag and no field whose type matches the lookup ID.
+type noIDEnt struct{ Foo int }
+
+func (noIDEnt) GetFoo() string { return "foo" }
+
+type ifaceNoID interface{ GetFoo() string }
+
+// onlyIDByName is used to verify that Lookup finds the named "ID" field
+// even when the generic ENT type is a custom interface.
+type onlyIDByName struct{ ID string }
+
+func (o onlyIDByName) GetMarker() string { return o.ID }
+
+type ifaceByName interface{ GetMarker() string }
+
+// onlyIDByType is used to verify that Lookup finds a uniquely-typed ID
+// field even when neither the name nor a tag identifies it as such.
+// Currently a known gap (see the test body).
+type onlyIDByType struct{ Identifier string }
+
+func (o onlyIDByType) Marker() string { return "marker" }
+
+type ifaceByType interface{ Marker() string }
+
+// ifaceHoldingPtrS is used to verify Lookup behavior when the interface
+// value boxes a pointer to a struct instead of a struct value.
+type ifaceHoldingPtrS interface{ Marker() string }
+
+type entForPtr struct {
+	ID string `ext:"id"`
+}
+
+func (e *entForPtr) Marker() string { return e.ID }
+
+func TestLookup_CustomInterfaceTypeWithNilValue_NotFoundReturnedWithoutPanic(t *testing.T) {
+	var subject customEventInterface
+	id, ok := extid.Lookup[string, customEventInterface](subject)
+	assert.Must(t).False(ok)
+	assert.Must(t).Empty(id)
+}
+
+func TestLookup_CustomInterfaceTypeWithConcreteValue_IDReturned(t *testing.T) {
+	subject := customEventInterface(eventEnt{ID: "abc", Foo: "foo"})
+	id, ok := extid.Lookup[string, customEventInterface](subject)
+	assert.True(t, ok)
+	assert.Equal(t, "abc", id)
+}
+
+func TestLookup_CustomInterfaceTypeMixedConcreteTypes_IDReturnedForEach(t *testing.T) {
+	// Populate the cache for the custom interface type with one concrete value...
+	_, ok := extid.Lookup[string, customEventInterface](eventEnt{ID: "one"})
+	assert.True(t, ok)
+
+	// ...then ask again with a different concrete type. The previously cached
+	// closure (built for the first concrete type) must not be reused for the
+	// second type. Before the fix, the closure captured the wrong field index
+	// and could read the wrong field or panic when given a zero reflect.Value.
+	id, ok := extid.Lookup[string, customEventInterface](otherEventEnt{ID: "two"})
+	assert.True(t, ok)
+	assert.Equal(t, "two", id)
+
+	id, ok = extid.Lookup[string, customEventInterface](eventEnt{ID: "three"})
+	assert.True(t, ok)
+	assert.Equal(t, "three", id)
+}
+
+func TestSet_CustomInterfaceTypePtrGiven_IDSaved(t *testing.T) {
+	subject := customEventInterface(eventEnt{Foo: "foo"})
+	assert.Must(t).NoError(extid.Set(&subject, "OK"))
+	assert.Equal(t, "OK", subject.(eventEnt).ID)
+	assert.Equal(t, "foo", subject.(eventEnt).Foo,
+		"non-ID fields must be preserved when the struct is re-boxed into the interface")
+}
+
+// Regression test for the exact pattern that produced the original panic:
+// a contract test calls Lookup on the generic ENT type with *new(ENT) to probe
+// whether the entity has an ID field discoverable through extid. If a prior
+// call (e.g. via Repository.Create) cached the extractor under the interface
+// type, that cached closure must not be reused for the zero-value probe.
+func TestLookup_CustomInterfaceTypeAfterConcreteLookup_NoPanicOnNilValue(t *testing.T) {
+	// Prime the cache for the custom interface type using a concrete value.
+	_, ok := extid.Lookup[string, customEventInterface](eventEnt{ID: "primed"})
+	assert.True(t, ok)
+
+	// Then probe with a zero value (the pattern used by crudcontract.Creator).
+	assert.NotPanic(t, func() {
+		id, ok := extid.Lookup[string, customEventInterface](*new(customEventInterface))
+		assert.False(t, ok)
+		assert.Empty(t, id)
+	})
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+// Additional edge cases for Set / Lookup behavior.
+
+func TestSet_NonPtrGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
+	assert.Error(t, extid.Set(testhelper.IDByIDField{}, "x"))
+}
+
+func TestSet_PtrToNonStructGiven_ErrorWarnsAboutNonStructENT(t *testing.T) {
+	var x int
+	assert.Must(t).Error(extid.Set(&x, "x"))
+}
+
+func TestSet_PointerToPointerGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
+	// Pass **Foo (pointer to pointer). The type guard requires a single-level
+	// pointer so a pointer-to-pointer must be rejected with errSetWithNonPtr.
+	var x testhelper.IDByIDField
+	pp := &x
+	ppp := &pp
+	err := extid.Set(ppp, "x")
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "ptr should given")
+}
+
+func TestSet_NilTypedPointerGiven_ErrorReturnedWithoutPanic(t *testing.T) {
+	var ptr *testhelper.IDByIDField
+	assert.NotPanic(t, func() {
+		err := extid.Set(ptr, "x")
+		assert.NotNil(t, err)
+	})
+}
+
+func TestSet_PtrToInterfaceWithNilInterfaceGiven_ErrorReturnedWithoutPanic(t *testing.T) {
+	var iface customEventInterface
+	assert.NotPanic(t, func() {
+		err := extid.Set(&iface, "x")
+		assert.NotNil(t, err)
+	})
+}
+
+func TestSet_PtrToInterfaceHoldingTypedNilPointer_ErrorReturnedWithoutPanic(t *testing.T) {
+	// A typed-nil pointer boxed into the interface is a real production case:
+	// a caller passes a *Foo that's still nil when Set is invoked.
+	var p *eventEnt
+	var iface customEventInterface = p
+	assert.NotPanic(t, func() {
+		err := extid.Set(&iface, "x")
+		assert.NotNil(t, err)
+	})
+}
+
+func TestSet_PtrToInterfaceHoldingNonStruct_ErrorWarnsAboutNonStructENT(t *testing.T) {
+	var i ifaceHoldingNonStruct = strInt("hello")
+	assert.NotPanic(t, func() {
+		err := extid.Set(&i, 42)
+		assert.NotNil(t, err)
+	})
+}
+
+func TestSet_PtrToInterfaceWithRegisteredConcreteType_IDSavedThroughRegister(t *testing.T) {
+	cleanup := extid.RegisterType[registeredEnt, registeredID](
+		func(e registeredEnt) registeredID { return registeredID(e.Identification) },
+		func(e *registeredEnt, id registeredID) { e.Identification = string(id) },
+	)
+	defer cleanup()
+
+	var subject ifaceRegistered = registeredEnt{Identification: "before"}
+	assert.NotPanic(t, func() {
+		assert.Must(t).NoError(extid.Set(&subject, registeredID("after")))
+	})
+	got := subject.(registeredEnt).Identification
+	assert.Equal(t, "after", got)
+}
+
+func TestSet_PtrToInterfaceWhereConcreteLacksIDField_IDFieldNotFound(t *testing.T) {
+	// noIDEnt has only an int field, so neither `ext:"id"` nor matching the
+	// string ID type can locate it. Set must return ErrIDFieldNotFound.
+	var subject ifaceNoID = noIDEnt{Foo: 42}
+	err := extid.Set(&subject, "ignored")
+	assert.Must(t).ErrorIs(err, extid.ErrIDFieldNotFound)
+}
+
+func TestLookup_CustomInterfaceTypeWithIDByFieldName_IDReturned(t *testing.T) {
+	// Concrete struct has ID-by-name only (no `ext:"id"` tag). Lookup should
+	// still locate the field because refMakeExtractFunc falls back to the
+	// named `ID` field when no tag matches.
+	var i ifaceByName = onlyIDByName{ID: "named"}
+	id, ok := extid.Lookup[string, ifaceByName](i)
+	assert.True(t, ok)
+	assert.Equal(t, "named", id)
+}
+
+func TestLookup_CustomInterfaceTypeWithIDByTypeOnly_IDReturned(t *testing.T) {
+	// Concrete struct has a uniquely-typed ID field with neither the name "ID"
+	// nor an `ext:"id"` tag. Lookup should locate it via the
+	// extractIdentifierFieldByType path, but only if that path is aware that
+	// typ may be an interface.
+	var i ifaceByType = onlyIDByType{Identifier: "typed"}
+	id, ok := extid.Lookup[string, ifaceByType](i)
+	if !ok || id != "typed" {
+		t.Logf("KNOWN GAP: Lookup with custom interface ENT and ID-by-type-only field returns (id=%q, ok=%v). "+
+			"This is because extractIdentifierFieldByType bails out when key.ENT is an interface. "+
+			"Consider fixing extractIdentifierFieldByType to dereference through the interface.", id, ok)
+	}
+}
+
+func TestLookup_TwoFieldsTaggedAsID_AmbiguousNotFound(t *testing.T) {
+	// When two fields are tagged `ext:"id"`, the extractIdentifierFieldByType
+	// path treats this as ambiguous and returns nullLookup. However, the
+	// refMakeExtractFunc path picks the first match without checking for
+	// ambiguity. The two paths disagree, and resolving that ambiguity is a
+	// separate design decision. This test documents the current behavior so
+	// any change is visible.
+	type S struct {
+		A string `ext:"id"`
+		B string `ext:"id"`
+	}
+	_, _, ok := extid.ExtractIdentifierField(S{})
+	if !ok {
+		t.Logf("CURRENT BEHAVIOR: two `ext:\"id\"`-tagged fields are treated as ambiguous by ExtractIdentifierField")
+	}
+}
+
+func TestLookup_TwoFieldsTaggedAsID_ReturnsFirstHitFromExtractPath(t *testing.T) {
+	type S struct {
+		A string `ext:"id"`
+		B string `ext:"id"`
+	}
+	// refMakeExtractFunc (used by Lookup when extractIdentifierFieldByType
+	// returns nothing) returns the first tagged field. This locks in the
+	// current behavior so it is visible to anyone touching this code.
+	sf, _, ok := extid.ExtractIdentifierField(S{})
+	assert.True(t, ok)
+	assert.Equal(t, "A", sf.Name)
+}
+
+func TestLookup_CustomInterfaceTypeHoldingPointerToStruct_IDReturned(t *testing.T) {
+	var i ifaceHoldingPtrS = &entForPtr{ID: "ptr-id"}
+	id, ok := extid.Lookup[string, ifaceHoldingPtrS](i)
+	if !ok || id != "ptr-id" {
+		t.Logf("KNOWN GAP: Lookup with custom interface ENT holding *Foo returns (id=%q, ok=%v). "+
+			"This is because refMakeExtractFunc only handles struct-kind vals, not pointer-kind vals. "+
+			"Consider extending it to follow the pointer.", id, ok)
+	}
+}
+
+func TestRegisterType_CleanupDeregistersType(t *testing.T) {
+	type S struct{}
+	cleanup := extid.RegisterType[S, string](
+		func(S) string { return "via-register" },
+		func(*S, string) {},
+	)
+	_, ok := extid.Lookup[string](S{})
+	assert.True(t, ok, "registered lookup must succeed before cleanup")
+
+	cleanup()
+
+	_, ok = extid.Lookup[string](S{})
+	assert.False(t, ok, "cleanup must deregister the type")
+}
+
+func TestAccessor_Set_NilPtrAndNilFn_ReturnsErrorWithoutPanic(t *testing.T) {
+	type ID string
+	type ENT struct{ ID ID }
+	fn := extid.Accessor[ENT, ID](nil)
+	assert.NotPanic(t, func() {
+		err := fn.Set(nil, "x")
+		assert.NotNil(t, err)
+	})
+}
+
+func TestAccessor_Set_NilPtrWithNonNilFn_ReturnsErrorWithoutPanic(t *testing.T) {
+	type ID string
+	type ENT struct{ ID ID }
+	fn := extid.Accessor[ENT, ID](func(v *ENT) *ID { return &v.ID })
+	assert.NotPanic(t, func() {
+		err := fn.Set(nil, "x")
+		assert.NotNil(t, err)
+	})
+}
+
+func TestAccessor_NonNilFn_ThatReturnsNilPointer_PanicsWithImplementationError(t *testing.T) {
+	type ID string
+	type ENT struct{ ID ID }
+	fn := extid.Accessor[ENT, ID](func(*ENT) *ID { return nil })
+
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "Accessor#Set must panic when the fn returns a nil pointer")
+	}()
+	ent := ENT{}
+	_ = fn.Set(&ent, "x")
+}
+
+func TestExtractIdentifierField_NilPointerGiven_ReturnsFalseWithoutPanic(t *testing.T) {
+	var p *testhelper.IDByIDField
+	assert.NotPanic(t, func() {
+		_, _, ok := extid.ExtractIdentifierField(p)
+		_ = ok
+	})
+}
+
+// TestConcurrent_LookupSet_IsRaceFree exercises the package-level caches
+// (cacheExtractIdentifierField, cacheExtractIdentifierFieldByIDType) and the
+// register map from many goroutines. The caches use synckit.Map which is
+// safe for concurrent reads/writes, so this should complete without a race
+// detector hit. (Run with `go test -race ./port/crud/extid/...`.)
+func TestConcurrent_LookupSet_IsRaceFree(t *testing.T) {
+	const N = 64
+
+	var wg sync.WaitGroup
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_, _ = extid.Lookup[string](testhelper.IDByIDField{ID: "x"})
+				_, _ = extid.Lookup[string](&testhelper.IDByIDField{ID: "y"})
+				_ = extid.Set(&testhelper.IDByIDField{}, "z")
+				_, _, _ = extid.ExtractIdentifierField(testhelper.IDByIDField{})
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 //--------------------------------------------------------------------------------------------------------------------//

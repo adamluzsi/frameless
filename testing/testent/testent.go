@@ -239,3 +239,11 @@ type Qux struct {
 	Bars []Bar
 	Bazs map[string]Baz
 }
+
+type FooerT1 struct{ V string }
+
+func (FooerT1) GetFoo() string { return "foo" }
+
+type FooerT2 struct{ V int }
+
+func (FooerT2) GetFoo() string { return "foo" }

@@ -10,12 +10,12 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/internal/interr"
-	"go.llib.dev/frameless/pkg/reflectkit/internal"
+	"go.llib.dev/frameless/pkg/internal/refeq"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/predicate"
 )
 
-const ErrTypeMismatch = internal.ErrTypeMismatch
+const ErrTypeMismatch = refeq.ErrTypeMismatch
 
 const ErrInvalid errorkitlite.Error = "ErrInvalid"
 
@@ -80,9 +80,12 @@ func BaseValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-func baseType(v any) (reflect.Type, int) {
+func baseType[T any](v T) (reflect.Type, int) {
+	if any(v) == nil {
+		return DerefType(TypeOf[T](v))
+	}
 	var typ reflect.Type
-	switch v := v.(type) {
+	switch v := any(v).(type) {
 	case reflect.Type:
 		typ = v
 	case reflect.Value:
@@ -93,13 +96,13 @@ func baseType(v any) (reflect.Type, int) {
 	return DerefType(typ)
 }
 
-func SymbolicName(v any) string {
-	typ, depth := baseType(v)
+func SymbolicName[T any](v T) string {
+	typ, depth := baseType[T](v)
 	return strings.Repeat("*", depth) + typ.String()
 }
 
-func FullyQualifiedName(v any) string {
-	typ, depth := baseType(v)
+func FullyQualifiedName[T any](v T) string {
+	typ, depth := baseType[T](v)
 	var name = typ.Name()
 	if len(name) == 0 {
 		name = typ.String()
@@ -278,7 +281,7 @@ type LookupFieldID interface {
 }
 
 func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
-	return internal.ToSettable(rv)
+	return refeq.ToSettable(rv)
 }
 
 type TagHandler[T any] struct {
@@ -570,13 +573,13 @@ func tryTypedCompare[T any](a, b T) (int, bool) {
 }
 
 func reflectCompare(a, b reflect.Value) (int, error) {
-	if compare, ok := internal.ImplementsComparable(a.Type()); ok {
+	if compare, ok := refeq.ImplementsComparable(a.Type()); ok {
 		return compare(a, b)
 	}
 	for CanElem(a) && CanElem(b) {
 		a, b = a.Elem(), b.Elem()
 
-		if compare, ok := internal.ImplementsComparable(a.Type()); ok {
+		if compare, ok := refeq.ImplementsComparable(a.Type()); ok {
 			return compare(a, b)
 		}
 	}
@@ -705,4 +708,15 @@ func mergeStruct(structs ...reflect.Value) (reflect.Value, bool) {
 	}
 
 	return out, true
+}
+
+func TypeImplements[T, Interface any]() bool {
+	var (
+		RT = TypeOf[T]()
+		RI = TypeOf[Interface]()
+	)
+	if RI.Kind() != reflect.Interface {
+		panic(fmt.Sprintf("unexpected type for type interface assertion: %s", RI.String()))
+	}
+	return RT.Implements(RI)
 }

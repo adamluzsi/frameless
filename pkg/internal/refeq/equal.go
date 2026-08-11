@@ -1,10 +1,19 @@
-package internal
+package refeq
 
 import (
 	"reflect"
 
 	"go.llib.dev/frameless/pkg/teardown"
 )
+
+func EqualT[T any](v1, v2 T) bool {
+	typ := reflect.TypeFor[T]()
+	v1P := reflect.New(typ)
+	v1P.Elem().Set(reflect.ValueOf(v1))
+	v2P := reflect.New(typ)
+	v2P.Elem().Set(reflect.ValueOf(v2))
+	return Equal(v1P, v2P)
+}
 
 func Equal(v1, v2 reflect.Value) bool {
 	return reflectDeepEqual(&refMem{visited: make(map[uintptr]struct{})}, v1, v2)

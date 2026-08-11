@@ -1,24 +1,25 @@
-package internal
+package refeq
 
 import (
 	"reflect"
-
-	"go.llib.dev/frameless/pkg/synckit"
+	"sync"
 )
 
 type CompareFunc func(val, oth reflect.Value) (int, error)
 
-var comparableTypes synckit.Map[reflect.Type, CompareFunc]
+var comparableTypes sync.Map // map[reflect.Type]CompareFunc
 
 func ImplementsComparable(T reflect.Type) (CompareFunc, bool) {
 	if T == nil {
 		return nil, false
 	}
-	fn := comparableTypes.GetOrInit(T, func() CompareFunc {
-		return mkComparableFuncFor(T)
-	})
+	if v, ok := comparableTypes.Load(T); ok {
+		fn, _ := v.(CompareFunc)
+		return fn, fn != nil
+	}
+	actual, _ := comparableTypes.LoadOrStore(T, mkComparableFuncFor(T))
+	fn, _ := actual.(CompareFunc)
 	return fn, fn != nil
-
 }
 
 func mkComparableFuncFor(T reflect.Type) CompareFunc {

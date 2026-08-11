@@ -248,6 +248,26 @@ func QueryMany[ENT, ID any](
 			})
 		})
 
+		// "Concurrent calls are race-free" is a happy-case concurrency check.
+		// Several goroutines iterate the same query concurrently; each must
+		// see the included entity without races.
+		s.Test(`concurrent calls to query are race-free`, func(t *testcase.T) {
+			want := mapper.Get(t)(includedEntity.Get(t))
+
+			var ops []func()
+			t.Random.Repeat(2, 5, func() {
+				ops = append(ops, func() {
+					var seen []ENT
+					for v, err := range sub.Get(t).Query(ctx.Get(t)) {
+						assert.NoError(t, err)
+						seen = append(seen, v)
+					}
+					assert.Contains(t, format(t, seen), want)
+				})
+			})
+			raceConcurrently(ops)
+		})
+
 		s.And(`another similar entities are saved in the resource`, func(s *testcase.Spec) {
 			additionalEntities := testcase.Let(s, func(t *testcase.T) (ents []ENT) {
 				sandbox.Run(func() {

@@ -9,6 +9,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -240,13 +241,13 @@ func TestAssertMethod(t *testing.T) {
 	s.Test("iterator with concrete type that implements a contract can be used with the contract interface as type", func(t *testcase.T) {
 		receiver := reflect.ValueOf(AssertMethodSubject{})
 
-		fn, ok := reflectkit.AssertMethod[func() iter.Seq2[KeyValuePair[string, int], error]](receiver, "KVE")
+		fn, ok := reflectkit.AssertMethod[func() iter.Seq2[ds.KeyValuePair[string, int], error]](receiver, "KVE")
 		assert.True(t, ok)
 
 		kvs, err := iterkit.CollectE(fn())
 		assert.NoError(t, err)
 
-		assert.OneOf(t, kvs, func(t testing.TB, kv KeyValuePair[string, int]) {
+		assert.OneOf(t, kvs, func(t testing.TB, kv ds.KeyValuePair[string, int]) {
 			assert.NotNil(t, kv)
 			assert.Equal(t, kv.Key(), "42")
 			assert.Equal(t, kv.Value(), 42)
@@ -347,21 +348,8 @@ func (s AssertMethodSubject) FromFoo(f testent.Foo) string { return f.GetFoo() }
 
 func (s *AssertMethodSubject) PtrOnly() string { return "ptr" }
 
-type KeyValuePair[K, V any] interface {
-	Key() K
-	Value() V
-}
-
-type KV[K, V any] struct {
-	K K
-	V V
-}
-
-func (kv KV[K, V]) Key() K   { return kv.K }
-func (kv KV[K, V]) Value() V { return kv.V }
-
-func (s AssertMethodSubject) KVE() iter.Seq2[KV[string, int], error] {
-	return func(yield func(KV[string, int], error) bool) {
-		yield(KV[string, int]{K: "42", V: 42}, nil)
+func (s AssertMethodSubject) KVE() iter.Seq2[ds.KV[string, int], error] {
+	return func(yield func(ds.KV[string, int], error) bool) {
+		yield(ds.KV[string, int]{K: "42", V: 42}, nil)
 	}
 }

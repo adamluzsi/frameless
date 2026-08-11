@@ -13,9 +13,13 @@ func NewLocker() *Lock { return &Lock{} }
 // Lock is a memory-based implementation of guard.Lock.
 // Lock is not safe to call from different application instances.
 // Lock is meant to be used in a single application instance.
-type Lock struct{ mutex sync.Mutex }
+type Lock struct {
+	mutex sync.Mutex
+	key   any
+}
 
-type ctxKeyLock struct{}
+type ctxKeyLock struct{ Key any }
+
 type ctxValueLock struct {
 	done   bool
 	cancel func()
@@ -28,6 +32,7 @@ func (l *ctxValueLock) Unlock() {
 	l.onUnlock.Do(func() {
 		l.done = true
 		l.cancel()
+		l.unlock()
 	})
 }
 
@@ -77,11 +82,13 @@ func (l *Lock) isLockedAlready(ctx context.Context) (bool, error) {
 }
 
 func (l *Lock) makeLockContext(ctx context.Context) context.Context {
-	var onUnlock sync.Once
-	var unlock = func() { onUnlock.Do(func() { l.mutex.Unlock() }) }
 	ctx, cancel := context.WithCancel(ctx)
-	context.AfterFunc(ctx, unlock)
-	return context.WithValue(ctx, ctxKeyLock{}, &ctxValueLock{cancel: cancel})
+	// Keep the mutex release inline with the cancel so that callers see
+	// the lock as released the moment Unlock returns.
+	// context.AfterFunc would defer the mutex release to a separate
+	// goroutine, which races with the next TryLock attempt and causes
+	// spurious ErrAlreadyRunningProcess failures.
+	return context.WithValue(ctx, ctxKeyLock{Key: l.key}, &ctxValueLock{cancel: cancel, unlock: l.mutex.Unlock})
 }
 
 func (l *Lock) Unlock(ctx context.Context) error {
@@ -95,7 +102,11 @@ func (l *Lock) Unlock(ctx context.Context) error {
 	if lockState.done {
 		return nil
 	}
+	// Surface the context error to the caller (e.g. when the parent context
+	// was cancelled mid-lock), but still release the mutex so the next
+	// caller can acquire the lock.
 	if err := ctx.Err(); err != nil {
+		lockState.Unlock()
 		return err
 	}
 	lockState.Unlock()
@@ -103,35 +114,37 @@ func (l *Lock) Unlock(ctx context.Context) error {
 }
 
 func (l *Lock) lookup(ctx context.Context) (*ctxValueLock, bool) {
-	lockState, ok := ctx.Value(ctxKeyLock{}).(*ctxValueLock)
+	lockState, ok := ctx.Value(ctxKeyLock{Key: l.key}).(*ctxValueLock)
 	return lockState, ok
 }
 
-func NewLockerFactory[Key comparable]() *LockerFactory[Key] {
-	return &LockerFactory[Key]{}
+func NewLockerFactory[Key comparable, Locker guard.Unlocker]() *LockerFactory[Key, Locker] {
+	return &LockerFactory[Key, Locker]{}
 }
 
-type LockerFactory[Key comparable] struct {
+type LockerFactory[Key comparable, Locker guard.Unlocker] struct {
 	locks map[Key]*Lock
 	mutex sync.Mutex
 }
 
-func (lf *LockerFactory[Key]) LockerFor(key Key) guard.Locker {
+func (lf *LockerFactory[Key, Locker]) LockerFor(key Key) Locker {
+	return any(lf.lockFor(key)).(Locker)
+}
+
+func (lf *LockerFactory[Key, Locker]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
 	return lf.lockFor(key)
 }
 
-func (lf *LockerFactory[Key]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
-	return lf.lockFor(key)
-}
-
-func (lf *LockerFactory[Key]) lockFor(key Key) *Lock {
+func (lf *LockerFactory[Key, Locker]) lockFor(key Key) *Lock {
 	lf.mutex.Lock()
 	defer lf.mutex.Unlock()
 	if lf.locks == nil {
 		lf.locks = make(map[Key]*Lock)
 	}
 	if _, ok := lf.locks[key]; !ok {
-		lf.locks[key] = NewLocker()
+		locker := NewLocker()
+		locker.key = key
+		lf.locks[key] = locker
 	}
 	return lf.locks[key]
 }

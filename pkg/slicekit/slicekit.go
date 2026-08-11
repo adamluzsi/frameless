@@ -7,8 +7,10 @@ package slicekit
 import (
 	"fmt"
 	"iter"
+	"math"
 	"sort"
 
+	"go.llib.dev/frameless/pkg/comp"
 	"go.llib.dev/frameless/pkg/must"
 )
 
@@ -331,4 +333,107 @@ func ResolveIndex(length, index int) (int, bool) {
 		return index, false
 	}
 	return index, index < length
+}
+
+// ContainsExactly reports if two slice contains the same values regardless of their order.
+func ContainsExactly[T any](vs, oth []T) bool {
+	if len(vs) != len(oth) {
+		return false
+	}
+	var matched = make(map[int]struct{}, len(vs))
+	for _, o := range oth {
+		matchedIdx := -1
+		for i, v := range vs {
+			if _, ok := matched[i]; ok {
+				continue
+			}
+			if comp.Equal(v, o, containsCompConfig) {
+				matchedIdx = i
+				break
+			}
+		}
+		if matchedIdx < 0 {
+			return false
+		}
+		matched[matchedIdx] = struct{}{}
+	}
+	return true
+}
+
+var containsCompConfig = comp.EqualConfig{NaN: true}
+
+// Contains reports if a slice contains a given value.
+//
+// The element comparison is delegated to comp.IsEqual, so element types
+// that implement predicate.Equatable.Equal, predicate.Comparable.Compare,
+// or predicate.ComparableShort.Cmp are matched semantically rather than
+// via Go's ==.
+func Contains[T comparable](vs []T, v T) bool {
+	for _, x := range vs {
+		if comp.Equal(x, v, containsCompConfig) {
+			return true
+		}
+	}
+	return false
+}
+
+// equalContainsExactly reports whether vs and oth contain the same
+// multiset of values, using comp.IsEqual as the equality predicate.
+func equalContainsExactly[T any](vs, oth []T) bool {
+	if len(vs) != len(oth) {
+		return false
+	}
+	// T may not be hashable under comp.IsEqual (e.g. time.Time, where
+	// == is stricter than Equal), so we track which elements of vs have
+	// already been matched and run an O(n*m) scan: for each element in
+	// oth, find the first unmatched element in vs that comp.IsEqual
+	// reports as matching. The length check above guarantees that a full
+	// match is only possible when every element finds a partner.
+	var matched = make(map[int]struct{}, len(vs))
+	for _, o := range oth {
+		matchedIdx := -1
+		for i, v := range vs {
+			if _, ok := matched[i]; ok {
+				continue
+			}
+			if comp.Equal(v, o) {
+				matchedIdx = i
+				break
+			}
+		}
+		if matchedIdx < 0 {
+			return false
+		}
+		matched[matchedIdx] = struct{}{}
+	}
+	return true
+}
+
+func float64ContainsExactly(vs, oth []float64) bool {
+	if len(vs) != len(oth) {
+		return false
+	}
+	// NaN values cannot be used as map keys (NaN != NaN), so count them
+	// in a separate bucket. All NaNs are treated as equal to each other;
+	// the per-element order inside the slice is irrelevant for equality.
+	var vsNaN, othNaN int
+	var counts = make(map[float64]int, len(vs))
+	for _, v := range vs {
+		if math.IsNaN(v) {
+			vsNaN++
+			continue
+		}
+		counts[v]++
+	}
+	for _, v := range oth {
+		if math.IsNaN(v) {
+			othNaN++
+			continue
+		}
+		counts[v]--
+		if counts[v] < 0 {
+			return false
+		}
+	}
+	return vsNaN == othNaN
 }

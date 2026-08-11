@@ -18,8 +18,8 @@ func FinishTx(errp *error, commit, rollback func() error) {
 	*errp = commit()
 }
 
-func FinishOnePhaseCommit(errp *error, cm OnePhaseCommitProtocol, tx context.Context) {
-	FinishTx(errp, func() error {
+func FinishOnePhaseCommit(callerFunctionReturnError *error, cm OnePhaseCommitProtocol, tx context.Context) {
+	FinishTx(callerFunctionReturnError, func() error {
 		return cm.CommitTx(tx)
 	}, func() error {
 		return cm.RollbackTx(tx)
