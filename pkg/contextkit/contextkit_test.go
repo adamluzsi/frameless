@@ -594,3 +594,63 @@ func TestWithoutValues(t *testing.T) {
 		})
 	})
 }
+
+// TestMerge_ErrIsNonNilAfterMergeCancel is a regression test for a panic
+// that surfaces when a merged context is cancelled via the cancel func
+// returned by Merge, and a child context.WithCancel has been derived from it.
+//
+// The context.Context contract requires Err() to return a non-nil error
+// explaining why after Done() is closed. The previous implementation of
+// (*merged).Err() computed the error from the source contexts on every call,
+// so cancelling the merged context without cancelling its sources produced a
+// nil Err(). That nil flowed into context.(*cancelCtx).cancel via
+// propagateCancel.func2, which panics with
+// "context: internal error: missing cancel error".
+func TestMerge_ErrIsNonNilAfterMergeCancel(t *testing.T) {
+	mergedCtx, cancel := contextkit.Merge(context.Background(), context.Background())
+	defer cancel()
+
+	// Derive a child cancelCtx from the merged context, mirroring how
+	// (*postgresql.Lock).lockContext uses context.WithCancel internally.
+	// We don't read from it; we only need it registered so propagateCancel
+	// observes merged.Done(), which is the trigger for the original panic.
+	_, stop := context.WithCancel(mergedCtx)
+	defer stop()
+
+	// Cancelling the merged context (without cancelling its sources)
+	// must leave merged.Err() returning a non-nil error after Done() fires.
+	cancel()
+
+	assert.Within(t, time.Second, func(ctx context.Context) {
+		select {
+		case <-mergedCtx.Done():
+		case <-ctx.Done():
+			t.Fatal("test deadline reached before merged context was cancelled")
+		}
+	})
+
+	assert.NotNil(t, mergedCtx.Err(),
+		"merged context must report a non-nil Err() after Done() is closed, "+
+			"even when cancelled via Merge's cancel func")
+	assert.ErrorIs(t, mergedCtx.Err(), context.Canceled,
+		"cancelling a merged context via its cancel func should report context.Canceled")
+}
+
+func TestMerge_ErrPropagatesFromCancelledSource(t *testing.T) {
+	parent, pcancel := context.WithCancel(context.Background())
+	mergedCtx, cancel := contextkit.Merge(parent, context.Background())
+	defer cancel()
+
+	pcancel()
+
+	assert.Within(t, time.Second, func(ctx context.Context) {
+		select {
+		case <-mergedCtx.Done():
+		case <-ctx.Done():
+			t.Fatal("test deadline reached before merged context was cancelled")
+		}
+	})
+
+	assert.ErrorIs(t, mergedCtx.Err(), context.Canceled,
+		"merged context cancellation reason must be sourced from the cancelled parent")
+}

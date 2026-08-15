@@ -71,16 +71,18 @@ func Merge(ctxs ...context.Context) (context.Context, func()) {
 	case 1:
 		return ctxs[0], func() {}
 	}
-	done, cancel := mergeDoneChannels(ctxs...)
-	return &merged{
-		ctxs: ctxs,
-		done: done,
-	}, cancel
+	mc := &merged{ctxs: ctxs}
+	done, cancel := mc.mergeDoneChannels()
+	mc.done = done
+	return mc, cancel
 }
 
 type merged struct {
 	ctxs []context.Context
+
+	mu   sync.Mutex
 	done <-chan struct{}
+	err  error
 }
 
 func (c *merged) Deadline() (time.Time, bool) {
@@ -108,11 +110,26 @@ func (c *merged) Done() <-chan struct{} {
 }
 
 func (c *merged) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err != nil {
+		return c.err
+	}
 	var errs []error
 	for _, ctx := range c.ctxs {
 		errs = append(errs, ctx.Err())
 	}
 	return errorkit.Merge(errs...)
+}
+
+// setCancel records the cancellation reason for this merged context.
+// Called from mergeDoneChannels when the merged context is closed, either
+// because one of the source contexts was cancelled or because the cancel
+// returned by Merge was invoked.
+func (c *merged) setCancel(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.err = err
 }
 
 func (c *merged) Value(key any) any {
@@ -125,13 +142,13 @@ func (c *merged) Value(key any) any {
 	return nil
 }
 
-func mergeDoneChannels(ctxs ...context.Context) (<-chan struct{}, func()) {
-	if len(ctxs) == 0 {
+func (mc *merged) mergeDoneChannels() (<-chan struct{}, func()) {
+	if len(mc.ctxs) == 0 {
 		return nil, func() {}
 	}
 
 	var SelectCases []reflect.SelectCase
-	for _, ctx := range ctxs {
+	for _, ctx := range mc.ctxs {
 		SelectCases = append(SelectCases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(ctx.Done()),
@@ -146,32 +163,58 @@ func mergeDoneChannels(ctxs ...context.Context) (<-chan struct{}, func()) {
 	})
 
 	var (
-		out      = make(chan struct{})
-		onOut    sync.Once
-		closeOut = func() { onOut.Do(func() { close(out) }) }
+		out   = make(chan struct{})
+		onOut sync.Once
 	)
+	var closeOut = func(err error) {
+		onOut.Do(func() {
+			mc.setCancel(err)
+			close(out)
+		})
+	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
-			if _, _, ok := reflect.Select(SelectCases); !ok {
-				// ctx.Done() close signal received
-				closeOut()
+			chosen, _, ok := reflect.Select(SelectCases)
+			if !ok {
+				// A Done channel was closed. If it's the internal `done`
+				// channel (chosen == len(ctxs)), the cancel func ran and
+				// the source contexts have no error of their own.
+				// Otherwise, a source context's Done fired.
+				if chosen == len(mc.ctxs) {
+					closeOut(context.Canceled)
+				} else {
+					closeOut(mc.cancellationReason(mc.ctxs))
+				}
 				return
 			}
 		}
-	}()
+	})
 
 	var onClose sync.Once
 	return out, func() {
 		onClose.Do(func() {
 			close(done) // signal to break reflect.Select looping
-			closeOut()
+			closeOut(context.Canceled)
 		})
 		wg.Wait()
 	}
+}
+
+// cancellationReason returns the first non-nil Err() from the provided contexts.
+// Used to attribute a merged-context cancellation to the underlying source
+// when one of the sources is cancelled. If none of the sources report an
+// error yet (possible due to scheduling), context.Canceled is returned so
+// that callers honour the context.Context contract requiring Err() to be
+// non-nil after Done() is closed.
+func (c *merged) cancellationReason(ctxs []context.Context) error {
+	for _, ctx := range ctxs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return context.Canceled
 }
 
 func WithoutValues(ctx context.Context) context.Context {
