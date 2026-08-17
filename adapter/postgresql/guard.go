@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/guard"
@@ -70,7 +71,7 @@ func (l *Lock) TryLock(ctx context.Context) (_ context.Context, _ bool, rerr err
 			return nil, false, err
 		}
 		if !lr.ID.Equal(rec.ID) { // if we are not the first in line, we bail
-			return nil, false, l.delLock(ctx, rec)
+			return nil, false, l.deleteLock(ctx, rec)
 		}
 		break // we own it
 	}
@@ -103,7 +104,10 @@ waitingInQueue:
 			if !lr.ID.Equal(rec.ID) { // if we are not the first in line, we bail
 				select {
 				case <-ctx.Done():
-					return nil, l.delLock(ctx, rec)
+					if err := l.deleteLock(ctx, rec); err != nil {
+						return nil, err
+					}
+					return nil, ctx.Err()
 				case <-clock.After(time.Second / 2):
 					goto waitingInQueue
 				}
@@ -184,7 +188,7 @@ func (l *Lock) getLocks(ctx context.Context) iter.Seq2[lockRecord, error] {
 			yield(zero, err)
 			return
 		}
-		var queryString = fmt.Sprintf(`SELECT "id", "owner", "expires" FROM %s WHERE name = $1 ORDER BY id DESC`, l.tableName())
+		var queryString = fmt.Sprintf(`SELECT "id", "owner", "expires" FROM %s WHERE name = $1 ORDER BY id ASC`, l.tableName())
 		var queryMany = flsql.QueryMany(l.Connection, ctx, func(s flsql.Scanner) (lockRecord, error) {
 			var rec lockRecord
 			rec.Name = l.Name
@@ -207,21 +211,34 @@ func (l *Lock) refreshLock(ctx context.Context, rec *lockRecord) error {
 	if rec.isExpired() {
 		return fmt.Errorf("already expired")
 	}
-	var next = l.getExpiresAt()
+	var (
+		nextExpires = l.getExpiresAt()
+		remaining   = rec.Expires.Sub(clock.Now())
+		retry       = resilience.Waiter{Timeout: remaining}
+		db          = l.db()
+		err         error
+	)
 	var query = fmt.Sprintf(`UPDATE %s SET "expires" = $2 WHERE "id" = $1`, l.tableName())
-	if _, err := l.db().Exec(ctx, query, rec.ID, next); err != nil {
-		return err
+	for range resilience.Retries(ctx, retry) {
+		err = db.Ping(ctx)
+		if err != nil {
+			continue
+		}
+		_, err = l.db().Exec(ctx, query, rec.ID, nextExpires)
+		if err != nil {
+			return err
+		}
+		rec.Expires = nextExpires
 	}
-	rec.Expires = next
-	return nil
+	return err
 }
 
-func (l *Lock) delLock(ctx context.Context, rec *lockRecord) error {
+func (l *Lock) deleteLock(ctx context.Context, rec *lockRecord) error {
 	if rec == nil {
 		return errorkit.F("nil %T received", rec)
 	}
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, l.tableName())
-	_, err := l.db().Exec(context.WithoutCancel(ctx), query, rec.ID, rec.Owner, rec.Name)
+	_, err := l.db().Exec(context.WithoutCancel(ctx), query, rec.ID)
 	// if error occurs, autoUnlock will clean up our mess after the lock is already expired
 	return err
 }
@@ -285,9 +302,10 @@ func (lck *lockContext) Unlock(ctx context.Context) error {
 		return err
 	}
 	lck.onUnlock.Do(func() {
-		context.WithCancel(ctx)
-
 		_, lck.unlockErr = lck.Lock.Connection.DB.Exec(context.WithoutCancel(ctx), queryUnlock, lck.Lock.Name, lck.Lock.owner.String())
+		if lck.unlockErr == nil {
+			lck.unlockErr = ctx.Err()
+		}
 		// if err := lck.tx.Rollback(lck.ctx); err != nil {
 		// 	if driver.ErrBadConn == err && ctx.Err() != nil {
 		// 		lck.unlockErr = ctx.Err()
