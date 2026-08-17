@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -161,11 +162,11 @@ func (l *Lock) insLock(ctx context.Context) (*lockRecord, error) {
 		Expires: l.getExpiresAt(),
 	}
 	var query = fmt.Sprintf(`INSERT INTO %s ("id", "owner", "name", "expires") VALUES ($1, $2, $3, $4)`, l.tableName())
-	res, err := l.Connection.ExecContext(ctx, query, rec.ID, rec.Owner, rec.Name, rec.Expires)
+	res, err := l.db().Exec(ctx, query, rec.ID, rec.Owner, rec.Name, rec.Expires)
 	if err != nil {
 		return nil, err
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
+	if n := res.RowsAffected(); n == 0 {
 		return nil, fmt.Errorf("failed to insert lock record")
 	}
 	return rec, err
@@ -208,7 +209,7 @@ func (l *Lock) refreshLock(ctx context.Context, rec *lockRecord) error {
 	}
 	var next = l.getExpiresAt()
 	var query = fmt.Sprintf(`UPDATE %s SET "expires" = $2 WHERE "id" = $1`, l.tableName())
-	if _, err := l.Connection.ExecContext(ctx, query, rec.ID, next); err != nil {
+	if _, err := l.db().Exec(ctx, query, rec.ID, next); err != nil {
 		return err
 	}
 	rec.Expires = next
@@ -220,25 +221,25 @@ func (l *Lock) delLock(ctx context.Context, rec *lockRecord) error {
 		return errorkit.F("nil %T received", rec)
 	}
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, l.tableName())
-	_, err := l.Connection.ExecContext(context.WithoutCancel(ctx), query, rec.ID, rec.Owner, rec.Name)
+	_, err := l.db().Exec(context.WithoutCancel(ctx), query, rec.ID, rec.Owner, rec.Name)
 	// if error occurs, autoUnlock will clean up our mess after the lock is already expired
 	return err
 }
 
 func (l *Lock) autoUnlock(ctx context.Context) error {
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "expires" < $1`, l.tableName())
-	res, err := l.Connection.ExecContext(ctx, query, clock.Now())
+	res, err := l.db().Exec(ctx, query, clock.Now())
 	if err != nil {
 		return err
 	}
 	logger.Debug(ctx, l.tableName()+" auto unlock", logging.LazyDetail(func() logging.Detail {
-		n, err := res.RowsAffected()
-		if err != nil {
-			return logging.Fields{}
-		}
-		return logging.Field("removed", n)
+		return logging.Field("removed", res.RowsAffected())
 	}))
 	return nil
+}
+
+func (l *Lock) db() *pgxpool.Pool {
+	return l.Connection.DB
 }
 
 func (l *Lock) getExpiresAt() time.Time {
@@ -338,7 +339,7 @@ func (l *Lock) Migrate(ctx context.Context) error {
 	return MakeMigrator(l.Connection, "frameless_locks", migration.Steps[Connection]{
 		"1": flsql.MigrationStep[Connection]{
 			UpQuery: fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (`, tableName) +
-				`id uuid PRIMARY KEY` + // UUID v7
+				`id uuid PRIMARY KEY,` + // UUID v7
 				`name TEXT,` +
 				`owner text,` +
 				`expires TIMESTAMPTZ NOT NULL` +
