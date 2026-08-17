@@ -16,10 +16,10 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-go.llib.dev/frameless v0.332.0 h1:7ZL6L1WHqReULQ/IlojVfoZF7rM4xaFnh/P7IBob7fI=
-go.llib.dev/frameless v0.332.0/go.mod h1:fv6oNie32ZOrkOozxvDEXQd7poYz21mi3osm2Ge2LJE=
-go.llib.dev/testcase v0.192.0 h1:mG1kxyLobsET3S0LSwVpIUaee93RnD73DDDY7SVVr+c=
-go.llib.dev/testcase v0.192.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/frameless v0.333.0 h1:AaxQXRYWCKkSsusgBZJpEqB3Ic3nd8RLl9ZeFHUZCWI=
+go.llib.dev/frameless v0.333.0/go.mod h1:8zTjqbOqLnQm2u4NPTkkZKXCevyJLK2WxrmmwgnnJQw=
+go.llib.dev/testcase v0.193.0 h1:CYZGCI4EKQxR5HSRFkzYWBYqAsCA+gD4pYqrPD4tOo0=
+go.llib.dev/testcase v0.193.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 golang.org/x/sync v0.22.0 h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=
 golang.org/x/sync v0.22.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
 golang.org/x/text v0.40.0 h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=
