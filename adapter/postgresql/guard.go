@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"reflect"
 	"sync"
 	"time"
 
@@ -382,14 +383,14 @@ func (l *Lock) legacyMigrate(ctx context.Context) error {
 	}).MigrateDown(ctx, "")
 }
 
-type LockerFactory[Key comparable] struct{ Connection Connection }
+type LockerFactory[Key any] struct{ Connection Connection }
 
 func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
 	return (&Lock{Connection: lf.Connection}).Migrate(ctx)
 }
 
 func (lf LockerFactory[Key]) LockerFor(key Key) guard.Locker {
-	return &Lock{Name: fmt.Sprintf("%T:%v", key, key), Connection: lf.Connection}
+	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
 }
 
 func (lf LockerFactory[Key]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
@@ -397,3 +398,19 @@ func (lf LockerFactory[Key]) NonBlockingLockerFor(key Key) guard.NonBlockingLock
 }
 
 const ErrLockLost errorkit.Error = "ErrLockLost"
+
+var stringType = reflect.TypeFor[string]()
+
+func (lf LockerFactory[Key]) nameFor(key Key) string {
+	switch key := any(key).(type) {
+	case fmt.Stringer:
+		return key.String()
+	case string:
+		return key
+	default:
+		if reflect.TypeFor[T]().ConvertibleTo(stringType) {
+			return reflect.ValueOf(key).Convert(stringType).Interface().(string)
+		}
+		return fmt.Sprintf("%v", key)
+	}
+}
