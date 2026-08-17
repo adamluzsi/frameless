@@ -209,8 +209,8 @@ func TestSpawn_Vars(t *testing.T) {
 		t.Eventually(func(t *testcase.T) {
 			childEvents := c.ProcessEvents(t, childID.Get(t))
 			for _, e := range childEvents {
-				ve, ok := e.(workflow.EventVar)
-				if !ok || ve.Operation != "set" {
+				ve, ok := e.(workflow.EventSetVar)
+				if !ok {
 					continue
 				}
 				if ve.Key == childKey.Get(t) {
@@ -230,8 +230,8 @@ func TestSpawn_Vars(t *testing.T) {
 
 		childEvents := c.ProcessEvents(t, childID.Get(t))
 		for _, e := range childEvents {
-			ve, ok := e.(workflow.EventVar)
-			if !ok || ve.Operation != "set" {
+			ve, ok := e.(workflow.EventSetVar)
+			if !ok {
 				continue
 			}
 			assert.NotEqual(t, ve.Key, missingChildKey.Get(t),

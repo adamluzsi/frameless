@@ -30,14 +30,14 @@ func getProcessEvents(tb testing.TB, repo workflow.EventRepository, pid workflow
 func setVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarKey, val any) {
 	tb.Helper()
 	ctx := rt.Context(context.Background())
-	vars := workflow.ProcessVars{EventsRepository: rt.Events, ProcessID: pid}
+	vars := workflow.Vars{EventsRepository: rt.Events, ProcessID: pid}
 	assert.NoError(tb, vars.Set(ctx, key, val))
 }
 
 func getVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarKey) any {
 	tb.Helper()
 	ctx := rt.Context(context.Background())
-	vars := workflow.ProcessVars{EventsRepository: rt.Events, ProcessID: pid}
+	vars := workflow.Vars{EventsRepository: rt.Events, ProcessID: pid}
 	val, err := vars.Get(ctx, key)
 	assert.NoError(tb, err)
 	return val

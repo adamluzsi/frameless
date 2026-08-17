@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func Test_e2e(tt *testing.T) {
@@ -225,7 +226,7 @@ func Test_e2e(tt *testing.T) {
 	})
 }
 
-func TestProcessVars(t *testing.T) {
+func TestVars(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	eventRepository := let.Var(s, func(t *testcase.T) workflow.EventRepository {
@@ -236,8 +237,8 @@ func TestProcessVars(t *testing.T) {
 		return mustProcessID(t)
 	})
 
-	subject := let.Var(s, func(t *testcase.T) workflow.ProcessVars {
-		return workflow.ProcessVars{
+	subject := let.Var(s, func(t *testcase.T) workflow.Vars {
+		return workflow.Vars{
 			ProcessID:        processID.Get(t),
 			EventsRepository: eventRepository.Get(t),
 		}
@@ -266,9 +267,8 @@ func TestProcessVars(t *testing.T) {
 			events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
 
 			assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
-				ve, ok := e.(workflow.EventVar)
+				ve, ok := e.(workflow.EventSetVar)
 				assert.True(tb, ok)
-				assert.Equal(tb, ve.Operation, workflow.SetEventVarOperation)
 				assert.Equal(tb, ve.Key, key.Get(t))
 				assert.Equal[any](tb, ve.Value, value.Get(t))
 				assert.NotEmpty(tb, ve.ProcessID)
@@ -287,13 +287,91 @@ func TestProcessVars(t *testing.T) {
 			events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
 
 			assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
-				ve, ok := e.(workflow.EventVar)
+				ve, ok := e.(workflow.EventDeleteVar)
 				assert.True(tb, ok)
-				assert.Equal(tb, ve.Operation, workflow.DelEventVarOperation)
 				assert.Equal(tb, ve.Key, key.Get(t))
 				assert.NotEmpty(tb, ve.ProcessID)
 				assert.NotEmpty(tb, ve.EventID)
 				assert.NotEmpty(tb, ve.Timestamp)
+			})
+		})
+	})
+
+	s.When("value is assigned with #Set under a scope added by WithVarScope", func(s *testcase.Spec) {
+		// Scoped writes get their own spec branch so we can guarantee the
+		// recorded EventSetVar is tagged with the scope and no unscoped
+		// sibling event pollutes the history.
+		key := let.As[workflow.VarKey](let.UUID(s))
+		value := let.Int(s)
+
+		scopePath := let.Var(s, func(t *testcase.T) workflow.Path {
+			return random.Slice(t.Random.IntBetween(1, 7), t.Random.UUID)
+		})
+		scopedCtx := let.Var(s, func(t *testcase.T) context.Context {
+			var ctx = context.Background()
+			for _, name := range scopePath.Get(t) {
+				ctx = workflow.WithVarScope(ctx, name)
+			}
+			assert.Equal(t, workflow.VarScope(ctx), scopePath.Get(t))
+			return ctx
+		})
+
+		s.Before(func(t *testcase.T) {
+			assert.NoError(t, subject.Get(t).Set(scopedCtx.Get(t), key.Get(t), value.Get(t)))
+		})
+
+		s.Then("the EventSetVar carries the current variable scope", func(t *testcase.T) {
+			events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+			assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+				ve, ok := e.(workflow.EventSetVar)
+				assert.True(tb, ok)
+				assert.Equal(tb, ve.Key, key.Get(t))
+				assert.Equal[any](tb, ve.Value, value.Get(t))
+				assert.Equal(tb, ve.Scope, scopePath.Get(t),
+					"expected the EventSetVar to be tagged with the scope active when #Set was called")
+			})
+		})
+
+		s.Then("the value is visible from a context with the same scope", func(t *testcase.T) {
+			got, err := subject.Get(t).Get(scopedCtx.Get(t), key.Get(t))
+			assert.NoError(t, err)
+			assert.Equal[any](t, value.Get(t), got)
+		})
+
+		s.Then("the value is visible from a context whose scope has the recorded scope as a prefix", func(t *testcase.T) {
+			// A child scope (one level deeper) inherits read access to values
+			// set by an ancestor scope — the same way an inner block in a
+			// programming language can read a variable declared in the
+			// enclosing block.
+			nestedCtx := workflow.WithVarScope(scopedCtx.Get(t), t.Random.String())
+			got, err := subject.Get(t).Get(nestedCtx, key.Get(t))
+			assert.NoError(t, err)
+			assert.Equal[any](t, value.Get(t), got)
+		})
+
+		s.When("queried from an unrelated scope", func(s *testcase.Spec) {
+			otherScopeCtx := let.Var(s, func(t *testcase.T) context.Context {
+				return workflow.WithVarScope(t.Context(), t.Random.String())
+			})
+
+			s.Then("the value is not visible", func(t *testcase.T) {
+				got, ok, err := subject.Get(t).Lookup(otherScopeCtx.Get(t), key.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, ok, "expected that a sibling scope cannot read the scoped value")
+				assert.Empty(t, got)
+			})
+		})
+
+		s.When("queried from an unscoped context", func(s *testcase.Spec) {
+			s.Then("the value is not visible", func(t *testcase.T) {
+				// An unscoped context has VarScope == []; the recorded
+				// scope is [scopeName], so the empty scope is not a prefix
+				// of it and the event is filtered out.
+				got, ok, err := subject.Get(t).Lookup(t.Context(), key.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, ok, "expected that an unscoped context cannot read a scoped value")
+				assert.Empty(t, got)
 			})
 		})
 	})

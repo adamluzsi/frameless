@@ -17,7 +17,6 @@ import (
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudcontract"
-	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/frameless/port/guard/guardcontract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub/pubsubcontract"
@@ -72,15 +71,14 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 	}
 
 	s.Describe("#Create", func(s *testcase.Spec) {
-		varEvent := let.Var(s, func(t *testcase.T) workflow.EventVar {
+		varEvent := let.Var(s, func(t *testcase.T) workflow.EventSetVar {
 			processID, err := uuid.Parse(t.Random.UUID())
 			assert.NoError(t, err)
 			eventID, err := uuid.Parse(t.Random.UUID())
-			return workflow.EventVar{
+			return workflow.EventSetVar{
 				EventID:   workflow.EventID(eventID),
 				ProcessID: workflow.ProcessID(processID),
 				Timestamp: t.Random.Time(),
-				Operation: workflow.SetEventVarOperation,
 				Key:       "foo",
 				Value:     "bar",
 			}
@@ -97,7 +95,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 		})
 
 		s.When("EventID is unset", func(s *testcase.Spec) {
-			varEvent.Let(s, func(t *testcase.T) workflow.EventVar {
+			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
 				e := varEvent.Super(t)
 				var zero workflow.EventID
 				e.EventID = zero
@@ -110,7 +108,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 		})
 
 		s.When("timestamp is missing/zero", func(s *testcase.Spec) {
-			varEvent.Let(s, func(t *testcase.T) workflow.EventVar {
+			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
 				e := varEvent.Super(t)
 				e.Timestamp = time.Time{}
 				return e
@@ -122,7 +120,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 		})
 
 		s.When("processID is missing/zero", func(s *testcase.Spec) {
-			varEvent.Let(s, func(t *testcase.T) workflow.EventVar {
+			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
 				e := varEvent.Super(t)
 				var zeroProcessID workflow.ProcessID
 				e.ProcessID = zeroProcessID
@@ -251,11 +249,10 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 	t := testcase.ToT(&tb)
 	return random.Pick[func() workflow.Event](t.Random, func() workflow.Event {
-		return workflow.EventVar{
+		return workflow.EventSetVar{
 			EventID:   MakeEventID(t),
 			ProcessID: processID,
 			Timestamp: clock.Now(),
-			Operation: workflow.SetEventVarOperation,
 			Key:       "foo",
 			Value:     t.Random.String(),
 		}
@@ -288,14 +285,14 @@ func MakeEventID(tb testing.TB) workflow.EventID {
 	return workflow.EventID(id)
 }
 
-// ProcessLockers expresses that the subject acts as the workflow Runtime's
+// ProcessLocks expresses that the subject acts as the workflow Runtime's
 // per-process locker factory. Each ProcessID maps to its own
 // guard.NonBlockingLocker, and acquiring a lock for one ProcessID must not
 // interfere with a lock for a different one.
-func ProcessLockers(subject guard.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker],
+func ProcessLocks(subject workflow.ProcessLocks,
 	opts ...guardcontract.LockerFactoryOption[workflow.ProcessID]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	testcase.RunSuite(s, guardcontract.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker](subject, opts...))
+	testcase.RunSuite(s, guardcontract.LockerFactory[workflow.ProcessID, workflow.ProcessLock](subject, opts...))
 	return s.AsSuite("ProcessLockers")
 }
 

@@ -26,7 +26,7 @@ type Runtime struct {
 	// Conditions is the system provided Condition repository that can be used by workflow builders.
 	Conditions ConditionRepository
 	// ProcessLockers is a external distributed lock that enables the blocking by ProcessID.
-	ProcessLockers ProcessLockers
+	ProcessLockers ProcessLocks
 	// ProcessExecutionQueue contains the scheduled metadata about which Process requires execution.
 	ProcessExecutionQueue ProcessExecutionQueue
 	// ProcessChangeBroadcast contains the information about whether or not
@@ -49,8 +49,12 @@ type Runtime struct {
 	ContextSetup ContextSetup
 }
 
-type ProcessLockers interface {
-	guard.LockerFactory[ProcessID, guard.NonBlockingLocker]
+type ProcessLocks interface {
+	guard.LockerFactory[ProcessID, ProcessLock]
+}
+
+type ProcessLock interface {
+	guard.NonBlockingLocker
 }
 
 type ContextSetup []func(context.Context) context.Context

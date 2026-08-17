@@ -141,8 +141,8 @@ func (spawn Spawn) forwardVars(ctx context.Context, parentID, childID ProcessID)
 		return err
 	}
 	var (
-		parentVars = ProcessVars{ProcessID: parentID, EventsRepository: repo}
-		childVars  = ProcessVars{ProcessID: childID, EventsRepository: repo}
+		parentVars = Vars{ProcessID: parentID, EventsRepository: repo}
+		childVars  = Vars{ProcessID: childID, EventsRepository: repo}
 	)
 	for parentKey, childKey := range spawn.Vars {
 		value, ok, err := parentVars.Lookup(ctx, parentKey)

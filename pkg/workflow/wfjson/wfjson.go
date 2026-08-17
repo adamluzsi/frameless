@@ -42,7 +42,8 @@ func NewCodec() *jsonkit.Codec {
 
 	// Events: same treatment — custom codecs own the wire format.
 	jsonkit.CodecRegister[workflow.EventCompleted](&c, "workflow::event::completed", WorkflowEventCompleted{})
-	jsonkit.CodecRegister[workflow.EventVar](&c, "workflow::event::var", WorkflowEventVar{})
+	jsonkit.CodecRegister[workflow.EventSetVar](&c, "workflow::event::var::set", WorkflowEventSetVar{})
+	jsonkit.CodecRegister[workflow.EventDeleteVar](&c, "workflow::event::var::delete", WorkflowEventDeleteVar{})
 	jsonkit.CodecRegister[workflow.EventParticipant](&c, "workflow::event::participant", WorkflowEventParticipant{})
 	jsonkit.CodecRegister[workflow.EventCondition](&c, "workflow::event::condition", WorkflowEventCondition{})
 	jsonkit.CodecRegister[workflow.EventUseDefinition](&c, "workflow::event::use-definition", WorkflowEventUseDefinition{})
@@ -478,41 +479,73 @@ func (WorkflowEventCompleted) Unmarshal(c *jsonkit.Codec, data []byte, p *workfl
 
 // VarEvent
 
-type WorkflowEventVar struct{}
+type WorkflowEventSetVar struct{}
 
-var _ jsonkit.ITypeCodec[workflow.EventVar] = WorkflowEventVar{}
+var _ jsonkit.ITypeCodec[workflow.EventSetVar] = WorkflowEventSetVar{}
 
-type workflowVarEventDTO struct {
-	EventID   workflow.EventID           `json:"event_id"`
-	ProcessID workflow.ProcessID         `json:"process_id"`
-	Timestamp time.Time                  `json:"timestamp"`
-	Operation workflow.VarEventOperation `json:"operation"`
-	Key       string                     `json:"key"`
-	Value     any                        `json:"value,omitempty"`
+type workflowEventSetVarDTO struct {
+	EventID   workflow.EventID   `json:"event_id"`
+	ProcessID workflow.ProcessID `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Key       string             `json:"key"`
+	Value     any                `json:"value,omitempty"`
+	Scope     workflow.Path      `json:"path,omitempty"`
 }
 
-func (WorkflowEventVar) Marshal(c *jsonkit.Codec, v workflow.EventVar) ([]byte, error) {
-	return json.Marshal(workflowVarEventDTO{
+func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]byte, error) {
+	return json.Marshal(workflowEventSetVarDTO{
 		EventID:   v.EventID,
 		ProcessID: v.ProcessID,
 		Timestamp: v.Timestamp,
-		Operation: v.Operation,
 		Key:       string(v.Key),
 		Value:     v.Value,
+		Scope:     v.Scope,
 	})
 }
 
-func (WorkflowEventVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventVar) error {
-	var dto workflowVarEventDTO
+func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventSetVar) error {
+	var dto workflowEventSetVarDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
-	p.Operation = dto.Operation
 	p.Key = workflow.VarKey(dto.Key)
 	p.Value = dto.Value
+	p.Scope = dto.Scope
+	return nil
+}
+
+type WorkflowEventDeleteVar struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventDeleteVar] = WorkflowEventDeleteVar{}
+
+type workflowEventDeleteVarDTO struct {
+	EventID   workflow.EventID   `json:"event_id"`
+	ProcessID workflow.ProcessID `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Key       string             `json:"key"`
+}
+
+func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVar) ([]byte, error) {
+	return json.Marshal(workflowEventDeleteVarDTO{
+		EventID:   v.EventID,
+		ProcessID: v.ProcessID,
+		Timestamp: v.Timestamp,
+		Key:       string(v.Key),
+	})
+}
+
+func (WorkflowEventDeleteVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventDeleteVar) error {
+	var dto workflowEventDeleteVarDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.Key = workflow.VarKey(dto.Key)
 	return nil
 }
 

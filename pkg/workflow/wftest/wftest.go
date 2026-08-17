@@ -15,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
-	"go.llib.dev/frameless/port/guard"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -220,7 +219,7 @@ type C struct {
 	ProcessExecutionQueue  testcase.Var[*memory.WorkflowProcessExecutionQueue]
 	ProcessChangeBroadcast testcase.Var[*memory.WorkflowProcessChangeBroadcast]
 
-	ProcessLockers testcase.Var[*memory.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker]]
+	ProcessLocks testcase.Var[*memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]]
 }
 
 func LetC(s *testcase.Spec) C {
@@ -262,8 +261,8 @@ func LetC(s *testcase.Spec) C {
 		return workflow.ContextSetup{}
 	})
 
-	c.ProcessLockers = let.Var(s, func(t *testcase.T) *memory.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker] {
-		return &memory.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker]{}
+	c.ProcessLocks = let.Var(s, func(t *testcase.T) *memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock] {
+		return &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{}
 	})
 
 	c.Runtime = let.Var(s, func(t *testcase.T) workflow.Runtime {
@@ -274,7 +273,7 @@ func LetC(s *testcase.Spec) C {
 			Events:                 c.EventRepository.Get(t),
 			ProcessExecutionQueue:  c.ProcessExecutionQueue.Get(t),
 			ProcessChangeBroadcast: c.ProcessChangeBroadcast.Get(t),
-			ProcessLockers:         c.ProcessLockers.Get(t),
+			ProcessLockers:         c.ProcessLocks.Get(t),
 			RetryStrategy:          noFaultTolerance{},
 			WaitTime:               time.Nanosecond,
 			Codec:                  wfjson.NewCodec(),

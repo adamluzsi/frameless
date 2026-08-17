@@ -163,7 +163,7 @@ func TestExecuteCondition(t *testing.T) {
 
 						event, ok := slicekit.Last(mustHistory(t, c.Runtime.Get(t), processID.Get(t)))
 						assert.True(t, ok)
-						ve, ok := event.(workflow.EventVar)
+						ve, ok := event.(workflow.EventSetVar)
 						assert.True(t, ok)
 
 						assert.Equal(t, ve.Key, inKey.Get(t))
@@ -187,11 +187,11 @@ func TestExecuteCondition(t *testing.T) {
 						// the point of the recorded execution no longer matches.
 						events := mustHistory(t, c.Runtime.Get(t), processID.Get(t))
 						for _, e := range events {
-							ve, ok := e.(workflow.EventVar)
+							ve, ok := e.(workflow.EventSetVar)
 							if !ok {
 								continue
 							}
-							if ve.Key == inKey.Get(t) && ve.Operation == workflow.SetEventVarOperation {
+							if ve.Key == inKey.Get(t) {
 								t.Log("given we tamper manually with the event log and change the input arguments")
 								ve.Value = newIn.Get(t)
 								var event workflow.Event = ve

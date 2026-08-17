@@ -107,7 +107,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 				// mEvents holds the history up to and including the matching
 				// execution event, so the variable value is evaluated as of that
 				// historical position rather than the current one.
-				historicalValue, _ := lookupVariable(mEvents, key)
+				_, historicalValue, _ := lookupVariable(ctx, mEvents, key)
 				if !reflectkit.Equal(historicalValue, matchingEE.Input[i]) {
 					found = false
 					break
@@ -129,7 +129,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		return slicekit.Clone(matchingEE.Result), nil
 	}
 
-	vars := ProcessVars{
+	vars := Vars{
 		ProcessID:        pid,
 		EventsRepository: eventsRepo,
 	}

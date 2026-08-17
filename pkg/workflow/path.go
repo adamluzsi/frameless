@@ -8,10 +8,23 @@ import (
 	"go.llib.dev/frameless/pkg/contextkit"
 )
 
-type ctxKeyPathRoot struct{}
-type ctxKeyPath struct{}
+type Path []string
 
-var pathNodeH contextkit.ValueHandler[ctxKeyPath, pathNode]
+func (p Path) Equal(oth Path) bool {
+	return slices.Equal(p, oth)
+}
+
+func (p Path) MatchPrefix(prefix Path) bool {
+	if len(p) < len(prefix) {
+		return false
+	}
+	for i := range len(prefix) {
+		if p[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
 
 type pathNode struct {
 	Parent *pathNode
@@ -39,14 +52,14 @@ func (n pathNode) FromRoot() iter.Seq[*pathNode] {
 	}
 }
 
-type Path []string
+// ---
 
-func (p Path) Equal(oth Path) bool {
-	return slices.Equal(p, oth)
-}
+var ctxCurrentPath contextkit.ValueHandler[ctxKeyCurrentPath, pathNode]
 
-func CurrentPath(ctx context.Context) Path {
-	node, ok := pathNodeH.Lookup(ctx)
+type ctxKeyCurrentPath struct{}
+
+func getPath[K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pathNode]) Path {
+	node, ok := h.Lookup(ctx)
 	if !ok {
 		return nil
 	}
@@ -57,10 +70,32 @@ func CurrentPath(ctx context.Context) Path {
 	return path
 }
 
-func WithName(ctx context.Context, name string) context.Context {
-	next := pathNode{Name: name}
-	if node, ok := pathNodeH.Lookup(ctx); ok {
+func withName[K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pathNode], name string) context.Context {
+	var next = pathNode{Name: name}
+	if node, ok := h.Lookup(ctx); ok {
 		next.Parent = &node
 	}
-	return pathNodeH.ContextWith(ctx, next)
+	return h.ContextWith(ctx, next)
+}
+
+func CurrentPath(ctx context.Context) Path {
+	return getPath(ctx, ctxCurrentPath)
+}
+
+func WithName(ctx context.Context, name string) context.Context {
+	return withName(ctx, ctxCurrentPath, name)
+}
+
+//---
+
+var ctxVarScope contextkit.ValueHandler[ctxKeyVarScope, pathNode]
+
+type ctxKeyVarScope struct{}
+
+func VarScope(ctx context.Context) Path {
+	return getPath(ctx, ctxVarScope)
+}
+
+func WithVarScope(ctx context.Context, name string) context.Context {
+	return withName(ctx, ctxVarScope, name)
 }

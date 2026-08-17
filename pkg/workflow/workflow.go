@@ -10,11 +10,11 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/comp"
-	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/testcase/clock"
@@ -165,88 +165,87 @@ func (e EventCompleted) GetTimestamp() time.Time { return e.Timestamp }
 
 type VarKey string
 
-type EventVar struct {
+type EventSetVar struct {
 	EventID   EventID `ext:"id"`
 	ProcessID ProcessID
 	Timestamp time.Time
 
-	Operation VarEventOperation
-	Key       VarKey
-	Value     any
+	Key   VarKey
+	Value any
+	Scope Path
 }
 
-var _ Event = EventVar{}
+var _ Event = EventSetVar{}
 
-func (e EventVar) GetEventID() EventID     { return e.EventID }
-func (e EventVar) GetProcessID() ProcessID { return e.ProcessID }
-func (e EventVar) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventSetVar) GetEventID() EventID     { return e.EventID }
+func (e EventSetVar) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventSetVar) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventSetVar) EventType() EventType    { return "workflow::event::var::set" }
 
-type VarEventOperation string
+type EventDeleteVar struct {
+	EventID   EventID `ext:"id"`
+	ProcessID ProcessID
+	Timestamp time.Time
 
-const (
-	SetEventVarOperation VarEventOperation = "set"
-	DelEventVarOperation VarEventOperation = "del"
-)
-
-var _ = enum.Register[VarEventOperation](SetEventVarOperation, DelEventVarOperation)
-
-func (e EventVar) EventType() EventType {
-	return "workflow::event::var"
+	Key VarKey
 }
 
-// GetProcessVars can be used to retrieve the ProcessVars of the current workflow execution.
-func GetProcessVars(ctx context.Context) (ProcessVars, error) {
+var _ Event = EventDeleteVar{}
+
+func (e EventDeleteVar) GetEventID() EventID     { return e.EventID }
+func (e EventDeleteVar) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventDeleteVar) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventDeleteVar) EventType() EventType    { return "workflow::event::var::delete" }
+
+// GetVars can be used to retrieve the ProcessVars of the current workflow execution.
+func GetVars(ctx context.Context) (Vars, error) {
 	repo, err := LookupEventsRepository(ctx)
 	if err != nil {
-		return ProcessVars{}, err
+		return Vars{}, err
 	}
 	pid, ok := ctxHProcessID.Lookup(ctx)
 	if !ok {
-		return ProcessVars{}, ErrFatal.F("missing Pid in workflow context")
+		return Vars{}, ErrFatal.F("missing Pid in workflow context")
 	}
-	return ProcessVars{
+	return Vars{
 		ProcessID:        pid,
 		EventsRepository: repo,
 	}, nil
 }
 
-type Vars interface {
-	ds.MapE[VarKey, any]
-	ds.MapConvertibleE[VarKey, any]
-}
-
-type ProcessVars struct {
+type Vars struct {
 	ProcessID        ProcessID
 	EventsRepository EventRepository
 }
 
-var _ Vars = ProcessVars{}
-var _ ds.ReadOnlyMapE[VarKey, any] = ProcessVars{}
-var _ ds.MapE[VarKey, any] = (*ProcessVars)(nil)
-var _ ds.MapConvertibleE[VarKey, any] = (*ProcessVars)(nil)
+var _ ds.MapE[VarKey, any] = Vars{}
+var _ ds.MapConvertibleE[VarKey, any] = Vars{}
+var _ ds.ReadOnlyMapE[VarKey, any] = Vars{}
+var _ ds.MapE[VarKey, any] = (*Vars)(nil)
+var _ ds.MapConvertibleE[VarKey, any] = (*Vars)(nil)
 
 // history returns the Process event history via the EventsRepository resolved
 // from the proxy context. On error (e.g. no Runtime in context) it returns nil,
 // so read operations degrade to "no variables".
-func (vs ProcessVars) history(ctx context.Context) ([]Event, error) {
+func (vs Vars) history(ctx context.Context) ([]Event, error) {
 	return iterkit.CollectE(vs.EventsRepository.FindByProcessID(ctx, vs.ProcessID))
 }
 
-func (vs ProcessVars) Lookup(ctx context.Context, key VarKey) (any, bool, error) {
+func (vs Vars) Lookup(ctx context.Context, key VarKey) (any, bool, error) {
 	var events, err = vs.history(ctx)
 	if err != nil {
 		return nil, false, err
 	}
-	var value, ok = lookupVariable(events, key)
+	var _, value, ok = lookupVariable(ctx, events, key)
 	return value, ok, nil
 }
 
-func (vs ProcessVars) ToMap(ctx context.Context) (map[VarKey]any, error) {
+func (vs Vars) ToMap(ctx context.Context) (map[VarKey]any, error) {
 	events, err := vs.history(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return variablesToMap(events), nil
+	return variablesToMap(ctx, events), nil
 }
 
 type VarKeyValue struct {
@@ -254,7 +253,7 @@ type VarKeyValue struct {
 	Value any
 }
 
-func (vs ProcessVars) Keys(ctx context.Context) iter.Seq2[VarKey, error] {
+func (vs Vars) Keys(ctx context.Context) iter.Seq2[VarKey, error] {
 	return func(yield func(VarKey, error) bool) {
 		for kv, err := range vs.All(ctx) {
 			if err != nil {
@@ -270,9 +269,9 @@ func (vs ProcessVars) Keys(ctx context.Context) iter.Seq2[VarKey, error] {
 	}
 }
 
-func (vs ProcessVars) All(ctx context.Context) iter.Seq2[VarKeyValue, error] {
+func (vs Vars) All(ctx context.Context) iter.Seq2[VarKeyValue, error] {
 	return func(yield func(VarKeyValue, error) bool) {
-		for kv, err := range eventsToKeyValue(vs.EventsRepository.FindByProcessID(ctx, vs.ProcessID), vs.ProcessID) {
+		for kv, err := range eventsToKeyValue(ctx, vs.EventsRepository.FindByProcessID(ctx, vs.ProcessID), vs.ProcessID) {
 			if !yield(kv, err) {
 				return
 			}
@@ -280,12 +279,12 @@ func (vs ProcessVars) All(ctx context.Context) iter.Seq2[VarKeyValue, error] {
 	}
 }
 
-func (vs ProcessVars) Get(ctx context.Context, key VarKey) (any, error) {
+func (vs Vars) Get(ctx context.Context, key VarKey) (any, error) {
 	value, _, err := vs.Lookup(ctx, key)
 	return value, err
 }
 
-func (vs ProcessVars) Set(ctx context.Context, key VarKey, val any) (rErr error) {
+func (vs Vars) Set(ctx context.Context, key VarKey, val any) (rErr error) {
 	v, ok, err := vs.Lookup(ctx, key)
 	if err != nil {
 		return err
@@ -297,61 +296,68 @@ func (vs ProcessVars) Set(ctx context.Context, key VarKey, val any) (rErr error)
 	if err != nil {
 		return err
 	}
-	var event Event = EventVar{
+	var event Event = EventSetVar{
 		EventID:   eventID,
 		ProcessID: vs.ProcessID,
-		Operation: SetEventVarOperation,
 		Key:       key,
 		Value:     val,
+		Scope:     VarScope(ctx),
 		Timestamp: clock.Now().UTC(),
 	}
 	return vs.EventsRepository.Create(ctx, &event)
 }
 
-func (vs ProcessVars) Delete(ctx context.Context, key VarKey) error {
+func (vs Vars) Delete(ctx context.Context, key VarKey) error {
 	eventID, err := MakeEventID()
 	if err != nil {
 		return err
 	}
-	var event Event = EventVar{
+	var event Event = EventDeleteVar{
 		EventID:   eventID,
 		ProcessID: vs.ProcessID,
 		Timestamp: clock.Now().UTC(),
-		Operation: DelEventVarOperation,
 		Key:       key,
 	}
 	return vs.EventsRepository.Create(ctx, &event)
 }
 
 // lookupVariable folds a variable's value from a slice of events in creation order.
-func lookupVariable(events []Event, key VarKey) (any, bool) {
+func lookupVariable(ctx context.Context, events []Event, key VarKey) (Path, any, bool) {
 	var (
 		value any
 		found bool
+		scope Path
 	)
+	var currentScope = VarScope(ctx)
 	for _, e := range events {
-		event, ok := e.(EventVar)
-		if !ok {
-			continue
-		}
-		if event.Key != key {
-			continue
-		}
-		switch event.Operation {
-		case SetEventVarOperation:
+		switch e := e.(type) {
+		case EventSetVar:
+			if e.Key != key {
+				continue
+			}
+			if !currentScope.MatchPrefix(e.Scope) {
+				continue
+			}
 			found = true
-			value = event.Value
-		case DelEventVarOperation:
+			value = e.Value
+			scope = zerokit.Coalesce(e.Scope, scope)
+
+		case EventDeleteVar:
+			if e.Key != key {
+				continue
+			}
 			found = false
 			value = nil
+		default:
+			continue
 		}
 	}
 	// TODO: deep copy for value
-	return value, found
+	return currentScope, value, found
 }
 
 // variablesToMap folds all variables from a slice of events in creation order.
-func eventsToKeyValue(events iter.Seq2[Event, error], pid ProcessID) iter.Seq2[VarKeyValue, error] {
+func eventsToKeyValue(ctx context.Context, events iter.Seq2[Event, error], pid ProcessID) iter.Seq2[VarKeyValue, error] {
 	return func(yield func(VarKeyValue, error) bool) {
 		events = iterkit.Filter(events, func(e Event) bool {
 			return e.GetProcessID().Equal(pid)
@@ -361,7 +367,7 @@ func eventsToKeyValue(events iter.Seq2[Event, error], pid ProcessID) iter.Seq2[V
 			yield(VarKeyValue{}, err)
 			return
 		}
-		for k, v := range variablesToMap(eventsVS) {
+		for k, v := range variablesToMap(ctx, eventsVS) {
 			if !yield(VarKeyValue{Key: k, Value: v}, nil) {
 				return
 			}
@@ -369,18 +375,18 @@ func eventsToKeyValue(events iter.Seq2[Event, error], pid ProcessID) iter.Seq2[V
 	}
 }
 
-func variablesToMap(events []Event) map[VarKey]any {
+func variablesToMap(ctx context.Context, events []Event) map[VarKey]any {
+	var currentPath = CurrentPath(ctx)
 	var m = map[VarKey]any{}
 	for _, e := range events {
-		event, ok := e.(EventVar)
-		if !ok {
-			continue
-		}
-		switch event.Operation {
-		case SetEventVarOperation:
-			m[event.Key] = event.Value
-		case DelEventVarOperation:
-			delete(m, event.Key)
+		switch e := e.(type) {
+		case EventSetVar:
+			if !currentPath.MatchPrefix(e.Scope) {
+				continue
+			}
+			m[e.Key] = e.Value
+		case EventDeleteVar:
+			delete(m, e.Key)
 		}
 	}
 	return m

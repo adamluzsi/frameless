@@ -459,20 +459,25 @@ func Codec(codec workflow.Codec) contract.Contract {
 		}
 	})
 
-	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventVar {
-		return workflow.EventVar{
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventSetVar {
+		return workflow.EventSetVar{
 			EventID:   randomEventID(t),
 			ProcessID: randomEventProcessID(t),
 			Timestamp: randomEventTimestamp(t),
-			Operation: random.Pick(t.Random,
-				func() workflow.VarEventOperation { return workflow.SetEventVarOperation },
-				func() workflow.VarEventOperation { return workflow.DelEventVarOperation },
-			)(),
-			Key: workflow.VarKey(t.Random.String()),
+			Key:       workflow.VarKey(t.Random.String()),
 			Value: random.Pick(t.Random,
 				func() any { return nil },
 				func() any { return randomSetVarValue(t) },
 			)(),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventDeleteVar {
+		return workflow.EventDeleteVar{
+			EventID:   randomEventID(t),
+			ProcessID: randomEventProcessID(t),
+			Timestamp: randomEventTimestamp(t),
+			Key:       workflow.VarKey(t.Random.String()),
 		}
 	})
 

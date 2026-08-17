@@ -413,3 +413,180 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 		})
 	})
 }
+
+func TestPath(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := let.Var(s, func(t *testcase.T) workflow.Path {
+		return random.Slice(t.Random.IntBetween(0, 7), t.Random.String)
+	})
+
+	s.Describe("#Equal", func(s *testcase.Spec) {
+		var (
+			oth = let.Var[workflow.Path](s, nil)
+		)
+		act := let.Act(func(t *testcase.T) bool {
+			return subject.Get(t).Equal(oth.Get(t))
+		})
+
+		s.Before(func(t *testcase.T) {
+			t.LogPretty("subject", subject.Get(t))
+			t.LogPretty("other", oth.Get(t))
+		})
+
+		s.When("paths are equal", func(s *testcase.Spec) {
+			oth.Let(s, subject.Get)
+
+			s.Then("equality is true", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+
+			s.Context("because both is empty", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) workflow.Path {
+					if t.Random.Bool() {
+						return nil
+					}
+					return workflow.Path{}
+				})
+				oth.Let(s, func(t *testcase.T) workflow.Path {
+					if t.Random.Bool() {
+						return nil
+					}
+					return workflow.Path{}
+				})
+
+				s.Then("they are equal", func(t *testcase.T) {
+					assert.True(t, act(t))
+				})
+			})
+		})
+
+		s.When("paths are same length but not equal values", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+			})
+
+			oth.Let(s, func(t *testcase.T) workflow.Path {
+				var p workflow.Path = make(workflow.Path, len(subject.Get(t)))
+				for i, v := range subject.Get(t) {
+					p[i] = random.Unique(t.Random.String, v)
+				}
+				return p
+			})
+
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+
+		s.When("path is longer than other path, but the prefix is the same", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+			})
+			oth.Let(s, func(t *testcase.T) workflow.Path {
+				return subject.Get(t)[0 : len(subject.Get(t))-1]
+			})
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+
+		s.When("other path is longer than subject path, but the prefix is the same", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) workflow.Path {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+			})
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return oth.Get(t)[0 : len(oth.Get(t))-1]
+			})
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+	})
+
+	s.Describe("#MatchPrefix", func(s *testcase.Spec) {
+		var prefix = let.Var[workflow.Path](s, nil)
+
+		act := let.Act(func(t *testcase.T) bool {
+			return subject.Get(t).MatchPrefix(prefix.Get(t))
+		})
+
+		subject.Let(s, func(t *testcase.T) workflow.Path {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+		})
+
+		s.When("prefix is empty", func(s *testcase.Spec) {
+			prefix.Let(s, func(t *testcase.T) workflow.Path {
+				if t.Random.Bool() {
+					return nil
+				}
+				return workflow.Path{}
+			})
+
+			s.Then("it will match", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+
+		s.When("prefix is matched 1:1 with the path", func(s *testcase.Spec) {
+			prefix.Let(s, subject.Get)
+
+			s.Then("it will match", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+
+		s.When("prefix is matched with the beginning of the path", func(s *testcase.Spec) {
+			prefix.Let(s, func(t *testcase.T) workflow.Path {
+				n := t.Random.IntBetween(0, len(subject.Get(t)))
+				return subject.Get(t)[0:n]
+			})
+
+			s.Then("it will match", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+
+		s.When("prefix differs from the path", func(s *testcase.Spec) {
+			prefix.Let(s, func(t *testcase.T) workflow.Path {
+				var p workflow.Path = make(workflow.Path, len(subject.Get(t)))
+				for i, v := range subject.Get(t) {
+					p[i] = random.Unique(t.Random.String, v)
+				}
+				return p
+			})
+
+			s.Then("it will NOT match", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+
+		s.When("prefix is longer than the path", func(s *testcase.Spec) {
+			prefix.Let(s, func(t *testcase.T) workflow.Path {
+				pfx := slicekit.Clone(subject.Get(t))
+				pfx = append(pfx, t.Random.String())
+				return pfx
+			})
+
+			s.Then("it will NOT match because the path doesn't fully match the prefix", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+
+		s.When("path is empty, while prefix is not", func(s *testcase.Spec) {
+			prefix.Let(s, func(t *testcase.T) workflow.Path {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+			})
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				if t.Random.Bool() {
+					return nil
+				}
+				return workflow.Path{}
+			})
+
+			s.Then("it will not match", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+	})
+}

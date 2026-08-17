@@ -8,14 +8,13 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfcontract"
-	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 )
 
 func TestWorkflowLockerFactory(t *testing.T) {
-	subject := &memory.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker]{}
-	t.Run("implements workflow ProcessLockers", wfcontract.ProcessLockers(subject).Test)
+	subject := &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{}
+	t.Run("implements workflow ProcessLockers", wfcontract.ProcessLocks(subject).Test)
 }
 
 func TestWorkflowProcessExecutionQueue(t *testing.T) {
@@ -43,11 +42,10 @@ func TestWorkflowEventRepository(t *testing.T) {
 		var mkEvent = func(tb testing.TB, pid workflow.ProcessID, key workflow.VarKey, val any) workflow.Event {
 			eventID, err := workflow.MakeEventID()
 			assert.NoError(tb, err)
-			var e workflow.Event = workflow.EventVar{
+			var e workflow.Event = workflow.EventSetVar{
 				EventID:   eventID,
 				ProcessID: pid,
 				Timestamp: clock.Now(),
-				Operation: workflow.SetEventVarOperation,
 				Key:       key,
 				Value:     val,
 			}

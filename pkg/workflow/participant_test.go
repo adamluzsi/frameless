@@ -169,7 +169,7 @@ func TestExecuteParticipant(t *testing.T) {
 
 						event, ok := slicekit.Last(mustHistory(t, c.Runtime.Get(t), processID.Get(t)))
 						assert.True(t, ok)
-						ve, ok := event.(workflow.EventVar)
+						ve, ok := event.(workflow.EventSetVar)
 						assert.True(t, ok)
 
 						assert.Equal(t, ve.Key, inKey.Get(t))
@@ -192,11 +192,11 @@ func TestExecuteParticipant(t *testing.T) {
 						// recorded for the input variable.
 						events := mustHistory(t, c.Runtime.Get(t), processID.Get(t))
 						for _, e := range events {
-							ve, ok := e.(workflow.EventVar)
+							ve, ok := e.(workflow.EventSetVar)
 							if !ok {
 								continue
 							}
-							if ve.Key == inKey.Get(t) && ve.Operation == workflow.SetEventVarOperation {
+							if ve.Key == inKey.Get(t) {
 								ve.Value = newIn.Get(t)
 
 								var event workflow.Event = ve

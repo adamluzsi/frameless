@@ -56,7 +56,7 @@ func (tmpl Condition) Evaluate(ctx context.Context, pid workflow.ProcessID) (boo
 	if err != nil {
 		return false, err
 	}
-	var vars = workflow.ProcessVars{ProcessID: pid, EventsRepository: repo}
+	var vars = workflow.Vars{ProcessID: pid, EventsRepository: repo}
 	vs, err := vars.ToMap(ctx)
 	if err != nil {
 		return false, err

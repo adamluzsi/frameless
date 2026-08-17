@@ -515,11 +515,10 @@ func TestComplete_IsCompleted(t *testing.T) {
 	s.When("process has events but nothing related to process completion", func(s *testcase.Spec) {
 		prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
 			return []workflow.Event{
-				workflow.EventVar{
+				workflow.EventSetVar{
 					EventID:   mustEventID(t),
 					ProcessID: processID.Get(t),
 					Timestamp: time.Now(),
-					Operation: workflow.SetEventVarOperation,
 					Key:       "foo",
 					Value:     42,
 				},
@@ -555,11 +554,10 @@ func TestComplete_IsCompleted(t *testing.T) {
 		s.And("other events as well present in the event history", func(s *testcase.Spec) {
 			prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
 				return []workflow.Event{
-					workflow.EventVar{
+					workflow.EventSetVar{
 						EventID:   mustEventID(t),
 						ProcessID: processID.Get(t),
 						Timestamp: time.Now(),
-						Operation: workflow.SetEventVarOperation,
 						Key:       "foo",
 						Value:     42,
 					},

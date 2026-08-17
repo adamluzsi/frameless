@@ -113,6 +113,9 @@ func (sig Suspend) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Proc
 type SetVar struct {
 	Key   VarKey
 	Value any
+	// Global will set the variable scope to be globally available,
+	// therefore allowing to escape the current workflow definition assigned variable scope.
+	Global bool
 }
 
 var _ Definition = SetVar{}
@@ -125,6 +128,6 @@ func (d SetVar) Execute(ctx context.Context, pid ProcessID) error {
 	if err != nil {
 		return err
 	}
-	var vars = ProcessVars{ProcessID: pid, EventsRepository: repo}
+	var vars = Vars{ProcessID: pid, EventsRepository: repo}
 	return vars.Set(ctx, d.Key, d.Value)
 }
