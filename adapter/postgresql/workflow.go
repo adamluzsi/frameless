@@ -11,7 +11,7 @@ type WorkflowLockerFactory[L guard.Unlocker] struct {
 	Connection Connection
 }
 
-func (f WorkflowLockerFactory[L]) factory() LockerFactory[string] {
+func (f WorkflowLockerFactory[L]) factory() LockerFactory[string, workflow.ProcessLock] {
 	return LockerFactory[string, guard.NonBlockingLocker]{Connection: f.Connection}
 }
 

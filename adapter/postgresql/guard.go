@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/uuid"
@@ -40,6 +41,10 @@ type Lock struct {
 
 	m sync.RWMutex
 }
+
+var _ guard.Unlocker = (*Lock)(nil)
+var _ guard.Locker = (*Lock)(nil)
+var _ guard.NonBlockingLocker = (*Lock)(nil)
 
 func (l *Lock) init() error {
 	_, err := synckit.InitErr(&l.m, &l.owner, uuid.MakeV4)
@@ -383,17 +388,22 @@ func (l *Lock) legacyMigrate(ctx context.Context) error {
 	}).MigrateDown(ctx, "")
 }
 
-type LockerFactory[Key any] struct{ Connection Connection }
+type LockerFactory[K any, L guard.Unlocker] struct{ Connection Connection }
 
-func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
+func (lf LockerFactory[K, L]) Migrate(ctx context.Context) error {
 	return (&Lock{Connection: lf.Connection}).Migrate(ctx)
 }
 
-func (lf LockerFactory[Key]) LockerFor(key Key) guard.Locker {
-	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
+func (lf LockerFactory[K, L]) LockerFor(key K) L {
+	var lock = &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
+	l, ok := any(lock).(L)
+	if !ok {
+		panic(fmt.Sprintf("%T doesn't support %s", lock, reflectkit.TypeOf(lock).String()))
+	}
+	return l
 }
 
-func (lf LockerFactory[Key]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
+func (lf LockerFactory[K, L]) NonBlockingLockerFor(key K) guard.NonBlockingLocker {
 	return &Lock{Name: fmt.Sprintf("%T:%v", key, key), Connection: lf.Connection}
 }
 
@@ -401,7 +411,7 @@ const ErrLockLost errorkit.Error = "ErrLockLost"
 
 var stringType = reflect.TypeFor[string]()
 
-func (lf LockerFactory[Key]) nameFor(key Key) string {
+func (lf LockerFactory[K, L]) nameFor(key K) string {
 	switch key := any(key).(type) {
 	case fmt.Stringer:
 		return key.String()
