@@ -239,7 +239,7 @@ func TestRuntime(t *testing.T) {
 					p = mustProcessID(t)
 				}
 				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.Sequence{
-					workflow.SetVar{Key: "warmup", Value: "ready"},
+					workflow.SetVar{Name: "warmup", Value: "ready"},
 					workflow.ExecuteParticipant{ID: switcherID.Get(t)},
 				}))
 				return p

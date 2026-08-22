@@ -13,7 +13,7 @@ import (
 
 type ExecuteCondition struct {
 	ID    ConditionID
-	Input []VarKey
+	Input []VarName
 }
 
 var _ Condition = ExecuteCondition{}

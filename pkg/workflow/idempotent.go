@@ -22,8 +22,8 @@ import (
 type idempotentExecutor[E Event, ID ~string] struct {
 	ID        ID
 	Do        func(ctx context.Context, input []any) (output []any, _ error)
-	Input     []VarKey
-	Output    []VarKey
+	Input     []VarName
+	Output    []VarName
 	CastEvent func(e E) (executionEvent[ID], bool)
 	// MakeEvent returns an E value (intentionally not a *E) which can be used with Event interface variables.
 	MakeEvent func(id ID, path Path, input []any, output []any) (E, error)
@@ -71,6 +71,15 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	if err != nil {
 		return nil, err
 	}
+
+	// most transaction locking happens at row level,
+	// with mostly on mutation,
+	// so the cost of transaction should be acceptable here
+	ctx, err = eventsRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, eventsRepo, ctx)
 
 	var events []Event
 	for event, err := range eventsRepo.FindByProcessID(ctx, pid) {

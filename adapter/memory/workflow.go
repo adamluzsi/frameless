@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
@@ -124,6 +125,8 @@ func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workf
 		})
 
 		for _, event := range events {
+			event := reflectkit.CloneT(event)
+
 			if !yield(event, nil) {
 				return
 			}

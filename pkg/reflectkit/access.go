@@ -2,9 +2,37 @@ package reflectkit
 
 import (
 	"reflect"
+	"unsafe"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )
+
+// toExported returns a reflect.Value that points to the very same data as rv,
+// but without the read-only flag that reflect attaches to values
+// which were reached through an unexported struct field.
+//
+// reflect.Value.Set rejects a read-only value as its argument,
+// so aliasing one into a fresh value requires stripping that flag first.
+//
+// Unlike toAccessible, toExported never copies the pointed-to data,
+// which makes it suitable for aliasing back a value on a reference cycle.
+func toExported(rv reflect.Value) reflect.Value {
+	if !rv.IsValid() || rv.CanInterface() {
+		return rv
+	}
+	if rv.CanAddr() {
+		return reflect.NewAt(rv.Type(), unsafe.Pointer(rv.UnsafeAddr())).Elem()
+	}
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return reflect.Zero(rv.Type())
+		}
+		// The payload of a pointer is the address that it holds,
+		// and that remains readable even on a read-only value.
+		return reflect.NewAt(rv.Type().Elem(), rv.UnsafePointer()).Convert(rv.Type())
+	}
+	return rv
+}
 
 func toAccessible(rv reflect.Value) (reflect.Value, bool) {
 	if isAccessible(rv) {

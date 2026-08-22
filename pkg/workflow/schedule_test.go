@@ -52,13 +52,13 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 			Timestamp: clock.Now(),
 			Definition: workflow.Sequence{
 				workflow.SetVar{
-					Key:   workflow.VarKey("input"),
+					Name:  workflow.VarName("input"),
 					Value: inputVal,
 				},
 				workflow.ExecuteParticipant{
 					ID: pid.Get(t),
-					Input: []workflow.VarKey{
-						workflow.VarKey("input"),
+					Input: []workflow.VarName{
+						workflow.VarName("input"),
 					},
 				},
 			},
@@ -105,13 +105,13 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 			Timestamp: clock.Now(),
 			Definition: workflow.Sequence{
 				workflow.SetVar{
-					Key:   workflow.VarKey("input"),
+					Name:  workflow.VarName("input"),
 					Value: inputVal,
 				},
 				workflow.ExecuteParticipant{
 					ID: pid.Get(t),
-					Input: []workflow.VarKey{
-						workflow.VarKey("input"),
+					Input: []workflow.VarName{
+						workflow.VarName("input"),
 					},
 				},
 			},
@@ -378,7 +378,7 @@ func TestRuntime_Run_publishBeforeCommitIsSupported(t *testing.T) {
 	)
 
 	s.Test("smoke", func(t *testcase.T) {
-		def := workflow.SetVar{Key: "foo", Value: "bar"}
+		def := workflow.SetVar{Name: "foo", Value: "bar"}
 		procID, err := workflow.MakeProcessID()
 		assert.NoError(t, err)
 
@@ -396,6 +396,111 @@ func TestRuntime_Run_publishBeforeCommitIsSupported(t *testing.T) {
 			done, err := complete.IsCompleted(t.Context(), c.Runtime.Get(t).Events)
 			assert.NoError(tb, err)
 			assert.True(tb, done)
+		})
+	})
+}
+
+// TestRuntime_Run_scheduledWithoutDefinition pins how a worker copes with an
+// orphaned schedule entry: a ProcessID that was queued for execution but never
+// had a Definition bound to it.
+//
+// This state is reachable, not hypothetical. Schedule and Bind are separate
+// operations, so a crash, a rolled back transaction, or a plain forgotten Bind
+// between the two leaves an entry in the queue that can never execute — which
+// is why ErrNoProcessDefinition's own message guesses that "workflow.Runtime#Bind
+// is forgotten". Runtime.Execute answers such an entry with that error, and
+// ErrIsFatal classifies it as non-retryable.
+//
+// The entry is worthless, but it has to stay HARMLESS. The execution queue is
+// shared by every process on the node, so one unbound ProcessID must not be
+// able to stop the worker from serving everything else.
+func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	var (
+		pid = wftest.LetParticipantID(s)
+		_   = wftest.LetParticipantWithID(s, c, pid, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error { return nil }
+		})
+	)
+
+	// bindGracePeriod is how long the runtime keeps hoping that the Definition of
+	// a scheduled Process is still on its way. It is set to almost nothing here,
+	// so that the orphan below runs out of grace right away.
+	bindGracePeriod := let.VarOf(s, time.Millisecond)
+
+	c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+		var rt = c.Runtime.Super(t)
+		rt.BindGracePeriod = bindGracePeriod.Get(t)
+		return rt
+	})
+
+	// orphan is scheduled for execution but deliberately never bound, so every
+	// attempt to execute it answers with ErrNoProcessDefinition.
+	orphan := let.Var(s, func(t *testcase.T) workflow.ProcessID {
+		return mustProcessID(t)
+	})
+
+	s.Before(func(t *testcase.T) {
+		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), orphan.Get(t)))
+	})
+
+	// executeCanary hands the worker an ordinary, fully bound process and
+	// requires it to be executed. It is the proof that the worker is still
+	// serving the queue at all.
+	var executeCanary = func(t *testcase.T) {
+		t.Helper()
+		canary := mustProcessID(t)
+		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), canary,
+			workflow.ExecuteParticipant{ID: pid.Get(t)}))
+		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), canary))
+		c.ProcessCompletionIs(t, canary, true)
+	}
+
+	s.Then("the worker keeps serving the other processes on the queue", func(t *testcase.T) {
+		// The worker only reacts to the orphan once it picks it up, so give it
+		// the chance to do so before judging whether it survived the encounter.
+		time.Sleep(waitTime)
+
+		t.Random.Repeat(3, 7, func() {
+			executeCanary(t)
+		})
+	})
+
+	s.Then("the process is given up on, and a definition bound afterwards no longer revives it", func(t *testcase.T) {
+		// Let the entry outlive its grace period and be dropped from the queue.
+		time.Sleep(waitTime)
+
+		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
+			workflow.ExecuteParticipant{ID: pid.Get(t)}))
+
+		// Dropping the entry is what keeps the worker alive, and this is its
+		// price: nothing in the queue points at the process anymore, so a late
+		// Bind is not enough on its own, the process has to be scheduled again.
+		time.Sleep(waitTime)
+		isCompleted, err := workflow.Complete{ProcessID: orphan.Get(t)}.
+			IsCompleted(t.Context(), c.EventRepository.Get(t))
+		assert.NoError(t, err)
+		assert.False(t, isCompleted)
+	})
+
+	s.When("the process still has time left to receive its definition", func(s *testcase.Spec) {
+		bindGracePeriod.LetValue(s, time.Hour)
+
+		s.Then("the worker keeps serving the other processes on the queue", func(t *testcase.T) {
+			time.Sleep(waitTime)
+
+			t.Random.Repeat(3, 7, func() {
+				executeCanary(t)
+			})
+		})
+
+		s.Then("binding the definition later still gets the process executed", func(t *testcase.T) {
+			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
+				workflow.ExecuteParticipant{ID: pid.Get(t)}))
+
+			c.ProcessCompletionIs(t, orphan.Get(t), true)
 		})
 	})
 }

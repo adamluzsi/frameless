@@ -295,13 +295,13 @@ type WorkflowSetVar struct{}
 var _ jsonkit.ITypeCodec[workflow.SetVar] = WorkflowSetVar{}
 
 type workflowSetVarDTO struct {
-	Key   string `json:"key"`
+	Name  string `json:"name"`
 	Value any    `json:"value"`
 }
 
 func (WorkflowSetVar) Marshal(c *jsonkit.Codec, v workflow.SetVar) ([]byte, error) {
 	return json.Marshal(workflowSetVarDTO{
-		Key:   string(v.Key),
+		Name:  string(v.Name),
 		Value: v.Value,
 	})
 }
@@ -311,7 +311,7 @@ func (WorkflowSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.SetVa
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	p.Key = workflow.VarKey(dto.Key)
+	p.Name = workflow.VarName(dto.Name)
 	p.Value = dto.Value
 	return nil
 }
@@ -371,24 +371,24 @@ type workflowExecuteParticipantDTO struct {
 	Output []string `json:"output,omitempty"`
 }
 
-func stringVarKeys(keys []workflow.VarKey) []string {
-	if len(keys) == 0 {
+func varNamesToStrings(names []workflow.VarName) []string {
+	if len(names) == 0 {
 		return nil
 	}
-	out := make([]string, len(keys))
-	for i, k := range keys {
-		out[i] = string(k)
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = string(n)
 	}
 	return out
 }
 
-func varKeySlice(keys []string) []workflow.VarKey {
-	if len(keys) == 0 {
+func varNamesFromStrings(names []string) []workflow.VarName {
+	if len(names) == 0 {
 		return nil
 	}
-	out := make([]workflow.VarKey, len(keys))
-	for i, k := range keys {
-		out[i] = workflow.VarKey(k)
+	out := make([]workflow.VarName, len(names))
+	for i, n := range names {
+		out[i] = workflow.VarName(n)
 	}
 	return out
 }
@@ -396,8 +396,8 @@ func varKeySlice(keys []string) []workflow.VarKey {
 func (WorkflowExecuteParticipant) Marshal(c *jsonkit.Codec, v workflow.ExecuteParticipant) ([]byte, error) {
 	return json.Marshal(workflowExecuteParticipantDTO{
 		ID:     string(v.ID),
-		Input:  stringVarKeys(v.Input),
-		Output: stringVarKeys(v.Output),
+		Input:  varNamesToStrings(v.Input),
+		Output: varNamesToStrings(v.Output),
 	})
 }
 
@@ -407,8 +407,8 @@ func (WorkflowExecuteParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *wo
 		return err
 	}
 	p.ID = workflow.ParticipantID(dto.ID)
-	p.Input = varKeySlice(dto.Input)
-	p.Output = varKeySlice(dto.Output)
+	p.Input = varNamesFromStrings(dto.Input)
+	p.Output = varNamesFromStrings(dto.Output)
 	return nil
 }
 
@@ -428,7 +428,7 @@ type workflowExecuteConditionDTO struct {
 func (WorkflowExecuteCondition) Marshal(c *jsonkit.Codec, v workflow.ExecuteCondition) ([]byte, error) {
 	return json.Marshal(workflowExecuteConditionDTO{
 		ID:    string(v.ID),
-		Input: stringVarKeys(v.Input),
+		Input: varNamesToStrings(v.Input),
 	})
 }
 
@@ -438,7 +438,7 @@ func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *work
 		return err
 	}
 	p.ID = workflow.ConditionID(dto.ID)
-	p.Input = varKeySlice(dto.Input)
+	p.Input = varNamesFromStrings(dto.Input)
 	return nil
 }
 
@@ -487,9 +487,10 @@ type workflowEventSetVarDTO struct {
 	EventID   workflow.EventID   `json:"event_id"`
 	ProcessID workflow.ProcessID `json:"process_id"`
 	Timestamp time.Time          `json:"timestamp"`
-	Key       string             `json:"key"`
+	Path      workflow.Path      `json:"path,omitempty"`
+	Name      string             `json:"name"`
 	Value     any                `json:"value,omitempty"`
-	Scope     workflow.Path      `json:"path,omitempty"`
+	Scope     workflow.Path      `json:"scope,omitempty"`
 }
 
 func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]byte, error) {
@@ -497,7 +498,8 @@ func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]
 		EventID:   v.EventID,
 		ProcessID: v.ProcessID,
 		Timestamp: v.Timestamp,
-		Key:       string(v.Key),
+		Path:      v.Path,
+		Name:      string(v.Name),
 		Value:     v.Value,
 		Scope:     v.Scope,
 	})
@@ -511,7 +513,8 @@ func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
-	p.Key = workflow.VarKey(dto.Key)
+	p.Path = dto.Path
+	p.Name = workflow.VarName(dto.Name)
 	p.Value = dto.Value
 	p.Scope = dto.Scope
 	return nil
@@ -525,7 +528,9 @@ type workflowEventDeleteVarDTO struct {
 	EventID   workflow.EventID   `json:"event_id"`
 	ProcessID workflow.ProcessID `json:"process_id"`
 	Timestamp time.Time          `json:"timestamp"`
-	Key       string             `json:"key"`
+	Path      workflow.Path      `json:"path,omitempty"`
+	Name      string             `json:"name"`
+	Scope     workflow.Path      `json:"scope,omitzero"`
 }
 
 func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVar) ([]byte, error) {
@@ -533,7 +538,9 @@ func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVa
 		EventID:   v.EventID,
 		ProcessID: v.ProcessID,
 		Timestamp: v.Timestamp,
-		Key:       string(v.Key),
+		Path:      v.Path,
+		Name:      string(v.Name),
+		Scope:     v.Scope,
 	})
 }
 
@@ -545,7 +552,9 @@ func (WorkflowEventDeleteVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workfl
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
-	p.Key = workflow.VarKey(dto.Key)
+	p.Path = dto.Path
+	p.Name = workflow.VarName(dto.Name)
+	p.Scope = dto.Scope
 	return nil
 }
 

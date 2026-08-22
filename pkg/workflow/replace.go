@@ -46,8 +46,8 @@ type EventUseDefinition struct {
 // It goes [FROM] parent [TO] child.
 type VarMapping map[parentVarKey]childVarKey
 
-type parentVarKey = VarKey
-type childVarKey = VarKey
+type parentVarKey = VarName
+type childVarKey = VarName
 
 var _ Event = EventUseDefinition{}
 

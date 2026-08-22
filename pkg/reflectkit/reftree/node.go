@@ -95,12 +95,12 @@ func (v Node) validate() error {
 // 		v.Parent == nil
 // }
 
-func (v Node) isUnindentifiedRoot() bool {
+func (v Node) isUnidentifiedRoot() bool {
 	return v.Type == Unknown
 }
 
 func (v Node) next(n Node) Node {
-	if !v.isUnindentifiedRoot() {
+	if !v.isUnidentifiedRoot() {
 		n.Parent = &v
 	}
 	if err := n.validate(); err != nil {

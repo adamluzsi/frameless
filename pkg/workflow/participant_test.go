@@ -26,11 +26,17 @@ func TestExecuteParticipant(t *testing.T) {
 	var (
 		callCount = let.VarOf(s, 0)
 		lastCTX   = let.VarOf[context.Context](s, nil)
-		lastOut   = let.VarOf[string](s, "")
+		// lastCTXErr records the liveness of the context AT CALL TIME.
+		// The context handed to a participant is transaction scoped, and the
+		// memory EventLog cancels it once that transaction finishes, so it
+		// can only be meaningfully inspected while the participant runs.
+		lastCTXErr = let.VarOf[error](s, nil)
+		lastOut    = let.VarOf[string](s, "")
 	)
 	participant := wftest.LetParticipantWithID(s, c, pid, func(t *testcase.T) func(ctx context.Context, in string) (out string, _ error) {
 		return func(ctx context.Context, in string) (string, error) {
 			lastCTX.Set(t, ctx)
+			lastCTXErr.Set(t, ctx.Err())
 			callCount.Set(t, callCount.Get(t)+1)
 			out := t.Random.UUID()
 			lastOut.Set(t, out)
@@ -39,15 +45,15 @@ func TestExecuteParticipant(t *testing.T) {
 	})
 
 	var (
-		inKey = let.As[workflow.VarKey](let.UUID(s))
+		inKey = let.As[workflow.VarName](let.UUID(s))
 		inVal = let.UUID(s)
-		input = let.Var(s, func(t *testcase.T) []workflow.VarKey {
-			return []workflow.VarKey{inKey.Get(t)}
+		input = let.Var(s, func(t *testcase.T) []workflow.VarName {
+			return []workflow.VarName{inKey.Get(t)}
 		})
 
-		outKey = let.As[workflow.VarKey](let.UUID(s))
-		output = let.Var(s, func(t *testcase.T) []workflow.VarKey {
-			return []workflow.VarKey{outKey.Get(t)}
+		outKey = let.As[workflow.VarName](let.UUID(s))
+		output = let.Var(s, func(t *testcase.T) []workflow.VarName {
+			return []workflow.VarName{outKey.Get(t)}
 		})
 	)
 	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
@@ -79,7 +85,8 @@ func TestExecuteParticipant(t *testing.T) {
 
 			gotCTX := lastCTX.Get(t)
 			assert.NotNil(t, gotCTX)
-			assert.NoError(t, gotCTX.Err())
+			assert.NoError(t, lastCTXErr.Get(t),
+				"the participant must be called with a live context")
 		})
 
 		s.Then("the execution event has a timestamp", func(t *testcase.T) {
@@ -172,7 +179,7 @@ func TestExecuteParticipant(t *testing.T) {
 						ve, ok := event.(workflow.EventSetVar)
 						assert.True(t, ok)
 
-						assert.Equal(t, ve.Key, inKey.Get(t))
+						assert.Equal(t, ve.Name, inKey.Get(t))
 						assert.Equal[any](t, ve.Value, newIn.Get(t))
 					})
 
@@ -196,7 +203,7 @@ func TestExecuteParticipant(t *testing.T) {
 							if !ok {
 								continue
 							}
-							if ve.Key == inKey.Get(t) {
+							if ve.Name == inKey.Get(t) {
 								ve.Value = newIn.Get(t)
 
 								var event workflow.Event = ve
@@ -253,16 +260,16 @@ func TestExecuteParticipant(t *testing.T) {
 				var pdef workflow.Definition = &workflow.Sequence{
 					&workflow.ExecuteParticipant{
 						ID:     "foo",
-						Output: []workflow.VarKey{"foo-val"},
+						Output: []workflow.VarName{"foo-val"},
 					},
 					&workflow.ExecuteParticipant{
 						ID:     "bar",
-						Input:  []workflow.VarKey{"foo-val"},
-						Output: []workflow.VarKey{"bar-val"},
+						Input:  []workflow.VarName{"foo-val"},
+						Output: []workflow.VarName{"bar-val"},
 					},
 					&workflow.ExecuteParticipant{
 						ID:    "baz",
-						Input: []workflow.VarKey{"foo-val", "bar-val"},
+						Input: []workflow.VarName{"foo-val", "bar-val"},
 					},
 				}
 
@@ -379,16 +386,16 @@ func TestExecuteParticipant(t *testing.T) {
 				var pdef workflow.Definition = &workflow.Sequence{
 					&workflow.ExecuteParticipant{
 						ID:     "foo",
-						Output: []workflow.VarKey{"foo-val"},
+						Output: []workflow.VarName{"foo-val"},
 					},
 					&workflow.ExecuteParticipant{
 						ID:     "bar",
-						Input:  []workflow.VarKey{"foo-val"},
-						Output: []workflow.VarKey{"bar-val"},
+						Input:  []workflow.VarName{"foo-val"},
+						Output: []workflow.VarName{"bar-val"},
 					},
 					&workflow.ExecuteParticipant{
 						ID:    "baz",
-						Input: []workflow.VarKey{"foo-val", "bar-val"},
+						Input: []workflow.VarName{"foo-val", "bar-val"},
 					},
 					&workflow.ExecuteParticipant{
 						ID: "flaky",
@@ -415,5 +422,109 @@ func TestExecuteParticipant(t *testing.T) {
 				assert.Equal(t, ranCount["flaky"], 2)
 			})
 		})
+	})
+}
+
+// TestExecuteParticipant_rollback pins the transactional boundary around a
+// participant call.
+//
+// A participant may mutate process variables through workflow.GetVars before it
+// fails. Those mutations belong to the attempt, not to the process: a failed
+// attempt records no execution event, so the next pass re-runs the participant
+// from scratch. If the mutations outlived the failure, that retry would observe
+// state left behind by an execution which, as far as the event history is
+// concerned, never happened — and the participant would no longer be idempotent
+// in the only sense that matters, "same starting state, same behaviour".
+func TestExecuteParticipant_rollback(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	var (
+		varName = let.As[workflow.VarName](let.UUID(s))
+		expErr  = let.Error(s)
+		// callCount counts how many times the participant body ran.
+		callCount = let.VarOf(s, 0)
+		// visibleOnEntry records, per call, whether the variable the
+		// participant is about to write was already visible when it started.
+		visibleOnEntry = let.VarOf[[]bool](s, nil)
+	)
+
+	// The participant mutates a variable and only afterwards decides whether it
+	// can finish. The first attempt fails after the mutation, later ones pass.
+	_, participantID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			vars, err := workflow.GetVars(ctx)
+			if err != nil {
+				return err
+			}
+
+			_, ok, err := vars.Lookup(ctx, varName.Get(t))
+			if err != nil {
+				return err
+			}
+			visibleOnEntry.Set(t, append(visibleOnEntry.Get(t), ok))
+
+			if err := vars.Set(ctx, varName.Get(t), t.Random.UUID()); err != nil {
+				return err
+			}
+
+			callCount.Set(t, callCount.Get(t)+1)
+			if callCount.Get(t) == 1 {
+				return expErr.Get(t)
+			}
+			return nil
+		}
+	})
+
+	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+		return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+	})
+
+	act := let.Act(func(t *testcase.T) error {
+		return c.ActExecute(t)
+	})
+
+	s.Then("the variable written by the failed attempt is not visible afterwards", func(t *testcase.T) {
+		assert.ErrorIs(t, act(t), expErr.Get(t))
+		assert.Equal(t, callCount.Get(t), 1)
+
+		_, ok, err := getVars(t, c.Runtime.Get(t), c.ProcessID.Get(t)).
+			Lookup(t.Context(), varName.Get(t))
+		assert.NoError(t, err)
+		assert.False(t, ok,
+			"the failed attempt recorded no execution event, so it must not leave a variable behind either")
+	})
+
+	s.Then("the failed attempt leaves no variable mutation in the event history", func(t *testcase.T) {
+		assert.ErrorIs(t, act(t), expErr.Get(t))
+
+		for _, e := range mustHistory(t, c.Runtime.Get(t), c.ProcessID.Get(t)) {
+			ve, ok := e.(workflow.EventSetVar)
+			if !ok {
+				continue
+			}
+			assert.NotEqual(t, ve.Name, varName.Get(t),
+				"an EventSetVar from the rolled back attempt is still in the history")
+		}
+	})
+
+	s.Then("the retry starts from the same state as the failed attempt did", func(t *testcase.T) {
+		assert.ErrorIs(t, act(t), expErr.Get(t))
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, callCount.Get(t), 2)
+		assert.Equal(t, visibleOnEntry.Get(t), []bool{false, false},
+			"the retry must not observe the variable written by the failed attempt")
+	})
+
+	s.Then("a successful attempt keeps its variable mutation", func(t *testcase.T) {
+		assert.ErrorIs(t, act(t), expErr.Get(t))
+		assert.NoError(t, act(t))
+
+		_, ok, err := getVars(t, c.Runtime.Get(t), c.ProcessID.Get(t)).
+			Lookup(t.Context(), varName.Get(t))
+		assert.NoError(t, err)
+		assert.True(t, ok,
+			"rolling back a failed attempt must not cost us the mutations of the successful one")
 	})
 }

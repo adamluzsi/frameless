@@ -14,8 +14,19 @@ func NewLocker() *Lock { return &Lock{} }
 // Lock is not safe to call from different application instances.
 // Lock is meant to be used in a single application instance.
 type Lock struct {
-	mutex sync.Mutex
-	key   any
+	init sync.Once
+	// sem is a capacity-one semaphore channel rather than a sync.Mutex,
+	// because it lets Lock park the goroutine in a select that also watches
+	// the context. A sync.Mutex can only be waited on by blocking
+	// uninterruptibly or by spinning on TryLock, and spinning keeps a CPU
+	// core busy for as long as the lock is held.
+	sem chan struct{}
+	key any
+}
+
+func (l *Lock) semaphore() chan struct{} {
+	l.init.Do(func() { l.sem = make(chan struct{}, 1) })
+	return l.sem
 }
 
 type ctxKeyLock struct{ Key any }
@@ -42,18 +53,12 @@ func (l *Lock) Lock(ctx context.Context) (context.Context, error) {
 	} else if ok {
 		return ctx, nil
 	}
-tryLock:
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-			if l.mutex.TryLock() {
-				break tryLock
-			}
-		}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case l.semaphore() <- struct{}{}:
+		return l.makeLockContext(ctx), nil
 	}
-	return l.makeLockContext(ctx), nil
 }
 
 func (l *Lock) TryLock(ctx context.Context) (context.Context, bool, error) {
@@ -62,10 +67,12 @@ func (l *Lock) TryLock(ctx context.Context) (context.Context, bool, error) {
 	} else if ok {
 		return ctx, true, nil
 	}
-	if !l.mutex.TryLock() {
+	select {
+	case l.semaphore() <- struct{}{}:
+		return l.makeLockContext(ctx), true, nil
+	default:
 		return nil, false, nil
 	}
-	return l.makeLockContext(ctx), true, nil
 }
 
 func (l *Lock) isLockedAlready(ctx context.Context) (bool, error) {
@@ -83,12 +90,16 @@ func (l *Lock) isLockedAlready(ctx context.Context) (bool, error) {
 
 func (l *Lock) makeLockContext(ctx context.Context) context.Context {
 	ctx, cancel := context.WithCancel(ctx)
-	// Keep the mutex release inline with the cancel so that callers see
+	sem := l.semaphore()
+	// Keep the lock release inline with the cancel so that callers see
 	// the lock as released the moment Unlock returns.
-	// context.AfterFunc would defer the mutex release to a separate
+	// context.AfterFunc would defer the release to a separate
 	// goroutine, which races with the next TryLock attempt and causes
 	// spurious ErrAlreadyRunningProcess failures.
-	return context.WithValue(ctx, ctxKeyLock{Key: l.key}, &ctxValueLock{cancel: cancel, unlock: l.mutex.Unlock})
+	return context.WithValue(ctx, ctxKeyLock{Key: l.key}, &ctxValueLock{
+		cancel: cancel,
+		unlock: func() { <-sem },
+	})
 }
 
 func (l *Lock) Unlock(ctx context.Context) error {

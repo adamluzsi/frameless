@@ -12,8 +12,8 @@ import (
 
 type ExecuteParticipant struct {
 	ID     ParticipantID
-	Input  []VarKey
-	Output []VarKey
+	Input  []VarName
+	Output []VarName
 }
 
 var _ Definition = (*ExecuteParticipant)(nil)

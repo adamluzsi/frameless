@@ -74,7 +74,6 @@ func (spawn Spawn) Error() string { return "workflow::signal::spawn" }
 // never-bound process, and immediately record an EventCompleted, silently
 // dropping the spawn.
 func (spawn Spawn) Execute(ctx context.Context, processID ProcessID) (rErr error) {
-
 	if err := spawn.Validate(ctx); err != nil {
 		return err
 	}

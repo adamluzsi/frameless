@@ -79,7 +79,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 				EventID:   workflow.EventID(eventID),
 				ProcessID: workflow.ProcessID(processID),
 				Timestamp: t.Random.Time(),
-				Key:       "foo",
+				Name:      "foo",
 				Value:     "bar",
 			}
 		})
@@ -253,7 +253,7 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 			EventID:   MakeEventID(t),
 			ProcessID: processID,
 			Timestamp: clock.Now(),
-			Key:       "foo",
+			Name:      "foo",
 			Value:     t.Random.String(),
 		}
 	}, func() workflow.Event {

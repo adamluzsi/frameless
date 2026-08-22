@@ -519,7 +519,7 @@ func TestComplete_IsCompleted(t *testing.T) {
 					EventID:   mustEventID(t),
 					ProcessID: processID.Get(t),
 					Timestamp: time.Now(),
-					Key:       "foo",
+					Name:      "foo",
 					Value:     42,
 				},
 				workflow.EventParticipant{
@@ -558,7 +558,7 @@ func TestComplete_IsCompleted(t *testing.T) {
 						EventID:   mustEventID(t),
 						ProcessID: processID.Get(t),
 						Timestamp: time.Now(),
-						Key:       "foo",
+						Name:      "foo",
 						Value:     42,
 					},
 					workflow.EventParticipant{
@@ -577,50 +577,6 @@ func TestComplete_IsCompleted(t *testing.T) {
 
 			s.Then("it is considered completed", func(t *testcase.T) {
 				assert.True(t, act(t))
-			})
-		})
-	})
-}
-
-func TestSetVar(t *testing.T) {
-	s := testcase.NewSpec(t)
-	c := wftest.LetC(s)
-
-	var (
-		key   = let.As[workflow.VarKey](let.String(s))
-		value = let.Int(s)
-	)
-	subject := let.Var(s, func(t *testcase.T) workflow.SetVar {
-		return workflow.SetVar{
-			Key:   key.Get(t),
-			Value: value.Get(t),
-		}
-	})
-
-	s.Describe("#Execute", func(s *testcase.Spec) {
-		var (
-			Context = let.Context(s)
-			process = wftest.LetProcessWithDefinition(s, c, subject)
-		)
-		act := let.Act(func(t *testcase.T) error {
-			return c.Runtime.Get(t).Execute(Context.Get(t), process.Get(t))
-		})
-
-		s.Then("I expect that the process will have the variable set", func(t *testcase.T) {
-			act(t)
-
-			assert.Equal[any](t, getVar(t, c.Runtime.Get(t), process.Get(t), key.Get(t)), value.Get(t))
-		})
-
-		s.Then("execution is idempotent with runtime", func(t *testcase.T) {
-			assert.NoError(t, act(t)) // first pass
-
-			firstPassEvents := mustHistory(t, c.Runtime.Get(t), process.Get(t))
-
-			t.Random.Repeat(3, 7, func() {
-				assert.NoError(t, act(t))
-
-				assert.Equal(t, mustHistory(t, c.Runtime.Get(t), process.Get(t)), firstPassEvents)
 			})
 		})
 	})

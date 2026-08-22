@@ -1,0 +1,846 @@
+package workflow_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"go.llib.dev/frameless/adapter/memory"
+	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftest"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dscontract"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
+)
+
+func TestVars(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	eventRepository := let.Var(s, func(t *testcase.T) workflow.EventRepository {
+		return &memory.WorkflowEventRepository{}
+	})
+
+	processID := let.Var(s, func(t *testcase.T) workflow.ProcessID {
+		return mustProcessID(t)
+	})
+
+	subject := let.Var(s, func(t *testcase.T) workflow.Vars {
+		return workflow.Vars{
+			ProcessID:        processID.Get(t),
+			EventsRepository: eventRepository.Get(t),
+		}
+	})
+
+	s.Context("implements ds.Map",
+		dscontract.MapE(func(tb testing.TB) ds.MapE[workflow.VarName, any] {
+			return subject.Get(testcase.ToT(&tb))
+		}).Spec)
+
+	var letVarName = func(s *testcase.Spec) testcase.Var[workflow.VarName] {
+		s.H().Helper()
+		return let.Var(s, func(t *testcase.T) workflow.VarName {
+			return workflow.VarName(t.Random.UUID())
+		})
+	}
+	var letValue = func(s *testcase.Spec) testcase.Var[any] {
+		s.H().Helper()
+		return let.Var(s, func(t *testcase.T) any {
+			return random.Pick(t.Random,
+				func() any { return t.Random.Int() },
+				func() any { return t.Random.String() },
+				func() any { return t.Random.Bool() },
+				func() any { return t.Random.Float32() },
+				func() any { return t.Random.Float64() },
+				func() any { return random.Slice(t.Random.IntBetween(0, 7), t.Random.UUID) },
+			)()
+		})
+	}
+	var letVarScope = func(s *testcase.Spec) testcase.Var[workflow.Path] {
+		s.H().Helper()
+		return let.Var(s, func(t *testcase.T) workflow.Path {
+			return random.Slice(t.Random.IntBetween(1, 7), t.Random.UUID)
+		})
+	}
+	var letVarScopeOther = func(s *testcase.Spec, p testcase.Var[workflow.Path]) testcase.Var[workflow.Path] {
+		return let.Var(s, func(t *testcase.T) workflow.Path {
+			var o workflow.Path = make(workflow.Path, len(p.Get(t)))
+			for i, v := range p.Get(t) {
+				o[i] = random.Unique(t.Random.UUID, v)
+			}
+			random.Pick(t.Random, func() {
+				if 1 < len(o) {
+					slicekit.Pop(&o)
+				}
+			}, func() {
+				o = append(o, t.Random.UUID())
+			}, func() {
+				// do nothing
+			})()
+			return o
+		})
+	}
+
+	s.Describe("#Set", func(s *testcase.Spec) {
+		var (
+			ctx   = let.Context(s)
+			name  = letVarName(s)
+			value = letValue(s)
+		)
+		act := func(t *testcase.T) error {
+			return subject.Get(t).Set(ctx.Get(t), name.Get(t), value.Get(t))
+		}
+
+		s.Then("the call returns no error", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.Then("an EventSetVar is appended to the process events with the assigned value", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+			assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+				ve, ok := e.(workflow.EventSetVar)
+				assert.True(tb, ok)
+				assert.Equal(tb, ve.Name, name.Get(t))
+				assert.Equal[any](tb, ve.Value, value.Get(t))
+				assert.NotEmpty(tb, ve.ProcessID)
+				assert.NotEmpty(tb, ve.Timestamp)
+			})
+		})
+
+		s.When("an execution path is present in the context", func(s *testcase.Spec) {
+			execPath := letVarScope(s)
+
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				return withPath(ctx.Super(t), execPath.Get(t))
+			})
+
+			s.Then("the EventSetVar remembers the execution path it was made at", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+				assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+					ve, ok := e.(workflow.EventSetVar)
+					assert.True(tb, ok)
+					assert.Equal(tb, ve.Name, name.Get(t))
+					assert.Equal(tb, ve.Path, execPath.Get(t))
+				})
+			})
+		})
+
+		s.When("variable scope is set in the context", func(s *testcase.Spec) {
+			varScope := letVarScope(s)
+
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				return withVarScope(ctx.Super(t), varScope.Get(t))
+			})
+
+			s.Then("an EventSetVar is appended to the process events with the assigned value", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+				assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+					ve, ok := e.(workflow.EventSetVar)
+					assert.True(tb, ok)
+					assert.Equal(tb, ve.Name, name.Get(t))
+					assert.Equal[any](tb, ve.Value, value.Get(t))
+					assert.NotEmpty(tb, ve.ProcessID)
+					assert.NotEmpty(tb, ve.Timestamp)
+					assert.Equal(tb, ve.Scope, varScope.Get(t))
+				})
+			})
+
+			s.And("if the variable was already assigned in a previous outer-scope", func(s *testcase.Spec) {
+				outerScope := let.Var(s, func(t *testcase.T) workflow.Path {
+					scope := varScope.Get(t)[0 : len(varScope.Get(t))-1]
+					assert.NotEqual(t, scope, varScope.Get(t))
+					return scope
+				})
+
+				s.Before(func(t *testcase.T) {
+					assert.NoError(t, subject.Get(t).Set(withVarScope(t.Context(), outerScope.Get(t)), name.Get(t), t.Random.UUID()))
+				})
+
+				s.Then("the variable value assigned to the latest value, but with the initial outer-scope", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+					assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+						ve, ok := e.(workflow.EventSetVar)
+						assert.True(tb, ok)
+						assert.Equal(tb, ve.Name, name.Get(t))
+						assert.Equal[any](tb, ve.Value, value.Get(t))
+						assert.Equal(tb, ve.Scope, outerScope.Get(t))
+					})
+				})
+			})
+		})
+	})
+
+	s.Describe("#Get / #Lookup", func(s *testcase.Spec) {
+		var (
+			readContext = let.Context(s)
+			name        = letVarName(s)
+		)
+		actGet := let.Act2(func(t *testcase.T) (any, error) {
+			return subject.Get(t).Get(readContext.Get(t), name.Get(t))
+		})
+		actLookup := let.Act3(func(t *testcase.T) (any, bool, error) {
+			return subject.Get(t).Lookup(readContext.Get(t), name.Get(t))
+		})
+
+		s.When("variable by this name is already assigned", func(s *testcase.Spec) {
+			writeContext := let.Context(s)
+			value := letValue(s)
+
+			s.Before(func(t *testcase.T) {
+				assert.NoError(t, subject.Get(t).Set(writeContext.Get(t), name.Get(t), value.Get(t)))
+			})
+
+			s.Then("value can be retrieved with #Get", func(t *testcase.T) {
+				got, err := actGet(t)
+				assert.NoError(t, err)
+				assert.Equal(t, value.Get(t), got)
+			})
+
+			s.Then("value can be retrieved with #Lookup", func(t *testcase.T) {
+				got, ok, err := actLookup(t)
+				assert.NoError(t, err)
+				assert.True(t, ok)
+				assert.Equal(t, value.Get(t), got)
+			})
+
+			s.And("the variable scopes", func(s *testcase.Spec) {
+				var (
+					readScope  = let.Var[workflow.Path](s, nil)
+					writeScope = let.Var[workflow.Path](s, nil)
+				)
+				readContext.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(readContext.Super(t), readScope.Get(t))
+				})
+				writeContext.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(writeContext.Super(t), writeScope.Get(t))
+				})
+
+				s.Context("are the same", func(s *testcase.Spec) {
+					commonScope := letVarScope(s)
+					readScope.Let(s, commonScope.Get)
+					writeScope.Let(s, commonScope.Get)
+
+					s.Then("#Get will find the value", func(t *testcase.T) {
+						got, err := actGet(t)
+						assert.NoError(t, err)
+						assert.Equal(t, value.Get(t), got)
+					})
+
+					s.Then("#Lookup will find the value", func(t *testcase.T) {
+						got, ok, err := actLookup(t)
+						assert.NoError(t, err)
+						assert.True(t, ok)
+						assert.Equal(t, value.Get(t), got)
+					})
+				})
+
+				s.Context("matched by prefix, the reading context is a sub var scope of writing", func(s *testcase.Spec) {
+					writeScope.Let(s, letVarScope(s).Get)
+					readScope.Let(s, func(t *testcase.T) workflow.Path {
+						o := slicekit.Clone(writeScope.Get(t))
+						t.Random.Repeat(1, 3, func() {
+							o = append(o, t.Random.UUID())
+						})
+						return o
+					})
+
+					s.Then("#Get will find the value", func(t *testcase.T) {
+						got, err := actGet(t)
+						assert.NoError(t, err)
+						assert.Equal(t, value.Get(t), got)
+					})
+
+					s.Then("#Lookup will find the value", func(t *testcase.T) {
+						got, ok, err := actLookup(t)
+						assert.NoError(t, err)
+						assert.True(t, ok)
+						assert.Equal(t, value.Get(t), got)
+					})
+				})
+
+				s.Context("read var scope is outer than write scope", func(s *testcase.Spec) {
+					readScope.Let(s, letVarScope(s).Get)
+					writeScope.Let(s, func(t *testcase.T) workflow.Path {
+						o := slicekit.Clone(readScope.Get(t))
+						t.Random.Repeat(1, 3, func() {
+							o = append(o, t.Random.UUID())
+						})
+						return o
+					})
+
+					s.Then("#Get will NOT find the value because it is not part of its var-scope", func(t *testcase.T) {
+						got, err := actGet(t)
+						assert.NoError(t, err)
+						assert.Nil(t, got)
+					})
+
+					s.Then("#Lookup will NOT find the value because it is not part of its var-scope", func(t *testcase.T) {
+						got, ok, err := actLookup(t)
+						assert.NoError(t, err)
+						assert.False(t, ok)
+						assert.Nil(t, got)
+					})
+				})
+
+				s.Context("scopes are not empty and completely different", func(s *testcase.Spec) {
+					readScope.Let(s, letVarScope(s).Get)
+					writeScope.Let(s, letVarScopeOther(s, readScope).Get)
+
+					s.Then("#Get will NOT find the value because it is in a different var-scope", func(t *testcase.T) {
+						got, err := actGet(t)
+						assert.NoError(t, err)
+						assert.Nil(t, got)
+					})
+
+					s.Then("#Lookup will NOT find the value because it is in a different var-scope", func(t *testcase.T) {
+						got, ok, err := actLookup(t)
+						assert.NoError(t, err)
+						assert.False(t, ok)
+						assert.Nil(t, got)
+					})
+				})
+			})
+		})
+	})
+
+	//──────────────────────────────────────────────────────────────────────
+	// #Delete
+
+	s.Describe("#Delete", func(s *testcase.Spec) {
+		var (
+			ctx  = let.Context(s)
+			name = letVarName(s)
+		)
+		act := func(t *testcase.T) error {
+			return subject.Get(t).Delete(ctx.Get(t), name.Get(t))
+		}
+
+		s.Then("the call returns no error", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.Context("the variable has an assigned value", func(s *testcase.Spec) {
+			value := letValue(s)
+
+			setContext := let.Context(s)
+
+			s.Before(func(t *testcase.T) {
+				assert.NoError(t, subject.Get(t).Set(setContext.Get(t), name.Get(t), value.Get(t)))
+			})
+
+			s.Then("#Lookup will report the key as no longer found", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				got, ok, err := subject.Get(t).Lookup(ctx.Get(t), name.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, ok)
+				assert.Nil(t, got)
+			})
+
+			s.And("an execution path is present in the context", func(s *testcase.Spec) {
+				execPath := letVarScope(s)
+
+				ctx.Let(s, func(t *testcase.T) context.Context {
+					return withPath(ctx.Super(t), execPath.Get(t))
+				})
+
+				s.Then("the EventDeleteVar remembers the execution path it was made at", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+					assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+						ve, ok := e.(workflow.EventDeleteVar)
+						assert.True(tb, ok)
+						assert.Equal(tb, ve.Name, name.Get(t))
+						assert.Equal(tb, ve.Path, execPath.Get(t))
+					})
+				})
+			})
+
+			s.And("the variable scope is set in the context", func(s *testcase.Spec) {
+				varScope := letVarScope(s)
+
+				ctx.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(ctx.Super(t), varScope.Get(t))
+				})
+
+				s.Then("#Lookup will report the key as no longer found from a parent scope", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					readCtx := withVarScope(t.Context(), varScope.Get(t)[:0])
+					got, ok, err := subject.Get(t).Lookup(readCtx, name.Get(t))
+					assert.NoError(t, err)
+					assert.False(t, ok)
+					assert.Nil(t, got)
+				})
+			})
+
+			s.Context("but the deletion is issued from a variable scope which doesn't have access to the created variable", func(s *testcase.Spec) {
+				setContext.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(setContext.PreviousValue(t), workflow.Path{"foo", "bar", "baz"})
+				})
+				ctx.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(setContext.PreviousValue(t), workflow.Path{"foo", "bar"})
+				})
+
+				s.Then("no error occurs", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+
+				s.Then("an EventDeleteVar is NOT emitted to the process events", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+					assert.NoneOf(t, events, func(tb testing.TB, e workflow.Event) {
+						_, ok := e.(workflow.EventDeleteVar)
+						assert.True(tb, ok)
+					})
+				})
+
+				s.Then("the variable in the inner var-scope is NOT deleted", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					got, ok, err := subject.Get(t).Lookup(setContext.Get(t), name.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, ok)
+					assert.Equal(t, got, value.Get(t))
+				})
+			})
+		})
+
+		s.Context("the variable is not assigned", func(s *testcase.Spec) {
+			s.Then("the call still returns no error", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			s.Then("an EventDeleteVar is NOT emitted to the process events", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+				assert.NoneOf(t, events, func(tb testing.TB, e workflow.Event) {
+					_, ok := e.(workflow.EventDeleteVar)
+					assert.True(tb, ok)
+				})
+			})
+		})
+
+		s.Context("another variable with a different name is assigned", func(s *testcase.Spec) {
+			otherName := letVarName(s)
+			otherValue := letValue(s)
+
+			s.Before(func(t *testcase.T) {
+				assert.NoError(t, subject.Get(t).Set(ctx.Get(t), otherName.Get(t), otherValue.Get(t)))
+			})
+
+			s.Then("the other variable remains retrievable after the delete", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				got, ok, err := subject.Get(t).Lookup(ctx.Get(t), otherName.Get(t))
+				assert.NoError(t, err)
+				assert.True(t, ok)
+				assert.Equal(t, otherValue.Get(t), got)
+			})
+		})
+
+		s.Context("the deletion event has a recorded scope that does not cover the set scope", func(s *testcase.Spec) {
+			setScope := letVarScope(s)
+			deleteScope := let.Var(s, func(t *testcase.T) workflow.Path {
+				return append(slicekit.Clone(setScope.Get(t)), t.Random.UUID())
+			})
+			value := letValue(s)
+
+			s.Before(func(t *testcase.T) {
+				base := clock.Now().UTC()
+				setEventID, err := workflow.MakeEventID()
+				assert.NoError(t, err)
+				setEvent := workflow.Event(workflow.EventSetVar{
+					EventID:   setEventID,
+					ProcessID: processID.Get(t),
+					Timestamp: base,
+					Name:      name.Get(t),
+					Value:     value.Get(t),
+					Scope:     setScope.Get(t),
+				})
+				assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &setEvent))
+
+				deleteEventID, err := workflow.MakeEventID()
+				assert.NoError(t, err)
+				deleteEvent := workflow.Event(workflow.EventDeleteVar{
+					EventID:   deleteEventID,
+					ProcessID: processID.Get(t),
+					Timestamp: base.Add(time.Second),
+					Name:      name.Get(t),
+					Scope:     deleteScope.Get(t),
+				})
+				assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &deleteEvent))
+			})
+
+			s.Then("the lookup considers the deletion scope, not only the set scope", func(t *testcase.T) {
+				readCtx := withVarScope(t.Context(), setScope.Get(t))
+				got, ok, err := subject.Get(t).Lookup(readCtx, name.Get(t))
+				assert.NoError(t, err)
+				assert.True(t, ok)
+				assert.Equal(t, value.Get(t), got)
+			})
+		})
+	})
+
+	s.Test("the variable scope (not the current execution path) determines the visibility", func(t *testcase.T) {
+		var (
+			varScopeName = t.Random.UUID()
+			varName      = workflow.VarName(t.Random.UUID())
+			varValue     = t.Random.String()
+		)
+
+		participants := workflow.Participants{
+			"set_var": func(ctx context.Context) error {
+				vars, err := workflow.GetVars(ctx)
+				if err != nil {
+					return err
+				}
+				return vars.Set(ctx, varName, varValue)
+			},
+		}
+
+		def := workflow.Sequence{
+			&workflow.ExecuteParticipant{ID: "set_var"},
+		}
+
+		r := workflow.Runtime{
+			Participants: participants,
+			Events:       &memory.WorkflowEventRepository{},
+		}
+
+		p := mustProcessID(t)
+		scopedCtx := workflow.WithVarScope(r.Context(t.Context()), varScopeName)
+
+		assert.NoError(t, r.Spawn(scopedCtx, p, def))
+
+		vs := workflow.Vars{ProcessID: p, EventsRepository: r.Events}
+
+		t.Log("#Get can find it")
+		gotI, err := vs.Get(scopedCtx, varName)
+		assert.NoError(t, err)
+		got, ok := gotI.(string)
+		assert.True(t, ok)
+		assert.Equal(t, got, varValue)
+
+		t.Log("#Lookup can find it")
+		gotI, ok, err = vs.Lookup(scopedCtx, varName)
+		assert.NoError(t, err)
+		got, ok = gotI.(string)
+		assert.True(t, ok)
+		assert.Equal(t, got, varValue)
+
+		t.Log("value is present in #ToMap")
+		m, err := vs.ToMap(scopedCtx)
+		assert.NoError(t, err)
+		assert.Equal[any](t, varValue, m[varName])
+	})
+}
+
+func TestSetVar(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	var (
+		name  = let.As[workflow.VarName](let.String(s))
+		value = wftest.LetValue(s)
+	)
+	subject := let.Var(s, func(t *testcase.T) workflow.SetVar {
+		return workflow.SetVar{
+			Name:  name.Get(t),
+			Value: value.Get(t),
+		}
+	})
+
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		var (
+			Context   = let.Context(s)
+			processID = wftest.LetProcessID(s)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return c.ActExecuteDefinition(t, Context.Get(t), processID.Get(t), subject.Get(t))
+		})
+
+		s.Then("I expect that the process will have the variable set", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal[any](t, getVar(t, c.Runtime.Get(t), processID.Get(t), name.Get(t)), value.Get(t))
+		})
+
+		s.Then("execution is idempotent with runtime", func(t *testcase.T) {
+			assert.NoError(t, act(t)) // first pass
+
+			firstPassEvents := mustHistory(t, c.Runtime.Get(t), processID.Get(t))
+
+			t.Random.Repeat(3, 7, func() {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, mustHistory(t, c.Runtime.Get(t), processID.Get(t)), firstPassEvents)
+			})
+		})
+
+		s.Then("replaying the step after a later step changed the variable will not restore the old value", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			// a later workflow step assigns a new value to the same variable
+			var newValue = t.Random.UUID()
+			setVar(t, c.Runtime.Get(t), processID.Get(t), name.Get(t), newValue)
+
+			assert.NoError(t, act(t)) // the very same step gets replayed
+
+			assert.Equal[any](t, getVar(t, c.Runtime.Get(t), processID.Get(t), name.Get(t)), newValue,
+				"the replayed assignment step must not undo what the steps after it did")
+		})
+	})
+}
+
+func TestDeleteVar(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	var (
+		name = let.As[workflow.VarName](let.String(s))
+	)
+	subject := let.Var(s, func(t *testcase.T) workflow.DeleteVar {
+		return workflow.DeleteVar{Name: name.Get(t)}
+	})
+
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		var (
+			deletionContext  = let.Context(s)
+			deletionVarScope = let.VarOf[workflow.Path](s, nil)
+			deletionPath     = let.VarOf[workflow.Path](s, nil)
+			processID        = wftest.LetProcessID(s)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			ctx := deletionContext.Get(t)
+			ctx = withPath(ctx, deletionPath.Get(t))
+			ctx = withVarScope(ctx, deletionVarScope.Get(t))
+			return c.ActExecuteDefinition(t, ctx, processID.Get(t), subject.Get(t))
+		})
+
+		vars := LetVars(s, c.Runtime, processID)
+
+		// setVarEvent records a variable assignment straight into the event
+		// history, standing in for an assignment made by an earlier workflow step
+		// which ran at a given execution path under a given variable scope.
+		//
+		// The timestamps are set explicitly because the event history is folded in
+		// timestamp order, and the assertions depend on that order.
+		var setVarEvent = func(t *testcase.T, at time.Time, scope, path workflow.Path, value any) {
+			t.Helper()
+			var event workflow.Event = workflow.EventSetVar{
+				EventID:   wftest.MakeEventID(t),
+				ProcessID: processID.Get(t),
+				Timestamp: at,
+				Path:      path,
+				Name:      name.Get(t),
+				Value:     value,
+				Scope:     scope,
+			}
+			assert.NoError(t, c.EventRepository.Get(t).Create(t.Context(), &event))
+		}
+
+		// lookup reads the variable under test as it is seen from a given variable scope.
+		var lookup = func(t *testcase.T, scope workflow.Path) (any, bool) {
+			t.Helper()
+			got, ok, err := vars.Get(t).Lookup(withVarScope(t.Context(), scope), name.Get(t))
+			assert.NoError(t, err)
+			return got, ok
+		}
+
+		var deletionEvents = func(t *testcase.T) []workflow.EventDeleteVar {
+			t.Helper()
+			var out []workflow.EventDeleteVar
+			for _, e := range mustHistory(t, c.Runtime.Get(t), processID.Get(t)) {
+				if de, ok := e.(workflow.EventDeleteVar); ok {
+					out = append(out, de)
+				}
+			}
+			return out
+		}
+
+		var ThenExecutionIsIdempotent = func(s *testcase.Spec) {
+			s.H().Helper()
+			s.Then("execution is idempotent", func(t *testcase.T) {
+				assert.NoError(t, act(t)) // first pass
+
+				firstPassEvents := mustHistory(t, c.Runtime.Get(t), processID.Get(t))
+
+				t.Random.Repeat(3, 7, func() {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, mustHistory(t, c.Runtime.Get(t), processID.Get(t)), firstPassEvents)
+				})
+			})
+		}
+
+		s.Then("deleting a variable which was never assigned is not an error", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.Then("no EventDeleteVar is recorded, since there was nothing to delete", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Empty(t, deletionEvents(t))
+		})
+
+		ThenExecutionIsIdempotent(s)
+
+		s.When("the variable is set already", func(s *testcase.Spec) {
+			var (
+				TopVarScope = let.VarOf[workflow.Path](s, nil)
+				TopVarPath  = let.VarOf[workflow.Path](s, nil)
+				value       = wftest.LetValue(s)
+			)
+			s.Before(func(t *testcase.T) {
+				setVarEvent(t, clock.Now().Add(-time.Hour),
+					TopVarScope.Get(t), TopVarPath.Get(t), value.Get(t))
+			})
+
+			s.Then("it will delete the value", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				_, ok := lookup(t, TopVarScope.Get(t))
+				assert.False(t, ok)
+			})
+
+			s.Then("the EventDeleteVar remembers where the step ran and which binding it removed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.OneOf(t, deletionEvents(t), func(tb testing.TB, e workflow.EventDeleteVar) {
+					assert.Equal(tb, e.Name, name.Get(t))
+					assert.Equal(tb, e.Scope, TopVarScope.Get(t))
+					assert.NotEmpty(tb, e.Path, "the execution path of the deletion step is expected")
+					assert.True(tb, e.Path.MatchPrefix(deletionPath.Get(t)))
+				})
+			})
+
+			ThenExecutionIsIdempotent(s)
+
+			s.Then("replaying the step after a later step reassigned the variable will not delete it again", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				_, ok := lookup(t, TopVarScope.Get(t))
+				assert.False(t, ok)
+
+				// a later workflow step assigns the variable again
+				var newValue = t.Random.UUID()
+				setVar(t, c.Runtime.Get(t), processID.Get(t), name.Get(t), newValue)
+
+				assert.NoError(t, act(t)) // the very same step gets replayed
+
+				got, ok := lookup(t, TopVarScope.Get(t))
+				assert.True(t, ok, "the replayed deletion step must not remove a value that it never saw")
+				assert.Equal[any](t, got, newValue)
+			})
+
+			s.And("the variable-scope of the value is outside of the deletion's variable scope", func(s *testcase.Spec) {
+				TopVarScope.Let(s, func(t *testcase.T) workflow.Path {
+					return workflow.Path{"foo", "bar", "baz"}
+				})
+
+				deletionVarScope.Let(s, func(t *testcase.T) workflow.Path {
+					return workflow.Path{"baz", "bar", "foo"}
+				})
+
+				s.Then("deletion won't occur", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					got, ok := lookup(t, TopVarScope.Get(t))
+					assert.True(t, ok, "the variable must stay intact within its own variable scope")
+					assert.Equal[any](t, got, value.Get(t))
+
+					_, ok = lookup(t, deletionVarScope.Get(t))
+					assert.False(t, ok, "the variable was never visible from the deletion's variable scope")
+				})
+
+				s.Then("no EventDeleteVar is recorded", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Empty(t, deletionEvents(t))
+				})
+
+				ThenExecutionIsIdempotent(s)
+			})
+
+			s.And("the deletion occurs in a sub variable scope", func(s *testcase.Spec) {
+				TopVarScope.Let(s, func(t *testcase.T) workflow.Path {
+					return workflow.Path{"foo", "bar"}
+				})
+
+				deletionVarScope.Let(s, func(t *testcase.T) workflow.Path {
+					return slicekit.Merge(TopVarScope.Get(t), workflow.Path{"qux"})
+				})
+
+				s.Then("the sub variable scope deletion which had visibility to the var defined in the top variable scope will delete the variable", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					_, ok := lookup(t, deletionVarScope.Get(t))
+					assert.False(t, ok)
+
+					_, ok = lookup(t, TopVarScope.Get(t))
+					assert.False(t, ok)
+				})
+
+				ThenExecutionIsIdempotent(s)
+
+				s.And("variable is REDECLARED in sub variable scope", func(s *testcase.Spec) {
+					var SubVarValue = wftest.LetValue(s)
+
+					s.Before(func(t *testcase.T) {
+						setVarEvent(t, clock.Now().Add(-time.Minute),
+							deletionVarScope.Get(t),
+							slicekit.Merge(TopVarPath.Get(t), workflow.Path{"sub"}),
+							SubVarValue.Get(t))
+					})
+
+					s.Then("deletion will only remove the variable from the current sub var scope", func(t *testcase.T) {
+						got, ok := lookup(t, deletionVarScope.Get(t))
+						assert.True(t, ok)
+						assert.Equal[any](t, got, SubVarValue.Get(t))
+
+						assert.NoError(t, act(t))
+
+						_, ok = lookup(t, deletionVarScope.Get(t))
+						assert.False(t, ok)
+
+						got, ok = lookup(t, TopVarScope.Get(t))
+						assert.True(t, ok, "the binding of the outer variable scope must survive")
+						assert.Equal[any](t, got, value.Get(t))
+					})
+
+					ThenExecutionIsIdempotent(s)
+				})
+			})
+		})
+	})
+}
+
+func withVarScope(ctx context.Context, scope workflow.Path) context.Context {
+	for _, name := range scope {
+		ctx = workflow.WithVarScope(ctx, name)
+	}
+	return ctx
+}

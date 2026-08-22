@@ -39,14 +39,14 @@ func TestWorkflowEventRepository(t *testing.T) {
 		pidB, err := workflow.MakeProcessID()
 		assert.NoError(t, err)
 
-		var mkEvent = func(tb testing.TB, pid workflow.ProcessID, key workflow.VarKey, val any) workflow.Event {
+		var mkEvent = func(tb testing.TB, pid workflow.ProcessID, key workflow.VarName, val any) workflow.Event {
 			eventID, err := workflow.MakeEventID()
 			assert.NoError(tb, err)
 			var e workflow.Event = workflow.EventSetVar{
 				EventID:   eventID,
 				ProcessID: pid,
 				Timestamp: clock.Now(),
-				Key:       key,
+				Name:      key,
 				Value:     val,
 			}
 			return e

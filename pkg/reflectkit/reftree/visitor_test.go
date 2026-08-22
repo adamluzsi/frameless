@@ -1750,9 +1750,9 @@ func TestRecursionGuard(t *testing.T) {
 			})
 		}
 
-		var thenNotSeen = func(s *testcase.Spec) {
+		var thenNotSeen = func(s *testcase.Spec, msg ...assert.Message) {
 			s.Then("it will reported as not yet seen", func(t *testcase.T) {
-				assert.False(t, act(t), "expected to not yet seen the value")
+				assert.False(t, act(t), append([]assert.Message{"expected to not yet seen the value"}, msg...)...)
 			})
 		}
 
@@ -1803,6 +1803,35 @@ func TestRecursionGuard(t *testing.T) {
 				})
 
 				thenSeen(s)
+			})
+		})
+
+		s.When("value is a nil pointer", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var ptr *testent.Foo
+				return reflect.ValueOf(ptr)
+			})
+
+			thenNotSeen(s)
+
+			s.And("the same nil pointer was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, act(t))
+				})
+
+				thenNotSeen(s)
+			})
+
+			s.And("an unrelated nil pointer was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					var other *time.Time
+					assert.False(t, method(t, reflect.ValueOf(other)))
+				})
+
+				thenNotSeen(s,
+					"a nil pointer is not able to take part in a reference cycle,",
+					"and since every nil pointer shares the zero address,",
+					"memorising one would make all the others look already seen")
 			})
 		})
 

@@ -121,6 +121,19 @@ func LetProcessID(s *testcase.Spec) testcase.Var[workflow.ProcessID] {
 	})
 }
 
+func LetValue(s *testcase.Spec) testcase.Var[any] {
+	return let.Var(s, func(t *testcase.T) any {
+		return random.Pick[func() any](t.Random,
+			func() any { return t.Random.String() },
+			func() any { return t.Random.Int() },
+			func() any { return t.Random.Float32() },
+			func() any { return t.Random.Float64() },
+			func() any { return t.Random.Time() },
+			func() any { return t.Random.UUID() },
+		)()
+	})
+}
+
 func LetParticipant[Func any](s *testcase.Spec, c C, mk func(t *testcase.T) Func) (testcase.Var[Func], testcase.Var[workflow.ParticipantID]) {
 	var participantID = LetParticipantID(s)
 	return LetParticipantWithID(s, c, participantID, mk), participantID
@@ -182,6 +195,8 @@ func (c *C) LetStubParticipant(s *testcase.Spec, pid testcase.Var[workflow.Parti
 // test helper thin and lets the production code own the "associate this
 // Definition with this ProcessID" operation. Process is intentionally
 // stateless — the current definition is always read from the event history.
+//
+// Deprecated: use C#Definition plus C#Act
 func LetProcessWithDefinition[Definition workflow.Definition](s *testcase.Spec, c C, def testcase.Var[Definition]) testcase.Var[workflow.ProcessID] {
 	return let.Var(s, func(t *testcase.T) workflow.ProcessID {
 		id, err := workflow.MakeProcessID()
@@ -293,7 +308,7 @@ func LetC(s *testcase.Spec) C {
 	c.ProcessID = LetProcessID(s)
 
 	c.Definition = let.Var(s, func(t *testcase.T) workflow.Definition {
-		return workflow.SetVar{Key: "answer", Value: 42}
+		return workflow.SetVar{Name: "answer", Value: 42}
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -304,16 +319,16 @@ func LetC(s *testcase.Spec) C {
 }
 
 func (c *C) ActExecute(t *testcase.T) error {
-	return c.ActExecuteDefinition(t, c.ProcessID.Get(t), c.Definition.Get(t))
+	return c.ActExecuteDefinition(t, t.Context(), c.ProcessID.Get(t), c.Definition.Get(t))
 }
 
-func (c *C) ActExecuteDefinition(t *testcase.T, processID workflow.ProcessID, definition workflow.Definition) error {
+func (c *C) ActExecuteDefinition(t *testcase.T, ctx context.Context, processID workflow.ProcessID, definition workflow.Definition) error {
 	assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, definition))
 	testcase.OnFail(t, func() {
 		t.Log("definition:")
 		t.LogPretty(definition)
 	})
-	return c.Runtime.Get(t).Execute(t.Context(), processID)
+	return c.Runtime.Get(t).Execute(ctx, processID)
 }
 
 // ProcessEvents returns the recorded event history of the given Process by reading it
@@ -416,4 +431,10 @@ func (noFaultTolerance) ShouldTry(ctx context.Context, attempt resilience.RetryA
 		return true
 	}
 	return false
+}
+
+func MakeEventID(tb testing.TB) workflow.EventID {
+	id, err := workflow.MakeEventID()
+	assert.NoError(tb, err)
+	return id
 }

@@ -48,11 +48,11 @@ func TestWfjsonCodecBug_NestedSequenceRoundTrip(t *testing.T) {
 	// `any`-typed numbers as float64, so an `int` literal would fail the deep
 	// equality check below even when the codec itself is correct.
 	outer := workflow.Sequence{
-		workflow.SetVar{Key: "marker", Value: "before"},
+		workflow.SetVar{Name: "marker", Value: "before"},
 		workflow.Sequence{
-			workflow.SetVar{Key: "inner", Value: "marker-value"},
+			workflow.SetVar{Name: "inner", Value: "marker-value"},
 		},
-		workflow.SetVar{Key: "after", Value: "after"},
+		workflow.SetVar{Name: "after", Value: "after"},
 	}
 
 	data, err := c.Marshal(outer)
@@ -196,7 +196,7 @@ func TestWfjsonCodecBug_FuzzNestedSequence(t *testing.T) {
 func MakeNestedFuzzLeaf(t *testcase.T) workflow.Definition {
 	return random.Pick(t.Random,
 		func() workflow.Definition {
-			return workflow.SetVar{Key: workflow.VarKey(t.Random.String()), Value: t.Random.String()}
+			return workflow.SetVar{Name: workflow.VarName(t.Random.String()), Value: t.Random.String()}
 		},
 		func() workflow.Definition {
 			return workflow.ExecuteParticipant{ID: workflow.ParticipantID(t.Random.String())}

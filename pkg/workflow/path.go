@@ -26,6 +26,36 @@ func (p Path) MatchPrefix(prefix Path) bool {
 	return true
 }
 
+//--- CurrentPath ---
+
+func CurrentPath(ctx context.Context) Path {
+	return getPath(ctx, ctxCurrentPath)
+}
+
+func WithName(ctx context.Context, name string) context.Context {
+	return withName(ctx, ctxCurrentPath, name)
+}
+
+var ctxCurrentPath contextkit.ValueHandler[ctxKeyCurrentPath, pathNode]
+
+type ctxKeyCurrentPath struct{}
+
+//--- VarScope ---
+
+func VarScope(ctx context.Context) Path {
+	return getPath(ctx, ctxVarScope)
+}
+
+func WithVarScope(ctx context.Context, name string) context.Context {
+	return withName(ctx, ctxVarScope, name)
+}
+
+var ctxVarScope contextkit.ValueHandler[ctxKeyVarScope, pathNode]
+
+type ctxKeyVarScope struct{}
+
+// --- utils ---
+
 type pathNode struct {
 	Parent *pathNode
 	Name   string
@@ -52,11 +82,7 @@ func (n pathNode) FromRoot() iter.Seq[*pathNode] {
 	}
 }
 
-// ---
-
-var ctxCurrentPath contextkit.ValueHandler[ctxKeyCurrentPath, pathNode]
-
-type ctxKeyCurrentPath struct{}
+//---
 
 func getPath[K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pathNode]) Path {
 	node, ok := h.Lookup(ctx)
@@ -76,26 +102,4 @@ func withName[K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pat
 		next.Parent = &node
 	}
 	return h.ContextWith(ctx, next)
-}
-
-func CurrentPath(ctx context.Context) Path {
-	return getPath(ctx, ctxCurrentPath)
-}
-
-func WithName(ctx context.Context, name string) context.Context {
-	return withName(ctx, ctxCurrentPath, name)
-}
-
-//---
-
-var ctxVarScope contextkit.ValueHandler[ctxKeyVarScope, pathNode]
-
-type ctxKeyVarScope struct{}
-
-func VarScope(ctx context.Context) Path {
-	return getPath(ctx, ctxVarScope)
-}
-
-func WithVarScope(ctx context.Context, name string) context.Context {
-	return withName(ctx, ctxVarScope, name)
 }

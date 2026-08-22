@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/internal/taskerlite"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -271,9 +273,20 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 		return nil
 
 	case errors.Is(err, ErrNoProcessDefinition):
-		if time.Minute < clock.Now().Sub(sch.StartTime) {
-			// should we return error here ?
-			return err
+		if rt.isBindGracePeriodExpired(sch) {
+			// The Definition is not coming anymore, so the entry can never execute.
+			//
+			// It must still be disposed of gently. Returning the error would be
+			// fatal (see ErrIsFatal) and would tear down this queue subscriber,
+			// while NACK-ing would hand the very same unexecutable entry to the
+			// next subscriber, until every worker of the pool is gone. The entry
+			// is worthless, but the workers serving the rest of the queue are not,
+			// so the entry is acknowledged and dropped.
+			logger.Warn(ctx, "a scheduled workflow process is dropped because no definition was bound to it",
+				logging.Field("process_id", sch.ProcessID.String()),
+				logging.Field("scheduled_at", sch.CreatedAt),
+				logging.Field("bind_grace_period", rt.getBindGracePeriod().String()))
+			return nil
 		}
 		return s.ProcessExecutionQueue.Publish(ctx, ProcessExecution{
 			ProcessID:    sch.ProcessID,
@@ -299,6 +312,27 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 			CreatedAt:    sch.CreatedAt,
 		})
 	}
+}
+
+// isBindGracePeriodExpired tells whether a schedule entry has been waiting for
+// its Definition longer than the Runtime is willing to wait for it.
+//
+// The waiting is measured from ProcessExecution#CreatedAt, the moment the
+// Process was scheduled, and not from StartTime, which is pushed forward on
+// every requeue and would consequently never grow old enough to expire.
+func (rt Runtime) isBindGracePeriodExpired(sch ProcessExecution) bool {
+	if sch.CreatedAt.IsZero() { // age unknown, assume the entry is still fresh
+		return false
+	}
+	return rt.getBindGracePeriod() < clock.Now().Sub(sch.CreatedAt)
+}
+
+func (rt Runtime) getBindGracePeriod() time.Duration {
+	if rt.BindGracePeriod <= 0 {
+		const defaultBindGracePeriod = time.Minute
+		return defaultBindGracePeriod
+	}
+	return rt.BindGracePeriod
 }
 
 func (rt Runtime) backoffStartTime() time.Time {

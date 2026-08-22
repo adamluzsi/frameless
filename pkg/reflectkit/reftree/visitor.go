@@ -19,7 +19,7 @@ const Skip visitCTRL = "skip"
 
 func Walk(v reflect.Value, visit VisitorFunc) error {
 	var (
-		vis  = visitor{On: visit}
+		vis  = valueVisitor{On: visit}
 		root = Node{Value: v}
 	)
 	return vis.Visit(root)
@@ -27,7 +27,7 @@ func Walk(v reflect.Value, visit VisitorFunc) error {
 
 func Iter(v reflect.Value) iter.Seq[Node] {
 	return func(yield func(Node) bool) {
-		var visitor visitor
+		var visitor valueVisitor
 		visitor.On = func(v Node) error {
 			if !yield(v) {
 				return Stop
@@ -38,7 +38,7 @@ func Iter(v reflect.Value) iter.Seq[Node] {
 	}
 }
 
-type visitor struct {
+type valueVisitor struct {
 	On VisitorFunc
 	RG *RecursionGuard
 }
@@ -51,7 +51,7 @@ func (ctrl visitCTRL) Error() string {
 	return string(ctrl)
 }
 
-func (vis *visitor) Visit(v Node) (errReturn error) {
+func (vis *valueVisitor) Visit(v Node) (errReturn error) {
 	defer vis.errFilter(&errReturn, v)
 	guard := vis.getRecursionGuard()
 	seen := guard.Seen(v.Value)
@@ -66,11 +66,8 @@ func (vis *visitor) Visit(v Node) (errReturn error) {
 		if err := vis.yield(v); err != nil {
 			return err
 		}
-		var (
-			typ = v.Value.Type()
-			num = typ.NumField()
-		)
-		for i := 0; i < num; i++ {
+		var typ = v.Value.Type()
+		for i := range typ.NumField() {
 			var (
 				field = typ.Field(i)
 				value = v.Value.Field(i)
@@ -172,7 +169,7 @@ func (vis *visitor) Visit(v Node) (errReturn error) {
 	}
 }
 
-func (vis *visitor) yield(v Node) error {
+func (vis *valueVisitor) yield(v Node) error {
 	if vis.On != nil {
 		if err := vis.On(v); err != nil {
 			return err
@@ -181,7 +178,7 @@ func (vis *visitor) yield(v Node) error {
 	return nil
 }
 
-func (vis *visitor) yieldElem(v Node) (cont bool, rerr error) {
+func (vis *valueVisitor) yieldElem(v Node) (cont bool, rerr error) {
 	if err := vis.yield(v); err != nil {
 		if errors.Is(err, Skip) {
 			return true, nil
@@ -199,7 +196,7 @@ func (vis *visitor) yieldElem(v Node) (cont bool, rerr error) {
 	return true, nil
 }
 
-func (vis *visitor) getRecursionGuard() *RecursionGuard {
+func (vis *valueVisitor) getRecursionGuard() *RecursionGuard {
 	if vis.RG == nil {
 		vis.RG = &RecursionGuard{}
 	}
@@ -216,12 +213,12 @@ var kindStepIn = map[reflect.Kind]struct{}{
 	reflect.Interface: {},
 }
 
-func (vis *visitor) canStepIn(v reflect.Value) bool {
+func (vis *valueVisitor) canStepIn(v reflect.Value) bool {
 	_, ok := kindStepIn[v.Kind()]
 	return ok
 }
 
-func (vis *visitor) errFilter(err *error, v Node) {
+func (vis *valueVisitor) errFilter(err *error, v Node) {
 	if err == nil {
 		return
 	}
@@ -280,6 +277,13 @@ func (g *RecursionGuard) seenValue(v reflect.Value) bool {
 }
 
 func (g *RecursionGuard) seenPointer(v reflect.Value) bool {
+	if v.IsNil() {
+		// A nil pointer is not able to take part in a reference cycle.
+		//
+		// Every nil pointer shares the zero address, so memorising one
+		// would make the next, unrelated nil pointer look already seen.
+		return false
+	}
 	return g.seenPtr(v.Pointer())
 }
 

@@ -6,7 +6,9 @@ import (
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 )
 
 // mustHistory returns the Process event history from the Runtime's
@@ -27,18 +29,29 @@ func getProcessEvents(tb testing.TB, repo workflow.EventRepository, pid workflow
 	return events
 }
 
-func setVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarKey, val any) {
+func setVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarName, val any) {
 	tb.Helper()
 	ctx := rt.Context(context.Background())
 	vars := workflow.Vars{EventsRepository: rt.Events, ProcessID: pid}
 	assert.NoError(tb, vars.Set(ctx, key, val))
 }
 
-func getVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarKey) any {
+func LetVars(s *testcase.Spec, rt testcase.Var[workflow.Runtime], processID testcase.Var[workflow.ProcessID]) testcase.Var[workflow.Vars] {
+	return let.Var(s, func(t *testcase.T) workflow.Vars {
+		return getVars(t, rt.Get(t), processID.Get(t))
+	})
+}
+
+func getVars(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID) workflow.Vars {
 	tb.Helper()
-	ctx := rt.Context(context.Background())
-	vars := workflow.Vars{EventsRepository: rt.Events, ProcessID: pid}
-	val, err := vars.Get(ctx, key)
+	assert.NotNil(tb, rt.Events)
+	assert.NotEmpty(tb, pid)
+	return workflow.Vars{EventsRepository: rt.Events, ProcessID: pid}
+}
+
+func getVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarName) any {
+	tb.Helper()
+	val, err := getVars(tb, rt, pid).Get(tb.Context(), key)
 	assert.NoError(tb, err)
 	return val
 }

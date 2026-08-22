@@ -44,6 +44,23 @@ type Runtime struct {
 	WaitTime time.Duration
 	// RetryStrategy [optional] is the retry strategy applied when a non-fatal error occurs during a task execution.
 	RetryStrategy resilience.RetryStrategy
+	// BindGracePeriod [optional] is how long a scheduled Process may wait for
+	// its Definition to arrive through Runtime#Bind.
+	//
+	// Scheduling and binding are separate operations, so a Process can reach the
+	// execution queue slightly ahead of its Definition. While the grace period
+	// lasts, such a Process is simply requeued. Once it runs out, the schedule
+	// entry is discarded, because nothing suggests a Definition is still coming,
+	// and an entry that can never execute must not stay in a shared queue.
+	//
+	// The grace period is measured from the moment the Process was scheduled
+	// (ProcessExecution#CreatedAt), and it is expressed in wall-clock time rather
+	// than in a number of attempts on purpose: attempts accumulate faster the more
+	// worker nodes are running, so an attempt based budget would expire much
+	// sooner on a large cluster than on a small one.
+	//
+	// Default: 1 minute
+	BindGracePeriod time.Duration
 	// ContextSetup [optional] allows you to configure the request context of a workflow process execution.
 	// Ideal for adding tracing and logging fields to the workflow execution context
 	ContextSetup ContextSetup
