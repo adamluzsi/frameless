@@ -11,7 +11,10 @@ import (
 
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/must"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func ExampleMust() {
@@ -463,5 +466,133 @@ func TestLookup(t *testing.T) {
 		v, ok := mapkit.Lookup(vs, 42)
 		assert.True(t, ok)
 		assert.Equal(t, v, "foo")
+	})
+}
+
+func TestFreeKey(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		m = let.Var(s, func(t *testcase.T) map[int]string {
+			if t.Random.Bool() {
+				return map[int]string{}
+			}
+			return nil
+		})
+		initialKey = let.Var(s, func(t *testcase.T) int {
+			return 0
+		})
+		next = let.Var(s, func(t *testcase.T) func(n int) int {
+			return func(n int) int {
+				return n + 2
+			}
+		})
+	)
+	act := let.Act(func(t *testcase.T) int {
+		return mapkit.FreeKey(m.Get(t), initialKey.Get(t), next.Get(t))
+	})
+
+	s.Then("the initial key is returned as the next free key", func(t *testcase.T) {
+		assert.Equal(t, act(t), initialKey.Get(t))
+	})
+
+	s.When("the initial key is not the zero value", func(s *testcase.Spec) {
+		initialKey.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(1, 100)
+		})
+
+		s.Then("the lookup begins at the initial key", func(t *testcase.T) {
+			assert.Equal(t, act(t), initialKey.Get(t))
+		})
+	})
+
+	s.When("the initial key is already taken", func(s *testcase.Spec) {
+		m.Let(s, func(t *testcase.T) map[int]string {
+			return map[int]string{initialKey.Get(t): t.Random.String()}
+		})
+
+		s.Then("the incremented key is returned", func(t *testcase.T) {
+			assert.Equal(t, act(t), next.Get(t)(initialKey.Get(t)))
+		})
+	})
+
+	s.When("a continuous range of keys is taken from the initial key", func(s *testcase.Spec) {
+		takenCount := let.IntB(s, 1, 7)
+
+		m.Let(s, func(t *testcase.T) map[int]string {
+			var (
+				vs  = map[int]string{}
+				key = initialKey.Get(t)
+			)
+			for i := 0; i < takenCount.Get(t); i++ {
+				vs[key] = t.Random.String()
+				key = next.Get(t)(key)
+			}
+			return vs
+		})
+
+		s.Then("the increment is repeated until the first free key is found", func(t *testcase.T) {
+			assert.Equal(t, act(t), initialKey.Get(t)+takenCount.Get(t)*2)
+		})
+	})
+
+	s.When("the taken keys are not part of the increment sequence", func(s *testcase.Spec) {
+		m.Let(s, func(t *testcase.T) map[int]string {
+			return map[int]string{1: t.Random.String(), 3: t.Random.String()}
+		})
+
+		s.Then("they are ignored and the initial key is returned", func(t *testcase.T) {
+			assert.Equal(t, act(t), initialKey.Get(t))
+		})
+	})
+
+	s.When("the increment function goes backwards", func(s *testcase.Spec) {
+		next.Let(s, func(t *testcase.T) func(n int) int {
+			return func(n int) int { return n - 1 }
+		})
+
+		m.Let(s, func(t *testcase.T) map[int]string {
+			return map[int]string{0: t.Random.String(), -1: t.Random.String()}
+		})
+
+		s.Then("the increment function decides what the next key is", func(t *testcase.T) {
+			assert.Equal(t, act(t), -2)
+		})
+	})
+
+	s.When("the map is populated with arbitrary keys", func(s *testcase.Spec) {
+		m.Let(s, func(t *testcase.T) map[int]string {
+			var vs = map[int]string{}
+			t.Random.Repeat(3, 7, func() {
+				vs[t.Random.IntBetween(-25, 25)] = t.Random.String()
+			})
+			return vs
+		})
+
+		s.Then("the returned key is free to be used", func(t *testcase.T) {
+			_, taken := m.Get(t)[act(t)]
+			assert.False(t, taken, "expected that the returned key is not taken yet")
+		})
+
+		s.Then("consequent usage will always yield unused keys", func(t *testcase.T) {
+			t.Random.Repeat(3, 7, func() {
+				initialKey.Set(t, random.Pick(t.Random, mapkit.Keys(m.Get(t))...))
+				_, taken := m.Get(t)[act(t)]
+				assert.False(t, taken, "expected that the returned key is not taken yet")
+			})
+		})
+	})
+
+	s.Test("with a non numeric key type", func(t *testcase.T) {
+		m := map[string]string{
+			"a":  t.Random.String(),
+			"aa": t.Random.String(),
+		}
+
+		initialKey := "a"
+		increment := func(k string) string { return k + "a" }
+
+		next := mapkit.FreeKey(m, initialKey, increment)
+		assert.Equal(t, next, "aaa")
 	})
 }

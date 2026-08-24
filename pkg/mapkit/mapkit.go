@@ -149,3 +149,14 @@ func Lookup[K comparable, V any](m map[K]V, k K) (V, bool) {
 	v, ok := m[k]
 	return v, ok
 }
+
+// FreeKey helps finding a key based on an key value incrementing approach.
+func FreeKey[K comparable, V any](m map[K]V, initialKey K, next func(K) K) K {
+	var key K = initialKey
+	for {
+		if _, ok := m[key]; !ok {
+			return key
+		}
+		key = next(key)
+	}
+}
