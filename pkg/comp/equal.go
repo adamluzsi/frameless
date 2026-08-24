@@ -17,7 +17,7 @@ import (
 )
 
 func Equal[T any](a, b T, config ...EqualConfig) (equality bool) {
-	c := mergeEqualConfig(config)
+	var c = mergeEqualConfig(config)
 	switch a := any(a).(type) {
 	case predicate.Equatable[T]:
 		return a.Equal(b)

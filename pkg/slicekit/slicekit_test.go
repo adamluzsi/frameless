@@ -2083,3 +2083,192 @@ func mkBenchSlices[T any](b *testing.B, rnd *random.Random, sampling int, mk fun
 	random.Shuffle(rnd, oth)
 	return vs, oth
 }
+
+func ExampleEqual() {
+	slicekit.Equal([]string{}, []string(nil)) // true
+
+	slicekit.Equal([]string{"foo", "bar", "baz"},
+		[]string{"foo", "bar", "baz"}) // true
+
+	slicekit.Equal([]string{"foo", "bar", "baz"},
+		[]string{"foo", "bar", "qux"}) // false
+}
+
+func TestEqual(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type S []string
+
+	var (
+		slc = let.Var(s, func(t *testcase.T) S {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.UUID)
+		})
+		oth = let.Var[S](s, nil)
+	)
+
+	act := let.Act(func(t *testcase.T) bool {
+		return slicekit.Equal(slc.Get(t), oth.Get(t))
+	})
+
+	s.When("equal", func(s *testcase.Spec) {
+		oth.Let(s, func(t *testcase.T) S {
+			return slicekit.Clone(slc.Get(t))
+		})
+
+		s.Then("it will be reported as equals", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+
+		s.Context("because both is empty", func(s *testcase.Spec) {
+			slc.Let(s, func(t *testcase.T) S {
+				if t.Random.Bool() {
+					return nil
+				}
+				return S{}
+			})
+
+			oth.Let(s, func(t *testcase.T) S {
+				if t.Random.Bool() {
+					return nil
+				}
+				return S{}
+			})
+
+			s.Then("they will be equal", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+	})
+
+	s.When("they are ALMOST equal in content, but one of them either is longer or shorter", func(s *testcase.Spec) {
+		slc.Let(s, func(t *testcase.T) S {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.UUID)
+		})
+
+		oth.Let(s, func(t *testcase.T) S {
+			var p S = slicekit.Clone(slc.Get(t))
+			random.Pick(t.Random,
+				func() { p = p[0 : len(p)-1] },
+				func() { p = append(p, t.Random.UUID()) },
+			)()
+			return p
+		})
+
+		s.Then("they won't be equal", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.Test("comparison can be done with Equality", func(t *testcase.T) {
+		var slc []time.Time = []time.Time{
+			t.Random.Time(),
+			t.Random.Time(),
+		}
+		var prefix []time.Time = []time.Time{
+			slc[0].In(time.UTC),
+			slc[1].In(time.UTC),
+		}
+		assert.True(t, slicekit.MatchPrefix(slc, prefix))
+	})
+}
+
+func ExampleMatchPrefix() {
+	slicekit.MatchPrefix([]string{"foo", "bar", "baz"}, []string{"foo", "bar"}) // true
+	slicekit.MatchPrefix([]string{"foo", "bar", "baz"}, []string{"foo", "qux"}) // false
+	slicekit.MatchPrefix([]string{"foo", "bar", "baz"}, []string(nil))          // true
+}
+
+func TestMatchPrefix(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type S []string
+	type P []string
+
+	var (
+		slc = let.Var(s, func(t *testcase.T) S {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.UUID)
+		})
+		prefix = let.Var[P](s, nil)
+	)
+
+	act := let.Act(func(t *testcase.T) bool {
+		return slicekit.MatchPrefix(slc.Get(t), prefix.Get(t))
+	})
+
+	s.When("prefix match", func(s *testcase.Spec) {
+		prefix.Let(s, func(t *testcase.T) P {
+			return P(slc.Get(t)[0:t.Random.IntN(len(slc.Get(t)))])
+		})
+
+		s.Then("it will be reported as a prefix match", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+	})
+
+	s.When("prefix doesn't match because it has extra elements", func(s *testcase.Spec) {
+		prefix.Let(s, func(t *testcase.T) P {
+			p := slicekit.Clone(P(slc.Get(t)[0:t.Random.IntN(len(slc.Get(t)))]))
+			t.Random.Repeat(1, 3, func() {
+				p = append(p, t.Random.UUID())
+			})
+			return p
+		})
+
+		s.Then("it won't match to the prefix", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("prefix empty", func(s *testcase.Spec) {
+		prefix.Let(s, func(t *testcase.T) P {
+			if t.Random.Bool() {
+				return nil
+			}
+			return P{}
+		})
+
+		s.Then("it will match", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+
+		s.And("slice is also empty", func(s *testcase.Spec) {
+			slc.Let(s, func(t *testcase.T) S {
+				if t.Random.Bool() {
+					return nil
+				}
+				return S{}
+			})
+
+			s.Then("it will match", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+	})
+
+	s.When("prefix is the same length but with completely different elements", func(s *testcase.Spec) {
+		prefix.Let(s, func(t *testcase.T) P {
+			var p P
+			for _, v := range slc.Get(t) {
+				p = append(p, random.Unique(t.Random.UUID, v))
+			}
+			return p
+		})
+
+		s.Then("it won't match to the prefix", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.Test("comparison can be done with Equality", func(t *testcase.T) {
+		var slc []time.Time = []time.Time{
+			t.Random.Time(),
+			t.Random.Time(),
+			t.Random.Time(),
+		}
+		var prefix []time.Time = []time.Time{
+			slc[0].In(time.UTC),
+			slc[1].In(time.UTC),
+		}
+		assert.True(t, slicekit.MatchPrefix(slc, prefix))
+	})
+}
