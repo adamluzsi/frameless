@@ -27,6 +27,24 @@ func (h ValueHandler[Key, Value]) ContextWith(ctx context.Context, v Value) cont
 	return context.WithValue(ctx, Key{}, v)
 }
 
+func (h ValueHandler[Key, Value]) ContextWithout(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return withoutValueHandler[Key]{Context: ctx}
+}
+
+// withoutValueHandler masks a single context key, while every other key keeps
+// resolving against the wrapped parent context.
+type withoutValueHandler[Key ~struct{}] struct{ context.Context }
+
+func (wo withoutValueHandler[Key]) Value(key any) any {
+	if _, ok := key.(Key); ok {
+		return nil
+	}
+	return wo.Context.Value(key)
+}
+
 func Detach(parent context.Context) context.Context {
 	return WithoutCancel(parent)
 }

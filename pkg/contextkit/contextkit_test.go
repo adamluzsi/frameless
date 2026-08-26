@@ -294,6 +294,67 @@ func TestValueHandler(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, exp, got)
 	})
+
+	t.Run("#ContextWithout", func(t *testing.T) {
+		var (
+			ctx  = context.Background()
+			vic  = contextkit.ValueHandler[Key, string]{}
+			exp1 = rnd.String()
+			exp2 = rnd.String()
+		)
+
+		ctx = vic.ContextWith(ctx, exp1)
+		got, ok := vic.Lookup(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, exp1, got)
+
+		ctx = vic.ContextWithout(ctx)
+		got, ok = vic.Lookup(ctx)
+		assert.False(t, ok)
+		assert.Empty(t, got)
+
+		ctx = vic.ContextWith(ctx, exp2)
+		got, ok = vic.Lookup(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, exp2, got)
+	})
+
+	t.Run("#ContextWithout only masks its own key", func(t *testing.T) {
+		type OthKey struct{}
+		var (
+			ctx    = context.Background()
+			vic    = contextkit.ValueHandler[Key, string]{}
+			oth    = contextkit.ValueHandler[OthKey, string]{}
+			exp    = rnd.String()
+			othExp = rnd.String()
+		)
+
+		ctx = vic.ContextWith(ctx, exp)
+		ctx = oth.ContextWith(ctx, othExp)
+
+		ctx = vic.ContextWithout(ctx)
+
+		_, ok := vic.Lookup(ctx)
+		assert.False(t, ok)
+
+		got, ok := oth.Lookup(ctx)
+		assert.True(t, ok, "values under other keys must still resolve through the wrapper")
+		assert.Equal(t, othExp, got)
+	})
+
+	t.Run("#ContextWithout keeps the parent context's cancellation", func(t *testing.T) {
+		var (
+			vic         = contextkit.ValueHandler[Key, string]{}
+			ctx, cancel = context.WithCancel(context.Background())
+		)
+		defer cancel()
+
+		ctx = vic.ContextWithout(vic.ContextWith(ctx, rnd.String()))
+		assert.NoError(t, ctx.Err())
+
+		cancel()
+		assert.ErrorIs(t, ctx.Err(), context.Canceled)
+	})
 }
 
 func ExampleMerge() {
