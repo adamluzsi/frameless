@@ -66,16 +66,30 @@ func BaseValueOf(i any) reflect.Value {
 	return BaseValue(reflect.ValueOf(i))
 }
 
-func isBaseKind(kind reflect.Kind) bool {
-	return kind != reflect.Pointer && kind != reflect.Interface
+var referenceKinds = map[reflect.Kind]struct{}{
+	reflect.Pointer:   {},
+	reflect.Interface: {},
+}
+
+func isReferenceKind(kind reflect.Kind) bool {
+	_, ok := referenceKinds[kind]
+	return ok
 }
 
 func BaseValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
 		return v
 	}
-	for !isBaseKind(v.Kind()) {
+	for isReferenceKind(v.Kind()) {
+		// Stop on a nil pointer/interface so callers can still observe
+		// nil via IsNil instead of receiving an invalid reflect.Value.
+		if v.IsNil() {
+			return v
+		}
 		v = v.Elem()
+		if !v.IsValid() {
+			return v
+		}
 	}
 	return v
 }
@@ -202,6 +216,11 @@ func SetValue(variable, value reflect.Value) {
 	}
 	reflect.NewAt(variable.Type(), unsafe.Pointer(variable.UnsafeAddr())).
 		Elem().Set(value)
+}
+
+func interfaceValue(value reflect.Value) any {
+	ptr := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr()))
+	return ptr.Elem().Interface()
 }
 
 var anyInterface = reflect.TypeFor[any]()
@@ -451,67 +470,6 @@ func (p TagHandlerProxy[T]) HandleStruct(rStruct reflect.Value) error {
 
 func (p TagHandlerProxy[T]) HandleStructField(field reflect.StructField, value reflect.Value) error {
 	return p.h.HandleStructField(field, value)
-}
-
-// Clone recursively creates a deep copy of a reflect.Value
-func Clone(value reflect.Value) reflect.Value {
-	if !value.IsValid() {
-		return reflect.Value{}
-	}
-	switch value.Kind() {
-	case reflect.Pointer:
-		if value.IsNil() {
-			return reflect.Zero(value.Type())
-		}
-		copy := reflect.New(value.Type().Elem())
-		copy.Elem().Set(Clone(value.Elem()))
-		return copy
-
-	case reflect.Struct:
-		copy := reflect.New(value.Type()).Elem()
-		num := value.NumField()
-		for i := 0; i < num; i++ {
-			dst := copy.Field(i)
-			var ok bool
-			dst, ok = ToSettable(dst)
-			if !ok {
-				continue
-			}
-			src := value.Field(i)
-			dst.Set(Clone(src))
-		}
-		return copy
-
-	case reflect.Slice:
-		if value.IsNil() {
-			return reflect.Zero(value.Type())
-		}
-		copy := reflect.MakeSlice(value.Type(), value.Len(), value.Cap())
-		for i := 0; i < value.Len(); i++ {
-			copy.Index(i).Set(Clone(value.Index(i)))
-		}
-		return copy
-
-	case reflect.Map:
-		if value.IsNil() {
-			return reflect.Zero(value.Type())
-		}
-		copy := reflect.MakeMapWithSize(value.Type(), value.Len())
-		for _, key := range value.MapKeys() {
-			copy.SetMapIndex(key, Clone(value.MapIndex(key)))
-		}
-		return copy
-
-	case reflect.Chan:
-		if value.IsNil() {
-			return reflect.Zero(value.Type())
-		}
-		return reflect.MakeChan(value.Type(), value.Cap())
-
-	default:
-		return reflect.ValueOf(value.Interface())
-
-	}
 }
 
 func IsBuiltInType(typ reflect.Type) bool {

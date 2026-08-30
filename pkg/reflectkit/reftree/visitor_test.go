@@ -887,6 +887,44 @@ func TestWalk(t *testing.T) {
 		})
 	})
 
+	s.Context("chan", func(s *testcase.Spec) {
+		type T struct{ C chan int }
+
+		v := let.Var(s, func(t *testcase.T) T {
+			return T{C: make(chan int, 1)}
+		})
+		value.Let(s, func(t *testcase.T) reflect.Value {
+			return reflect.ValueOf(v.Get(t))
+		})
+
+		s.Then("the channel is visited as a single node", func(t *testcase.T) {
+			vs, err := collect(t)
+			assert.NoError(t, err)
+
+			var fields []reftree.Node
+			for _, n := range vs {
+				if n.Type == reftree.StructField {
+					fields = append(fields, n)
+				}
+			}
+
+			assert.Equal(t, 1, len(fields),
+				"the walker is unable to step into a channel,",
+				"so the channel field is expected to be yielded exactly once")
+
+			assert.Equal(t, 2, len(vs),
+				"the struct and its single channel field make two nodes")
+		})
+
+		s.Then("a channel at the root is visited as a single node", func(t *testcase.T) {
+			vs, err := collectFrom(t, reflect.ValueOf(v.Get(t).C))
+			assert.NoError(t, err)
+
+			assert.Equal(t, 1, len(vs))
+			assert.Equal(t, reftree.Value, vs[0].Type)
+		})
+	})
+
 	s.Test("smoke", func(t *testcase.T) {
 		type Baz struct {
 			V string
@@ -1311,6 +1349,81 @@ func TestWalk(t *testing.T) {
 					assert.Equal(tb, "P", got.StructField.Name)
 					assert.Equal[any](tb, bP.Get(t), got.Value.Interface())
 				})
+			})
+		})
+
+		s.Context("map that contains itself", func(s *testcase.Spec) {
+			m := let.Var(s, func(t *testcase.T) map[string]any {
+				var m = map[string]any{}
+				m["V"] = t.Random.Int()
+				m["self"] = m
+				return m
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(m.Get(t))
+			})
+
+			s.Then("it will visit the values only once and don't fall in inf recursion", func(t *testcase.T) {
+				var vs []reftree.Node
+
+				assert.Within(t, time.Second, func(ctx context.Context) {
+					values, err := collect(t)
+					assert.NoError(t, err)
+					vs = values
+				}, "a map is able to close a reference cycle without any pointer being involved")
+
+				assert.True(t, len(vs) < 10)
+
+				assert.OneOf(t, vs, func(tb testing.TB, got reftree.Node) {
+					assert.Equal(tb, got.Type, reftree.Map)
+					assert.Equal[any](tb, m.Get(t), got.Value.Interface())
+				}, "the map value is visited")
+
+				assert.OneOf(t, vs, func(tb testing.TB, got reftree.Node) {
+					assert.Equal(tb, reftree.MapValue, got.Type)
+					assert.True(tb, got.MapKey.IsValid())
+					assert.Equal[any](tb, "V", got.MapKey.Interface())
+					assert.Equal[any](tb, m.Get(t)["V"], got.Value.Interface())
+				}, "the map's non cyclic entry is still visited")
+			})
+		})
+
+		s.Context("slice that contains itself", func(s *testcase.Spec) {
+			type S []any
+
+			vs := let.Var(s, func(t *testcase.T) S {
+				var vs = make(S, 2)
+				vs[0] = t.Random.Int()
+				vs[1] = vs
+				return vs
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(vs.Get(t))
+			})
+
+			s.Then("it will visit the values only once and don't fall in inf recursion", func(t *testcase.T) {
+				var nodes []reftree.Node
+
+				assert.Within(t, time.Second, func(ctx context.Context) {
+					values, err := collect(t)
+					assert.NoError(t, err)
+					nodes = values
+				}, "a slice is able to close a reference cycle without any pointer being involved")
+
+				assert.True(t, len(nodes) < 10)
+
+				assert.OneOf(t, nodes, func(tb testing.TB, got reftree.Node) {
+					assert.Equal(tb, got.Type, reftree.Slice)
+					assert.Equal[any](tb, vs.Get(t), got.Value.Interface())
+				}, "the slice value is visited")
+
+				assert.OneOf(t, nodes, func(tb testing.TB, got reftree.Node) {
+					assert.Equal(tb, reftree.SliceElem, got.Type)
+					assert.Equal(tb, 0, got.Index)
+					assert.Equal[any](tb, vs.Get(t)[0], got.Value.Interface())
+				}, "the slice's non cyclic element is still visited")
 			})
 		})
 	})
@@ -1738,23 +1851,41 @@ func TestRecursionGuard(t *testing.T) {
 		}
 		//---
 		var (
-			value = let.Var[reflect.Value](s, nil)
+			ref = let.Var(s, func(t *testcase.T) *testent.Foo {
+				return pointer.Of(testent.MakeFoo(t))
+			})
+			value = let.Var(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(ref.Get(t))
+			})
 		)
 		act := let.Act(func(t *testcase.T) bool {
 			return method(t, value.Get(t))
 		})
 
-		var thenSeen = func(s *testcase.Spec) {
+		var thenSeen = func(s *testcase.Spec, msg ...assert.Message) {
 			s.Then("it will reported as already seen", func(t *testcase.T) {
-				assert.True(t, act(t), "expected to seen the value")
+				assert.True(t, act(t), append([]assert.Message{"expected to seen the value"}, msg...)...)
 			})
 		}
 
-		var thenNotSeen = func(s *testcase.Spec) {
+		var thenNotSeen = func(s *testcase.Spec, msg ...assert.Message) {
 			s.Then("it will reported as not yet seen", func(t *testcase.T) {
-				assert.False(t, act(t), "expected to not yet seen the value")
+				assert.False(t, act(t), append([]assert.Message{"expected to not yet seen the value"}, msg...)...)
 			})
 		}
+
+		thenNotSeen(s)
+
+		s.When("the same reference was checked already through a separate value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.False(t, method(t, reflect.ValueOf(ref.Get(t))))
+			})
+
+			thenSeen(s,
+				"the identity of a reference is the memory region it points at,",
+				"and not the reflect.Value which happens to carry it,",
+				"else a cycle reached through a different value would go unnoticed")
+		})
 
 		s.When("value is invalid", func(s *testcase.Spec) {
 			value.Let(s, func(t *testcase.T) reflect.Value {
@@ -1806,6 +1937,35 @@ func TestRecursionGuard(t *testing.T) {
 			})
 		})
 
+		s.When("value is a nil pointer", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var ptr *testent.Foo
+				return reflect.ValueOf(ptr)
+			})
+
+			thenNotSeen(s)
+
+			s.And("the same nil pointer was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, act(t))
+				})
+
+				thenNotSeen(s)
+			})
+
+			s.And("an unrelated nil pointer was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					var other *time.Time
+					assert.False(t, method(t, reflect.ValueOf(other)))
+				})
+
+				thenNotSeen(s,
+					"a nil pointer is not able to take part in a reference cycle,",
+					"and since every nil pointer shares the zero address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
 		s.When("value is a struct that contains a self-reference", func(s *testcase.Spec) {
 			type T struct{ P *T }
 
@@ -1828,6 +1988,527 @@ func TestRecursionGuard(t *testing.T) {
 					"it is safe to say that a value by default is not considered seen even,",
 					"if it is addressable and its address is already seen")
 			})
+		})
+
+		s.When("value is an addressable struct whose first field is pointed at from within the struct", func(s *testcase.Spec) {
+			type T struct {
+				N int
+				P *int
+			}
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var v T
+				v.N = t.Random.Int()
+				v.P = &v.N
+				return reflect.ValueOf(&v).Elem()
+			})
+
+			thenNotSeen(s)
+
+			s.Then("a pointer to the struct's first field is not mistaken for the struct itself", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				assert.False(t, method(t, value.Get(t).FieldByName("P")),
+					"a struct shares its address with its first field,",
+					"but the two are still distinct nodes of the value tree,",
+					"so visiting the struct must not make a pointer",
+					"to its first field look as if it was already seen")
+			})
+
+			s.And("an unrelated value was checked beforehand", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, reflect.ValueOf(pointer.Of(t.Random.Int()))))
+				})
+
+				s.Then("a pointer to the struct's first field is still not mistaken for the struct itself", func(t *testcase.T) {
+					assert.False(t, act(t))
+
+					assert.False(t, method(t, value.Get(t).FieldByName("P")),
+						"the guard is expected to answer based on what it has actually seen,",
+						"and not based on whether its register happened to be empty")
+				})
+			})
+		})
+
+		s.When("value is a pointer to a struct which nests further structs as its first field", func(s *testcase.Spec) {
+			type Inner struct{ N int }
+			type Middle struct{ I Inner }
+			type Outer struct{ M Middle }
+
+			oP := let.Var(s, func(t *testcase.T) *Outer {
+				var o Outer
+				o.M.I.N = t.Random.Int()
+				return &o
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(oP.Get(t))
+			})
+
+			thenNotSeen(s)
+
+			s.Then("every link of the first field chain keeps an identity of its own", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				var o = oP.Get(t)
+
+				assert.False(t, method(t, reflect.ValueOf(&o.M)))
+				assert.False(t, method(t, reflect.ValueOf(&o.M.I)))
+				assert.False(t, method(t, reflect.ValueOf(&o.M.I.N)),
+					"the whole first field chain shares a single address,",
+					"yet each link of it is a distinct node of the value tree")
+			})
+		})
+
+		s.When("value is a pointer to an array", func(s *testcase.Spec) {
+			aP := let.Var(s, func(t *testcase.T) *[3]int {
+				var a [3]int
+				a[0] = t.Random.Int()
+				return &a
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(aP.Get(t))
+			})
+
+			thenNotSeen(s)
+
+			s.Then("a pointer to the array's first element is not mistaken for the array itself", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				assert.False(t, method(t, reflect.ValueOf(&aP.Get(t)[0])),
+					"an array shares its address with its first element,",
+					"but the two are still distinct nodes of the value tree")
+			})
+		})
+
+		s.When("value is a slice", func(s *testcase.Spec) {
+			vs := let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(3, t.Random.Int)
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(vs.Get(t))
+			})
+
+			thenNotSeen(s)
+
+			s.Then("a pointer to the slice's first element is not mistaken for the slice itself", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				assert.False(t, method(t, reflect.ValueOf(&vs.Get(t)[0])),
+					"a slice shares its base address with its first element,",
+					"but the two are still distinct nodes of the value tree")
+			})
+		})
+
+		s.When("value is a re-slice of a longer slice", func(s *testcase.Spec) {
+			vs := let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(3, t.Random.Int)
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(vs.Get(t)[:1])
+			})
+
+			thenNotSeen(s)
+
+			s.Then("a re-slice with a different length is not mistaken for it", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				assert.False(t, method(t, reflect.ValueOf(vs.Get(t)[:2])),
+					"re-slices of the same backing array share their base address,",
+					"but they cover a different part of it,",
+					"so they are distinct nodes of the value tree")
+			})
+
+			s.And("the same re-slice was reached already through a separate slice header", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, reflect.ValueOf(vs.Get(t)[:1])))
+				})
+
+				thenSeen(s)
+			})
+		})
+
+		s.When("value is a pointer to a zero sized type", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(&struct{}{})
+			})
+
+			thenNotSeen(s)
+
+			s.And("an unrelated pointer of the same zero sized type was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, reflect.ValueOf(&struct{}{})))
+				})
+
+				thenNotSeen(s,
+					"a zero sized value has no room to reference anything back,",
+					"so it is not able to take part in a reference cycle,",
+					"and since zero sized allocations tend to share the same base address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
+		s.When("value is a slice with a zero sized element type", func(s *testcase.Spec) {
+			length := let.Var(s, func(t *testcase.T) int {
+				return t.Random.IntBetween(1, 3)
+			})
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(make([]struct{}, length.Get(t)))
+			})
+
+			thenNotSeen(s)
+
+			s.And("an unrelated slice of the same zero sized element type was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, reflect.ValueOf(make([]struct{}, length.Get(t)))))
+				})
+
+				thenNotSeen(s,
+					"a zero sized element has no room to reference the slice back,",
+					"so the slice is not able to take part in a reference cycle,",
+					"and since zero sized allocations tend to share the same base address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
+		s.When("value is a map which contains itself", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var m = map[string]any{}
+				m["self"] = m
+				return reflect.ValueOf(m)
+			})
+
+			thenNotSeen(s)
+
+			s.Then("reaching the same map again through its own content is reported as seen", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				self := value.Get(t).MapIndex(reflect.ValueOf("self")).Elem()
+				assert.Equal(t, reflect.Map, self.Kind())
+
+				assert.True(t, method(t, self),
+					"a map is a reference type, so it is able to take part in a reference cycle,",
+					"even when no pointer is involved anywhere along the cycle,",
+					"and without memorising it, walking the cycle would never terminate")
+			})
+		})
+
+		s.When("value is a slice which contains itself", func(s *testcase.Spec) {
+			type S []any
+
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var vs = make(S, 1)
+				vs[0] = vs
+				return reflect.ValueOf(vs)
+			})
+
+			thenNotSeen(s)
+
+			s.Then("reaching the same slice again through its own content is reported as seen", func(t *testcase.T) {
+				assert.False(t, act(t))
+
+				self := value.Get(t).Index(0).Elem()
+				assert.Equal(t, reflect.Slice, self.Kind())
+
+				assert.True(t, method(t, self),
+					"a slice is a reference type, so it is able to take part in a reference cycle,",
+					"even when no pointer is involved anywhere along the cycle,",
+					"and without memorising it, walking the cycle would never terminate")
+			})
+		})
+
+		s.When("value is an empty slice", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf([]any{})
+			})
+
+			thenNotSeen(s)
+
+			s.And("an unrelated empty slice was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, reflect.ValueOf([]any{})))
+				})
+
+				thenNotSeen(s,
+					"an empty slice has no element which could reference back to it,",
+					"and since empty slices tend to share the same zero base address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
+		s.When("value is an empty map", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(map[string]any{})
+			})
+
+			thenNotSeen(s)
+
+			s.And("the very same empty map was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, value.Get(t)))
+				})
+
+				thenNotSeen(s,
+					"an empty map has no entry which could reference back to it,",
+					"so it is unable to take part in a reference cycle,",
+					"which makes memorising it pointless in the first place")
+			})
+		})
+
+		s.When("value is a nil map", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var m map[string]any
+				return reflect.ValueOf(m)
+			})
+
+			thenNotSeen(s)
+
+			s.And("an unrelated nil map was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					var other map[string]any
+					assert.False(t, method(t, reflect.ValueOf(other)))
+				})
+
+				thenNotSeen(s,
+					"a nil map is not able to take part in a reference cycle,",
+					"and since every nil map shares the zero address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
+		s.When("value is a nil slice", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var vs []any
+				return reflect.ValueOf(vs)
+			})
+
+			thenNotSeen(s)
+
+			s.And("an unrelated nil slice was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					var other []any
+					assert.False(t, method(t, reflect.ValueOf(other)))
+				})
+
+				thenNotSeen(s,
+					"a nil slice is not able to take part in a reference cycle,",
+					"and since every nil slice shares the zero address,",
+					"memorising one would make all the others look already seen")
+			})
+		})
+
+		s.When("value is of a kind which the walker is unable to nest into", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				var val = random.Pick(t.Random,
+					func() any { return make(chan int, 1) },
+					func() any { return func() {} },
+					func() any { return unsafe.Pointer(pointer.Of(t.Random.Int())) },
+					func() any { return [3]int{t.Random.Int()} },
+				)()
+				return reflect.ValueOf(val)
+			})
+
+			thenNotSeen(s)
+
+			s.And("the very same value was checked already", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, method(t, value.Get(t)))
+				})
+
+				thenNotSeen(s,
+					"the walker is unable to step into a channel, a function or an unsafe pointer,",
+					"and an array is not a reference on its own,",
+					"so none of them is able to close a reference cycle")
+			})
+		})
+	})
+
+	s.Describe("#Clone", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) *reftree.RecursionGuard {
+			return subject.Get(t).Clone()
+		})
+		//---
+		var (
+			value = let.Var(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(pointer.Of(testent.MakeFoo(t)))
+			})
+			othValue = let.Var(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(pointer.Of(testent.MakeFoo(t)))
+			})
+		)
+
+		s.Then("it returns a guard which is not the original one", func(t *testcase.T) {
+			got := act(t)
+
+			assert.NotNil(t, got)
+			assert.NotEqual(t,
+				reflect.ValueOf(got).Pointer(),
+				reflect.ValueOf(subject.Get(t)).Pointer(),
+				"expected that the clone is a distinct guard instance")
+		})
+
+		s.Then("what the clone sees, the original will not know about", func(t *testcase.T) {
+			clone := act(t)
+
+			assert.False(t, clone.Seen(value.Get(t)))
+			assert.True(t, clone.Seen(value.Get(t)),
+				"the clone is expected to memorise the values it visits")
+
+			assert.False(t, subject.Get(t).Seen(value.Get(t)),
+				"the original guard is expected to be unaffected by what the clone visited")
+		})
+
+		s.Then("what the original sees, the clone will not know about", func(t *testcase.T) {
+			clone := act(t)
+
+			assert.False(t, subject.Get(t).Seen(value.Get(t)))
+			assert.True(t, subject.Get(t).Seen(value.Get(t)),
+				"the original guard is expected to memorise the values it visits")
+
+			assert.False(t, clone.Seen(value.Get(t)),
+				"the clone is expected to be unaffected by what the original guard visited")
+		})
+
+		s.When("the original guard has already seen values", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.False(t, subject.Get(t).Seen(value.Get(t)))
+			})
+
+			s.Then("the clone inherits what the original has seen so far", func(t *testcase.T) {
+				assert.True(t, act(t).Seen(value.Get(t)))
+			})
+
+			s.Then("the clone's further visits are not leaked back into the original", func(t *testcase.T) {
+				clone := act(t)
+
+				assert.False(t, clone.Seen(othValue.Get(t)))
+				assert.True(t, clone.Seen(othValue.Get(t)))
+
+				assert.False(t, subject.Get(t).Seen(othValue.Get(t)),
+					"the original guard is expected to be unaffected by what the clone visited")
+			})
+
+			s.Then("the original's further visits are not leaked into the clone", func(t *testcase.T) {
+				clone := act(t)
+
+				assert.False(t, subject.Get(t).Seen(othValue.Get(t)))
+				assert.True(t, subject.Get(t).Seen(othValue.Get(t)))
+
+				assert.False(t, clone.Seen(othValue.Get(t)),
+					"the clone is expected to be unaffected by what the original guard visited")
+			})
+
+			s.Then("clones made from the same original are independent from each other", func(t *testcase.T) {
+				clone1 := act(t)
+				clone2 := act(t)
+
+				assert.True(t, clone1.Seen(value.Get(t)))
+				assert.True(t, clone2.Seen(value.Get(t)))
+
+				assert.False(t, clone1.Seen(othValue.Get(t)))
+
+				assert.False(t, clone2.Seen(othValue.Get(t)),
+					"sibling clones are expected to not share their seen state")
+			})
+		})
+	})
+
+	s.Context("smoke", func(s *testcase.Spec) {
+		var walkNodeTypeCount = func(t *testcase.T, v reflect.Value) map[reftree.NodeType]int {
+			var counts = map[reftree.NodeType]int{}
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				assert.NoError(t, reftree.Walk(v, func(n reftree.Node) error {
+					counts[n.Type]++
+					return nil
+				}))
+			})
+			return counts
+		}
+
+		s.Test("a pointer which points at its own container's first field is still walked into", func(t *testcase.T) {
+			type T struct {
+				N int
+				P *int
+			}
+
+			var v T
+			v.N = t.Random.Int()
+			v.P = &v.N
+
+			var counts = walkNodeTypeCount(t, reflect.ValueOf(&v).Elem())
+
+			assert.Equal(t, 1, counts[reftree.PointerElem],
+				"a struct shares its address with its first field,",
+				"but the pointer which points at that field",
+				"still has a value of its own which must be visited")
+		})
+
+		s.Test("pointers of a zero sized type are walked into one by one", func(t *testcase.T) {
+			type E struct{}
+			type T struct{ A, B *E }
+
+			var v = T{A: &E{}, B: &E{}}
+
+			var counts = walkNodeTypeCount(t, reflect.ValueOf(v))
+
+			assert.Equal(t, 3, counts[reftree.Struct],
+				"the container plus the two zero sized values make three struct nodes,",
+				"even though the two zero sized values share a single base address")
+		})
+
+		s.Test("slices of a zero sized element type are walked into one by one", func(t *testcase.T) {
+			type E struct{}
+			type T struct{ A, B []E }
+
+			var v = T{A: make([]E, 2), B: make([]E, 2)}
+
+			var counts = walkNodeTypeCount(t, reflect.ValueOf(v))
+
+			assert.Equal(t, 4, counts[reftree.SliceElem],
+				"the two slices have two elements each,",
+				"even though they share a single base address")
+		})
+
+		s.Test("a self referencing map is walked without falling into an infinite recursion", func(t *testcase.T) {
+			var m = map[string]any{}
+			m["V"] = t.Random.Int()
+			m["self"] = m
+
+			var counts = walkNodeTypeCount(t, reflect.ValueOf(m))
+
+			assert.Equal(t, 2, counts[reftree.Map],
+				"the map is yielded as the root, then once more where the cycle closes back on it")
+
+			assert.Equal(t, 2, counts[reftree.MapValue],
+				"a map is able to close a reference cycle without any pointer being involved,",
+				"so its entries must be enumerated only once,",
+				"else the walk would keep going around the cycle forever")
+		})
+
+		s.Test("a value which shares its address with its container is deep copied instead of aliased", func(t *testcase.T) {
+			type T struct {
+				N int
+				P *int
+			}
+
+			var vs = make([]T, 1)
+			vs[0].N = t.Random.Int()
+			vs[0].P = &vs[0].N
+
+			var got = reflectkit.CloneT(vs)
+
+			assert.Equal(t, got[0].N, vs[0].N)
+			assert.Equal(t, *got[0].P, vs[0].N)
+
+			assert.NotEqual(t,
+				unsafe.Pointer(got[0].P),
+				unsafe.Pointer(vs[0].P),
+				"the slice shares its base address with its first element,",
+				"which must not make the clone alias back into the source")
 		})
 	})
 }

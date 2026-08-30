@@ -1,7 +1,6 @@
 package reflectkit_test
 
 import (
-	"context"
 	"math/big"
 	"reflect"
 	"strings"
@@ -146,6 +145,39 @@ func TestBaseValue(t *testing.T) {
 		assert.Equal(t, exp.Type().String(), got.Type().String(), "hotfix")
 	})
 
+	t.Run("nil interface in a pointer", func(t *testing.T) {
+		var i testent.Fooer
+		p := &i
+
+		r := reflect.ValueOf(p)
+		r = reflectkit.BaseValue(r)
+		assert.True(t, reflectkit.IsNil(r))
+	})
+
+	t.Run("nil pointer to a concrete type", func(t *testing.T) {
+		var s *StructObject
+		r := reflect.ValueOf(s)
+		r = reflectkit.BaseValue(r)
+		assert.True(t, reflectkit.IsNil(r))
+	})
+
+	t.Run("nil interface value", func(t *testing.T) {
+		var i testent.Fooer
+		r := reflect.ValueOf(&i).Elem()
+		r = reflectkit.BaseValue(r)
+		assert.True(t, reflectkit.IsNil(r))
+	})
+
+	t.Run("non-nil pointer to non-nil interface unwraps to the concrete type", func(t *testing.T) {
+		// Sanity check that the early-exit on nil doesn't regress the
+		// happy path: a populated *Fooer should still resolve to the
+		// concrete struct type the interface holds.
+		i := testent.Fooer(testent.FooerT1{V: "x"})
+		p := &i
+		r := reflectkit.BaseValue(reflect.ValueOf(p))
+		assert.Equal(t, reflect.ValueOf(testent.FooerT1{}).Type(), r.Type())
+		assert.Equal(t, "x", r.Interface().(testent.FooerT1).V)
+	})
 }
 
 func MustCast[T any](tb testing.TB, exp T, val any) {
@@ -2276,149 +2308,6 @@ func TestTagHandler_Lookup(t *testing.T) {
 			func() { handler.LookupTag(field1) },
 			func() { handler.LookupTag(field2) },
 		)
-	})
-}
-
-func TestClone(t *testing.T) {
-	t.Run("Clone nil value", func(t *testing.T) {
-		var nilVal reflect.Value
-		cloned := reflectkit.Clone(nilVal)
-		assert.False(t, cloned.IsValid())
-	})
-
-	t.Run("Clone integer", func(t *testing.T) {
-		{
-			val := reflect.ValueOf(int(42))
-			cloned := reflectkit.Clone(val)
-			assert.Equal[int](t, 42, int(cloned.Int()))
-		}
-		{
-			val := reflect.ValueOf(int8(42))
-			cloned := reflectkit.Clone(val)
-			assert.Equal[int8](t, 42, int8(cloned.Int()))
-		}
-		{
-			val := reflect.ValueOf(int16(42))
-			cloned := reflectkit.Clone(val)
-			assert.Equal[int16](t, 42, int16(cloned.Int()))
-		}
-		{
-			val := reflect.ValueOf(int32(42))
-			cloned := reflectkit.Clone(val)
-			assert.Equal[int32](t, 42, int32(cloned.Int()))
-		}
-		{
-			val := reflect.ValueOf(int64(42))
-			cloned := reflectkit.Clone(val)
-			assert.Equal[int64](t, 42, int64(cloned.Int()))
-		}
-	})
-
-	t.Run("Clone struct", func(t *testing.T) {
-		type sample struct {
-			A int
-			B string
-		}
-		val := reflect.ValueOf(sample{A: 10, B: "test"})
-		cloned := reflectkit.Clone(val)
-		assert.Equal(t, val.Interface(), cloned.Interface())
-		cloned.FieldByName("B").Set(reflect.ValueOf("foo"))
-		assert.Equal(t, val.FieldByName("B").String(), "test")
-	})
-
-	t.Run("Clone slice and mutate copy", func(t *testing.T) {
-		val := reflect.ValueOf([]int{1, 2, 3})
-		cloned := reflectkit.Clone(val)
-		assert.Equal(t, val.Interface(), cloned.Interface())
-		cloned.Index(0).SetInt(99)
-		assert.Equal(t, 1, val.Index(0).Int())
-		assert.NotEqual(t, 99, val.Index(0).Int())
-	})
-
-	t.Run("Clone array and mutate copy", func(t *testing.T) {
-		val := reflect.ValueOf([3]int{1, 2, 3})
-		cloned := reflectkit.Clone(val)
-		assert.Equal(t, val.Interface(), cloned.Interface())
-		assert.Equal(t, 1, val.Index(0).Int())
-		assert.NotEqual(t, 99, val.Index(0).Int())
-	})
-
-	t.Run("Clone map and mutate copy", func(t *testing.T) {
-		val := reflect.ValueOf(map[string]int{"a": 1, "b": 2})
-		cloned := reflectkit.Clone(val)
-		assert.Equal(t, val.Interface(), cloned.Interface())
-		cloned.SetMapIndex(reflect.ValueOf("a"), reflect.ValueOf(99))
-		assert.NotEqual(t, 99, val.MapIndex(reflect.ValueOf("a")).Int())
-	})
-
-	t.Run("Clone chan and mutate copy", func(t *testing.T) {
-		og := reflect.ValueOf(make(chan int))
-		defer og.Close()
-		cloned := reflectkit.Clone(og)
-		assert.False(t, reflectkit.IsNil(cloned))
-		defer cloned.Close()
-
-		var ogRec, clRec bool
-		go func() {
-			_, ok := og.Recv()
-			clRec = ok
-		}()
-		go func() {
-			v, ok := cloned.Recv()
-			clRec = ok
-			assert.Equal(t, int(v.Int()), 42)
-		}()
-
-		assert.Within(t, time.Second, func(context.Context) {
-			cloned.Send(reflect.ValueOf(int(42)))
-		})
-
-		assert.Eventually(t, time.Second, func(t testing.TB) {
-			assert.True(t, clRec)
-			assert.False(t, ogRec)
-		})
-	})
-
-	t.Run("Cloned chan has the same buffer size", func(t *testing.T) {
-		og := reflect.ValueOf(make(chan int, 1))
-		defer og.Close()
-		cloned := reflectkit.Clone(og)
-		assert.False(t, reflectkit.IsNil(cloned))
-		defer cloned.Close()
-
-		assert.Within(t, time.Second, func(context.Context) {
-			og.Send(reflect.ValueOf(int(42)))
-		})
-
-		assert.Within(t, time.Second, func(context.Context) {
-			cloned.Send(reflect.ValueOf(int(42)))
-		})
-
-		assert.Within(t, time.Second, func(context.Context) {
-			val, ok := og.Recv()
-			assert.True(t, ok)
-			assert.Equal(t, val.Int(), 42)
-		})
-
-		assert.Within(t, time.Second, func(context.Context) {
-			val, ok := cloned.Recv()
-			assert.True(t, ok)
-			assert.Equal(t, val.Int(), 42)
-		})
-	})
-
-	t.Run("Clone struct with nested values", func(t *testing.T) {
-		type nested struct {
-			X int
-		}
-		type sample struct {
-			A nested
-			B string
-		}
-		val := reflect.ValueOf(sample{A: nested{X: 42}, B: "test"})
-		cloned := reflectkit.Clone(val)
-		cloned.FieldByName("A").FieldByName("X").SetInt(99)
-		assert.NotEqual(t, 99, val.FieldByName("A").FieldByName("X").Int())
 	})
 }
 
