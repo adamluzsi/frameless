@@ -1,4 +1,4 @@
-# go.llib.dev/testcase v0.193.0
+# go.llib.dev/testcase v0.194.1
 ## explicit; go 1.18
 go.llib.dev/testcase
 go.llib.dev/testcase/assert
@@ -16,6 +16,7 @@ go.llib.dev/testcase/internal/fmterror
 go.llib.dev/testcase/internal/proxy
 go.llib.dev/testcase/internal/reflects
 go.llib.dev/testcase/internal/slicekit
+go.llib.dev/testcase/internal/synckit
 go.llib.dev/testcase/internal/teardown
 go.llib.dev/testcase/internal/wait
 go.llib.dev/testcase/let

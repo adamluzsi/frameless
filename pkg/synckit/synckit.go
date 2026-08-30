@@ -603,24 +603,22 @@ type Group struct {
 	// if goroutine was stopped due to `runtime.Goexit()`.
 	ErrorOnGoexit bool
 
-	wg sync.WaitGroup
+	wg  sync.WaitGroup
+	rwm sync.RWMutex
 
-	rwm     sync.RWMutex
+	len int
+
 	_done   chan struct{}
 	cancels map[int]func()
-	errs    []error
-	panic   *any
-	subs    map[int]*Group
+
+	errs  []error
+	panic *any
 }
 
 func (g *Group) Len() int {
 	g.rwm.RLock()
 	defer g.rwm.RUnlock()
-	return g.len()
-}
-
-func (g *Group) len() int {
-	return len(g.cancels)
+	return g.len
 }
 
 const ErrGoexit errorkitlite.Error = "ErrGoexit"
@@ -652,9 +650,15 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 		g.cancels = make(map[int]func())
 	}
 
+	if g.len == 0 {
+		// the previous generation's done channel is already closed
+		g._done = make(chan struct{})
+	}
+
 	id := nextID(g.cancels)
 	g.cancels[id] = cancel
 
+	g.len++
 	g.wg.Add(1)
 
 	var (
@@ -664,7 +668,6 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 	)
 	go func() {
 		defer close(done)
-		defer g.sigDone()
 		defer g.wg.Done()
 		var err error
 		o := sandbox.Run(func() {
@@ -688,6 +691,10 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 			g.errs = append(g.errs, ErrGoexit)
 		}
 		delete(g.cancels, id)
+		g.len--
+		if g.len == 0 && g._done != nil {
+			close(g._done)
+		}
 	}()
 	j := &job{
 		context: ctx,
@@ -698,38 +705,20 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 	return j
 }
 
-func (g *Group) done() chan struct{} {
-	return Init(&g.rwm, &g._done, func() chan struct{} {
-		return make(chan struct{})
-	})
-}
+// closedDoneChan represents a "nothing is running" state for Group#Done.
+var closedDoneChan = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
 
 func (g *Group) Done() <-chan struct{} {
-	g.done() // init done chan
 	g.rwm.RLock()
 	defer g.rwm.RUnlock()
-	if g.len() == 0 {
-		d := make(chan struct{})
-		close(d)
-		return d
+	if g.len == 0 || g._done == nil {
+		return closedDoneChan
 	}
 	return g._done
-}
-
-func (g *Group) sigDone() {
-	done := g.done()
-	g.rwm.RLock()
-	defer g.rwm.RUnlock()
-	if g.len() != 0 {
-		return
-	}
-	for {
-		select {
-		case done <- struct{}{}:
-		default:
-			return
-		}
-	}
 }
 
 func (g *Group) filterErr(ctx context.Context, err error) error {
@@ -745,15 +734,26 @@ func (g *Group) filterErr(ctx context.Context, err error) error {
 	return err
 }
 
+// Cancel asks every task currently part of the Group to stop,
+// by cancelling the context which the Group passed to them.
+//
+// Cancel doesn't wait for the tasks to return,
+// they are still accounted as running tasks by Group#Len and Group#Done
+// until they actually return.
 func (g *Group) Cancel() {
 	g.rwm.Lock()
 	defer g.rwm.Unlock()
 	for _, cancel := range g.cancels {
 		cancel()
 	}
-	g.cancels = nil
 }
 
+// Wait blocks until every task of the Group returns,
+// then it reports back their outcome.
+//
+// Wait drains the outcome of the tasks as part of reporting it back.
+// This enables the Group to be reused for a new set of tasks,
+// without being statefully bound to an already propagated failure.
 func (g *Group) Wait() (rErr error) {
 	g.wg.Wait()
 	g.rwm.RLock()

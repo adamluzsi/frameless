@@ -97,6 +97,7 @@ func (ex *exchangeBase[T]) bufferShift() (T, bool) {
 		var zero T
 		return zero, false
 	}
+	ex.mutex.RUnlock()
 	ex.mutex.Lock()
 	defer ex.mutex.Unlock()
 	return slicekit.Shift(&ex.buffer)

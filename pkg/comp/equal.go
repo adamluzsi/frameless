@@ -26,16 +26,22 @@ func Equal[T any](a, b T, config ...EqualConfig) (equality bool) {
 	case predicate.ComparableShort[T]:
 		return a.Cmp(b) == 0
 	case []byte:
-		return bytesEqual(a, any(b).([]byte))
+		// When T is an interface type, a and b can hold different dynamic
+		// types. Only take the fast path when both sides actually match it,
+		// otherwise fall through to the general comparison below.
+		if b, ok := any(b).([]byte); ok {
+			return bytesEqual(a, b)
+		}
 	case float64:
-		b := any(b).(float64)
-		if a == b {
-			return true
+		if b, ok := any(b).(float64); ok {
+			if a == b {
+				return true
+			}
+			if c.NaN && math.IsNaN(a) && math.IsNaN(b) {
+				return true
+			}
+			return false
 		}
-		if c.NaN && math.IsNaN(a) && math.IsNaN(b) {
-			return true
-		}
-		return false
 	}
 	defer fallbackReflectEqual(&equality, a, b)
 	return any(a) == any(b)

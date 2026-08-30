@@ -1410,14 +1410,15 @@ func TestBroadcast(t *testing.T) {
 
 	s.Test("nack w cancel should not result in any issue", func(t *testcase.T) {
 		var b synckit.Broadcast[int]
-		job := t.Go(func(ctx context.Context) {
+		job := t.Go(func(ctx context.Context) error {
 			for msg, err := range b.Subscribe(ctx) {
 				assert.NoError(t, err)
 				assert.Within(t, timeout, func(ctx context.Context) {
 					assert.NoError(t, msg.NACK()) // nack so the message is requeued
 				})
-				return
+				return nil
 			}
+			return nil
 		})
 
 		t.Eventually(func(t *testcase.T) {

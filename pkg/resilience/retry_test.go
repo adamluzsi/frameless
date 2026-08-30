@@ -732,6 +732,10 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			return t.Random.IntB(3, 7)
 		})
 
+		// the assertion is about the number of attempts, not about the waiting,
+		// so the delays in between can be fast-forwarded.
+		s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
+
 		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
 			var n int
 			for range resilience.Retries(Context.Get(t), subject.Get(t)) {
@@ -772,6 +776,10 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		failureCount.Let(s, func(t *testcase.T) int {
 			return t.Random.IntBetween(0, subject.Get(t).Attempts-1)
 		})
+
+		// the assertion is about the retry decision, not about the waiting,
+		// so the delay in between can be fast-forwarded.
+		s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
 			assert.True(t, act(t))

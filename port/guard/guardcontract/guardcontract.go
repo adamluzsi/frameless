@@ -99,7 +99,15 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 				assert.NotWithin(t, d, func(ctx context.Context) {
 					ctx, cancel := contextkit.Merge(ctx, Context.Get(t))
 					defer cancel()
-					subject.Lock(ctx)
+					// assert.NotWithin abandons this block once the timeout is
+					// up, so it can still be running when the enclosing test
+					// releases the lock. Should it win the race and acquire the
+					// lock, it must give it back, else the subject stays locked
+					// forever and every later test hangs on it.
+					lockCtx, err := subject.Lock(ctx)
+					if err == nil {
+						_ = subject.Unlock(lockCtx)
+					}
 				})
 			})
 		})

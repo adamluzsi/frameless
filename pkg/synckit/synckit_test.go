@@ -2406,40 +2406,136 @@ func TestGroup(t *testing.T) {
 		})
 	})
 
-	s.Context("#Cancel", func(s *testcase.Spec) {
-		s.Test("Group", func(t *testcase.T) {
-			var (
-				g synckit.Group
-				n atomic.Int32
-				p synckit.Phaser
-			)
-			defer p.Finish()
+	s.Describe("#Cancel", func(s *testcase.Spec) {
+		act := let.Act0(func(t *testcase.T) {
+			group.Get(t).Cancel()
+		})
 
-			g.Go(t.Context(), func(ctx context.Context) error {
+		s.Then("it cancels the context of every task within the group", func(t *testcase.T) {
+			var n atomic.Int32
+
+			task := func(ctx context.Context) error {
 				defer n.Add(1)
 				<-ctx.Done()
 				return nil
-			})
+			}
 
-			g.Go(t.Context(), func(ctx context.Context) error {
-				defer n.Add(1)
-				<-ctx.Done()
-				return nil
-			})
+			group.Get(t).Go(t.Context(), task)
+			group.Get(t).Go(t.Context(), task)
+			group.Get(t).Go(t.Context(), task)
 
-			g.Go(t.Context(), func(ctx context.Context) error {
-				defer n.Add(1)
-				<-ctx.Done()
-				return nil
-			})
-
-			g.Cancel()
+			act(t)
 
 			t.Eventually(func(t *testcase.T) {
 				assert.Equal(t, n.Load(), 3)
 			})
 		})
 
+		s.When("a task takes its time to wind down after it got asked to stop", func(s *testcase.Spec) {
+			var (
+				winddown = let.Phaser(s)
+
+				job = let.Var(s, func(t *testcase.T) synckit.Job {
+					var (
+						g = group.Get(t)
+						p = winddown.Get(t)
+					)
+					return g.Go(t.Context(), func(ctx context.Context) error {
+						<-ctx.Done()
+						p.Wait() // cancellation only asks the task to stop, it is still running
+						return nil
+					})
+				}).EagerLoading(s)
+			)
+
+			s.Before(func(t *testcase.T) {
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 1, group.Get(t).Len(),
+						"expected that the task is accounted as a running task")
+				})
+			})
+
+			s.Then("#Len keeps reporting the task until it actually returns", func(t *testcase.T) {
+				act(t)
+
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 1, winddown.Get(t).Len(),
+						"expected that the task observed the cancellation")
+				})
+
+				assert.Equal(t, 1, group.Get(t).Len(),
+					"cancelling only asks the task to stop, the task is still running")
+
+				winddown.Get(t).Finish()
+
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 0, group.Get(t).Len())
+				})
+			})
+
+			s.Then("#Done keeps blocking until the task actually returns", func(t *testcase.T) {
+				act(t)
+
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 1, winddown.Get(t).Len(),
+						"expected that the task observed the cancellation")
+				})
+
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					select {
+					case <-group.Get(t).Done():
+					case <-t.Done():
+					}
+				}, "expected that Done blocks while a cancelled task is still running")
+
+				winddown.Get(t).Finish()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				}, "expected that Done is released when the task actually returned")
+			})
+
+			s.And("the group got already cancelled, and a new task joined while the previous one was still winding down", func(s *testcase.Spec) {
+				lateTaskCancelled := let.Var(s, func(t *testcase.T) chan struct{} {
+					return make(chan struct{})
+				})
+
+				s.Before(func(t *testcase.T) {
+					var (
+						g  = group.Get(t)
+						ch = lateTaskCancelled.Get(t)
+					)
+
+					g.Cancel()
+
+					g.Go(t.Context(), func(ctx context.Context) error {
+						<-ctx.Done()
+						close(ch)
+						return nil
+					})
+
+					t.Log("and the previously cancelled task finally returns")
+					winddown.Get(t).Finish()
+					assert.Within(t, timeout, func(ctx context.Context) {
+						_ = job.Get(t).Wait()
+					})
+				})
+
+				s.Then("the newly joined task is still cancellable", func(t *testcase.T) {
+					act(t)
+
+					assert.Within(t, timeout, func(ctx context.Context) {
+						select {
+						case <-lateTaskCancelled.Get(t):
+						case <-t.Done():
+						}
+					}, "expected that a task which joined after a previous Cancel is still cancellable")
+				})
+			})
+		})
+	})
+
+	s.Describe("Job#Cancel", func(s *testcase.Spec) {
 		s.Test("GroupJob", func(t *testcase.T) {
 			var (
 				g synckit.Group
@@ -2616,6 +2712,69 @@ func TestGroup(t *testing.T) {
 				})
 			}, func() {
 				<-g.Done()
+			})
+		})
+	})
+
+	s.Describe("#Wait", func(s *testcase.Spec) {
+		act := func(t *testcase.T) error {
+			return group.Get(t).Wait()
+		}
+
+		s.Then("it returns without an error when the group has no task", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.When("a task of the group failed", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+
+			s.Before(func(t *testcase.T) {
+				var err = expErr.Get(t)
+				group.Get(t).Go(t.Context(), func(ctx context.Context) error {
+					return err
+				})
+			})
+
+			s.Then("the failure is reported back", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), expErr.Get(t))
+			})
+
+			s.And("the failure was already propagated by a previous Wait call", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.ErrorIs(t, group.Get(t).Wait(), expErr.Get(t),
+						"expected that the previous Wait call propagated the failure")
+				})
+
+				s.Then("the already propagated failure is drained, and it is not reported again", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+
+				s.And("the group is reused by starting a new task on it", func(s *testcase.Spec) {
+					othErr := let.VarOf[error](s, nil)
+
+					s.Before(func(t *testcase.T) {
+						var err = othErr.Get(t)
+						group.Get(t).Go(t.Context(), func(ctx context.Context) error {
+							return err
+						})
+					})
+
+					s.Then("the group is ready for the new use-case, it is not statefully bound to the already propagated failure", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+					})
+
+					s.And("the newly started task fails as well", func(s *testcase.Spec) {
+						othErr.Let(s, let.Error(s).Get)
+
+						s.Then("only the new task's failure is reported", func(t *testcase.T) {
+							gotErr := act(t)
+
+							assert.ErrorIs(t, gotErr, othErr.Get(t))
+							assert.False(t, errors.Is(gotErr, expErr.Get(t)),
+								"the already propagated failure was not expected to be reported again")
+						})
+					})
+				})
 			})
 		})
 	})

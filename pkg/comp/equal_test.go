@@ -199,6 +199,69 @@ func TestEqual(t *testing.T) {
 		assert.False(t, comp.Equal[testent.Fooer](v1, v2))
 	})
 
+	s.Test("byte slices under an interface type argument", func(t *testcase.T) {
+		// The []byte fast path keys off the dynamic type of the first
+		// argument. When T is an interface type it must still be taken,
+		// as long as both sides actually hold a []byte.
+		assert.True(t, comp.Equal[any]([]byte("hello"), []byte("hello")))
+		assert.False(t, comp.Equal[any]([]byte("hello"), []byte("world")))
+		assert.False(t, comp.Equal[any]([]byte("hello"), []byte("hell")))
+		assert.True(t, comp.Equal[any]([]byte(nil), []byte(nil)))
+		assert.False(t, comp.Equal[any]([]byte(nil), []byte{}))
+		assert.True(t, comp.Equal[any]([]byte{}, []byte{}))
+	})
+
+	s.Test("float64 under an interface type argument", func(t *testcase.T) {
+		// Same for the float64 fast path, including the NaN equality
+		// opt-in, which is only reachable through that path.
+		nan := math.NaN()
+
+		assert.True(t, comp.Equal[any](1.5, 1.5))
+		assert.False(t, comp.Equal[any](1.5, 2.5))
+		assert.False(t, comp.Equal[any](nan, nan))
+		assert.True(t, comp.Equal[any](nan, nan, comp.EqualConfig{NaN: true}))
+		assert.False(t, comp.Equal[any](1.5, nan, comp.EqualConfig{NaN: true}))
+	})
+
+	s.Test("values with mismatching dynamic types are not equal", func(t *testcase.T) {
+		// When T is an interface type, the two arguments may hold
+		// different dynamic types. The []byte and float64 fast paths key
+		// off the first argument alone, so they must not assume that the
+		// second one matches it. Such a pair is simply not equal.
+		var mismatches = []struct{ A, B any }{
+			{A: 1.5, B: "1.5"},
+			{A: 1.5, B: 1},
+			{A: 1.5, B: float32(1.5)},
+			{A: 1.5, B: nil},
+			{A: 1.5, B: []string{"1.5"}},
+			{A: math.NaN(), B: "NaN"},
+			{A: []byte("hello"), B: "hello"},
+			{A: []byte("hello"), B: 42},
+			{A: []byte("hello"), B: nil},
+			{A: []byte("hello"), B: []string{"hello"}},
+		}
+
+		for _, m := range mismatches {
+			msg := assert.MessageF("%#v <-> %#v", m.A, m.B)
+
+			assert.NotPanic(t, func() { comp.Equal(m.A, m.B) }, msg)
+			assert.NotPanic(t, func() { comp.Equal(m.B, m.A) }, msg)
+
+			assert.False(t, comp.Equal(m.A, m.B), msg)
+			assert.False(t, comp.Equal(m.B, m.A), msg) // symmetric
+			assert.False(t, comp.Equal(m.A, m.B, comp.EqualConfig{NaN: true}), msg)
+		}
+	})
+
+	s.Test("named byte slice types are distinct under an interface type argument", func(t *testcase.T) {
+		// With T inferred as []byte, json.RawMessage is converted on the
+		// way in and compares by content (see "mixed byte slices types").
+		// With T as an interface type, both sides keep their own dynamic
+		// type, and values of differing dynamic types are never equal.
+		assert.True(t, comp.Equal([]byte("hello"), json.RawMessage("hello")))
+		assert.False(t, comp.Equal[any]([]byte("hello"), json.RawMessage("hello")))
+	})
+
 	s.Test("nil values", func(t *testcase.T) {
 		// Two untyped nil values are equal.
 		assert.True(t, comp.Equal[any](nil, nil))
