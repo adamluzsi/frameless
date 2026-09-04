@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
@@ -124,6 +125,8 @@ func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workf
 		})
 
 		for _, event := range events {
+			event := reflectkit.CloneT(event)
+
 			if !yield(event, nil) {
 				return
 			}
@@ -158,9 +161,7 @@ func (ex *WorkflowProcessChangeBroadcast) Publish(ctx context.Context, event wor
 }
 
 func (ex *WorkflowProcessChangeBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessChangeEvent] {
-	q := ex.exchange.MakeQueue()
-	q.Volatile = true
-	return q.Subscribe(ctx)
+	return ex.exchange.Subscribe(ctx)
 }
 
 type WorkflowProcessExecutionQueue struct {
@@ -190,3 +191,9 @@ func (q *WorkflowProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Su
 	q.init()
 	return q.q.Subscribe(ctx)
 }
+
+type WorkflowProcessLocks struct {
+	LockerFactory[workflow.ProcessID, workflow.ProcessLock]
+}
+
+var _ workflow.ProcessLocks = (*WorkflowProcessLocks)(nil)

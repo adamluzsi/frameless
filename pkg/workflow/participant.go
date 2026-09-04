@@ -7,13 +7,12 @@ import (
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/testcase/clock"
 )
 
 type ExecuteParticipant struct {
 	ID     ParticipantID
-	Input  []VarKey
-	Output []VarKey
+	Input  []VarName
+	Output []VarName
 }
 
 var _ Definition = (*ExecuteParticipant)(nil)
@@ -122,7 +121,7 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, pid ProcessID) (
 			return EventParticipant{
 				EventID:       eventID,
 				ProcessID:     pid,
-				Timestamp:     clock.Now().UTC(),
+				Timestamp:     timeNow(),
 				ParticipantID: id,
 				Path:          path,
 				Input:         input,
@@ -136,29 +135,7 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, pid ProcessID) (
 	return exec.Execute(ctx, pid)
 }
 
-// var _ ConditionConveratble = (*ExecuteParticipant)(nil)
-
-// func (d ExecuteParticipant) ToCondition(ctx context.Context, p *Process) (Condition, bool) {
-// 	return nil, false
-// }
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-func getExecuteParticipantEvents(es []Event) []*EventParticipant {
-	var epes []*EventParticipant
-	for _, e := range es {
-		if e == nil {
-			continue
-		}
-		if e.EventType() != eidExecuteParticipantEvent {
-			continue
-		}
-		if epe, ok := e.(*EventParticipant); ok {
-			epes = append(epes, epe)
-		}
-	}
-	return epes
-}
 
 type EventParticipant struct {
 	EventID       EventID `ext:"id"`

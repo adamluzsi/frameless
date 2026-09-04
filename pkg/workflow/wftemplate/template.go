@@ -61,8 +61,25 @@ func (tmpl Condition) Evaluate(ctx context.Context, pid workflow.ProcessID) (boo
 	if err != nil {
 		return false, err
 	}
+	// The variable map has to be re-keyed to a plain string map before it is
+	// handed over to the template.
+	//
+	// text/template resolves a ".name" reference against a map by looking the
+	// key up with a string value, and it only does so when the map's key type
+	// is assignable from string. workflow.VarName is a defined string type, so
+	// string is NOT assignable to it, and every variable reference would fail
+	// at execution time with:
+	//
+	//	can't evaluate field name in type map[workflow.VarName]interface {}
+	//
+	// The same restriction also defeats the explicit `index . "name"` form,
+	// which makes this conversion the only way process variables are reachable
+	// from a condition expression.
+	var data = mapkit.Map[string, any](vs, func(name workflow.VarName, value any) (string, any) {
+		return string(name), value
+	})
 	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, vs); err != nil {
+	if err := tpl.Execute(&buf, data); err != nil {
 		return false, err
 	}
 	return strconv.ParseBool(buf.String())

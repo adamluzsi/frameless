@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/testcase/clock"
 )
 
 type ExecuteCondition struct {
 	ID    ConditionID
-	Input []VarKey
+	Input []VarName
 }
 
 var _ Condition = ExecuteCondition{}
@@ -106,7 +105,7 @@ func (d ExecuteCondition) cachedExecute(ctx context.Context, pid ProcessID) (res
 				Path:        path,
 				Input:       input,
 				Answer:      output[0].(bool),
-				Timestamp:   clock.Now(),
+				Timestamp:   timeNow(),
 			}, nil
 		},
 	}

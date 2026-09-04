@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"slices"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/comproto"
 )
 
 // idempotentExecutor records each invocation in the process' event history and
@@ -22,14 +22,43 @@ import (
 type idempotentExecutor[E Event, ID ~string] struct {
 	ID        ID
 	Do        func(ctx context.Context, input []any) (output []any, _ error)
-	Input     []VarKey
-	Output    []VarKey
+	Input     []VarName
+	Output    []VarName
 	CastEvent func(e E) (executionEvent[ID], bool)
 	// MakeEvent returns an E value (intentionally not a *E) which can be used with Event interface variables.
 	MakeEvent func(id ID, path Path, input []any, output []any) (E, error)
 	// AcceptDefinition configures idempotentExecutor to let it know,
 	// the E event type supports signal persistence.
 	AcceptDefinition func(e *E, def Definition)
+}
+
+func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) {
+	// The commit decision cannot be made on "is rErr nil", because in this
+	// package a non-nil error is not necessarily a failure.
+	//
+	// A RuntimeSignal is not an error. It is the runtime's own control flow
+	// (suspend, replace, complete), raised deliberately by a step that ran fine,
+	// so it must not be handled as a rainy case.
+	//
+	// That distinction matters here because these transactions are layered:
+	// steps nest, and every nesting level opens its own transaction around the
+	// events it records. The layers have no checkpoints between them — a
+	// rollback is reported upwards as a failure, and the level above takes it
+	// for a rainy case and rolls back in turn, all the way to the top. Rolling
+	// back on a signal would therefore not undo "the signal"; it would discard
+	// every event recorded by every enclosing step, because one step at the
+	// bottom used control flow.
+	//
+	// Those events describe work that genuinely happened — variables set earlier
+	// in the process, and the enclosing steps' own recorded executions.
+	// TestRuntime_Execute_participantFollowUpDefinition pins one such case.
+	if *rErr != nil && !isRuntimeSignal(*rErr) {
+		*rErr = errorkitlite.Merge(*rErr, eventsRepo.RollbackTx(tx))
+		return
+	}
+	if err := eventsRepo.CommitTx(tx); err != nil {
+		*rErr = errorkitlite.Merge(*rErr, err)
+	}
 }
 
 type executionEvent[ID ~string] struct {
@@ -71,6 +100,20 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	if err != nil {
 		return nil, err
 	}
+
+	// most transaction locking happens at row level,
+	// with mostly on mutation,
+	// so the cost of transaction should be acceptable here
+	tx, err := eventsRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// tx is finished instead of ctx on purpose: ctx is reassigned further down
+	// for the output variable transaction, and a closure would capture that
+	// later value rather than this transaction.
+	defer ie.commitEventsTx(&rErr, eventsRepo, tx)
+
+	ctx = tx
 
 	var events []Event
 	for event, err := range eventsRepo.FindByProcessID(ctx, pid) {
@@ -170,20 +213,6 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 			return nil, err
 		}
 	}
-
-	rt, ok := RuntimeFromContext(ctx)
-	if !ok {
-		return nil, ErrFatal.F("missing workflow runtime in context")
-	}
-	if rt.Events == nil {
-		return nil, ErrFatal.F("missing events repository in workflow runtime")
-	}
-
-	ctx, err = rt.Events.BeginTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer comproto.FinishOnePhaseCommit(&rErr, rt.Events, ctx)
 
 	// add new variables as well to the event history
 	for i, key := range ie.Output {

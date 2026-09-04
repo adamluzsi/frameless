@@ -18,12 +18,12 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-// randomVariableKeys builds a non-empty slice of random workflow.VariableKey
-// values. The length is bounded (0..3) so the slice stays small while still
-// exercising the slice-typed JSON wire format.
-func randomVariableKeys(tc *testcase.T) []workflow.VarKey {
-	return random.Slice(tc.Random.IntBetween(0, 3), func() workflow.VarKey {
-		return workflow.VarKey(tc.Random.String())
+// randomVarNames builds a slice of random workflow.VarName values. The length
+// is bounded (0..3) so the slice stays small while still exercising the
+// slice-typed JSON wire format.
+func randomVarNames(tc *testcase.T) []workflow.VarName {
+	return random.Slice(tc.Random.IntBetween(0, 3), func() workflow.VarName {
+		return workflow.VarName(tc.Random.String())
 	})
 }
 
@@ -77,21 +77,40 @@ func MakeDefinition(tb testing.TB) workflow.Definition {
 		func() workflow.Definition {
 			return workflow.ExecuteParticipant{
 				ID:     workflow.ParticipantID(tc.Random.String()),
-				Input:  randomVariableKeys(tc),
-				Output: randomVariableKeys(tc),
+				Input:  randomVarNames(tc),
+				Output: randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
 			return workflow.ExecuteCondition{
 				ID:    workflow.ConditionID(tc.Random.String()),
-				Input: randomVariableKeys(tc),
+				Input: randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
 			return workflow.SetVar{
-				Key:   workflow.VarKey(tc.Random.String()),
+				Name:  workflow.VarName(tc.Random.String()),
 				Value: randomSetVarValue(tc),
 			}
+		},
+		func() workflow.Definition {
+			return workflow.DeclareVar{
+				Name:   workflow.VarName(tc.Random.String()),
+				Global: tc.Random.Bool(),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.DeleteVar{
+				Name: workflow.VarName(tc.Random.String()),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.Increment{
+				Name: workflow.VarName(tc.Random.String()),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.Break{}
 		},
 		func() workflow.Definition {
 			return workflow.Sleep{
@@ -104,6 +123,22 @@ func MakeDefinition(tb testing.TB) workflow.Definition {
 				Cond: MakeCondition(tc),
 				Then: MakeDefinition(tc),
 				Else: MakeDefinition(tc),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.For{
+				Init: MakeLeafDefinition(tc),
+				Cond: MakeCondition(tc),
+				Post: MakeLeafDefinition(tc),
+				Do:   MakeLeafDefinition(tc),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.ForEach{
+				Over: workflow.VarName(tc.Random.String()),
+				K:    workflow.VarName(tc.Random.String()),
+				V:    workflow.VarName(tc.Random.String()),
+				Do:   MakeLeafDefinition(tc),
 			}
 		},
 		func() workflow.Definition {
@@ -127,8 +162,8 @@ func makeVarMapping(tc *testcase.T) workflow.VarMapping {
 		func() workflow.VarMapping { return nil },
 		func() workflow.VarMapping { return workflow.VarMapping{} },
 		func() workflow.VarMapping {
-			return random.Map(tc.Random.IntBetween(3, 7), func() (workflow.VarKey, workflow.VarKey) {
-				return workflow.VarKey(tc.Random.String()), workflow.VarKey(tc.Random.String())
+			return random.Map(tc.Random.IntBetween(3, 7), func() (workflow.VarName, workflow.VarName) {
+				return workflow.VarName(tc.Random.String()), workflow.VarName(tc.Random.String())
 			})
 		},
 	)()
@@ -145,21 +180,40 @@ func MakeLeafDefinition(tb testing.TB) workflow.Definition {
 		func() workflow.Definition {
 			return workflow.ExecuteParticipant{
 				ID:     workflow.ParticipantID(tc.Random.String()),
-				Input:  randomVariableKeys(tc),
-				Output: randomVariableKeys(tc),
+				Input:  randomVarNames(tc),
+				Output: randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
 			return workflow.ExecuteCondition{
 				ID:    workflow.ConditionID(tc.Random.String()),
-				Input: randomVariableKeys(tc),
+				Input: randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
 			return workflow.SetVar{
-				Key:   workflow.VarKey(tc.Random.String()),
+				Name:  workflow.VarName(tc.Random.String()),
 				Value: randomSetVarValue(tc),
 			}
+		},
+		func() workflow.Definition {
+			return workflow.DeclareVar{
+				Name:   workflow.VarName(tc.Random.String()),
+				Global: tc.Random.Bool(),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.DeleteVar{
+				Name: workflow.VarName(tc.Random.String()),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.Increment{
+				Name: workflow.VarName(tc.Random.String()),
+			}
+		},
+		func() workflow.Definition {
+			return workflow.Break{}
 		},
 		func() workflow.Definition {
 			return workflow.Sleep{
@@ -175,7 +229,7 @@ func MakeCondition(tb testing.TB) workflow.Condition {
 	if tc.Random.Bool() {
 		return workflow.ExecuteCondition{
 			ID:    workflow.ConditionID(tc.Random.String()),
-			Input: randomVariableKeys(tc),
+			Input: randomVarNames(tc),
 		}
 	}
 	return randomTemplateCondition(tc)
@@ -223,6 +277,26 @@ func randomEventID(tc *testcase.T) workflow.EventID {
 	return id
 }
 
+// randomPath builds a random workflow.Path fixture.
+func randomPath(tc *testcase.T) workflow.Path {
+	tc.Helper()
+	var length = tc.Random.IntBetween(0, 5)
+	if length == 0 && tc.Random.Bool() {
+		return nil
+	}
+	return random.Slice(length, tc.Random.UUID)
+}
+
+// randomVarScope builds a random workflow.VarScope fixture.
+func randomVarScope(tc *testcase.T) workflow.VarScope {
+	tc.Helper()
+	var length = tc.Random.IntBetween(0, 5)
+	if length == 0 && tc.Random.Bool() {
+		return nil
+	}
+	return random.Slice(length, tc.Random.UUID)
+}
+
 // Codec returns a contract.Contract that asserts a workflow.Codec faithfully
 // round-trips every workflow.Definition and workflow.Condition implementation
 // currently registered for polymorphic (de)serialisation.
@@ -257,6 +331,34 @@ func Codec(codec workflow.Codec) contract.Contract {
 		assertRoundTripDefinition(t, codec, def)
 	})
 
+	// Empty Sequence is the degenerate-but-allowed Definition shape:
+	// len==0 must marshal to {"@type":"workflow::sequence","@value":[]}
+	// (the slice envelope, not an empty interface envelope) and must
+	// round-trip both through the Definition interface and into the
+	// concrete workflow.Sequence type. The concrete path is the one the
+	// generic jsonkit slice unmarshaller historically fumbled — the typed
+	// envelope was emitted on Marshal but not unwrapped when the target
+	// was the concrete slice type — so the contract pins both paths.
+	s.Test("empty Sequence round-trips through Definition and as concrete", func(t *testcase.T) {
+		def := workflow.Sequence{}
+
+		data, err := codec.Marshal(def)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		var gotDef workflow.Definition
+		assert.NoError(t, codec.Unmarshal(data, &gotDef))
+		gotSeq, ok := gotDef.(workflow.Sequence)
+		assert.True(t, ok,
+			assert.MessageF("expected empty Sequence to unmarshal as workflow.Sequence, got %T", gotDef))
+		assert.Equal(t, 0, len(gotSeq))
+
+		var gotConcrete workflow.Sequence
+		assert.NoError(t, codec.Unmarshal(data, &gotConcrete),
+			assert.MessageF("empty workflow.Sequence should round-trip into its concrete type\nJSON: %s", string(data)))
+		assert.Equal(t, 0, len(gotConcrete))
+	})
+
 	s.Test("If round-trips", func(t *testcase.T) {
 		def := workflow.If{
 			Cond: MakeCondition(t),
@@ -274,10 +376,52 @@ func Codec(codec workflow.Codec) contract.Contract {
 		assertRoundTripDefinition(t, codec, def)
 	})
 
+	s.Test("For round-trips", func(t *testcase.T) {
+		def := workflow.For{
+			Init: MakeDefinition(t),
+			Cond: MakeCondition(t),
+			Post: MakeDefinition(t),
+			Do:   MakeDefinition(t),
+		}
+		assertRoundTripDefinition(t, codec, def)
+	})
+
+	s.Test("ForEach round-trips", func(t *testcase.T) {
+		def := workflow.ForEach{
+			Over: workflow.VarName(t.Random.String()),
+			K:    workflow.VarName(t.Random.String()),
+			V:    workflow.VarName(t.Random.String()),
+			Do:   MakeDefinition(t),
+		}
+		assertRoundTripDefinition(t, codec, def)
+	})
+
 	s.Test("SetVar round-trips", func(t *testcase.T) {
 		def := workflow.SetVar{
-			Key:   workflow.VarKey(t.Random.String()),
+			Name:  workflow.VarName(t.Random.String()),
 			Value: randomSetVarValue(t),
+		}
+		assertRoundTripDefinition(t, codec, def)
+	})
+
+	s.Test("DeclareVar round-trips", func(t *testcase.T) {
+		def := workflow.DeclareVar{
+			Name:   workflow.VarName(t.Random.String()),
+			Global: t.Random.Bool(),
+		}
+		assertRoundTripDefinition(t, codec, def)
+	})
+
+	s.Test("DeleteVar round-trips", func(t *testcase.T) {
+		def := workflow.DeleteVar{
+			Name: workflow.VarName(t.Random.String()),
+		}
+		assertRoundTripDefinition(t, codec, def)
+	})
+
+	s.Test("Increment round-trips", func(t *testcase.T) {
+		def := workflow.Increment{
+			Name: workflow.VarName(t.Random.String()),
 		}
 		assertRoundTripDefinition(t, codec, def)
 	})
@@ -285,8 +429,8 @@ func Codec(codec workflow.Codec) contract.Contract {
 	s.Test("ExecuteParticipant round-trips", func(t *testcase.T) {
 		def := workflow.ExecuteParticipant{
 			ID:     workflow.ParticipantID(t.Random.String()),
-			Input:  randomVariableKeys(t),
-			Output: randomVariableKeys(t),
+			Input:  randomVarNames(t),
+			Output: randomVarNames(t),
 		}
 		assertRoundTripDefinition(t, codec, def)
 	})
@@ -294,7 +438,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 	s.Test("ExecuteCondition as Definition round-trips", func(t *testcase.T) {
 		def := workflow.ExecuteCondition{
 			ID:    workflow.ConditionID(t.Random.String()),
-			Input: randomVariableKeys(t),
+			Input: randomVarNames(t),
 		}
 		assertRoundTripDefinition(t, codec, def)
 	})
@@ -302,7 +446,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 	s.Test("ExecuteCondition as Condition round-trips", func(t *testcase.T) {
 		cond := workflow.ExecuteCondition{
 			ID:    workflow.ConditionID(t.Random.String()),
-			Input: randomVariableKeys(t),
+			Input: randomVarNames(t),
 		}
 		assertRoundTripCondition(t, codec, cond)
 	})
@@ -311,11 +455,35 @@ func Codec(codec workflow.Codec) contract.Contract {
 		assertRoundTripCondition(t, codec, randomTemplateCondition(t))
 	})
 
+	// wftemplate.Condition is a named primitive kind (`type Condition
+	// string`). Its concrete path is the silent failure mode for typed
+	// envelopes on primitives — the registry wraps it on Marshal, but a
+	// future regression in jsonkit could forget to unwrap the envelope
+	// when the target is the named type. Pin both paths: through the
+	// workflow.Condition interface (already covered by the helper
+	// above) and directly into wftemplate.Condition.
+	s.Test("wftemplate.Condition round-trips as concrete type", func(t *testcase.T) {
+		cond := randomTemplateCondition(t)
+
+		data, err := codec.Marshal(cond)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		var got workflow.Condition
+		assert.NoError(t, codec.Unmarshal(data, &got))
+		assert.Equal[workflow.Condition](t, cond, got)
+
+		var gotConcrete wftemplate.Condition
+		assert.NoError(t, codec.Unmarshal(data, &gotConcrete),
+			assert.MessageF("wftemplate.Condition should round-trip into its concrete type\nJSON: %s", string(data)))
+		assert.Equal[wftemplate.Condition](t, cond, gotConcrete)
+	})
+
 	s.Test("UseDefinitionEvent round-trips", func(t *testcase.T) {
 		event := workflow.EventUseDefinition{
 			EventID:    randomEventID(t),
 			ProcessID:  randomEventProcessID(t),
-			Timestamp:  clock.Now(),
+			Timestamp:  clock.Now().UTC(),
 			Definition: MakeDefinition(t),
 		}
 		assertRoundTripEvent(t, codec, event)
@@ -333,18 +501,35 @@ func Codec(codec workflow.Codec) contract.Contract {
 				While: MakeCondition(t),
 				Until: MakeCondition(t),
 			},
+			workflow.Break{},
+			workflow.For{
+				Init: MakeLeafDefinition(t),
+				Cond: MakeCondition(t),
+				Post: MakeLeafDefinition(t),
+				Do:   MakeLeafDefinition(t),
+			},
 			workflow.SetVar{
-				Key:   workflow.VarKey(t.Random.String()),
+				Name:  workflow.VarName(t.Random.String()),
 				Value: randomSetVarValue(t),
+			},
+			workflow.DeclareVar{
+				Name:   workflow.VarName(t.Random.String()),
+				Global: t.Random.Bool(),
+			},
+			workflow.DeleteVar{
+				Name: workflow.VarName(t.Random.String()),
+			},
+			workflow.Increment{
+				Name: workflow.VarName(t.Random.String()),
 			},
 			workflow.ExecuteParticipant{
 				ID:     workflow.ParticipantID(t.Random.String()),
-				Input:  randomVariableKeys(t),
-				Output: randomVariableKeys(t),
+				Input:  randomVarNames(t),
+				Output: randomVarNames(t),
 			},
 			workflow.ExecuteCondition{
 				ID:    workflow.ConditionID(t.Random.String()),
-				Input: randomVariableKeys(t),
+				Input: randomVarNames(t),
 			},
 		}
 		def := defs[t.Random.IntN(len(defs))]
@@ -395,25 +580,85 @@ func Codec(codec workflow.Codec) contract.Contract {
 		}
 	})
 
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.For {
+		// Use leaf-only parts here. A nested polymorphic Definition through
+		// the same codec path is exercised by the top-level "For round-trips"
+		// test above, which deliberately uses MakeDefinition.
+		var leafOrNil = func() workflow.Definition {
+			return random.Pick(t.Random,
+				func() workflow.Definition { return nil },
+				func() workflow.Definition { return MakeLeafDefinition(t) },
+			)()
+		}
+		return workflow.For{
+			Init: leafOrNil(),
+			Cond: random.Pick(t.Random,
+				func() workflow.Condition { return nil },
+				func() workflow.Condition { return randomTemplateCondition(t) },
+				func() workflow.Condition { return MakeCondition(t) },
+			)(),
+			Post: leafOrNil(),
+			Do:   leafOrNil(),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.Break {
+		return workflow.Break{}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.ForEach {
+		// Use leaf-only `Do` here. A nested polymorphic Definition through
+		// the same codec path is exercised by the top-level "ForEach
+		// round-trips" test above, which deliberately uses MakeDefinition.
+		return workflow.ForEach{
+			Over: workflow.VarName(t.Random.String()),
+			K:    workflow.VarName(t.Random.String()),
+			V:    workflow.VarName(t.Random.String()),
+			Do: random.Pick(t.Random,
+				func() workflow.Definition { return nil },
+				func() workflow.Definition { return MakeLeafDefinition(t) },
+			)(),
+		}
+	})
+
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.SetVar {
 		return workflow.SetVar{
-			Key:   workflow.VarKey(t.Random.String()),
+			Name:  workflow.VarName(t.Random.String()),
 			Value: randomSetVarValue(t),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.DeclareVar {
+		return workflow.DeclareVar{
+			Name:   workflow.VarName(t.Random.String()),
+			Global: t.Random.Bool(),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.DeleteVar {
+		return workflow.DeleteVar{
+			Name: workflow.VarName(t.Random.String()),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.Increment {
+		return workflow.Increment{
+			Name: workflow.VarName(t.Random.String()),
 		}
 	})
 
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.ExecuteParticipant {
 		return workflow.ExecuteParticipant{
 			ID:     workflow.ParticipantID(t.Random.String()),
-			Input:  randomVariableKeys(t),
-			Output: randomVariableKeys(t),
+			Input:  randomVarNames(t),
+			Output: randomVarNames(t),
 		}
 	})
 
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.ExecuteCondition {
 		return workflow.ExecuteCondition{
 			ID:    workflow.ConditionID(t.Random.String()),
-			Input: randomVariableKeys(t),
+			Input: randomVarNames(t),
 		}
 	})
 
@@ -439,8 +684,8 @@ func Codec(codec workflow.Codec) contract.Contract {
 			func() workflow.VarMapping { return nil },
 			func() workflow.VarMapping { return workflow.VarMapping{} },
 			func() workflow.VarMapping {
-				return random.Map(t.Random.IntBetween(3, 7), func() (workflow.VarKey, workflow.VarKey) {
-					return workflow.VarKey(t.Random.String()), workflow.VarKey(t.Random.String())
+				return random.Map(t.Random.IntBetween(3, 7), func() (workflow.VarName, workflow.VarName) {
+					return workflow.VarName(t.Random.String()), workflow.VarName(t.Random.String())
 				})
 			},
 		)()
@@ -459,12 +704,24 @@ func Codec(codec workflow.Codec) contract.Contract {
 		}
 	})
 
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventDeclareVar {
+		return workflow.EventDeclareVar{
+			EventID:   randomEventID(t),
+			ProcessID: randomEventProcessID(t),
+			Timestamp: randomEventTimestamp(t),
+			Path:      randomPath(t),
+			Name:      workflow.VarName(t.Random.String()),
+			Scope:     randomVarScope(t),
+		}
+	})
+
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventSetVar {
 		return workflow.EventSetVar{
 			EventID:   randomEventID(t),
 			ProcessID: randomEventProcessID(t),
 			Timestamp: randomEventTimestamp(t),
-			Key:       workflow.VarKey(t.Random.String()),
+			Path:      randomPath(t),
+			Name:      workflow.VarName(t.Random.String()),
 			Value: random.Pick(t.Random,
 				func() any { return nil },
 				func() any { return randomSetVarValue(t) },
@@ -477,7 +734,8 @@ func Codec(codec workflow.Codec) contract.Contract {
 			EventID:   randomEventID(t),
 			ProcessID: randomEventProcessID(t),
 			Timestamp: randomEventTimestamp(t),
-			Key:       workflow.VarKey(t.Random.String()),
+			Path:      randomPath(t),
+			Name:      workflow.VarName(t.Random.String()),
 		}
 	})
 
@@ -550,25 +808,7 @@ func assertRoundTripEvent(tc *testcase.T, codec workflow.Codec, event workflow.E
 // randomEventTimestamp builds a non-zero, varied timestamp for event fixtures
 // so the round-trip asserts are not degenerate.
 func randomEventTimestamp(tc *testcase.T) time.Time {
-	return clock.Now().Add(-tc.Random.DurationBetween(time.Hour, 7*24*time.Hour))
-}
-
-// randomPath builds a small random workflow.Path for event fixtures. Using
-// a single empty path most of the time keeps the codec test focused on the
-// type envelope rather than the path slice format.
-func randomPath(tc *testcase.T) workflow.Path {
-	switch tc.Random.IntN(3) {
-	case 0:
-		return nil
-	case 1:
-		return workflow.Path{tc.Random.String()}
-	default:
-		return workflow.Path{
-			tc.Random.String(),
-			tc.Random.String(),
-			tc.Random.String(),
-		}
-	}
+	return clock.Now().UTC().Add(-tc.Random.DurationBetween(time.Hour, 7*24*time.Hour))
 }
 
 func specTypeCodec[T any](s *testcase.Spec, c workflow.Codec, init testcase.VarInit[T]) {
@@ -639,13 +879,6 @@ func specTypeCodec[T any](s *testcase.Spec, c workflow.Codec, init testcase.VarI
 			})
 
 			s.Test("can be composited in a workflow sequence", func(t *testcase.T) {
-				// // Skip for workflow.Sequence itself: a Sequence nested inside
-				// // another Sequence exercises a separate codec branch whose
-				// // round-trip is broken at the time of writing.
-				// if reflect.TypeFor[T]() == reflect.TypeOf(workflow.Sequence{}) {
-				// 	t.Skip("nested workflow.Sequence composition is exercised separately")
-				// }
-
 				var exp = workflow.Sequence{
 					definition.Get(t),
 				}

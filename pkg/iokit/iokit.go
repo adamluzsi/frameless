@@ -454,7 +454,7 @@ func (r *KeepAliveReader) beat() {
 }
 
 func (r *KeepAliveReader) timeout() time.Duration {
-	if r.IdleTimeout != 0 {
+	if 0 < r.IdleTimeout {
 		return r.IdleTimeout
 	}
 	const defaultTimeout = 10 * time.Second

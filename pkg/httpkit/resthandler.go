@@ -748,8 +748,15 @@ func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, 
 		}
 	}
 
+	// Concurrent calls to DeleteAll on the same sub-resource are race-free:
+	// if a peer goroutine already removed an entity we list here, the Destroy
+	// call returns crud.ErrNotFound, which we treat as a benign outcome
+	// because the resource will end up empty regardless of who deleted what.
 	for _, id := range ids {
 		if err := res.Destroy(ctx, id); err != nil {
+			if errors.Is(err, crud.ErrNotFound) {
+				continue
+			}
 			return false, err
 		}
 	}

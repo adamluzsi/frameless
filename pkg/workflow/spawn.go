@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/testcase/clock"
 )
 
 // Spawn request Runtime to launch a sub-workflow.
@@ -51,7 +50,9 @@ func (spawn Spawn) Validate(ctx context.Context) error {
 }
 
 func (spawn Spawn) withName(ctx context.Context) context.Context {
-	return WithName(WithName(ctx, "spawn"), string(spawn.Name))
+	ctx = WithName(ctx, "spawn")
+	ctx = WithName(ctx, string(spawn.Name))
+	return ctx
 }
 
 // SpawnName is a human friendly user given identifier name for referencing an eventually spawned sub process.
@@ -74,7 +75,6 @@ func (spawn Spawn) Error() string { return "workflow::signal::spawn" }
 // never-bound process, and immediately record an EventCompleted, silently
 // dropping the spawn.
 func (spawn Spawn) Execute(ctx context.Context, processID ProcessID) (rErr error) {
-
 	if err := spawn.Validate(ctx); err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (spawn Spawn) ensureSpawnEvent(ctx context.Context, rt Runtime, parentID Pr
 		ProcessID: parentID,
 		ChildID:   childID,
 		Name:      spawn.Name,
-		Timestamp: clock.Now(),
+		Timestamp: timeNow(),
 	}
 	var event Event = e
 	return e, rt.Events.Create(ctx, &event)
@@ -200,8 +200,7 @@ func (spawn Spawn) scheduleChild(ctx context.Context, rt Runtime, event EventSpa
 	if err := unlock(); err != nil {
 		return err
 	}
-	var complete = Complete{ProcessID: event.ChildID}
-	if isCompleted, err := complete.IsCompleted(ctx, rt.Events); err != nil {
+	if isCompleted, err := IsCompleted(ctx, rt.Events, event.ChildID); err != nil {
 		return err
 	} else if isCompleted {
 		return nil
@@ -291,7 +290,7 @@ scan:
 				found = true
 			}
 		case EventJoin:
-			if !event.Path.Equal(currentPath) {
+			if event.Path.Equal(currentPath) {
 				done = true
 				break scan
 			}
@@ -305,7 +304,7 @@ scan:
 		return fmt.Errorf("missing spawn child for the given Join.SpawnName %q in process %s", d.SpawnName, parentID.String())
 	}
 
-	done, err = Complete{ProcessID: child.ChildID}.IsCompleted(ctx, repo)
+	done, err = IsCompleted(ctx, repo, child.ChildID)
 	if err != nil {
 		return err
 	}
@@ -322,7 +321,7 @@ scan:
 		EventID:   eventID,
 		ProcessID: parentID,
 		Children:  []ProcessID{child.ChildID},
-		Timestamp: clock.Now(),
+		Timestamp: timeNow(),
 		Path:      currentPath,
 	}
 	return repo.Create(ctx, &event)
@@ -347,14 +346,14 @@ scan:
 		case EventSpawn:
 			children = append(children, event.ChildID)
 		case EventJoin:
-			if !event.Path.Equal(currentPath) {
+			if event.Path.Equal(currentPath) {
 				done = true
 				break scan
 			}
 		}
 	}
 	for _, child := range children {
-		done, err = Complete{ProcessID: child}.IsCompleted(ctx, repo)
+		done, err = IsCompleted(ctx, repo, child)
 		if err != nil {
 			return err
 		}
@@ -372,7 +371,7 @@ scan:
 		EventID:   eventID,
 		ProcessID: parentID,
 		Children:  children,
-		Timestamp: clock.Now(),
+		Timestamp: timeNow(),
 		Path:      currentPath,
 	}
 	return repo.Create(ctx, &event)

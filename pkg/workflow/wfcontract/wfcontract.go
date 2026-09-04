@@ -79,7 +79,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 				EventID:   workflow.EventID(eventID),
 				ProcessID: workflow.ProcessID(processID),
 				Timestamp: t.Random.Time(),
-				Key:       "foo",
+				Name:      "foo",
 				Value:     "bar",
 			}
 		})
@@ -252,21 +252,21 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 		return workflow.EventSetVar{
 			EventID:   MakeEventID(t),
 			ProcessID: processID,
-			Timestamp: clock.Now(),
-			Key:       "foo",
+			Timestamp: clock.Now().UTC(),
+			Name:      "foo",
 			Value:     t.Random.String(),
 		}
 	}, func() workflow.Event {
 		return workflow.EventCompleted{
 			EventID:   MakeEventID(t),
 			ProcessID: processID,
-			Timestamp: clock.Now(),
+			Timestamp: clock.Now().UTC(),
 		}
 	}, func() workflow.Event {
 		return workflow.EventParticipant{
 			EventID:       MakeEventID(t),
 			ProcessID:     processID,
-			Timestamp:     clock.Now(),
+			Timestamp:     clock.Now().UTC(),
 			ParticipantID: "participant-id",
 			Input: random.Slice(t.Random.IntBetween(0, 3), func() any {
 				return t.Random.String()
@@ -346,18 +346,12 @@ func ProcessChangeBroadcast(
 	// also exercises the channel against every concrete type the runtime
 	// could publish, which is what we actually want to assert.
 	makeData := func(tb testing.TB) workflow.ProcessChangeEvent {
-		var pid workflow.ProcessID
-		if pidtb, err := workflow.MakeProcessID(); err == nil {
-			pid = pidtb
-		}
-		switch tbRandom(tb).IntN(3) {
-		case 0:
-			return workflow.ProcessStart{ProcessID: pid}
-		case 1:
-			return workflow.ProcessStop{ProcessID: pid}
-		default:
-			return workflow.ProcessSleep{ProcessID: pid}
-		}
+		pid, err := workflow.MakeProcessID()
+		assert.NoError(tb, err)
+		return random.Pick[workflow.ProcessChangeEvent](tbRandom(tb),
+			workflow.ProcessSchedule{ProcessID: pid},
+			workflow.ProcessCancel{ProcessID: pid},
+		)
 	}
 
 	opts = append(opts, pubsubcontract.Config[workflow.ProcessChangeEvent]{

@@ -31,14 +31,14 @@ func TestReplace(t *testing.T) {
 		return workflow.Replace{}
 	})
 
-	_, replacePID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+	_, replacePID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			return subject.Get(t)
 		}
 	})
 
 	var fooN = let.VarOf(s, 0)
-	_, fooPID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+	_, fooPID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			fooN.Set(t, fooN.Get(t)+1)
 			return nil
@@ -46,7 +46,7 @@ func TestReplace(t *testing.T) {
 	})
 
 	var barN = let.VarOf(s, 0)
-	_, barPID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+	_, barPID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			barN.Set(t, barN.Get(t)+1)
 			return nil
@@ -54,7 +54,7 @@ func TestReplace(t *testing.T) {
 	})
 
 	var bazN = let.VarOf(s, 0)
-	_, bazPID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+	_, bazPID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			bazN.Set(t, bazN.Get(t)+1)
 			return nil
@@ -94,7 +94,7 @@ func TestReplace(t *testing.T) {
 	s.Then("upon completion, the workflow marked as completed", func(t *testcase.T) {
 		assert.NoError(t, act(t))
 
-		done, err := workflow.Complete{ProcessID: c.ProcessID.Get(t)}.IsCompleted(t.Context(), c.EventRepository.Get(t))
+		done, err := workflow.IsCompleted(t.Context(), c.EventRepository.Get(t), c.ProcessID.Get(t))
 		assert.NoError(t, err)
 		assert.True(t, done)
 	})

@@ -13,7 +13,6 @@ import (
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/guard"
-	"go.llib.dev/testcase/clock"
 )
 
 // Runtime is the default runtime to execute process definitions.
@@ -25,18 +24,25 @@ type Runtime struct {
 	Participants ParticipantRepository
 	// Conditions is the system provided Condition repository that can be used by workflow builders.
 	Conditions ConditionRepository
-	// ProcessLockers is a external distributed lock that enables the blocking by ProcessID.
-	ProcessLockers ProcessLocks
-	// ProcessExecutionQueue contains the scheduled metadata about which Process requires execution.
-	ProcessExecutionQueue ProcessExecutionQueue
-	// ProcessChangeBroadcast contains the information about whether or not
+	// Locks is a external distributed lock that enables the blocking by ProcessID.
+	Locks ProcessLocks
+	// Queue contains the scheduled metadata about which Process requires execution.
+	Queue ProcessExecutionQueue
+	// Changes contains the information about whether or not
 	// ProcessExecutionQueue might have a new higher priority Process to be executed
-	ProcessChangeBroadcast ProcessChangeBroadcast
+	Changes ProcessChangeBroadcast
+
+	// --- [OPTIONAL FIELDS] --- //
+
 	// Codec [optional] is the codec.Codec which is used to serialise workflow related values.
 	Codec Codec
-	// NumQueueSubscriber [optional] is the number of queue subscribers
+	// NumQueueSubscriber [optional] is the number of queue subscribers.
 	//
-	// Default: number of CPU * 4
+	// Each subscriber takes one entry off the ProcessExecutionQueue at a time and
+	// executes it to completion before reaching for the next one, which makes this
+	// the number of workflow processes the node runs at once.
+	//
+	// Default: number of CPU
 	NumQueueSubscriber int
 	// WaitTime [optional] is the time waited in case a workflow process requires rescheduling due to suspension.
 	//
@@ -44,6 +50,23 @@ type Runtime struct {
 	WaitTime time.Duration
 	// RetryStrategy [optional] is the retry strategy applied when a non-fatal error occurs during a task execution.
 	RetryStrategy resilience.RetryStrategy
+	// BindGracePeriod [optional] is how long a scheduled Process may wait for
+	// its Definition to arrive through Runtime#Bind.
+	//
+	// Scheduling and binding are separate operations, so a Process can reach the
+	// execution queue slightly ahead of its Definition. While the grace period
+	// lasts, such a Process is simply requeued. Once it runs out, the schedule
+	// entry is discarded, because nothing suggests a Definition is still coming,
+	// and an entry that can never execute must not stay in a shared queue.
+	//
+	// The grace period is measured from the moment the Process was scheduled
+	// (ProcessExecution#CreatedAt), and it is expressed in wall-clock time rather
+	// than in a number of attempts on purpose: attempts accumulate faster the more
+	// worker nodes are running, so an attempt based budget would expire much
+	// sooner on a large cluster than on a small one.
+	//
+	// Default: 1 minute
+	BindGracePeriod time.Duration
 	// ContextSetup [optional] allows you to configure the request context of a workflow process execution.
 	// Ideal for adding tracing and logging fields to the workflow execution context
 	ContextSetup ContextSetup
@@ -117,6 +140,17 @@ type RuntimeSignal interface {
 	RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) error
 }
 
+// isRuntimeSignal reports whether err is one of the runtime's happy errors.
+//
+// The check is deliberately a plain type assertion rather than errors.As:
+// Runtime#execute dispatches a signal with the very same unwrapped assertion,
+// so a signal that the runtime would no longer recognise must not count as a
+// happy outcome anywhere else either.
+func isRuntimeSignal(err error) bool {
+	_, ok := err.(RuntimeSignal)
+	return ok
+}
+
 // Context returns a fresh execution runtime context intended to be used for calling Definition#Execute.
 func (rt Runtime) Context(ctx context.Context) context.Context {
 	if ctx == nil {
@@ -134,29 +168,14 @@ func (rt Runtime) Context(ctx context.Context) context.Context {
 }
 
 // Spawn starts a new workflow Process bound to the given id and Definition.
-// It binds the Definition via the event history (see Bind) and then executes
-// it.
+// It binds the Definition via the event history (see Bind) and then schedules it for execution.
 //
-// Spawn is idempotent: calling it multiple times with the same (ctx, id, def)
-// triple is a no-op once the process has been spawned. Specifically:
-//
-//   - if a UseDefinitionEvent for the given id already exists in the event
-//     history, the existing record is left untouched and execution is skipped;
-//   - if the existing record's Definition has changed, the call still does
-//     not overwrite the persisted state (the contract is "ensure a process
-//     is present", not "force-mutate one").
-//
-// The caller owns the process identity: Spawn refuses a zero id so that
-// retrying a failed Spawn always yields the SAME ProcessID, making the
-// idempotency contract safe under any kind of caller-side failure
-// (network blip, timeout, panic recovery, etc.). Spawning a fresh id on
-// the caller's behalf would silently split a single logical request into
-// two distinct processes across retries.
+// Spawn is idempotent, repeated execution should not cause different final outcome for execution.
 func (rt Runtime) Spawn(ctx context.Context, id ProcessID, def Definition) error {
 	if err := rt.Bind(ctx, id, def); err != nil {
 		return err
 	}
-	return rt.Execute(ctx, id)
+	return rt.Schedule(ctx, id)
 }
 
 // Execute runs the process by replaying the UseDefinitionEvent entries in
@@ -218,6 +237,12 @@ processing:
 		if useDef, ok := event.(EventUseDefinition); ok {
 			useDefEvents = append(useDefEvents, useDef)
 		}
+		if _, ok := event.(EventCompleted); ok {
+			return nil
+		}
+		if _, ok := event.(EventTerminated); ok {
+			return nil
+		}
 	}
 
 	slicekit.SortBy(useDefEvents, func(a, b EventUseDefinition) bool {
@@ -240,14 +265,14 @@ processing:
 		return err
 	}
 
-	return Complete{ProcessID: pid}.RuntimeSignalExecute(ctx, rt, pid)
+	return Complete{}.RuntimeSignalExecute(ctx, rt, pid)
 }
 
 func (rt Runtime) tryLock(ctx context.Context, pid ProcessID) (context.Context, bool, func() error, error) {
-	if rt.ProcessLockers == nil {
-		return ctx, true, func() error { return nil }, nil // no lock mode
+	if rt.Locks == nil {
+		return nil, false, nil, ErrFatal.F("missing workflow.Runtime#ProcessLocks dependency")
 	}
-	var locker = rt.ProcessLockers.LockerFor(pid)
+	var locker = rt.Locks.LockerFor(pid)
 	lockContext, acquired, err := locker.TryLock(ctx)
 	if err != nil {
 		return nil, false, nil, err
@@ -312,11 +337,45 @@ func (rt Runtime) bind(ctx context.Context, processID ProcessID, def Definition)
 	var useDef Event = EventUseDefinition{
 		EventID:    eventID,
 		ProcessID:  processID,
-		Timestamp:  clock.Now(),
+		Timestamp:  timeNow(),
 		Definition: def,
 	}
 
 	return rt.Events.Create(ctx, &useDef)
+}
+
+func (rt Runtime) Terminate(ctx context.Context, pid ProcessID) (err error) {
+	return rt.withRetry(ctx, func() error {
+		return rt.terminate(ctx, pid)
+	})
+}
+
+func (rt Runtime) terminate(ctx context.Context, pid ProcessID) (err error) {
+	if pid.IsZero() {
+		return ErrZeroProcessID.F("workflow.Runtime#Terminate")
+	}
+	var (
+		lockContext context.Context
+		unlock      func() error
+	)
+	for {
+		var (
+			acquired bool
+			lockErr  error
+		)
+		lockContext, acquired, unlock, lockErr = rt.tryLock(ctx, pid)
+		if lockErr != nil {
+			return lockErr
+		}
+		if acquired { // no processing is running, and it is safe to terminate
+			break
+		}
+		if err := rt.Changes.Publish(ctx, ProcessCancel{ProcessID: pid}); err != nil {
+			return err
+		}
+	}
+	defer errorkit.Finish(&err, unlock)
+	return Terminate{}.RuntimeSignalExecute(lockContext, rt, pid)
 }
 
 type ctxKeyRuntime struct{}

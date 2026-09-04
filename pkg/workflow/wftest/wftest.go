@@ -7,9 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"errors"
-	"sync"
-
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/resilience"
@@ -47,44 +44,6 @@ func (stub Stub) Evaluate(ctx context.Context, pid workflow.ProcessID) (bool, er
 	return true, nil
 }
 
-// StubParticipant
-//
-// Deprecated: use Stub instead
-type StubParticipant struct {
-	Err error
-
-	m          sync.RWMutex
-	last       *StubParticipantFuncArg
-	_CallCount int
-}
-
-type StubParticipantFuncArg struct {
-	Context context.Context
-}
-
-func (stub *StubParticipant) Last() (context.Context, bool) {
-	stub.m.RLock()
-	defer stub.m.RUnlock()
-	if stub.last == nil {
-		return nil, false
-	}
-	return stub.last.Context, true
-}
-
-func (stub *StubParticipant) CallCount() int {
-	stub.m.RLock()
-	defer stub.m.RUnlock()
-	return stub._CallCount
-}
-
-func (stub *StubParticipant) Func(ctx context.Context) error {
-	stub.m.Lock()
-	defer stub.m.Unlock()
-	stub._CallCount++
-	stub.last = &StubParticipantFuncArg{Context: ctx}
-	return stub.Err
-}
-
 var participantIDs = testcase.Var[[]workflow.ParticipantID]{
 	ID: "workflow participant IDs generated with LetParticipantID",
 	Init: func(t *testcase.T) []workflow.ParticipantID {
@@ -111,22 +70,34 @@ var processIDs = testcase.Var[[]workflow.ProcessID]{
 
 func LetProcessID(s *testcase.Spec) testcase.Var[workflow.ProcessID] {
 	return let.Var(s, func(t *testcase.T) workflow.ProcessID {
-		pid := random.Unique(func() workflow.ProcessID {
-			id, err := workflow.MakeProcessID()
-			assert.NoError(t, err)
-			return id
-		}, processIDs.Get(t)...)
+		var makeProcessID = func() workflow.ProcessID {
+			return MakeProcessID(t)
+		}
+		pid := random.Unique(makeProcessID, processIDs.Get(t)...)
 		testcase.Append(t, processIDs, pid)
 		return pid
 	})
 }
 
-func LetParticipant[Func any](s *testcase.Spec, c C, mk func(t *testcase.T) Func) (testcase.Var[Func], testcase.Var[workflow.ParticipantID]) {
-	var participantID = LetParticipantID(s)
-	return LetParticipantWithID(s, c, participantID, mk), participantID
+func LetValue(s *testcase.Spec) testcase.Var[any] {
+	return let.Var(s, func(t *testcase.T) any {
+		return random.Pick[func() any](t.Random,
+			func() any { return t.Random.String() },
+			func() any { return t.Random.Int() },
+			func() any { return t.Random.Float32() },
+			func() any { return t.Random.Float64() },
+			func() any { return t.Random.Time() },
+			func() any { return t.Random.UUID() },
+		)()
+	})
 }
 
-func LetParticipantWithID[Func any](s *testcase.Spec, c C, pid testcase.Var[workflow.ParticipantID], mk func(t *testcase.T) Func) testcase.Var[Func] {
+func LetParticipant[Func any](s *testcase.Spec, mk func(t *testcase.T) Func) (testcase.Var[Func], testcase.Var[workflow.ParticipantID]) {
+	var participantID = LetParticipantID(s)
+	return LetParticipantWithID(s, participantID, mk), participantID
+}
+
+func LetParticipantWithID[Func any](s *testcase.Spec, pid testcase.Var[workflow.ParticipantID], mk func(t *testcase.T) Func) testcase.Var[Func] {
 	typ := reflect.TypeFor[Func]()
 	if typ.Kind() != reflect.Func {
 		panic(fmt.Sprintf("LetParticipant expected Func but got %s", typ.String()))
@@ -134,8 +105,8 @@ func LetParticipantWithID[Func any](s *testcase.Spec, c C, pid testcase.Var[work
 	p := let.Var(s, func(t *testcase.T) Func {
 		return mk(t)
 	})
-	c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
-		ps := c.Participants.Super(t)
+	Participants.Let(s, func(t *testcase.T) workflow.Participants {
+		ps := Participants.Super(t)
 		if ps == nil {
 			ps = make(workflow.Participants)
 		}
@@ -151,46 +122,6 @@ func (c *C) LetContext(s *testcase.Spec) testcase.Var[context.Context] {
 	})
 }
 
-// LetStubParticipant
-//
-// Deprecated: Use LetParticipant instead
-func (c *C) LetStubParticipant(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
-	s.H().Helper()
-
-	stub := let.Var(s, func(t *testcase.T) *StubParticipant {
-		return &StubParticipant{}
-	})
-
-	c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
-		ps := c.Participants.Super(t)
-		if ps == nil {
-			ps = make(workflow.Participants)
-		}
-		ps[pid.Get(t)] = stub.Get(t).Func
-		return ps
-	})
-
-	return stub
-}
-
-// LetProcessWithDefinition returns a testcase.Var[workflow.ProcessID] that is
-// initialised once per test case by delegating to Runtime.Bind, which records
-// a UseDefinitionEvent in the runtime's EventsRepository. The returned ID is
-// ready for Execute to pick up.
-//
-// Using Runtime.Bind instead of writing directly to the events repo keeps the
-// test helper thin and lets the production code own the "associate this
-// Definition with this ProcessID" operation. Process is intentionally
-// stateless — the current definition is always read from the event history.
-func LetProcessWithDefinition[Definition workflow.Definition](s *testcase.Spec, c C, def testcase.Var[Definition]) testcase.Var[workflow.ProcessID] {
-	return let.Var(s, func(t *testcase.T) workflow.ProcessID {
-		id, err := workflow.MakeProcessID()
-		assert.NoError(t, err)
-		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), id, def.Get(t)))
-		return id
-	})
-}
-
 // LetProcess returns a testcase.Var[workflow.ProcessID] generating a fresh
 // ProcessID per test case. Use it together with Runtime.Bind (or manually
 // seed the event history) when a Process needs to be associated with a
@@ -203,6 +134,97 @@ func LetProcess(s *testcase.Spec) testcase.Var[workflow.ProcessID] {
 	})
 }
 
+var Participants = testcase.Var[workflow.Participants]{
+	ID: "workflow Participants",
+	Init: func(t *testcase.T) workflow.Participants {
+		return workflow.Participants{
+			"/dev/null": func(ctx context.Context) error {
+				return nil
+			},
+		}
+	},
+}
+
+var Conditions = testcase.Var[workflow.Conditions]{
+	ID: "workflow Conditions",
+	Init: func(t *testcase.T) workflow.Conditions {
+		return workflow.Conditions{
+			"/dev/null": func(ctx context.Context) (bool, error) {
+				return false, nil
+			},
+		}
+	},
+}
+
+var EventRepository = testcase.Var[*memory.WorkflowEventRepository]{
+	ID: "workflow EventRepository",
+	Init: func(t *testcase.T) *memory.WorkflowEventRepository {
+		return &memory.WorkflowEventRepository{}
+	},
+}
+
+var ProcessExecutionQueue = testcase.Var[*memory.WorkflowProcessExecutionQueue]{
+	ID: "workflow ProcessExecutionQueue",
+	Init: func(t *testcase.T) *memory.WorkflowProcessExecutionQueue {
+		return &memory.WorkflowProcessExecutionQueue{}
+	},
+}
+
+var ProcessChangeBroadcast = testcase.Var[*memory.WorkflowProcessChangeBroadcast]{
+	ID: "workflow ProcessChangeBroadcast",
+	Init: func(t *testcase.T) *memory.WorkflowProcessChangeBroadcast {
+		return &memory.WorkflowProcessChangeBroadcast{}
+	},
+}
+
+var ProcessLocks = testcase.Var[*memory.WorkflowProcessLocks]{
+	ID: "workflow ProcessLocks",
+	Init: func(t *testcase.T) *memory.WorkflowProcessLocks {
+		return &memory.WorkflowProcessLocks{}
+	},
+}
+
+var ErrRuntimeRun = testcase.Var[error]{
+	ID: "workflow ErrRuntimeRun",
+}
+
+var Runtime = testcase.Var[workflow.Runtime]{
+	ID: "workflow Runtime",
+	Init: func(t *testcase.T) workflow.Runtime {
+		return workflow.Runtime{
+			Participants:       Participants.Get(t),
+			Conditions:         Conditions.Get(t),
+			Events:             EventRepository.Get(t),
+			Queue:              ProcessExecutionQueue.Get(t),
+			Changes:            ProcessChangeBroadcast.Get(t),
+			Locks:              ProcessLocks.Get(t),
+			RetryStrategy:      noFaultTolerance{},
+			WaitTime:           time.Nanosecond,
+			NumQueueSubscriber: 2,
+			Codec:              wfjson.NewCodec(),
+		}
+	},
+	Before: func(t *testcase.T, v testcase.Var[workflow.Runtime]) {
+		var rt = v.Get(t)
+		t.Go(func(ctx context.Context) error {
+			var err = rt.Run(ctx)
+			if ctx.Err() != nil {
+				return nil
+			}
+			ErrRuntimeRun.Set(t, err)
+			return nil
+		})
+	},
+	Deps: testcase.Vars{
+		Participants,
+		Conditions,
+		EventRepository,
+		ProcessExecutionQueue,
+		ProcessChangeBroadcast,
+		ProcessLocks,
+	},
+}
+
 // C is a common dependencies often needed for workflow related tests
 type C struct {
 	ProcessID  testcase.Var[workflow.ProcessID]
@@ -211,7 +233,6 @@ type C struct {
 	Runtime      testcase.Var[workflow.Runtime]
 	Participants testcase.Var[workflow.Participants]
 	Conditions   testcase.Var[workflow.Conditions]
-	ContextSetup testcase.Var[[]func(context.Context) context.Context]
 
 	ErrRuntimeRun testcase.Var[error]
 
@@ -219,7 +240,7 @@ type C struct {
 	ProcessExecutionQueue  testcase.Var[*memory.WorkflowProcessExecutionQueue]
 	ProcessChangeBroadcast testcase.Var[*memory.WorkflowProcessChangeBroadcast]
 
-	ProcessLocks testcase.Var[*memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]]
+	ProcessLocks testcase.Var[*memory.WorkflowProcessLocks]
 }
 
 func LetC(s *testcase.Spec) C {
@@ -227,73 +248,19 @@ func LetC(s *testcase.Spec) C {
 
 	var c C
 
-	c.Participants = let.Var(s, func(t *testcase.T) workflow.Participants {
-		return workflow.Participants{
-			"/dev/null": func(ctx context.Context) error {
-				return nil
-			},
-		}
-	})
-
-	c.Conditions = let.Var(s, func(t *testcase.T) workflow.Conditions {
-		return workflow.Conditions{
-			"/dev/null": func(ctx context.Context) (bool, error) {
-				return false, nil
-			},
-		}
-	})
-
-	c.ProcessExecutionQueue = let.Var(s, func(t *testcase.T) *memory.WorkflowProcessExecutionQueue {
-		return &memory.WorkflowProcessExecutionQueue{}
-	})
-
-	c.EventRepository = let.Var(s, func(t *testcase.T) *memory.WorkflowEventRepository {
-		return &memory.WorkflowEventRepository{}
-	})
-
-	c.ProcessChangeBroadcast = let.Var(s, func(t *testcase.T) *memory.WorkflowProcessChangeBroadcast {
-		return &memory.WorkflowProcessChangeBroadcast{}
-	})
-
-	c.ErrRuntimeRun = let.VarOf[error](s, nil)
-
-	c.ContextSetup = let.Var(s, func(t *testcase.T) []func(context.Context) context.Context {
-		return workflow.ContextSetup{}
-	})
-
-	c.ProcessLocks = let.Var(s, func(t *testcase.T) *memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock] {
-		return &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{}
-	})
-
-	c.Runtime = let.Var(s, func(t *testcase.T) workflow.Runtime {
-		return workflow.Runtime{
-			Participants:           c.Participants.Get(t),
-			Conditions:             c.Conditions.Get(t),
-			ContextSetup:           c.ContextSetup.Get(t),
-			Events:                 c.EventRepository.Get(t),
-			ProcessExecutionQueue:  c.ProcessExecutionQueue.Get(t),
-			ProcessChangeBroadcast: c.ProcessChangeBroadcast.Get(t),
-			ProcessLockers:         c.ProcessLocks.Get(t),
-			RetryStrategy:          noFaultTolerance{},
-			WaitTime:               time.Nanosecond,
-			Codec:                  wfjson.NewCodec(),
-		}
-	})
-	c.Runtime.Before = func(t *testcase.T, v testcase.Var[workflow.Runtime]) {
-		go func() {
-			var ctx = t.Context()
-			var err = v.Get(t).Run(ctx)
-			if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
-				return
-			}
-			c.ErrRuntimeRun.Set(t, err)
-		}()
-	}
+	c.Participants = Participants.Bind(s)
+	c.Conditions = Conditions.Bind(s)
+	c.EventRepository = EventRepository.Bind(s)
+	c.ProcessExecutionQueue = ProcessExecutionQueue.Bind(s)
+	c.ProcessChangeBroadcast = ProcessChangeBroadcast.Bind(s)
+	c.ProcessLocks = ProcessLocks.Bind(s)
+	c.ErrRuntimeRun = ErrRuntimeRun
+	c.Runtime = Runtime.Bind(s)
 
 	c.ProcessID = LetProcessID(s)
 
 	c.Definition = let.Var(s, func(t *testcase.T) workflow.Definition {
-		return workflow.SetVar{Key: "answer", Value: 42}
+		return workflow.SetVar{Name: "answer", Value: 42}
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -304,16 +271,16 @@ func LetC(s *testcase.Spec) C {
 }
 
 func (c *C) ActExecute(t *testcase.T) error {
-	return c.ActExecuteDefinition(t, c.ProcessID.Get(t), c.Definition.Get(t))
+	return c.ActExecuteDefinition(t, t.Context(), c.ProcessID.Get(t), c.Definition.Get(t))
 }
 
-func (c *C) ActExecuteDefinition(t *testcase.T, processID workflow.ProcessID, definition workflow.Definition) error {
+func (c *C) ActExecuteDefinition(t *testcase.T, ctx context.Context, processID workflow.ProcessID, definition workflow.Definition) error {
 	assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, definition))
 	testcase.OnFail(t, func() {
 		t.Log("definition:")
 		t.LogPretty(definition)
 	})
-	return c.Runtime.Get(t).Execute(t.Context(), processID)
+	return c.Runtime.Get(t).Execute(ctx, processID)
 }
 
 // ProcessEvents returns the recorded event history of the given Process by reading it
@@ -329,8 +296,7 @@ func (c *C) ProcessEvents(t *testcase.T, pid workflow.ProcessID) []workflow.Even
 // in the runtime's EventsRepository.
 func (c *C) IsCompleted(t *testcase.T, pid workflow.ProcessID) bool {
 	t.Helper()
-	var complete = workflow.Complete{ProcessID: pid}
-	var isCompleted, err = complete.IsCompleted(t.Context(), c.EventRepository.Get(t))
+	var isCompleted, err = workflow.IsCompleted(t.Context(), c.EventRepository.Get(t), pid)
 	assert.NoError(t, err)
 	return isCompleted
 }
@@ -359,7 +325,7 @@ func (c *C) ProcessCompletionIs(t *testcase.T, processID workflow.ProcessID, don
 	var EventsRepository = c.EventRepository.Get(t)
 
 	assert.Eventually(t, deadline, func(t testing.TB) {
-		isCompleted, err := workflow.Complete{ProcessID: processID}.IsCompleted(t.Context(), EventsRepository)
+		isCompleted, err := workflow.IsCompleted(t.Context(), EventsRepository, processID)
 		assert.NoError(t, err)
 		assert.Equal(t, isCompleted, done)
 	})
@@ -416,4 +382,16 @@ func (noFaultTolerance) ShouldTry(ctx context.Context, attempt resilience.RetryA
 		return true
 	}
 	return false
+}
+
+func MakeEventID(tb testing.TB) workflow.EventID {
+	id, err := workflow.MakeEventID()
+	assert.NoError(tb, err)
+	return id
+}
+
+func MakeProcessID(tb testing.TB) workflow.ProcessID {
+	id, err := workflow.MakeProcessID()
+	assert.NoError(tb, err)
+	return id
 }

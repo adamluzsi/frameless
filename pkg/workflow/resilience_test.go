@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -30,7 +31,7 @@ func Test_resilience(t *testing.T) {
 		return rt
 	})
 
-	_, pid := wftest.LetParticipant(s, c, func(t *testcase.T) func(context.Context) error {
+	_, pid := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
 		return func(ctx context.Context) error {
 			return ctx.Err()
 		}
@@ -57,10 +58,8 @@ func Test_resilience(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
 				assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
-
-				var complete = workflow.Complete{ProcessID: processID}
 				assert.Eventually(t, 5*time.Second, func(tb testing.TB) {
-					done, err := complete.IsCompleted(tb.Context(), c.EventRepository.Get(t))
+					done, err := workflow.IsCompleted(tb.Context(), c.EventRepository.Get(t), processID)
 					assert.NoError(tb, err)
 					assert.True(tb, done)
 				})
@@ -79,7 +78,7 @@ func Test_resilience(t *testing.T) {
 				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
 				assert.NoError(t, c.Runtime.Get(t).Execute(t.Context(), processID))
 
-				isCompleted, err := workflow.Complete{ProcessID: processID}.IsCompleted(t.Context(), c.EventRepository.Get(t))
+				isCompleted, err := workflow.IsCompleted(t.Context(), c.EventRepository.Get(t), processID)
 				assert.NoError(t, err)
 				assert.True(t, isCompleted)
 			})
@@ -89,7 +88,7 @@ func Test_resilience(t *testing.T) {
 	s.Context("flaky queue", func(s *testcase.Spec) {
 		c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 			rt := c.Runtime.Super(t)
-			rt.ProcessExecutionQueue = &FlakyProcessExecutionQueue{
+			rt.Queue = &FlakyProcessExecutionQueue{
 				Q:   c.ProcessExecutionQueue.Get(t),
 				RND: t.Random,
 			}
@@ -107,10 +106,8 @@ func Test_resilience(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
 				assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
-
-				var complete = workflow.Complete{ProcessID: processID}
 				assert.Eventually(t, 5*time.Second, func(tb testing.TB) {
-					done, err := complete.IsCompleted(tb.Context(), c.EventRepository.Get(t))
+					done, err := workflow.IsCompleted(tb.Context(), c.EventRepository.Get(t), processID)
 					assert.NoError(tb, err)
 					assert.True(tb, done)
 				})
@@ -129,10 +126,71 @@ func Test_resilience(t *testing.T) {
 				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
 				assert.NoError(t, c.Runtime.Get(t).Execute(t.Context(), processID))
 
-				isCompleted, err := workflow.Complete{ProcessID: processID}.IsCompleted(t.Context(), c.EventRepository.Get(t))
+				isCompleted, err := workflow.IsCompleted(t.Context(), c.EventRepository.Get(t), processID)
 				assert.NoError(t, err)
 				assert.True(t, isCompleted)
 			})
+		})
+	})
+}
+
+// TestRuntime_Execute_runtimeSignalIsNotRetried pins that Runtime#Execute does
+// not spend its retry budget on a workflow.RuntimeSignal.
+//
+// The retry loop is there for faults. A RuntimeSignal is not one — it is the
+// runtime's own control flow. workflow.Suspend in particular means "come back
+// later", and coming back later is the scheduler's job: Runtime#runSignalHandler
+// re-queues a suspended process WITHOUT incrementing its FailureCount, precisely
+// because a suspension is not a failure.
+//
+// Retrying it inside a single Execute contradicts that, and it is not free.
+// Raising a signal is deliberately never recorded in the event history (see
+// TestRuntime_Execute_participantRuntimeSignal), so there is nothing to replay:
+// every retry walks back to the waiting step and asks it again, immediately,
+// which is the opposite of what the step just asked for.
+func TestRuntime_Execute_runtimeSignalIsNotRetried(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	c := wftest.LetC(s)
+
+	c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+		rt := c.Runtime.Super(t)
+		t.Log("given the runtime has a retry budget to spend")
+		rt.RetryStrategy = resilience.Jitter{
+			Delay:    time.Nanosecond,
+			Attempts: 5,
+		}
+		return rt
+	})
+
+	var participantCalls = let.VarOf(s, 0)
+
+	_, participantID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			participantCalls.Set(t, participantCalls.Get(t)+1)
+			return workflow.Suspend{}
+		}
+	})
+
+	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+		return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+	})
+
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) error {
+			return c.ActExecute(t)
+		})
+
+		s.Then("the signal is handed back to the caller", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+		})
+
+		s.Then("the suspending participant is asked exactly once", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+			assert.Equal(t, 1, participantCalls.Get(t),
+				assert.MessageF("a suspension is not a fault to retry; "+
+					"resuming a suspended process belongs to the scheduler"))
 		})
 	})
 }

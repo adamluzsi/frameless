@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"go.llib.dev/testcase/clock"
 )
 
 // Replace is a RuntimeSignal, which instructs the runtime
@@ -24,7 +22,7 @@ func (sig Replace) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Proc
 	var event Event = EventUseDefinition{
 		EventID:    eventID,
 		ProcessID:  id,
-		Timestamp:  clock.Now(),
+		Timestamp:  timeNow(),
 		Definition: sig.Definition,
 	}
 	return rt.Events.Create(ctx, &event)
@@ -46,8 +44,8 @@ type EventUseDefinition struct {
 // It goes [FROM] parent [TO] child.
 type VarMapping map[parentVarKey]childVarKey
 
-type parentVarKey = VarKey
-type childVarKey = VarKey
+type parentVarKey = VarName
+type childVarKey = VarName
 
 var _ Event = EventUseDefinition{}
 

@@ -125,7 +125,7 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 	if !ok {
 		return _ent, false, nil
 	}
-	return ent.(ENT), true, nil
+	return reflectkit.CloneT(ent.(ENT)), true, nil
 }
 
 func (r *Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
@@ -138,6 +138,7 @@ func (r *Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error]
 		}
 		all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace, &r.namespaceOnce))
 		for v := range all {
+			v := reflectkit.CloneT(v)
 			if !yield(v) {
 				return nil
 			}

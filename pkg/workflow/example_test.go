@@ -31,9 +31,9 @@ func Example() {
 	// someone builds a workflow definition
 	definition := &workflow.Sequence{
 		workflow.ExecuteParticipant{ID: "foo",
-			Output: []workflow.VarKey{"foo"}},
+			Output: []workflow.VarName{"foo"}},
 		workflow.ExecuteParticipant{ID: "bar",
-			Output: []workflow.VarKey{"bar"}},
+			Output: []workflow.VarName{"bar"}},
 		workflow.If{
 			Cond: wftemplate.Condition(".foo <= .bar"),   // (42 < 24) == false
 			Then: workflow.ExecuteParticipant{ID: "baz"}, //
@@ -61,17 +61,17 @@ func Example() {
 
 func ExampleDefinition_sequence() {
 	_ = workflow.Sequence{
-		workflow.SetVar{Key: "topic", Value: "go.llib.dev/frameless"},
+		workflow.SetVar{Name: "topic", Value: "go.llib.dev/frameless"},
 		workflow.ExecuteParticipant{
 			ID:     "summarise",
-			Input:  []workflow.VarKey{"topic"},
-			Output: []workflow.VarKey{"summary", "found"},
+			Input:  []workflow.VarName{"topic"},
+			Output: []workflow.VarName{"summary", "found"},
 		},
 		workflow.If{
 			Cond: wftemplate.Condition(`eq .found true`),
 			Then: workflow.ExecuteParticipant{
 				ID:    "publish",
-				Input: []workflow.VarKey{"summary"},
+				Input: []workflow.VarName{"summary"},
 			},
 		},
 	}

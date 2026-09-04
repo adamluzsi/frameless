@@ -4,6 +4,7 @@ import (
 	"context"
 	"iter"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -282,5 +283,207 @@ func TestQueue_blockingQueueIsNotCompatibleWithTransactions(t *testing.T) {
 		q.Blocking = true
 
 		assert.Error(t, q.Publish(tx, testent.MakeFoo(t)))
+	})
+}
+
+// TestFanOutExchange_MakeQueue_concurrent covers that queues created at the very
+// same moment all end up bound to the exchange.
+//
+// A FanOutExchange keeps the queues bound to it in a plain slice that MakeQueue
+// grows. Callers commonly make their queue on the goroutine that is about to
+// consume it, so MakeQueue calls overlap easily, and two overlapping appends can
+// read the same slice and then write over each other's result.
+//
+// The queue that loses is still handed back to its caller looking perfectly
+// healthy, while the exchange never learns that it exists. The symptom is a
+// consumer that stays silent forever, which is indistinguishable from simply
+// having no traffic, so the mistake is expensive to track down in a live system.
+func TestFanOutExchange_MakeQueue_concurrent(t *testing.T) {
+	const numQueue = 32
+
+	exchange := &memory.FanOutExchange[testent.Foo]{}
+
+	var (
+		queues = make([]*memory.Queue[testent.Foo], numQueue)
+		start  = make(chan struct{})
+		wg     sync.WaitGroup
+	)
+	for i := range queues {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start // line the goroutines up, so the calls truly overlap
+			queues[i] = exchange.MakeQueue()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	assert.Equal(t, exchange.Len(), numQueue,
+		"expected that every queue made by the exchange is also bound to it")
+
+	// The bookkeeping is only a means to an end: what a queue is made for is to
+	// receive what the exchange broadcasts.
+	var expected = testent.MakeFoo(t)
+	assert.NoError(t, exchange.Publish(t.Context(), expected))
+
+	for i, q := range queues {
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			next, stop := iter.Pull2(q.Subscribe(ctx))
+			defer stop()
+
+			msg, err, ok := next()
+			assert.NoError(t, err)
+			assert.True(t, ok)
+			assert.Equal(t, msg.Data(), expected)
+			assert.NoError(t, msg.ACK())
+		}, assert.MessageF("queue #%d was not served by the exchange's broadcast", i))
+	}
+}
+
+var _ pubsub.Subscriber[testent.Foo] = &memory.FanOutExchange[testent.Foo]{}
+
+// TestFanOutExchange_pubsubSubscriber covers the exchange in its pubsub.Subscriber role.
+//
+// Subscribing to the exchange directly binds a queue that lives only as long as
+// the subscription, which makes the exchange a volatile pubsub: a broadcast that
+// happens while nobody is subscribed is gone for good. FanOutExchange.MakeQueue
+// remains the durable alternative, covered by TestQueue_implementsFanOutExchange.
+func TestFanOutExchange_pubsubSubscriber(t *testing.T) {
+	exchange := &memory.FanOutExchange[testent.Foo]{}
+
+	pubsubcontract.Volatile[testent.Foo](exchange, exchange, pubsubcontract.Config[testent.Foo]{
+		SupportPublishContextCancellation: true,
+
+		MakeData: func(tb testing.TB) testent.Foo {
+			return testent.MakeFoo(tb)
+		},
+	}).Test(t)
+}
+
+// TestFanOutExchange_Subscribe_broadcast covers that subscribing to the exchange
+// fans out, rather than the subscriptions competing over the messages the way
+// subscriptions of a single Queue do.
+func TestFanOutExchange_Subscribe_broadcast(t *testing.T) {
+	exchange := &memory.FanOutExchange[testent.Foo]{}
+
+	var MakeSubscriber = func(tb testing.TB) pubsub.Subscriber[testent.Foo] {
+		return makeBoundSubscriber(tb, exchange)
+	}
+
+	pubsubcontract.Broadcast[testent.Foo](exchange, MakeSubscriber).Test(t)
+}
+
+// makeBoundSubscriber gives pubsubcontract.Broadcast what it asks for from
+// MakeSubscriber: a subscriber that is already bound to the exchange by the time
+// it is returned, so that it also receives what is published before anything
+// starts to consume it.
+//
+// Subscribing is the very act that binds a queue to the exchange, so the
+// subscription is made here and then handed out ready-made.
+func makeBoundSubscriber[Data any](tb testing.TB, exchange *memory.FanOutExchange[Data]) *boundSubscriber[Data] {
+	ctx, unbind := context.WithCancel(context.Background())
+	tb.Cleanup(unbind)
+	return &boundSubscriber[Data]{
+		exchange: exchange,
+		sub:      exchange.Subscribe(ctx),
+		unbind:   unbind,
+	}
+}
+
+type boundSubscriber[Data any] struct {
+	exchange *memory.FanOutExchange[Data]
+	sub      pubsub.Subscription[Data]
+	unbind   func()
+}
+
+func (s *boundSubscriber[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
+	// The subscription already has a context of its own, so the consumer's
+	// context is bridged onto it. Without this, cancelling the consumer would
+	// leave the subscription running, and whoever waits for it to finish hangs.
+	stop := context.AfterFunc(ctx, s.unbind)
+	return func(yield func(pubsub.Message[Data], error) bool) {
+		defer stop()
+		for msg, err := range s.sub {
+			if !yield(msg, err) {
+				return
+			}
+		}
+	}
+}
+
+// Purge lets the contract's clean-ahead flush the exchange, instead of falling
+// back on draining the subscription, which would end it before the test that
+// asked for the subscriber gets to use it.
+func (s *boundSubscriber[Data]) Purge(ctx context.Context) error {
+	return s.exchange.Purge(ctx)
+}
+
+// TestFanOutExchange_Subscribe_queueLifetime covers when a subscription's queue
+// is bound to the exchange, and when it is released again.
+//
+// Binding late would lose whatever is published between Subscribe and the moment
+// the caller starts to consume the subscription, which commonly happens on
+// another goroutine. Never unbinding would leave the exchange broadcasting into
+// a queue that grows with no one left to drain it.
+func TestFanOutExchange_Subscribe_queueLifetime(t *testing.T) {
+	t.Run("the queue is bound before the subscription is consumed", func(t *testing.T) {
+		exchange := &memory.FanOutExchange[testent.Foo]{}
+
+		sub := exchange.Subscribe(t.Context())
+		assert.Equal(t, exchange.Len(), 1,
+			"expected that Subscribe binds its queue right away")
+
+		// this is published in the window that a lazily bound queue would lose
+		expected := testent.MakeFoo(t)
+		assert.NoError(t, exchange.Publish(t.Context(), expected))
+
+		assert.Within(t, time.Second, func(context.Context) {
+			next, stop := iter.Pull2(sub)
+			defer stop()
+
+			msg, err, ok := next()
+			assert.NoError(t, err)
+			assert.True(t, ok)
+			assert.Equal(t, msg.Data(), expected,
+				"expected to receive what was published right after Subscribe returned")
+			assert.NoError(t, msg.ACK())
+		})
+	})
+
+	t.Run("the queue is unbound when the subscription is done being consumed", func(t *testing.T) {
+		exchange := &memory.FanOutExchange[testent.Foo]{}
+
+		sub := exchange.Subscribe(t.Context())
+		assert.NoError(t, exchange.Publish(t.Context(), testent.MakeFoo(t)))
+
+		assert.Within(t, time.Second, func(context.Context) {
+			for msg, err := range sub {
+				assert.NoError(t, err)
+				assert.NoError(t, msg.ACK())
+				break // done consuming
+			}
+		})
+
+		assert.Equal(t, exchange.Len(), 0,
+			"expected that the subscription's queue is unbound from the exchange")
+	})
+
+	t.Run("the queue is unbound when a subscription is left unconsumed", func(t *testing.T) {
+		exchange := &memory.FanOutExchange[testent.Foo]{}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		_ = exchange.Subscribe(ctx) // never ranged over
+		assert.Equal(t, exchange.Len(), 1)
+
+		t.Log("when the subscription's context is done, the queue has no way to be consumed anymore")
+		cancel()
+
+		assert.Eventually(t, time.Second, func(t testing.TB) {
+			assert.Equal(t, exchange.Len(), 0,
+				"expected that the subscription's queue is unbound from the exchange")
+		})
 	})
 }

@@ -14,9 +14,11 @@ import (
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/port/comproto"
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase/clock"
 )
@@ -512,8 +514,8 @@ func (rec *queueMessage[Data]) release(subID subscriptionID) {
 // FanOutExchange delivers messages to all the queues that are bound to it.
 // This is useful when you want to broadcast a message to multiple consumers.
 type FanOutExchange[Data any] struct {
-	// Queues contain every Queue that suppose to be bound to the FanOut Exchange
-	Queues []*Queue[Data]
+	mx sync.RWMutex
+	qs map[uint]*Queue[Data]
 }
 
 // Publish will publish all data to all FanOutExchange.Queues in an atomic fashion.
@@ -532,7 +534,7 @@ func (e *FanOutExchange[Data]) Purge(ctx context.Context) (rErr error) {
 }
 
 func (e *FanOutExchange[Data]) eachQueue(ctx context.Context, blk func(ctx context.Context, q *Queue[Data]) error) (rErr error) {
-	for _, q := range e.Queues {
+	for _, q := range e.queues() {
 		tx, err := q.BeginTx(ctx)
 		if err != nil {
 			return err
@@ -545,11 +547,92 @@ func (e *FanOutExchange[Data]) eachQueue(ctx context.Context, blk func(ctx conte
 	return nil
 }
 
+// queues is the list of queues currently bound to the exchange.
+//
+// The list is copied on purpose. A fan out operation must see one stable set of
+// queues from beginning to end, while binding and unbinding is free to change
+// the exchange's own registry at any moment from another goroutine.
+func (e *FanOutExchange[Data]) queues() []*Queue[Data] {
+	e.mx.RLock()
+	defer e.mx.RUnlock()
+	return mapkit.Values(e.qs)
+}
+
+var _ ds.Len = (*FanOutExchange[any])(nil)
+
+func (e *FanOutExchange[Data]) Len() int {
+	e.mx.RLock()
+	defer e.mx.RUnlock()
+	return len(e.qs)
+}
+
 // MakeQueue creates a unique queue which is bound to the FanOut exchange.
+//
+// The queue stays bound for as long as the exchange lives, so it collects every
+// broadcast from the moment it was made, even while nothing consumes it.
 func (e *FanOutExchange[Data]) MakeQueue() *Queue[Data] {
-	q := &Queue[Data]{}
-	e.Queues = append(e.Queues, q)
+	q, _ := e.bindQueue()
 	return q
 }
+
+var _ pubsub.Subscriber[string] = (*FanOutExchange[string])(nil)
+
+// Subscribe consumes the exchange through a queue that belongs to this
+// subscription alone, so every subscription receives every broadcast message.
+//
+// The queue lives only as long as the subscription does. Messages broadcast
+// while no one is subscribed are dropped instead of being kept for a later
+// subscriber; use FanOutExchange.MakeQueue when they must be retained.
+func (e *FanOutExchange[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
+	// The queue is bound here instead of in the sequence body, so that a publish
+	// racing with Subscribe is still delivered. Consuming a subscription
+	// typically happens on another goroutine, and binding there would silently
+	// drop everything broadcast until that goroutine gets scheduled.
+	q, unbind := e.bindQueue()
+
+	var once sync.Once
+	unsubscribe := func() { once.Do(unbind) }
+
+	// A subscription that is never consumed can only be released through its
+	// context, and until then its queue keeps collecting messages that no one
+	// will ever read.
+	stopWatchingCtx := context.AfterFunc(ctx, unsubscribe)
+
+	return func(yield func(pubsub.Message[Data], error) bool) {
+		defer unsubscribe()
+		defer stopWatchingCtx()
+		for msg, err := range q.Subscribe(ctx) {
+			if !yield(msg, err) {
+				return
+			}
+		}
+	}
+}
+
+// bindQueue creates a queue that receives what the exchange broadcasts,
+// along with the func that unbinds it again.
+func (e *FanOutExchange[Data]) bindQueue() (*Queue[Data], func()) {
+	e.mx.Lock()
+	defer e.mx.Unlock()
+
+	if e.qs == nil {
+		e.qs = map[uint]*Queue[Data]{}
+	}
+
+	var (
+		q  = &Queue[Data]{}
+		id = mapkit.FreeKey(e.qs, uint(len(e.qs)), e.nextID)
+	)
+
+	e.qs[id] = q
+
+	return q, func() {
+		e.mx.Lock()
+		defer e.mx.Unlock()
+		delete(e.qs, id)
+	}
+}
+
+func (e *FanOutExchange[Data]) nextID(id uint) uint { return id + 1 }
 
 //--------------------------------------------------------------------------------------------------------------------//

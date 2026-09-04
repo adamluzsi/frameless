@@ -49,24 +49,27 @@ func TestRuntime(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		participants = let.Var(s, func(t *testcase.T) workflow.Participants {
+		participants = wftest.Participants.Let(s, func(t *testcase.T) workflow.Participants {
 			return workflow.Participants{
 				"/dev/null": func(ctx context.Context) error { return nil },
 			}
 		})
-		conditions = let.Var(s, func(t *testcase.T) workflow.Conditions {
+		conditions = wftest.Conditions.Let(s, func(t *testcase.T) workflow.Conditions {
 			return workflow.Conditions{}
 		})
 		contextSetup = let.Var(s, func(t *testcase.T) []func(context.Context) context.Context {
 			return nil
 		})
 	)
-	runtime := let.Var(s, func(t *testcase.T) workflow.Runtime {
+	runtime := wftest.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 		return workflow.Runtime{
 			Participants: participants.Get(t),
 			Conditions:   conditions.Get(t),
 			ContextSetup: contextSetup.Get(t),
 			Events:       &memory.WorkflowEventRepository{},
+			Queue:        &memory.WorkflowProcessExecutionQueue{},
+			Changes:      &memory.WorkflowProcessChangeBroadcast{},
+			Locks:        &memory.WorkflowProcessLocks{},
 		}
 	})
 
@@ -199,13 +202,7 @@ func TestRuntime(t *testing.T) {
 			})
 		})
 
-		s.When("a participant returns a SwitchDefinition runtime signal", func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				// TODO: SwitchDefinition runtime signal handling is not yet
-				// implemented in workflow.Runtime; this will be tackled as
-				// part of the in-flight definition-mutation work.
-				t.Skip("out-of-scope currently")
-			})
+		s.When("a participant returns a Replace runtime signal", func(s *testcase.Spec) {
 
 			switcherID := let.Var(s, func(t *testcase.T) workflow.ParticipantID {
 				return workflow.ParticipantID(t.Random.Domain())
@@ -239,7 +236,7 @@ func TestRuntime(t *testing.T) {
 					p = mustProcessID(t)
 				}
 				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.Sequence{
-					workflow.SetVar{Key: "warmup", Value: "ready"},
+					workflow.SetVar{Name: "warmup", Value: "ready"},
 					workflow.ExecuteParticipant{ID: switcherID.Get(t)},
 				}))
 				return p
@@ -268,15 +265,17 @@ func TestRuntime(t *testing.T) {
 				hist := mustHistory(t, runtime.Get(t), process.Get(t))
 
 				var useDefs []workflow.EventUseDefinition
-				var participantEvents []*workflow.EventParticipant
+				var participantEvents []workflow.EventParticipant
 				for _, e := range hist {
 					switch v := e.(type) {
 					case workflow.EventUseDefinition:
 						useDefs = append(useDefs, v)
-					case *workflow.EventParticipant:
+					case workflow.EventParticipant:
 						participantEvents = append(participantEvents, v)
 					}
 				}
+
+				t.LogPretty(hist)
 
 				// Initial UseDefinitionEvent (from Spawn) + the SwitchDefinition
 				// append (one new UseDefinitionEvent carrying the switched-to def).
@@ -289,11 +288,154 @@ func TestRuntime(t *testing.T) {
 				assert.Equal(t, newDef.Get(t), last.Definition,
 					assert.MessageF("expected the last UseDefinitionEvent to carry the switched-to definition"))
 
-				// The participant call itself MUST be persisted so a replay
-				// does not re-execute it (idempotency).
-				assert.Equal(t, 1, len(participantEvents),
-					assert.MessageF("expected exactly one ExecuteParticipantEvent for the switcher call, got %d",
-						len(participantEvents)))
+				// The switcher call itself is deliberately NOT persisted. A
+				// RuntimeSignal is dynamic control flow rather than a step
+				// result, so it is raised afresh on every execution instead of
+				// being replayed from the event history.
+				// See TestRuntime_Execute_participantRuntimeSignal.
+				assert.Empty(t, participantEvents,
+					assert.MessageF("expected the signalling participant to stay out of the "+
+						"event history, got %d record(s)", len(participantEvents)))
+			})
+		})
+
+		s.When("the Process has already reached a terminal state", func(s *testcase.Spec) {
+			defRan := let.VarOf(s, false)
+
+			process.Let(s, func(t *testcase.T) workflow.ProcessID {
+				p := process.Super(t)
+				if p.IsZero() {
+					p = mustProcessID(t)
+				}
+				// Bind a Definition that records whether it was invoked, so the
+				// short-circuit can be observed: a Process whose outcome is
+				// already on record must not be re-executed. Re-running the
+				// Definition would replay steps the runtime has already
+				// committed to, and the idempotent executor would happily
+				// re-emit every EventParticipant for steps that already ran.
+				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, &wftest.Stub{
+					StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						defRan.Set(t, true)
+						return nil
+					},
+				}))
+				return p
+			})
+
+			s.And("the Process is already Completed", func(s *testcase.Spec) {
+
+				s.Before(func(t *testcase.T) {
+					var completed workflow.Event = workflow.EventCompleted{
+						EventID:   mustEventID(t),
+						ProcessID: process.Get(t),
+						Timestamp: clock.Now(),
+					}
+					assert.NoError(t, runtime.Get(t).Events.Create(t.Context(), &completed))
+				})
+
+				s.Then("Execute returns without an error", func(t *testcase.T) {
+					assert.NoError(t, act(t),
+						assert.MessageF("a Process whose outcome is already on record "+
+							"is a no-op for Runtime#Execute; any error here means we "+
+							"are re-running work that has already been done"))
+				})
+
+				s.Then("the Definition is not invoked", func(t *testcase.T) {
+					act(t)
+
+					assert.False(t, defRan.Get(t),
+						assert.MessageF("re-running the Definition would replay steps "+
+							"the runtime has already committed to; the idempotent "+
+							"executor would happily re-emit every EventParticipant "+
+							"for steps that already ran"))
+				})
+
+				s.Then("no new events are appended to the event history", func(t *testcase.T) {
+					var before = mustHistory(t, runtime.Get(t), process.Get(t))
+
+					assert.NoError(t, act(t))
+
+					var after = mustHistory(t, runtime.Get(t), process.Get(t))
+					assert.Equal(t, len(before), len(after),
+						assert.MessageF("the event log is append-only: re-executing a "+
+							"terminal Process must not grow a second EventCompleted, "+
+							"or the log would later read the same Process as completed "+
+							"twice"))
+
+					var completedBefore = len(filterEvents[workflow.EventCompleted](t, before))
+					var completedAfter = len(filterEvents[workflow.EventCompleted](t, after))
+					assert.Equal(t, completedBefore, completedAfter,
+						assert.MessageF("the existing completion is left exactly as it was"))
+
+					isCompleted, err := workflow.IsCompleted(t.Context(), runtime.Get(t).Events, process.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, isCompleted,
+						assert.MessageF("the Process still reads as completed; a "+
+							"second EventCompleted over the first would not change "+
+							"this answer, but having one is the whole point of the "+
+							"no-op contract"))
+				})
+			})
+
+			s.And("the Process is already Terminated", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					var terminated workflow.Event = workflow.EventTerminated{
+						EventID:   mustEventID(t),
+						ProcessID: process.Get(t),
+						Timestamp: clock.Now(),
+					}
+					assert.NoError(t, runtime.Get(t).Events.Create(t.Context(), &terminated))
+				})
+
+				s.Then("Execute returns without an error", func(t *testcase.T) {
+					assert.NoError(t, act(t),
+						assert.MessageF("a Process that has been called off is a no-op "+
+							"for Runtime#Execute; any error here means we are "+
+							"re-running work the caller already decided to abort"))
+				})
+
+				s.Then("no new events are appended to the event history", func(t *testcase.T) {
+					var before = mustHistory(t, runtime.Get(t), process.Get(t))
+
+					assert.NoError(t, act(t))
+
+					var after = mustHistory(t, runtime.Get(t), process.Get(t))
+					assert.Equal(t, len(before), len(after),
+						assert.MessageF("the event log is append-only: re-executing a "+
+							"terminal Process must not grow a second EventTerminated, "+
+							"or the log would later read the same Process as called "+
+							"off twice"))
+
+					var terminatedBefore = len(filterEvents[workflow.EventTerminated](t, before))
+					var terminatedAfter = len(filterEvents[workflow.EventTerminated](t, after))
+					assert.Equal(t, terminatedBefore, terminatedAfter,
+						assert.MessageF("the existing termination is left exactly as it was"))
+
+					isTerminated, err := workflow.IsTerminated(t.Context(), runtime.Get(t).Events, process.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, isTerminated,
+						assert.MessageF("the Process still reads as terminated; a "+
+							"second EventTerminated over the first would not change "+
+							"this answer, but having one is the whole point of the "+
+							"no-op contract"))
+				})
+
+				s.Then("no contradicting terminal event is written over the existing one", func(t *testcase.T) {
+					var before = mustHistory(t, runtime.Get(t), process.Get(t))
+					var completedBefore = len(filterEvents[workflow.EventCompleted](t, before))
+
+					assert.NoError(t, act(t))
+
+					var after = mustHistory(t, runtime.Get(t), process.Get(t))
+					var completedAfter = len(filterEvents[workflow.EventCompleted](t, after))
+					assert.Equal(t, completedBefore, completedAfter,
+						assert.MessageF("Runtime#Execute must not promote a Terminated "+
+							"Process to Completed by writing an EventCompleted over "+
+							"the existing EventTerminated, even when the recorded "+
+							"reason for termination is unknown (e.g. the Process "+
+							"was called off mid-execution, with state that may not "+
+							"be safe to retry)"))
+				})
 			})
 		})
 	})
@@ -413,50 +555,123 @@ func TestRuntime(t *testing.T) {
 			return runtime.Get(t).Spawn(t.Context(), processID.Get(t), definition.Get(t))
 		})
 
+		s.Before(func(t *testcase.T) {
+			t.Go(func(ctx context.Context) error {
+				return runtime.Get(t).Run(ctx)
+			})
+		})
+
 		s.Then("no error is returned", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 		})
 
-		s.Then("a process entity is present in the ProcessRepository", func(t *testcase.T) {
+		s.Then("a workflow definition is associated with the process id (#Bind)", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
-			// Process is stateless; the proof of existence is the
-			// UseDefinitionEvent recorded in the event history.
-			hist := mustHistory(t, runtime.Get(t), processID.Get(t))
-			var found bool
-			for _, e := range hist {
-				if _, ok := e.(workflow.EventUseDefinition); ok {
-					found = true
-					break
-				}
-			}
-			assert.True(t, found,
-				assert.MessageF("expected a UseDefinitionEvent to be persisted for id %v after Spawn", processID.Get(t)))
+			var hist = mustHistory(t, runtime.Get(t), processID.Get(t))
+			assert.OneOf(t, hist, func(tb testing.TB, e workflow.Event) {
+				got, ok := e.(workflow.EventUseDefinition)
+				assert.True(tb, ok)
+				assert.Equal(t, definition.Get(t), got.Definition)
+			})
 		})
 
-		s.Then("the definition is recorded as a UseDefinitionEvent in the event history", func(t *testcase.T) {
+		s.Then("the new process is eventually executed", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
-			hist := mustHistory(t, runtime.Get(t), processID.Get(t))
-			var sde workflow.EventUseDefinition
-			for _, e := range hist {
-				if v, ok := e.(workflow.EventUseDefinition); ok {
-					sde = v
-					break
-				}
-			}
-			assert.NotNil(t, sde,
-				assert.MessageF("expected a UseDefinitionEvent to be recorded in the event history"))
-			assert.NotNil(t, sde.Definition,
-				assert.MessageF("expected the recorded UseDefinitionEvent to carry the spawned Definition"))
+			assert.Eventually(t, deadline, func(tb testing.TB) {
+				// The simplest observable sign of execution is an EventCompleted event
+				// recorded for the process — Runtime.Execute emits one on success.
+				var events = mustHistory(tb, runtime.Get(t), processID.Get(t))
+				assert.NotEmpty(tb, events)
+				assert.OneOf(tb, events, func(tb testing.TB, e workflow.Event) {
+					_, ok := e.(workflow.EventCompleted)
+					assert.True(tb, ok)
+				})
+			})
 		})
 
-		s.Then("the new process is executed", func(t *testcase.T) {
-			assert.NoError(t, act(t))
+		// Spawn must not block on definition execution. If it did, an
+		// in-process definition would deadlock the caller — Spawn is only
+		// useful if it returns as soon as the process is bound and queued,
+		// letting the runtime worker handle the actual execution.
+		s.Then("the spawn doesn't block and wait for execution", func(t *testcase.T) {
+			assert.Within(t, waitTime, func(ctx context.Context) {
+				assert.NoError(t, act(t))
+			})
+		})
 
-			// The simplest observable sign of execution is an EventCompleted event
-			// recorded for the process — Runtime.Execute emits one on success.
-			assert.NotEmpty(t, mustHistory(t, runtime.Get(t), processID.Get(t)))
+		s.When("definition would take time to finish up", func(s *testcase.Spec) {
+			// The spawned definition blocks on a phaser before completing.
+			// This lets the test observe three observable moments in order:
+			//
+			//   1. Spawn has returned (caller is no longer blocked), but the
+			//      definition is still parked on the phaser.
+			//   2. While the phaser is still holding the definition, the
+			//      process is observably NOT yet complete.
+			//   3. After the phaser is finished, the process eventually
+			//      completes — proving Spawn queued the work rather than
+			//      blocking on it.
+			phaser := let.Phaser(s)
+
+			// Force eager initialization of the phaser in the test goroutine
+			// so its t.Cleanup(phaser.Finish) is registered before the test
+			// body returns. Without this, when the test body completes faster
+			// than the Runtime worker goroutine reaches the participant, the
+			// phaser init runs inside the worker — after t.teardown.Finish()
+			// has already drained its queue — and the Finish cleanup is
+			// silently lost. The worker then parks on phaser.Wait forever
+			// and t.g.Wait() hangs. See TestRuntime_phaserLazyInitRace.
+			s.Before(func(t *testcase.T) {
+				phaser.Get(t)
+			})
+
+			blockingParticipantID := wftest.LetParticipantID(s)
+			_ = wftest.LetParticipantWithID(s, blockingParticipantID, func(t *testcase.T) func(ctx context.Context) error {
+				return func(ctx context.Context) error {
+					phaser.Get(t).Wait()
+					return nil
+				}
+			})
+
+			definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.ExecuteParticipant{ID: blockingParticipantID.Get(t)}
+			})
+
+			s.Then("Spawn returns before the definition has finished", func(t *testcase.T) {
+				assert.Within(t, waitTime, func(ctx context.Context) {
+					assert.NoError(t, act(t))
+				})
+
+				// While the participant is still parked on the phaser, the
+				// process cannot be complete. If Spawn synchronously waited
+				// for execution, the assertion would have deadlocked inside
+				// the assert.Within above.
+				compl, err := workflow.IsCompleted(t.Context(), runtime.Get(t).Events, processID.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, compl,
+					assert.MessageF("expected Spawn to queue the work without blocking on it, "+
+						"but the process is already complete while the participant is still blocked"))
+			})
+
+			s.Then("the process eventually completes after the definition is unblocked", func(t *testcase.T) {
+				assert.Within(t, waitTime, func(ctx context.Context) {
+					assert.NoError(t, act(t))
+				})
+
+				compl, err := workflow.IsCompleted(t.Context(), runtime.Get(t).Events, processID.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, compl)
+
+				phaser.Get(t).Finish()
+
+				assert.Eventually(t, deadline, func(tb testing.TB) {
+					compl, err := workflow.IsCompleted(tb.Context(), runtime.Get(t).Events, processID.Get(t))
+					assert.NoError(tb, err)
+					assert.True(tb, compl,
+						assert.MessageF("expected the process to complete after the participant is unblocked"))
+				})
+			})
 		})
 
 		s.When("Spawn was already called multiple times with the same id and definition", func(s *testcase.Spec) {
@@ -470,7 +685,7 @@ func TestRuntime(t *testing.T) {
 				assert.NoError(t, act(t))
 			})
 
-			s.Then("only one process entity is stored in the ProcessRepository", func(t *testcase.T) {
+			s.Then("only one process entity is stored in process event history", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
 				// Process is stateless; the proof of (single) existence is that
@@ -488,55 +703,26 @@ func TestRuntime(t *testing.T) {
 			})
 
 			s.Then("the process is not re-executed on subsequent calls", func(t *testcase.T) {
+				t.Eventually(func(t *testcase.T) {
+					compl, err := workflow.IsCompleted(t.Context(), runtime.Get(t).Events, processID.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, compl)
+				})
+
 				before := mustHistory(t, runtime.Get(t), processID.Get(t))
 
 				assert.NoError(t, act(t))
 
-				after := mustHistory(t, runtime.Get(t), processID.Get(t))
-				assert.Equal(t, len(before), len(after),
-					assert.MessageF("expected history length to be unchanged after re-Spawn; got %d before, %d after",
-						len(before), len(after)))
-			})
-		})
+				t.Random.Repeat(3, 7, func() {
+					time.Sleep(time.Millisecond)
 
-		s.When("the process has a UseDefinitionEvent in its history already", func(s *testcase.Spec) {
-			// Build a definition whose execution produces an observable side effect:
-			// a participant call counter, so we can assert that Execute picks up
-			// the historical definition rather than nothing.
-			participantID := let.Var(s, func(t *testcase.T) workflow.ParticipantID {
-				return workflow.ParticipantID(t.Random.Domain())
-			})
-			secondDef := let.Var(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: participantID.Get(t)}
-			})
-			callCount := let.VarOf(s, 0)
-			participants.Let(s, func(t *testcase.T) workflow.Participants {
-				ps := participants.Super(t)
-				ps[participantID.Get(t)] = func(ctx context.Context) error {
-					callCount.Set(t, callCount.Get(t)+1)
-					return nil
-				}
-				return ps
-			})
+					after := mustHistory(t, runtime.Get(t), processID.Get(t))
 
-			s.Before(func(t *testcase.T) {
-				// Seed the history with a UseDefinitionEvent that points to a
-				// second definition. This simulates a process whose definition has
-				// been changed in flight (or replayed after a crash).
-				var sde workflow.Event = workflow.EventUseDefinition{
-					EventID:    mustEventID(t),
-					ProcessID:  processID.Get(t),
-					Timestamp:  time.Now(),
-					Definition: secondDef.Get(t),
-				}
-				assert.NoError(t, runtime.Get(t).Events.Create(t.Context(), &sde))
-			})
+					assert.Equal(t, len(before), len(after),
+						assert.MessageF("expected history length to be unchanged after re-Spawn; got %d before, %d after",
+							len(before), len(after)))
+				})
 
-			s.Then("Execute replays the historical definition", func(t *testcase.T) {
-				assert.NoError(t, runtime.Get(t).Execute(t.Context(), processID.Get(t)))
-
-				assert.Equal(t, 1, callCount.Get(t),
-					assert.MessageF("expected the second (historical) definition to be executed via replay"))
 			})
 		})
 
@@ -651,6 +837,223 @@ func TestRuntime(t *testing.T) {
 				assert.MessageF("expected only the latest definition to be executed"))
 		})
 	})
+
+	s.Describe("#Terminate", func(s *testcase.Spec) {
+		var (
+			ctx       = let.Context(s)
+			processID = wftest.LetProcessID(s)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return runtime.Get(t).Terminate(ctx.Get(t), processID.Get(t))
+		})
+
+		s.Then("it marks the process terminated", func(t *testcase.T) {
+			var before = mustHistory(t, runtime.Get(t), processID.Get(t))
+
+			assert.NoError(t, act(t))
+
+			var after = mustHistory(t, runtime.Get(t), processID.Get(t))
+			assert.Equal(t, len(before)+1, len(after),
+				assert.MessageF("the event log is append-only: terminating adds exactly "+
+					"one entry and never removes any. before=%d, after=%d",
+					len(before), len(after)))
+
+			isTerminated, err := workflow.IsTerminated(t.Context(), runtime.Get(t).Events, processID.Get(t))
+			assert.NoError(t, err)
+			assert.True(t, isTerminated,
+				assert.MessageF("raising the signal and asking the question are two halves "+
+					"of one contract; whatever Runtime#Terminate writes, IsTerminated must read"))
+		})
+
+		s.Then("the recorded termination names the Process", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			var found bool
+			for _, event := range mustHistory(t, runtime.Get(t), processID.Get(t)) {
+				if terminated, ok := event.(workflow.EventTerminated); ok {
+					assert.True(t, terminated.ProcessID.Equal(processID.Get(t)),
+						assert.MessageF("every entry in a Process' history belongs to that Process"))
+					found = true
+				}
+			}
+			assert.True(t, found, assert.MessageF("expected EventTerminated in the history"))
+		})
+
+		s.When("the Process was scheduled", func(s *testcase.Spec) {
+			var (
+				isParticipantStarted = let.VarOf(s, false)
+				isCancelled          = let.VarOf(s, false)
+			)
+
+			_, pid := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+				return func(ctx context.Context) error {
+					isParticipantStarted.Set(t, true)
+					select {
+					case <-ctx.Done():
+						isCancelled.Set(t, true)
+					case <-time.After(time.Minute):
+						// safety net so a missed cancellation cannot wedge the
+						// Runtime worker goroutine past the test's lifetime
+					}
+					return nil
+				}
+			})
+
+			s.Before(func(t *testcase.T) {
+				t.Go(runtime.Get(t).Run)
+
+				def := workflow.ExecuteParticipant{ID: pid.Get(t)}
+				assert.NoError(t, runtime.Get(t).Spawn(t.Context(), processID.Get(t), def))
+
+				t.Eventually(func(t *testcase.T) {
+					assert.True(t, isParticipantStarted.Get(t))
+				})
+			})
+
+			s.Then("the in-flight participant is still recorded as terminated", func(t *testcase.T) {
+				var before = mustHistory(t, runtime.Get(t), processID.Get(t))
+
+				assert.NoError(t, act(t))
+
+				var after = mustHistory(t, runtime.Get(t), processID.Get(t))
+				assert.Equal(t, len(before)+1, len(after),
+					assert.MessageF("scheduling an entry does not get removed when the "+
+						"Process is terminated; the event log is append-only"))
+
+				isTerminated, err := workflow.IsTerminated(t.Context(), runtime.Get(t).Events, processID.Get(t))
+				assert.NoError(t, err)
+				assert.True(t, isTerminated,
+					assert.MessageF("the Process reads as terminated after the call"))
+			})
+
+			s.Then("the in-flight process is cancelled", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				t.Eventually(func(t *testcase.T) {
+					assert.True(t, isCancelled.Get(t))
+				})
+			})
+		})
+
+		s.When("the Process has already completed", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				var completed workflow.Event = workflow.EventCompleted{
+					EventID:   mustEventID(t),
+					ProcessID: processID.Get(t),
+					Timestamp: clock.Now(),
+				}
+				assert.NoError(t, runtime.Get(t).Events.Create(t.Context(), &completed))
+			})
+
+			s.Then("the completion is preserved and no termination is appended", func(t *testcase.T) {
+				var before = mustHistory(t, runtime.Get(t), processID.Get(t))
+				var beforeCompletions = len(filterEvents[workflow.EventCompleted](t, before))
+
+				assert.NoError(t, act(t))
+
+				var after = mustHistory(t, runtime.Get(t), processID.Get(t))
+				assert.Equal(t, len(before), len(after),
+					assert.MessageF("a completed Process has its outcome on record and the "+
+						"signal must not append a contradicting event over it"))
+
+				assert.Equal(t, beforeCompletions, len(filterEvents[workflow.EventCompleted](t, after)),
+					assert.MessageF("the existing completion is left exactly as it was"))
+
+				isCompleted, err := workflow.IsCompleted(t.Context(), runtime.Get(t).Events, processID.Get(t))
+				assert.NoError(t, err)
+				assert.True(t, isCompleted,
+					assert.MessageF("the Process still reads as completed; terminating it "+
+						"after the fact would lose the distinction between 'finished' and "+
+						"'called off'"))
+			})
+		})
+
+		s.When("the Process has already been terminated", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				var terminated workflow.Event = workflow.EventTerminated{
+					EventID:   mustEventID(t),
+					ProcessID: processID.Get(t),
+					Timestamp: clock.Now(),
+				}
+				assert.NoError(t, runtime.Get(t).Events.Create(t.Context(), &terminated))
+			})
+
+			s.Then("no second termination is appended", func(t *testcase.T) {
+				var before = mustHistory(t, runtime.Get(t), processID.Get(t))
+
+				assert.NoError(t, act(t))
+
+				var after = mustHistory(t, runtime.Get(t), processID.Get(t))
+				assert.Equal(t, len(before), len(after),
+					assert.MessageF("terminating an already terminated Process is a no-op; "+
+						"a duplicate call must not grow a second EventTerminated, or the "+
+						"log stops being a reliable answer to when it was stopped"))
+			})
+		})
+
+		s.When("the Runtime passes no ProcessID", func(s *testcase.Spec) {
+			processID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				return workflow.ProcessID{}
+			})
+
+			s.Then("nothing is terminated and the fault is reported", func(t *testcase.T) {
+				assert.Error(t, act(t),
+					assert.MessageF("without a ProcessID there is no Process to stop, "+
+						"and the call has to fail loudly rather than be silently dropped"))
+			})
+		})
+	})
+}
+
+// filterEvents returns the events in events that are of type E.
+// Used to assert append-only log behaviour without having to read whole event
+// types back through type assertions at the call site.
+func filterEvents[E workflow.Event](t *testcase.T, events []workflow.Event) []E {
+	t.Helper()
+	var out []E
+	for _, event := range events {
+		if e, ok := event.(E); ok {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TestRuntime_missingMandatoryDependencyFailsFast is a regression test for a
+// production bug where Runtime#Schedule (and any Runtime method that delegates
+// through withRetry) would burn the full retry budget on a configuration
+// error rather than failing fast. The root cause was Runtime#Validate
+// returning plain fmt.Errorf("missing ...") values, which withRetry did not
+// classify as fatal and therefore retried up to the default 5 attempts of
+// resilience.Jitter{} — each attempt sleeping up to 5s of jitter, so a
+// misconfigured Runtime#Schedule could block for ~20 seconds.
+//
+//   - The error must come back within a small budget (well under the default
+//     retry budget) so the caller observes a fail, not a hang.
+//   - The error must be classified as fatal via workflow.ErrIsFatal so
+//     withRetry short-circuits without retrying.
+func TestRuntime_missingMandatoryDependencyFailsFast(t *testing.T) {
+	const fastFailBudget = 2 * time.Second // < one retry-jitter cycle
+
+	rt := workflow.Runtime{
+		// Events is set so the runtime does not bail on the first Validate
+		// check, exposing the ProcessExecutionQueue dependency path.
+		Events: &memory.WorkflowEventRepository{},
+		// ProcessExecutionQueue intentionally left nil.
+		// ProcessChangeBroadcast intentionally left nil.
+	}
+
+	pid, err := workflow.MakeProcessID()
+	assert.NoError(t, err)
+
+	var gotErr error
+	assert.Within(t, fastFailBudget, func(ctx context.Context) {
+		gotErr = rt.Schedule(ctx, pid)
+	})
+
+	assert.Error(t, gotErr)
+	assert.True(t, workflow.ErrIsFatal(gotErr),
+		assert.MessageF("missing-dependency errors must be classified as fatal so withRetry short-circuits; otherwise a misconfigured Runtime#Schedule hangs for the full retry budget"))
 }
 
 func TestRuntime_multipleDefinitionStage(t *testing.T) {

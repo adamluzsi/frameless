@@ -1093,6 +1093,65 @@ func TestKeepAliveReader(t *testing.T) {
 			assert.NoError(t, subject.Get(t).Close())
 		})
 	})
+
+	// timeout() must return a positive duration for every value of IdleTimeout,
+	// because the keep-alive goroutine forwards it to clock.NewTicker, which
+	// panics on a non-positive interval (matching time.NewTicker). The default
+	// 10s timeout applies whenever IdleTimeout is not strictly positive.
+	s.Describe("#timeout keeps the keep-alive ticker strictly positive", func(s *testcase.Spec) {
+		const defaultTimeout = 10 * time.Second
+
+		// eager loading lets us observe the keep-alive mechanism without
+		// driving a Read on the test goroutine, mirroring the pattern already
+		// used in the "no reading for the duration" context above.
+		subject.EagerLoading(s)
+
+		s.When("IdleTimeout is positive", func(s *testcase.Spec) {
+			keepAliveTime.Let(s, func(t *testcase.T) time.Duration {
+				return time.Duration(t.Random.IntBetween(int(time.Millisecond), int(time.Second)))
+			})
+
+			s.Then("the keep-alive uses IdleTimeout", func(t *testcase.T) {
+				timecop.Travel(t, keepAliveTime.Get(t)+time.Millisecond)
+				assert.Eventually(t, time.Second, func(it testing.TB) {
+					assert.NotEmpty(it, stub.Get(t).NumRead(),
+						assert.Message("expected keep-alive to read from the source after IdleTimeout elapsed"))
+				})
+			})
+		})
+
+		s.When("IdleTimeout is zero", func(s *testcase.Spec) {
+			keepAliveTime.LetValue(s, 0)
+
+			s.Then("the keep-alive falls back to the default timeout", func(t *testcase.T) {
+				timecop.Travel(t, defaultTimeout+time.Millisecond)
+				assert.Eventually(t, time.Second, func(it testing.TB) {
+					assert.NotEmpty(it, stub.Get(t).NumRead(),
+						assert.Message("expected keep-alive to read from the source after the default timeout elapsed"))
+				})
+			})
+		})
+
+		s.When("IdleTimeout is negative", func(s *testcase.Spec) {
+			keepAliveTime.Let(s, func(t *testcase.T) time.Duration {
+				// a value strictly less than zero, scaled so time.Duration can carry it
+				return -time.Duration(t.Random.IntBetween(1, int(time.Hour)))
+			})
+
+			s.Then("the keep-alive falls back to the default timeout and never crashes the goroutine", func(t *testcase.T) {
+				timecop.Travel(t, defaultTimeout+time.Millisecond)
+				assert.Eventually(t, time.Second, func(it testing.TB) {
+					assert.NotEmpty(it, stub.Get(t).NumRead(),
+						assert.Message("expected keep-alive to read from the source after the default timeout elapsed"))
+				})
+
+				t.Log("and reads still work through the public API after the goroutine took over")
+				got, err := io.ReadAll(subject.Get(t))
+				assert.NoError(t, err)
+				assert.Equal(t, got, stub.Get(t).Data)
+			})
+		})
+	})
 }
 
 func TestPeekRune(t *testing.T) {

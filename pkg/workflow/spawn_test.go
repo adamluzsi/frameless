@@ -39,7 +39,7 @@ func TestSpawn(t *testing.T) {
 
 		blockingParticipantID     = wftest.LetParticipantID(s)
 		blockingParticipantPhaser = let.Phaser(s)
-		_                         = wftest.LetParticipantWithID(s, c, blockingParticipantID, func(t *testcase.T) func(ctx context.Context) error {
+		_                         = wftest.LetParticipantWithID(s, blockingParticipantID, func(t *testcase.T) func(ctx context.Context) error {
 			return func(ctx context.Context) error {
 				blockingParticipantPhaser.Get(t).Wait()
 				return nil
@@ -51,13 +51,13 @@ func TestSpawn(t *testing.T) {
 			Name: workflow.SpawnName(t.Random.UUID()),
 			Definition: workflow.Sequence{
 				workflow.ExecuteParticipant{ID: blockingParticipantID.Get(t)},
-				workflow.SetVar{Key: "sub-wf-key-in-def", Value: expVal1.Get(t)},
-				workflow.SetVar{Key: "sub-wf-key-in-spawn", Value: expVal2.Get(t)},
+				workflow.SetVar{Name: "sub-wf-key-in-def", Value: expVal1.Get(t)},
+				workflow.SetVar{Name: "sub-wf-key-in-spawn", Value: expVal2.Get(t)},
 			},
 		}
 	})
 
-	_, spawnerParticipantID := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+	_, spawnerParticipantID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			return subject.Get(t)
 		}
@@ -155,20 +155,20 @@ func TestSpawn_Vars(t *testing.T) {
 		// the child under the mapped child key.
 		parentValue = let.String(s)
 		// childKey is the key the parent value lands under on the child.
-		childKey = let.Var(s, func(t *testcase.T) workflow.VarKey {
-			return workflow.VarKey(t.Random.UUID())
+		childKey = let.Var(s, func(t *testcase.T) workflow.VarName {
+			return workflow.VarName(t.Random.UUID())
 		})
 		// parentKey is the key the parent value sits under on the parent.
-		parentKey = let.Var(s, func(t *testcase.T) workflow.VarKey {
-			return workflow.VarKey(t.Random.UUID())
+		parentKey = let.Var(s, func(t *testcase.T) workflow.VarName {
+			return workflow.VarName(t.Random.UUID())
 		})
 		// missingKey is a key set on the parent but expected to NOT be
 		// forwarded to the child (the test for the silent-skip contract).
-		missingParentKey = let.Var(s, func(t *testcase.T) workflow.VarKey {
-			return workflow.VarKey(t.Random.UUID())
+		missingParentKey = let.Var(s, func(t *testcase.T) workflow.VarName {
+			return workflow.VarName(t.Random.UUID())
 		})
-		missingChildKey = let.Var(s, func(t *testcase.T) workflow.VarKey {
-			return workflow.VarKey(t.Random.UUID())
+		missingChildKey = let.Var(s, func(t *testcase.T) workflow.VarName {
+			return workflow.VarName(t.Random.UUID())
 		})
 	)
 
@@ -185,11 +185,11 @@ func TestSpawn_Vars(t *testing.T) {
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.SetVar{Key: parentKey.Get(t), Value: parentValue.Get(t)},
+			workflow.SetVar{Name: parentKey.Get(t), Value: parentValue.Get(t)},
 			workflow.Spawn{
 				Name: workflow.SpawnName(t.Random.UUID()),
 				Definition: workflow.Sequence{
-					workflow.SetVar{Key: "sentinel", Value: "child-finished"},
+					workflow.SetVar{Name: "sentinel", Value: "child-finished"},
 				},
 				Vars: workflow.VarMapping{
 					parentKey.Get(t):        childKey.Get(t),
@@ -213,7 +213,7 @@ func TestSpawn_Vars(t *testing.T) {
 				if !ok {
 					continue
 				}
-				if ve.Key == childKey.Get(t) {
+				if ve.Name == childKey.Get(t) {
 					assert.Equal(t, parentValue.Get(t), ve.Value.(string))
 					return
 				}
@@ -234,9 +234,54 @@ func TestSpawn_Vars(t *testing.T) {
 			if !ok {
 				continue
 			}
-			assert.NotEqual(t, ve.Key, missingChildKey.Get(t),
+			assert.NotEqual(t, ve.Name, missingChildKey.Get(t),
 				"expected that a missing parent value is not forwarded")
 		}
+	})
+
+	s.When("the spawned child reassigns the forwarded variable", func(s *testcase.Spec) {
+		// The child's own definition overwrites what it received from the
+		// parent, so by the time the child is done, the forwarded binding no
+		// longer reflects the parent's value.
+		childValue := let.Var(s, func(t *testcase.T) string {
+			return random.Unique(t.Random.String, parentValue.Get(t))
+		})
+
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return workflow.Sequence{
+				workflow.SetVar{Name: parentKey.Get(t), Value: parentValue.Get(t)},
+				workflow.Spawn{
+					Name: workflow.SpawnName(t.Random.UUID()),
+					Definition: workflow.Sequence{
+						workflow.SetVar{Name: childKey.Get(t), Value: childValue.Get(t)},
+					},
+					Vars: workflow.VarMapping{
+						parentKey.Get(t): childKey.Get(t),
+					},
+				},
+			}
+		})
+
+		s.Then("replaying the parent does not forward the parent value over the child's own", func(t *testcase.T) {
+			assert.NoError(t, c.ActExecute(t))
+
+			c.WaitForSpawn(t, c.ProcessID.Get(t))
+			c.ChildrenCompletionAre(t, c.ProcessID.Get(t), true)
+
+			assert.Equal[any](t, childValue.Get(t),
+				getVar(t, c.Runtime.Get(t), childID.Get(t), childKey.Get(t)),
+				"precondition: the child owns the variable once it ran")
+
+			t.Random.Repeat(3, 7, func() {
+				assert.NoError(t, c.ActExecute(t))
+			})
+
+			c.ChildrenCompletionAre(t, c.ProcessID.Get(t), true)
+
+			assert.Equal[any](t, childValue.Get(t),
+				getVar(t, c.Runtime.Get(t), childID.Get(t), childKey.Get(t)),
+				"replaying the spawn must not restore the parent's value over the child's")
+		})
 	})
 }
 
@@ -246,22 +291,22 @@ func ExampleJoin() {
 		workflow.Spawn{
 			Name: "deep-research",
 			Definition: workflow.Sequence{
-				workflow.SetVar{Key: "topic", Value: v},
+				workflow.SetVar{Name: "topic", Value: v},
 				workflow.ExecuteParticipant{
 					ID:     "deep-research",
-					Input:  []workflow.VarKey{"topic"},
-					Output: []workflow.VarKey{"results"},
+					Input:  []workflow.VarName{"topic"},
+					Output: []workflow.VarName{"results"},
 				},
 			},
 		},
 		workflow.Spawn{
 			Name: "recent-news",
 			Definition: workflow.Sequence{
-				workflow.SetVar{Key: "topic", Value: v},
+				workflow.SetVar{Name: "topic", Value: v},
 				workflow.ExecuteParticipant{
 					ID:     "fetch-news",
-					Input:  []workflow.VarKey{"topic"},
-					Output: []workflow.VarKey{"output"},
+					Input:  []workflow.VarName{"topic"},
+					Output: []workflow.VarName{"output"},
 				},
 			},
 		},
@@ -300,13 +345,13 @@ func TestJoin(t *testing.T) {
 			fooPhaser := let.Phaser(s)
 			barPhaser := let.Phaser(s)
 
-			_, fooParticipant := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+			_, fooParticipant := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 				return func(ctx context.Context) error {
 					fooPhaser.Get(t).Wait()
 					return nil
 				}
 			})
-			_, barParticipant := wftest.LetParticipant(s, c, func(t *testcase.T) func(ctx context.Context) error {
+			_, barParticipant := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 				return func(ctx context.Context) error {
 					barPhaser.Get(t).Wait()
 					return nil
@@ -318,14 +363,14 @@ func TestJoin(t *testing.T) {
 					workflow.Spawn{
 						Name: "foo",
 						Definition: workflow.Sequence{
-							workflow.SetVar{Key: "from-foo", Value: "foo-value"},
+							workflow.SetVar{Name: "from-foo", Value: "foo-value"},
 							workflow.ExecuteParticipant{ID: fooParticipant.Get(t)},
 						},
 					},
 					workflow.Spawn{
 						Name: "bar",
 						Definition: workflow.Sequence{
-							workflow.SetVar{Key: "from-bar", Value: "bar-value"},
+							workflow.SetVar{Name: "from-bar", Value: "bar-value"},
 							workflow.ExecuteParticipant{ID: barParticipant.Get(t)},
 						},
 					},
@@ -422,8 +467,8 @@ func TestJoin(t *testing.T) {
 		s.When("join has collection but no name configured", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) workflow.Join {
 				return workflow.Join{
-					Collect: random.Map(t.Random.IntBetween(1, 7), func() (workflow.VarKey, workflow.VarKey) {
-						return workflow.VarKey(t.Random.UUID()), workflow.VarKey(t.Random.UUID())
+					Collect: random.Map(t.Random.IntBetween(1, 7), func() (workflow.VarName, workflow.VarName) {
+						return workflow.VarName(t.Random.UUID()), workflow.VarName(t.Random.UUID())
 					}),
 				}
 			})
@@ -438,7 +483,7 @@ func TestJoin(t *testing.T) {
 		s.When("spawn was not used", func(s *testcase.Spec) {
 			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
-					workflow.SetVar{Key: "hello", Value: "world"},
+					workflow.SetVar{Name: "hello", Value: "world"},
 					subject.Get(t),
 				}
 			})
@@ -459,8 +504,8 @@ func TestJoin(t *testing.T) {
 				subject.Let(s, func(t *testcase.T) workflow.Join {
 					var collect workflow.VarMapping
 					if t.Random.Bool() {
-						collect = random.Map(t.Random.IntBetween(1, 3), func() (workflow.VarKey, workflow.VarKey) {
-							return workflow.VarKey(t.Random.UUID()), workflow.VarKey(t.Random.UUID())
+						collect = random.Map(t.Random.IntBetween(1, 3), func() (workflow.VarName, workflow.VarName) {
+							return workflow.VarName(t.Random.UUID()), workflow.VarName(t.Random.UUID())
 						})
 					}
 					return workflow.Join{

@@ -262,7 +262,7 @@ func DayDiff(ref, target time.Time) int {
 }
 
 // Schedule allows to define an abstract time,
-// that continously reoccurs in time based on the specifications set in its field.
+// that continuously reoccurs in time based on the specifications set in its field.
 type Schedule struct {
 	// DayTime is the time during a day, where the scheduling begins.
 	DayTime DayTime

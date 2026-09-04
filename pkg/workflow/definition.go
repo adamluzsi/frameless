@@ -106,28 +106,3 @@ func (sig Suspend) Error() string { return "workflow::suspend" }
 func (sig Suspend) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) error {
 	return sig
 }
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// SetVar sets the value of a workflow variable as part of a process definition.
-type SetVar struct {
-	Key   VarKey
-	Value any
-	// Global will set the variable scope to be globally available,
-	// therefore allowing to escape the current workflow definition assigned variable scope.
-	Global bool
-}
-
-var _ Definition = SetVar{}
-
-func (SetVar) Error() string { return "workflow::set-var" }
-
-func (d SetVar) Execute(ctx context.Context, pid ProcessID) error {
-	ctx = WithName(ctx, "set-var")
-	repo, err := LookupEventsRepository(ctx)
-	if err != nil {
-		return err
-	}
-	var vars = Vars{ProcessID: pid, EventsRepository: repo}
-	return vars.Set(ctx, d.Key, d.Value)
-}

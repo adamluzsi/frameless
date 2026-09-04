@@ -26,11 +26,17 @@ func TestExecuteCondition(t *testing.T) {
 	var (
 		callCount = let.VarOf(s, 0)
 		lastCTX   = let.VarOf[context.Context](s, nil)
-		lastOut   = let.VarOf[bool](s, false)
+		// lastCTXErr records the liveness of the context AT CALL TIME.
+		// The context handed to a condition is transaction scoped, and the
+		// memory EventLog cancels it once that transaction finishes, so it
+		// can only be meaningfully inspected while the condition runs.
+		lastCTXErr = let.VarOf[error](s, nil)
+		lastOut    = let.VarOf[bool](s, false)
 	)
 	condition := LetCondition(s, c, cid, func(t *testcase.T) func(ctx context.Context, in string) (out bool, _ error) {
 		return func(ctx context.Context, in string) (bool, error) {
 			lastCTX.Set(t, ctx)
+			lastCTXErr.Set(t, ctx.Err())
 			callCount.Set(t, callCount.Get(t)+1)
 			out := t.Random.Bool()
 			lastOut.Set(t, out)
@@ -39,10 +45,10 @@ func TestExecuteCondition(t *testing.T) {
 	})
 
 	var (
-		inKey = let.As[workflow.VarKey](let.UUID(s))
+		inKey = let.As[workflow.VarName](let.UUID(s))
 		inVal = let.UUID(s)
-		input = let.Var(s, func(t *testcase.T) []workflow.VarKey {
-			return []workflow.VarKey{inKey.Get(t)}
+		input = let.Var(s, func(t *testcase.T) []workflow.VarName {
+			return []workflow.VarName{inKey.Get(t)}
 		})
 	)
 	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteCondition {
@@ -80,7 +86,8 @@ func TestExecuteCondition(t *testing.T) {
 
 			gotCTX := lastCTX.Get(t)
 			assert.NotNil(t, gotCTX)
-			assert.NoError(t, gotCTX.Err())
+			assert.NoError(t, lastCTXErr.Get(t),
+				"the condition must be called with a live context")
 
 			gotOut := getResult(t)
 			assert.Equal(t, gotOut, lastOut.Get(t))
@@ -166,7 +173,7 @@ func TestExecuteCondition(t *testing.T) {
 						ve, ok := event.(workflow.EventSetVar)
 						assert.True(t, ok)
 
-						assert.Equal(t, ve.Key, inKey.Get(t))
+						assert.Equal(t, ve.Name, inKey.Get(t))
 						assert.Equal[any](t, ve.Value, newIn.Get(t))
 					})
 
@@ -191,7 +198,7 @@ func TestExecuteCondition(t *testing.T) {
 							if !ok {
 								continue
 							}
-							if ve.Key == inKey.Get(t) {
+							if ve.Name == inKey.Get(t) {
 								t.Log("given we tamper manually with the event log and change the input arguments")
 								ve.Value = newIn.Get(t)
 								var event workflow.Event = ve
@@ -249,13 +256,14 @@ func TestExecuteCondition(t *testing.T) {
 					},
 					&workflow.ExecuteCondition{
 						ID:    "bar",
-						Input: []workflow.VarKey{"trigger-val"},
+						Input: []workflow.VarName{"trigger-val"},
 					},
 				}
 
 				r := workflow.Runtime{
 					Conditions: conditions,
 					Events:     &memory.WorkflowEventRepository{},
+					Locks:      &memory.WorkflowProcessLocks{},
 				}
 
 				pid := mustProcessID(t)
@@ -305,6 +313,7 @@ func TestExecuteCondition(t *testing.T) {
 				r := workflow.Runtime{
 					Conditions: conditions,
 					Events:     &memory.WorkflowEventRepository{},
+					Locks:      &memory.WorkflowProcessLocks{},
 				}
 
 				p := mustProcessID(t)
@@ -364,7 +373,7 @@ func TestExecuteCondition(t *testing.T) {
 					},
 					&workflow.ExecuteCondition{
 						ID:    "bar",
-						Input: []workflow.VarKey{"trigger-val"},
+						Input: []workflow.VarName{"trigger-val"},
 					},
 					&workflow.ExecuteCondition{
 						ID: "flaky",
@@ -374,6 +383,7 @@ func TestExecuteCondition(t *testing.T) {
 				r := workflow.Runtime{
 					Conditions: conditions,
 					Events:     &memory.WorkflowEventRepository{},
+					Locks:      &memory.WorkflowProcessLocks{},
 				}
 
 				p := mustProcessID(t)

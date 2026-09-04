@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 	"testing"
-	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/workflow"
@@ -83,7 +82,7 @@ func TestIf(t *testing.T) {
 				var (
 					pid   = wftest.LetParticipantID(s)
 					count = let.VarOf(s, 0)
-					_     = wftest.LetParticipantWithID(s, c, pid, func(t *testcase.T) func(ctx context.Context) error {
+					_     = wftest.LetParticipantWithID(s, pid, func(t *testcase.T) func(ctx context.Context) error {
 						return func(ctx context.Context) error {
 							count.Set(t, count.Get(t)+1)
 							return nil
@@ -121,7 +120,7 @@ func TestIf(t *testing.T) {
 				var (
 					pid   = wftest.LetParticipantID(s)
 					count = let.VarOf(s, 0)
-					_     = wftest.LetParticipantWithID(s, c, pid, func(t *testcase.T) func(ctx context.Context) error {
+					_     = wftest.LetParticipantWithID(s, pid, func(t *testcase.T) func(ctx context.Context) error {
 						return func(ctx context.Context) error {
 							count.Set(t, count.Get(t)+1)
 							return nil
@@ -171,6 +170,7 @@ func TestIf(t *testing.T) {
 					},
 				},
 				Events: &memory.WorkflowEventRepository{},
+				Locks:  &memory.WorkflowProcessLocks{},
 			}
 
 			// Allocate the ProcessID and seed the UseDefinitionEvent so the
@@ -249,7 +249,7 @@ func TestSequence(t *testing.T) {
 			var (
 				pid   = wftest.LetParticipantID(s)
 				count = let.VarOf(s, 0)
-				part  = wftest.LetParticipantWithID(s, c, pid, func(t *testcase.T) func(ctx context.Context) error {
+				part  = wftest.LetParticipantWithID(s, pid, func(t *testcase.T) func(ctx context.Context) error {
 					return func(ctx context.Context) error {
 						count.Set(t, count.Get(t)+1)
 						return nil
@@ -295,19 +295,19 @@ func TestSequence(t *testing.T) {
 				return make([]workflow.ParticipantID, 0, 3)
 			})
 
-			wftest.LetParticipantWithID(s, c, fooPid, func(t *testcase.T) func(context.Context) error {
+			wftest.LetParticipantWithID(s, fooPid, func(t *testcase.T) func(context.Context) error {
 				return func(ctx context.Context) error {
 					testcase.Append(t, callOrder, fooPid.Get(t))
 					return nil
 				}
 			})
-			mid := wftest.LetParticipantWithID(s, c, barPid, func(t *testcase.T) func(context.Context) error {
+			mid := wftest.LetParticipantWithID(s, barPid, func(t *testcase.T) func(context.Context) error {
 				return func(ctx context.Context) error {
 					testcase.Append(t, callOrder, barPid.Get(t))
 					return nil
 				}
 			})
-			wftest.LetParticipantWithID(s, c, bazPid, func(t *testcase.T) func(context.Context) error {
+			wftest.LetParticipantWithID(s, bazPid, func(t *testcase.T) func(context.Context) error {
 				return func(ctx context.Context) error {
 					testcase.Append(t, callOrder, bazPid.Get(t))
 					return nil
@@ -461,166 +461,6 @@ func TestSleep(t *testing.T) {
 
 			s.Then("fault propagated back", func(t *testcase.T) {
 				assert.ErrorIs(t, act(t), expErr.Get(t))
-			})
-		})
-	})
-}
-
-func TestComplete_IsCompleted(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	var (
-		processID = let.Var(s, func(t *testcase.T) workflow.ProcessID {
-			id, err := workflow.MakeProcessID()
-			assert.NoError(t, err)
-			return id
-		})
-		repo = let.Var(s, func(t *testcase.T) *memory.WorkflowEventRepository {
-			return &memory.WorkflowEventRepository{}
-		})
-		// prepareEvts lets each subtest seed the repository with events
-		// associated with the current processID. All events must be
-		// fully populated (EventID, ProcessID, Timestamp) so they pass
-		// the repository's validation.
-		prepareEvts = let.Var(s, func(t *testcase.T) []workflow.Event {
-			return nil
-		})
-	)
-	s.Before(func(t *testcase.T) {
-		for _, ev := range prepareEvts.Get(t) {
-			ev := ev
-			assert.NoError(t, repo.Get(t).Create(t.Context(), &ev))
-		}
-	})
-
-	act := let.Act(func(t *testcase.T) bool {
-		ok, err := workflow.Complete{ProcessID: processID.Get(t)}.IsCompleted(t.Context(), repo.Get(t))
-		assert.NoError(t, err)
-		return ok
-	})
-
-	s.When("when events are empty", func(s *testcase.Spec) {
-		prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
-			if t.Random.Bool() {
-				return nil
-			}
-			return []workflow.Event{}
-		})
-
-		s.Then("event is considered not completed", func(t *testcase.T) {
-			assert.False(t, act(t))
-		})
-	})
-
-	s.When("process has events but nothing related to process completion", func(s *testcase.Spec) {
-		prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
-			return []workflow.Event{
-				workflow.EventSetVar{
-					EventID:   mustEventID(t),
-					ProcessID: processID.Get(t),
-					Timestamp: time.Now(),
-					Key:       "foo",
-					Value:     42,
-				},
-				workflow.EventParticipant{
-					EventID:       mustEventID(t),
-					ProcessID:     processID.Get(t),
-					Timestamp:     time.Now(),
-					ParticipantID: "foo",
-				},
-			}
-		})
-
-		s.Then("it is considered not completed", func(t *testcase.T) {
-			assert.False(t, act(t))
-		})
-	})
-
-	s.When("EventCompleted event is present", func(s *testcase.Spec) {
-		prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
-			return []workflow.Event{
-				workflow.EventCompleted{
-					EventID:   mustEventID(t),
-					ProcessID: processID.Get(t),
-					Timestamp: time.Now(),
-				},
-			}
-		})
-
-		s.Then("it is considered completed", func(t *testcase.T) {
-			assert.True(t, act(t))
-		})
-
-		s.And("other events as well present in the event history", func(s *testcase.Spec) {
-			prepareEvts.Let(s, func(t *testcase.T) []workflow.Event {
-				return []workflow.Event{
-					workflow.EventSetVar{
-						EventID:   mustEventID(t),
-						ProcessID: processID.Get(t),
-						Timestamp: time.Now(),
-						Key:       "foo",
-						Value:     42,
-					},
-					workflow.EventParticipant{
-						EventID:       mustEventID(t),
-						ProcessID:     processID.Get(t),
-						Timestamp:     time.Now().Add(time.Millisecond),
-						ParticipantID: "foo",
-					},
-					workflow.EventCompleted{
-						EventID:   mustEventID(t),
-						ProcessID: processID.Get(t),
-						Timestamp: time.Now().Add(2 * time.Millisecond),
-					},
-				}
-			})
-
-			s.Then("it is considered completed", func(t *testcase.T) {
-				assert.True(t, act(t))
-			})
-		})
-	})
-}
-
-func TestSetVar(t *testing.T) {
-	s := testcase.NewSpec(t)
-	c := wftest.LetC(s)
-
-	var (
-		key   = let.As[workflow.VarKey](let.String(s))
-		value = let.Int(s)
-	)
-	subject := let.Var(s, func(t *testcase.T) workflow.SetVar {
-		return workflow.SetVar{
-			Key:   key.Get(t),
-			Value: value.Get(t),
-		}
-	})
-
-	s.Describe("#Execute", func(s *testcase.Spec) {
-		var (
-			Context = let.Context(s)
-			process = wftest.LetProcessWithDefinition(s, c, subject)
-		)
-		act := let.Act(func(t *testcase.T) error {
-			return c.Runtime.Get(t).Execute(Context.Get(t), process.Get(t))
-		})
-
-		s.Then("I expect that the process will have the variable set", func(t *testcase.T) {
-			act(t)
-
-			assert.Equal[any](t, getVar(t, c.Runtime.Get(t), process.Get(t), key.Get(t)), value.Get(t))
-		})
-
-		s.Then("execution is idempotent with runtime", func(t *testcase.T) {
-			assert.NoError(t, act(t)) // first pass
-
-			firstPassEvents := mustHistory(t, c.Runtime.Get(t), process.Get(t))
-
-			t.Random.Repeat(3, 7, func() {
-				assert.NoError(t, act(t))
-
-				assert.Equal(t, mustHistory(t, c.Runtime.Get(t), process.Get(t)), firstPassEvents)
 			})
 		})
 	})
