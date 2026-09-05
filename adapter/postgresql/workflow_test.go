@@ -9,18 +9,15 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfcontract"
-	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 )
 
 func TestWorkflowLockerFactory(t *testing.T) {
 	c := GetConnection(t)
-
-	var wlf workflow.ProcessLockers = postgresql.WorkflowLockerFactory{Connection: c}
-
-	subject := &memory.LockerFactory[workflow.ProcessID, guard.NonBlockingLocker]{}
-	t.Run("implements workflow ProcessLockers", wfcontract.ProcessLockers(subject).Test)
+	subject := postgresql.WorkflowLockerFactory{Connection: c}
+	assert.NoError(t, subject.Migrate(t.Context()))
+	wfcontract.ProcessLockers(subject).Test(t)
 }
 
 func TestWorkflowProcessExecutionQueue(t *testing.T) {

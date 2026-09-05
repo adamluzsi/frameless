@@ -15,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/uuid"
@@ -388,37 +387,32 @@ func (l *Lock) legacyMigrate(ctx context.Context) error {
 	}).MigrateDown(ctx, "")
 }
 
-type LockerFactory[K any, L guard.Unlocker] struct{ Connection Connection }
+type LockerFactory[K any] struct{ Connection Connection }
 
-func (lf LockerFactory[K, L]) Migrate(ctx context.Context) error {
+func (lf LockerFactory[K]) Migrate(ctx context.Context) error {
 	return (&Lock{Connection: lf.Connection}).Migrate(ctx)
 }
 
-func (lf LockerFactory[K, L]) LockerFor(key K) L {
-	var lock = &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
-	l, ok := any(lock).(L)
-	if !ok {
-		panic(fmt.Sprintf("%T doesn't support %s", lock, reflectkit.TypeOf(lock).String()))
-	}
-	return l
+func (lf LockerFactory[K]) LockerFor(key K) *Lock {
+	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
 }
 
-func (lf LockerFactory[K, L]) NonBlockingLockerFor(key K) guard.NonBlockingLocker {
-	return &Lock{Name: fmt.Sprintf("%T:%v", key, key), Connection: lf.Connection}
+func (lf LockerFactory[K]) NonBlockingLockerFor(key K) guard.NonBlockingLocker {
+	return lf.LockerFor(key)
 }
 
 const ErrLockLost errorkit.Error = "ErrLockLost"
 
 var stringType = reflect.TypeFor[string]()
 
-func (lf LockerFactory[K, L]) nameFor(key K) string {
+func (lf LockerFactory[K]) nameFor(key K) string {
 	switch key := any(key).(type) {
 	case fmt.Stringer:
 		return key.String()
 	case string:
 		return key
 	default:
-		if reflect.TypeFor[T]().ConvertibleTo(stringType) {
+		if reflect.TypeFor[K]().ConvertibleTo(stringType) {
 			return reflect.ValueOf(key).Convert(stringType).Interface().(string)
 		}
 		return fmt.Sprintf("%v", key)

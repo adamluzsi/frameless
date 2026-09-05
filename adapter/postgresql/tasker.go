@@ -12,8 +12,8 @@ import (
 
 type TaskerSchedulerLocks struct{ Connection Connection }
 
-func (lf TaskerSchedulerLocks) factory() LockerFactory[tasker.ScheduleID, guard.Locker] {
-	return LockerFactory[tasker.ScheduleID, guard.Locker](lf)
+func (lf TaskerSchedulerLocks) factory() LockerFactory[tasker.ScheduleID] {
+	return LockerFactory[tasker.ScheduleID]{Connection: lf.Connection}
 }
 
 func (lf TaskerSchedulerLocks) LockerFor(id tasker.ScheduleID) guard.Locker {
