@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"iter"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/port/comproto"
@@ -17,8 +19,10 @@ import (
 	"go.llib.dev/frameless/port/pubsub"
 )
 
-const workflowEventTableName = "frameless_workflow_events"
-const workflowEventTableSparseIndexTableName = "frameless_workflow_sparse_index"
+const (
+	workflowEventTableName        = "frameless_workflow_events"
+	workflowProcessStartTableName = "frameless_workflow_process_starts"
+)
 
 type WorkflowLockerFactory struct {
 	Connection Connection
@@ -73,33 +77,30 @@ func (r *WorkflowEventRepository) Create(ctx context.Context, ptr *workflow.Even
 	if err := validateWorkflowEvent(ptr); err != nil {
 		return err
 	}
-
-	if ptr == nil {
-		return fmt.Errorf("nil %T received", ptr)
-	}
-
-	var event = *ptr
+	event := *ptr
 	data, err := r.codec().Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal workflow event: %w", err)
 	}
 
-	tx, err := r.BeginTx(ctx)
-	if err != nil {
-		return err
+	tx := ctx
+	if _, ok := r.Connection.LookupTx(ctx); !ok {
+		tx, err = r.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer comproto.FinishOnePhaseCommit(&rErr, r, tx)
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, r, tx)
 
 	_, err = r.Connection.ExecContext(tx,
 		`INSERT INTO `+workflowEventTableName+` (event_id, process_id, event_type, timestamp, data) VALUES ($1, $2, $3, $4, $5)`,
 		event.GetEventID(), event.GetProcessID(), event.EventType(), event.GetTimestamp(), data)
-
 	if err != nil {
 		return err
 	}
 
 	_, err = r.Connection.ExecContext(tx,
-		`INSERT INTO `+workflowEventTableSparseIndexTableName+` (process_id, first_event_id) VALUES ($1, $2) ON CONFLICT (process_id) DO NOTHING`,
+		`INSERT INTO `+workflowProcessStartTableName+` (process_id, first_event_id) VALUES ($1, $2) ON CONFLICT (process_id) DO NOTHING`,
 		event.GetProcessID(), event.GetEventID())
 
 	return err
@@ -126,7 +127,7 @@ func (r *WorkflowEventRepository) FindAll(ctx context.Context) iter.Seq2[workflo
 }
 
 func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workflow.ProcessID) iter.Seq2[workflow.Event, error] {
-	return r.find(ctx, `SELECT e.data FROM `+workflowEventTableName+` e JOIN `+workflowEventTableSparseIndexTableName+` s ON s.process_id = e.process_id WHERE e.process_id = $1 AND e.event_id >= s.first_event_id ORDER BY e.event_id`, pid)
+	return r.find(ctx, `SELECT e.data FROM `+workflowEventTableName+` e JOIN `+workflowProcessStartTableName+` s ON s.process_id = e.process_id WHERE e.process_id = $1 AND e.event_id >= s.first_event_id ORDER BY e.event_id`, pid)
 }
 
 func (r *WorkflowEventRepository) find(ctx context.Context, query string, args ...any) iter.Seq2[workflow.Event, error] {
@@ -181,25 +182,80 @@ func (r *WorkflowEventRepository) Migrate(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS %s (
 			process_id UUID PRIMARY KEY,
 			first_event_id UUID NOT NULL
-		);`, workflowEventTableName, workflowEventTableName, workflowEventTableSparseIndexTableName)},
+		);`, workflowEventTableName, workflowEventTableName, workflowProcessStartTableName)},
 	}).Migrate(ctx)
 }
 
 // WorkflowProcessExecutionQueue is a durable PostgreSQL queue for runtime schedules.
+//
+// As a zero value it only requires a Connection. The first Publish/Subscribe
+// lazy-initialises the underlying durable Queue using a default name, so
+//
+//	&WorkflowProcessExecutionQueue{Connection: c}
+//
+// is enough to wire a workflow.Runtime. A non-empty Name keeps multiple
+// independent queues on the same database separated by logical name.
+//
+// The wire format of ProcessExecution is owned by processExecutionQueueDTO
+// in this package. The DTO has its own json tags, so renaming a field on
+// workflow.ProcessExecution does not silently change the on-disk queue row:
+// the DTO is the contract, the runtime struct is the in-memory value.
 type WorkflowProcessExecutionQueue struct {
-	Queue Queue[workflow.ProcessExecution, workflow.ProcessExecution]
+	Connection Connection
+	Name       string
+
+	o sync.Once
+	q Queue[workflow.ProcessExecution, workflowProcessExecutionDTO]
 }
+
+const workflowProcessExecutionQueueDefaultName = "frameless_workflow_process_executions"
 
 var _ workflow.ProcessExecutionQueue = (*WorkflowProcessExecutionQueue)(nil)
 
+func (q *WorkflowProcessExecutionQueue) init() {
+	q.o.Do(func() {
+		name := q.Name
+		if name == "" {
+			name = workflowProcessExecutionQueueDefaultName
+		}
+		q.q = Queue[workflow.ProcessExecution, workflowProcessExecutionDTO]{
+			Name:       name,
+			Connection: q.Connection,
+			Mapping:    processExecutionQueueMapping{},
+		}
+	})
+}
+
 func (q *WorkflowProcessExecutionQueue) Publish(ctx context.Context, v workflow.ProcessExecution) error {
-	return q.Queue.Publish(ctx, v)
+	q.init()
+	return q.q.Publish(ctx, v)
 }
+
 func (q *WorkflowProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessExecution] {
-	return q.Queue.Subscribe(ctx)
+	q.init()
+	return q.q.Subscribe(ctx)
 }
+
 func (q *WorkflowProcessExecutionQueue) Migrate(ctx context.Context) error {
-	return q.Queue.Migrate(ctx)
+	q.init()
+	return q.q.Migrate(ctx)
+}
+
+type workflowProcessExecutionDTO struct {
+	ProcessID    uuid.UUID `json:"process_id"`
+	StartTime    time.Time `json:"start_time"`
+	CreatedAt    time.Time `json:"created_at"`
+	FailureCount int       `json:"failure_count,omitempty"`
+}
+
+type processExecutionQueueMapping struct{}
+
+func (processExecutionQueueMapping) MapToDTO(_ context.Context, v workflow.ProcessExecution) (workflowProcessExecutionDTO, error) {
+	return workflowProcessExecutionDTO(v), nil
+}
+
+func (processExecutionQueueMapping) MapToENT(_ context.Context, dto workflowProcessExecutionDTO) (workflow.ProcessExecution, error) {
+	return workflow.ProcessExecution(dto), nil
 }
 
 // WorkflowProcessChangeBroadcast is volatile. The durable queue remains the source of truth.
