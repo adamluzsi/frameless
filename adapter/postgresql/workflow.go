@@ -186,57 +186,47 @@ func (r *WorkflowEventRepository) Migrate(ctx context.Context) error {
 	}).Migrate(ctx)
 }
 
-// WorkflowProcessExecutionQueue is a durable PostgreSQL queue for runtime schedules.
-//
-// As a zero value it only requires a Connection. The first Publish/Subscribe
-// lazy-initialises the underlying durable Queue using a default name, so
-//
-//	&WorkflowProcessExecutionQueue{Connection: c}
-//
-// is enough to wire a workflow.Runtime. A non-empty Name keeps multiple
-// independent queues on the same database separated by logical name.
-//
-// The wire format of ProcessExecution is owned by processExecutionQueueDTO
-// in this package. The DTO has its own json tags, so renaming a field on
-// workflow.ProcessExecution does not silently change the on-disk queue row:
-// the DTO is the contract, the runtime struct is the in-memory value.
-type WorkflowProcessExecutionQueue struct {
+// WorkflowQueue is a durable PostgreSQL queue for runtime schedules.
+type WorkflowQueue struct {
 	Connection Connection
-	Name       string
+	// Name [optional] is the WorkflowQueue's table name.
+	//
+	// Default: frameless_workflow_queue
+	Name string
 
 	o sync.Once
 	q Queue[workflow.ProcessExecution, workflowProcessExecutionDTO]
 }
 
-const workflowProcessExecutionQueueDefaultName = "frameless_workflow_process_executions"
+const workflowQueueDefaultName = "frameless_workflow_queue"
 
-var _ workflow.ProcessExecutionQueue = (*WorkflowProcessExecutionQueue)(nil)
+var _ workflow.ProcessExecutionQueue = (*WorkflowQueue)(nil)
 
-func (q *WorkflowProcessExecutionQueue) init() {
+func (q *WorkflowQueue) init() {
 	q.o.Do(func() {
 		name := q.Name
 		if name == "" {
-			name = workflowProcessExecutionQueueDefaultName
+			name = workflowQueueDefaultName
 		}
 		q.q = Queue[workflow.ProcessExecution, workflowProcessExecutionDTO]{
 			Name:       name,
 			Connection: q.Connection,
-			Mapping:    processExecutionQueueMapping{},
+			Mapping:    workflowProcessExecutionMapping{},
 		}
 	})
 }
 
-func (q *WorkflowProcessExecutionQueue) Publish(ctx context.Context, v workflow.ProcessExecution) error {
+func (q *WorkflowQueue) Publish(ctx context.Context, v workflow.ProcessExecution) error {
 	q.init()
 	return q.q.Publish(ctx, v)
 }
 
-func (q *WorkflowProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessExecution] {
+func (q *WorkflowQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessExecution] {
 	q.init()
 	return q.q.Subscribe(ctx)
 }
 
-func (q *WorkflowProcessExecutionQueue) Migrate(ctx context.Context) error {
+func (q *WorkflowQueue) Migrate(ctx context.Context) error {
 	q.init()
 	return q.q.Migrate(ctx)
 }
@@ -248,13 +238,13 @@ type workflowProcessExecutionDTO struct {
 	FailureCount int       `json:"failure_count,omitempty"`
 }
 
-type processExecutionQueueMapping struct{}
+type workflowProcessExecutionMapping struct{}
 
-func (processExecutionQueueMapping) MapToDTO(_ context.Context, v workflow.ProcessExecution) (workflowProcessExecutionDTO, error) {
+func (workflowProcessExecutionMapping) MapToDTO(_ context.Context, v workflow.ProcessExecution) (workflowProcessExecutionDTO, error) {
 	return workflowProcessExecutionDTO(v), nil
 }
 
-func (processExecutionQueueMapping) MapToENT(_ context.Context, dto workflowProcessExecutionDTO) (workflow.ProcessExecution, error) {
+func (workflowProcessExecutionMapping) MapToENT(_ context.Context, dto workflowProcessExecutionDTO) (workflow.ProcessExecution, error) {
 	return workflow.ProcessExecution(dto), nil
 }
 

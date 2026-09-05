@@ -13,14 +13,14 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-func TestWorkflowRuntimeEndToEndWithPostgreSQL(t *testing.T) {
+func Test_workflowE2E(t *testing.T) {
 	ctx := context.Background()
 	c := GetConnection(t)
 
 	events := &postgresql.WorkflowEventRepository{Connection: c}
 	assert.NoError(t, events.Migrate(ctx))
 
-	queue := &postgresql.WorkflowProcessExecutionQueue{Connection: c}
+	queue := &postgresql.WorkflowQueue{Connection: c}
 	assert.NoError(t, queue.Migrate(ctx))
 	t.Cleanup(func() {
 		_, _ = c.ExecContext(ctx, `DELETE FROM frameless_queue_messages WHERE queue = 'frameless_workflow_process_executions'`)
