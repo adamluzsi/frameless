@@ -17,10 +17,8 @@ import (
 	"go.llib.dev/frameless/port/pubsub"
 )
 
-const (
-	workflowEventTableName        = "frameless_workflow_events"
-	workflowProcessStartTableName = "frameless_workflow_process_starts"
-)
+const workflowEventTableName = "frameless_workflow_events"
+const workflowEventTableSparseIndexTableName = "frameless_workflow_sparse_index"
 
 type WorkflowLockerFactory struct {
 	Connection Connection
@@ -52,11 +50,13 @@ type WorkflowEventRepository struct {
 var _ workflow.EventRepository = (*WorkflowEventRepository)(nil)
 var _ comproto.OnePhaseCommitProtocol = (*WorkflowEventRepository)(nil)
 
+var defaultWorkflowEventCodec = wfjson.NewCodec()
+
 func (r *WorkflowEventRepository) codec() workflow.Codec {
 	if r.Codec != nil {
 		return r.Codec
 	}
-	return wfjson.NewCodec()
+	return defaultWorkflowEventCodec
 }
 
 func (r *WorkflowEventRepository) BeginTx(ctx context.Context) (context.Context, error) {
@@ -73,30 +73,35 @@ func (r *WorkflowEventRepository) Create(ctx context.Context, ptr *workflow.Even
 	if err := validateWorkflowEvent(ptr); err != nil {
 		return err
 	}
-	event := *ptr
+
+	if ptr == nil {
+		return fmt.Errorf("nil %T received", ptr)
+	}
+
+	var event = *ptr
 	data, err := r.codec().Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal workflow event: %w", err)
 	}
 
-	owned := ctx
-	if _, ok := r.Connection.LookupTx(ctx); !ok {
-		owned, err = r.BeginTx(ctx)
-		if err != nil {
-			return err
-		}
-		defer comproto.FinishOnePhaseCommit(&rErr, r, owned)
-	}
-
-	_, err = r.Connection.ExecContext(owned,
-		`INSERT INTO `+workflowEventTableName+` (event_id, process_id, event_type, timestamp, data) VALUES ($1, $2, $3, $4, $5)`,
-		event.GetEventID(), event.GetProcessID(), event.EventType(), event.GetTimestamp(), data)
+	tx, err := r.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = r.Connection.ExecContext(owned,
-		`INSERT INTO `+workflowProcessStartTableName+` (process_id, first_event_id) VALUES ($1, $2) ON CONFLICT (process_id) DO NOTHING`,
+	defer comproto.FinishOnePhaseCommit(&rErr, r, tx)
+
+	_, err = r.Connection.ExecContext(tx,
+		`INSERT INTO `+workflowEventTableName+` (event_id, process_id, event_type, timestamp, data) VALUES ($1, $2, $3, $4, $5)`,
+		event.GetEventID(), event.GetProcessID(), event.EventType(), event.GetTimestamp(), data)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = r.Connection.ExecContext(tx,
+		`INSERT INTO `+workflowEventTableSparseIndexTableName+` (process_id, first_event_id) VALUES ($1, $2) ON CONFLICT (process_id) DO NOTHING`,
 		event.GetProcessID(), event.GetEventID())
+
 	return err
 }
 
@@ -121,7 +126,7 @@ func (r *WorkflowEventRepository) FindAll(ctx context.Context) iter.Seq2[workflo
 }
 
 func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workflow.ProcessID) iter.Seq2[workflow.Event, error] {
-	return r.find(ctx, `SELECT e.data FROM `+workflowEventTableName+` e JOIN `+workflowProcessStartTableName+` s ON s.process_id = e.process_id WHERE e.process_id = $1 AND e.event_id >= s.first_event_id ORDER BY e.event_id`, pid)
+	return r.find(ctx, `SELECT e.data FROM `+workflowEventTableName+` e JOIN `+workflowEventTableSparseIndexTableName+` s ON s.process_id = e.process_id WHERE e.process_id = $1 AND e.event_id >= s.first_event_id ORDER BY e.event_id`, pid)
 }
 
 func (r *WorkflowEventRepository) find(ctx context.Context, query string, args ...any) iter.Seq2[workflow.Event, error] {
@@ -176,7 +181,7 @@ func (r *WorkflowEventRepository) Migrate(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS %s (
 			process_id UUID PRIMARY KEY,
 			first_event_id UUID NOT NULL
-		);`, workflowEventTableName, workflowEventTableName, workflowProcessStartTableName)},
+		);`, workflowEventTableName, workflowEventTableName, workflowEventTableSparseIndexTableName)},
 	}).Migrate(ctx)
 }
 
