@@ -36,6 +36,12 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 		return createEntity(t, t.SkipNow, c, subject, mk, "Config.ExampleEntity / Config.MakeEntity")
 	}
 
+	s.Before(func(t *testcase.T) {
+		if c.NonUniqueID {
+			t.Log("[WARNING]", "non unique ID based FindByID is non deterministic in case of ID overlap")
+		}
+	})
+
 	s.Describe("FindByID", func(s *testcase.Spec) {
 		var (
 			ctx = let.With[context.Context](s, c.MakeContext)

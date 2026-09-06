@@ -25,6 +25,12 @@ type Config[ENT, ID any] struct {
 	// SupportRecreate is an optional configuration value that tells the contract
 	// that deleting an Entity then recreating it with the same values is supported by the Creator.
 	SupportRecreate bool
+	// NonUniqueID is an optional configuration value that tells the contract
+	// that the Creator's underlying resource does not enforce ID uniqueness,
+	// so attempting to Create an entity whose ID is already taken must not be
+	// expected to fail with crud.ErrAlreadyExists.
+	// When true, the Creator contract will skip the duplicate-create assertion.
+	NonUniqueID bool
 	// ChangeEntity is an optional configuration field for tests that involve updating an entity.
 	// This field express what Entity fields are allowed to be changed by the user of the Updater crud interface.
 	// For example, if the changed Entity field is ignored by the Update method,

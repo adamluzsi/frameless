@@ -179,6 +179,24 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			})
 		}
 
+		if !c.NonUniqueID {
+			s.When(`entity was already saved once`, func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.Must(t).NoError(act(t))
+					if _, hasID := lookupNonZeroID(c, *ptr.Get(t)); !hasID {
+						t.Skip("unable to test duplicate create without a non-zero extID field")
+					}
+					if ByIDFinderOK {
+						c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
+					}
+				})
+
+				s.Then(`a second Create with the same entity must return crud.ErrAlreadyExists`, func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), crud.ErrAlreadyExists)
+				})
+			})
+		}
+
 		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 			ctxVar.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithCancel(c.MakeContext(t))

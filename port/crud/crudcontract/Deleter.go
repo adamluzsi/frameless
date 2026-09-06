@@ -46,6 +46,12 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 			return pointer.Of(c.MakeEntity(t))
 		})
 
+		s.Before(func(t *testcase.T) {
+			if c.NonUniqueID {
+				t.Log("[WARNING]", "non unique ID based FindByID is non deterministic in case of ID overlap")
+			}
+		})
+
 		s.When(`the request context is cancelled`, func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithCancel(c.MakeContext(t))
