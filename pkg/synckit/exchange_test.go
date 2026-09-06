@@ -276,6 +276,46 @@ func TestFan(t *testing.T) {
 			g.Cancel()
 		})
 
+		// A message's context is scoped to its for-round. If it were left
+		// uncancelled, it would remain registered in the subscription's context as a
+		// child, and a long running subscription would retain one context per
+		// received message until the subscription ends.
+		s.Test("the context of a message is cancelled when its for-round is over", func(t *testcase.T) {
+			var f synckit.Fan[int]
+
+			var msgContexts = make(chan context.Context)
+
+			job := synckit.Go(t.Context(), func(ctx context.Context) error {
+				for msg, err := range f.Subscribe(ctx) {
+					if err != nil {
+						return err
+					}
+					assert.NoError(t, msg.ACK())
+					msgContexts <- msg.Context()
+				}
+				return nil
+			})
+			t.Defer(job.Cancel)
+
+			var msgCtx context.Context
+			assert.Within(t, deadline, func(context.Context) {
+				assert.NoError(t, f.Publish(t.Context(), t.Random.Int()))
+				msgCtx = <-msgContexts
+			})
+			assert.NotNil(t, msgCtx)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.True(t, synckit.IsDone(msgCtx.Done()),
+					"expected the message's context to be cancelled after its for-round is over")
+			})
+
+			t.Log("and the subscription itself is still alive, ready to receive further messages")
+			assert.Within(t, deadline, func(context.Context) {
+				assert.NoError(t, f.Publish(t.Context(), t.Random.Int()))
+				<-msgContexts
+			})
+		})
+
 		s.When("a delivered message gets NACK-ed by a consumer", func(s *testcase.Spec) {
 			s.Test("single consumer", func(t *testcase.T) {
 				var f synckit.Fan[int]

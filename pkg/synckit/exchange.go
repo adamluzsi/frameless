@@ -140,6 +140,7 @@ func (ex *exchangeBase[T]) subscribe(ctx context.Context, ch chan T) pubsub.Subs
 		defer atomic.AddInt64(&ex.len, -1)
 		var handle = func(ctx context.Context, data T) bool {
 			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			defer ex.regCancel(cancel)()
 			var msg = pubsub.MakeMessage(ctx, data, ex.ack, ex.defaultNack(ch))
 			defer msg.NACK()

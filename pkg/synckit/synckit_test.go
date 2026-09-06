@@ -2339,6 +2339,31 @@ func TestGroup(t *testing.T) {
 			g.Go(context.Background(), fn)
 		})
 
+		// A task's context is a child of the context given to Group#Go.
+		// If it is left unreleased after the task returned, it stays registered as a
+		// child in the caller's context, and a long lived caller context ends up
+		// retaining one context per task it ever started.
+		s.When("the task finishes on its own", func(s *testcase.Spec) {
+			taskCtx := let.VarOf[context.Context](s, nil)
+
+			fn.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					taskCtx.Set(t, ctx)
+					return nil
+				}
+			})
+
+			s.Then("the group doesn't keep the task's context alive", func(t *testcase.T) {
+				act(t)
+
+				t.Eventually(func(t *testcase.T) {
+					assert.NotNil(t, taskCtx.Get(t))
+					assert.True(t, synckit.IsDone(taskCtx.Get(t).Done()),
+						"expected the task's context to be released after the task returned")
+				})
+			})
+		})
+
 		s.When("we start a goroutine within the group", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				assert.Within(t, time.Millisecond, func(ctx context.Context) {
@@ -2723,6 +2748,50 @@ func TestGroup(t *testing.T) {
 
 		s.Then("it returns without an error when the group has no task", func(t *testcase.T) {
 			assert.NoError(t, act(t))
+		})
+
+		// Waiting on the Group is what makes the Group's clean-up observable.
+		// By the time Wait returns, the Group let go of everything it held on behalf
+		// of its finished tasks, including the context which it made for them.
+		//
+		// This is a happens-before contract, not a matter of timing:
+		// releasing the task's context has to be sequenced before the Group reports
+		// the task as finished, so no schedule can expose a finished task whose
+		// context is still registered in the caller's context.
+		s.When("the group's tasks are finishing", func(s *testcase.Spec) {
+			taskContexts := let.Var(s, func(t *testcase.T) *synckit.Slice[context.Context] {
+				return &synckit.Slice[context.Context]{}
+			})
+
+			s.Before(func(t *testcase.T) {
+				var (
+					g       = group.Get(t)
+					ctxs    = taskContexts.Get(t)
+					release = make(chan struct{})
+				)
+				// The tasks are held back, then released all at once,
+				// so their completion is observed while the group is under concurrency,
+				// the same way as it happens under a real load.
+				t.Random.Repeat(64, 128, func() {
+					g.Go(t.Context(), func(ctx context.Context) error {
+						ctxs.Append(ctx)
+						<-release
+						return nil
+					})
+				})
+				close(release)
+			})
+
+			s.Then("the context of every finished task is released by the time it returns", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				vs := taskContexts.Get(t).ToSlice()
+				assert.NotEmpty(t, vs)
+				for _, taskCtx := range vs {
+					assert.True(t, synckit.IsDone(taskCtx.Done()),
+						"expected that by the time Wait returned, the task's context was already released")
+				}
+			})
 		})
 
 		s.When("a task of the group failed", func(s *testcase.Spec) {
@@ -3273,6 +3342,31 @@ func TestGo(t *testing.T) {
 		job := act(t)
 		assert.NoError(t, job.Wait())
 		assert.True(t, ran.Get(t)) // must always be true and not eventually
+	})
+
+	// The job's context is a child of the context given to Go.
+	// If it is left uncancelled after the job returned, it stays registered as a
+	// child in the caller's context, and a long lived caller context ends up
+	// retaining one context per job it ever started.
+	s.When("the job's function returns on its own", func(s *testcase.Spec) {
+		jobCtx := let.VarOf[context.Context](s, nil)
+
+		Func.Let(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				jobCtx.Set(t, ctx)
+				return nil
+			}
+		})
+
+		s.Then("the job's context is released by the time #Wait returns", func(t *testcase.T) {
+			job := act(t)
+
+			assert.NoError(t, job.Wait())
+
+			assert.NotNil(t, jobCtx.Get(t))
+			assert.True(t, synckit.IsDone(jobCtx.Get(t).Done()),
+				"expected the job's context to be cancelled after the job returned")
+		})
 	})
 
 	s.When("the job is long-lived", func(s *testcase.Spec) {
@@ -3886,5 +3980,135 @@ func assertLimiterAllowsExactly(t *testcase.T, locker sync.Locker, limit int) {
 			"no goroutine beyond the limit should be able to hold the limiter")
 		assert.Equal(t, int32(limit), atomic.LoadInt32(&holding),
 			"all holders should still be inside their critical section")
+	}
+}
+
+// TestFan_leakGuard guards against synckit.Fan retaining a
+// context.cancelCtx per published message for the lifetime of the parent
+// context, even though every message is ACKed.
+//
+// exchangeBase.subscribe creates a message scoped context:
+//
+//	ctx, cancel := context.WithCancel(ctx)
+//	defer cancel()
+//	defer ex.regCancel(cancel)()
+//
+// regCancel only registers/deregisters the cancel func in ex.cancels, it never
+// calls cancel(). Without the explicit `defer cancel()`, an uncancelled child
+// stays in the parent's children map forever, so the parent accumulates one
+// child per message. In a long running streaming setup this gradually builds
+// up into an OOM.
+func TestFan_leakGuard(t *testing.T) {
+	const N = 500_000
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var fan synckit.Fan[int]
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for msg, err := range fan.Subscribe(ctx) {
+			if err != nil {
+				return
+			}
+			_ = msg.Data()
+			if err := msg.ACK(); err != nil {
+				return
+			}
+		}
+	}()
+	defer func() { cancel(); <-done }()
+
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	for i := 0; i < N; i++ {
+		if err := fan.Publish(ctx, i); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+	}
+
+	// Force a full GC. Anything still reachable from ctx survives.
+	runtime.GC()
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+
+	grew := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	perMsg := float64(grew) / float64(N)
+
+	t.Logf("messages published : %d", N)
+	t.Logf("HeapAlloc before   : %d KiB", before.HeapAlloc/1024)
+	t.Logf("HeapAlloc after GC : %d KiB", after.HeapAlloc/1024)
+	t.Logf("retained growth    : %d KiB", grew/1024)
+	t.Logf("retained per msg   : %.1f bytes", perMsg)
+
+	// Keep ctx alive to the very end so any leaked children stay reachable,
+	// mirroring a long-lived load context.
+	runtime.KeepAlive(ctx)
+
+	if perMsg > 32 {
+		t.Errorf("LEAK: %.1f bytes retained per message after ACK+GC (expected ~0)", perMsg)
+	}
+}
+
+// TestGroup_leakGuard guards against synckit.Group retaining a
+// context.cancelCtx per task for the lifetime of the context that was passed to
+// Group#Go, even though every task already finished.
+//
+// Group#Go creates a task scoped context:
+//
+//	ctx, cancel := context.WithCancel(ctx)
+//
+// and only removes the cancel func from Group.cancels when the task returns,
+// without ever calling it. Without the explicit cancel, an uncancelled child
+// stays in the parent's children map forever, so a long lived context that
+// keeps spawning short lived tasks accumulates one child per task.
+func TestGroup_leakGuard(t *testing.T) {
+	const N = 200_000
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var g synckit.Group
+
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	for i := 0; i < N; i++ {
+		job := g.Go(ctx, func(ctx context.Context) error { return nil })
+		if err := job.Wait(); err != nil {
+			t.Fatalf("job: %v", err)
+		}
+	}
+	if err := g.Wait(); err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+
+	// Force a full GC. Anything still reachable from ctx survives.
+	runtime.GC()
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+
+	grew := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	perTask := float64(grew) / float64(N)
+
+	t.Logf("tasks executed     : %d", N)
+	t.Logf("HeapAlloc before   : %d KiB", before.HeapAlloc/1024)
+	t.Logf("HeapAlloc after GC : %d KiB", after.HeapAlloc/1024)
+	t.Logf("retained growth    : %d KiB", grew/1024)
+	t.Logf("retained per task  : %.1f bytes", perTask)
+
+	// Keep ctx alive to the very end so any leaked children stay reachable,
+	// mirroring a long-lived load context.
+	runtime.KeepAlive(ctx)
+
+	if perTask > 32 {
+		t.Errorf("LEAK: %.1f bytes retained per task after Wait+GC (expected ~0)", perTask)
 	}
 }

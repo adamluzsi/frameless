@@ -550,6 +550,10 @@ type Job interface {
 	Cancel()
 }
 
+// Go runs fn in a new goroutine, and returns a [Job] to interact with it.
+//
+// The fn receives a context that belongs to the job, derived from ctx.
+// It is released when fn returns, so ctx doesn't retain finished jobs.
 func Go(ctx context.Context, fn func(ctx context.Context) error) Job {
 	ctx, cancel := context.WithCancel(ctx)
 	var (
@@ -558,6 +562,7 @@ func Go(ctx context.Context, fn func(ctx context.Context) error) Job {
 	)
 	go func() {
 		defer close(done)
+		defer cancel()
 		err := fn(ctx)
 		rerr = err
 	}()
@@ -636,6 +641,9 @@ const ErrGoexit errorkitlite.Error = "ErrGoexit"
 // In the terminology of [the Go memory model], the return from fn
 // "synchronizes before" the return of any Wait call that it unblocks.
 //
+// The fn receives a context that belongs to the task, derived from ctx.
+// It is released when fn returns, so ctx doesn't retain finished tasks.
+//
 // [the Go memory model]: https://go.dev/ref/mem
 func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job {
 	if ctx == nil {
@@ -669,6 +677,7 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 	go func() {
 		defer close(done)
 		defer g.wg.Done()
+		defer cancel()
 		var err error
 		o := sandbox.Run(func() {
 			err = fn(ctx)
@@ -754,6 +763,9 @@ func (g *Group) Cancel() {
 // Wait drains the outcome of the tasks as part of reporting it back.
 // This enables the Group to be reused for a new set of tasks,
 // without being statefully bound to an already propagated failure.
+//
+// By the time Wait returns, the Group let go of everything it held on behalf of
+// the finished tasks, including the context which it made for them.
 func (g *Group) Wait() (rErr error) {
 	g.wg.Wait()
 	g.rwm.RLock()
