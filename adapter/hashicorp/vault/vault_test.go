@@ -144,6 +144,7 @@ func TestEntityRepository_smoke(t *testing.T) {
 		}
 
 		assert.NoError(t, repo.Create(ctx, &testEnt))
+		t.Cleanup(func() { _ = repo.DeleteByID(ctx, testEnt.ID) })
 
 		got, found, err := repo.FindByID(ctx, testEnt.ID)
 		assert.NoError(t, err)
@@ -151,6 +152,30 @@ func TestEntityRepository_smoke(t *testing.T) {
 		assert.Equal(t, testEnt, got)
 
 		assert.NoError(t, repo.DeleteByID(ctx, testEnt.ID))
+	})
+
+	t.Run("duplicate create yields ErrAlreadyExists", func(t *testing.T) {
+		ctx := t.Context()
+
+		ent := testent.MakeFoo(t)
+		testEnt := testEntity{
+			ID:  testEntityID("TEST_420"),
+			Foo: ent.Foo,
+			Bar: ent.Bar,
+		}
+
+		// clean ahead so the test is hermetic on a shared Vault instance
+		_ = repo.DeleteByID(ctx, testEnt.ID)
+		t.Cleanup(func() { _ = repo.DeleteByID(ctx, testEnt.ID) })
+
+		assert.NoError(t, repo.Create(ctx, &testEnt))
+
+		// Re-creating with the same ID must be rejected by Vault KV v2 CAS,
+		// translated to crud.ErrAlreadyExists by the adapter.
+		duplicate := testEnt
+		err := repo.Create(ctx, &duplicate)
+		assert.ErrorIs(t, err, crud.ErrAlreadyExists,
+			assert.MessageF("expected crud.ErrAlreadyExists on duplicate Create; got: %v", err))
 	})
 
 	t.Run("not-found", func(t *testing.T) {
@@ -271,6 +296,62 @@ func Test_nonPermanentDelete(t *testing.T) {
 
 		assert.NoError(t, repo.PermanentDeleteByID(ctx, key.ID))
 		assert.ErrorIs(t, repo.PermanentDeleteByID(ctx, key.ID), crud.ErrNotFound)
+	})
+
+	t.Run("soft delete then recreate", func(t *testing.T) {
+		ctx := t.Context()
+
+		client := NewClient(t)
+		repo := vault.Repository[testEntity, testEntityID]{
+			BasePath:   "test-entities",
+			MountPoint: MountPoint(t),
+		}
+		repo.Client = client
+		repo.Mapper = dtokit.Mapping[testEntity, testEntityDTO]{
+			ToDTO: func(ctx context.Context, ent testEntity) (testEntityDTO, error) {
+				return testEntityDTO{
+					ID:   string(ent.ID),
+					FooV: ent.Foo,
+					BarV: ent.Bar,
+				}, nil
+			},
+			ToENT: func(ctx context.Context, dto testEntityDTO) (testEntity, error) {
+				return testEntity{
+					ID:  testEntityID(dto.ID),
+					Foo: dto.FooV,
+					Bar: dto.BarV,
+				}, nil
+			},
+		}
+		repo.DeletePermanently = false
+
+		key := mk(t)
+		assert.NoError(t, repo.Create(ctx, &key))
+		t.Cleanup(func() { _ = repo.PermanentDeleteByID(ctx, key.ID) })
+
+		// Soft delete: the latest version is marked deleted but the version
+		// record (and its current_version number) still exists in Vault.
+		assert.NoError(t, repo.DeleteByID(ctx, key.ID))
+
+		_, found, err := repo.FindByID(ctx, key.ID)
+		assert.NoError(t, err)
+		assert.False(t, found, "soft-deleted entity must be invisible to FindByID")
+
+		// Recreating with the same ID must succeed. With cas=0 a naive
+		// implementation would be rejected because the soft-deleted version
+		// record still exists; the adapter must detect the soft-deleted
+		// state and pin cas to the current version instead.
+		recreated := testEntity{
+			ID:  key.ID,
+			Foo: key.Foo + "_recreated",
+			Bar: key.Bar + "_recreated",
+		}
+		assert.NoError(t, repo.Create(ctx, &recreated))
+
+		got, found, err := repo.FindByID(ctx, key.ID)
+		assert.NoError(t, err)
+		assert.True(t, found)
+		assert.Equal(t, recreated, got)
 	})
 
 	t.Run("permanent delete", func(t *testing.T) {

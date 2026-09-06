@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
 
@@ -81,16 +83,26 @@ func (c *Client) vaultClient() (*vault.Client, error) {
 		}
 		opts = append(opts, vault.WithAddress(c.BaseURL))
 		opts = append(opts, vault.WithRequestTimeout(DefaultRequestTimeout))
+		opts = append(opts, vault.WithRetryConfiguration(vault.RetryConfiguration{
+			CheckRetry: vaultCRUDRetryPolicy,
+		}))
 		opts = append(opts, c.vaultClientInitClientOption)
 		return vault.New(opts...)
 	})
 }
 
+func vaultCRUDRetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	retry, rerr := retryablehttp.DefaultRetryPolicy(ctx, resp, err)
+	if rerr != nil || retry {
+		return retry, rerr
+	}
+	if resp != nil && resp.StatusCode == http.StatusPreconditionFailed {
+		return false, nil
+	}
+	return false, nil
+}
+
 func (c *Client) vaultClientInitClientOption(cc *vault.ClientConfiguration) error {
-	// At this point cc.HTTPClient holds the vault client's sensible defaults
-	// (connection pooling, TLS minimum version, redirect handling, ...).
-	// We decorate its transport instead of replacing the client,
-	// so that these defaults are preserved.
 	if cc.HTTPClient == nil {
 		return fmt.Errorf("vault client configuration is missing an HTTP client")
 	}
@@ -98,12 +110,6 @@ func (c *Client) vaultClientInitClientOption(cc *vault.ClientConfiguration) erro
 		cc.HTTPClient.Transport = httpkit.WithRoundTripper(
 			cc.HTTPClient.Transport, c.HTTPRoundTripperFactory)
 	}
-	// Reuse the same HTTP client for our direct read operations,
-	// so the round tripper pipeline (e.g. Kubernetes auth) is applied there too.
-	//
-	// Even if HTTPClient had a previous value,
-	// we update it with the one that the vault client modified,
-	// because the http client was injected already to the vault client for configuration purposes.
 	c.HTTPClient = cc.HTTPClient
 	return nil
 }
@@ -186,6 +192,48 @@ type Repository[ENT any, ID ~string] struct {
 func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	ctx = withLoggingFields(ctx)
 
+	id, err := r.ensureID(ctx, ptr)
+	if err != nil {
+		return err
+	}
+
+	// Vault KV v2 distinguishes between three states for a secret path:
+	//   - no version record (never written, or hard-deleted via DeleteMetadataAndAllVersions)
+	//   - latest version is live (no deletion_time, destroyed=false)
+	//   - latest version is gone (deletion_time set or destroyed=true),
+	//     which happens after a soft-delete (DeleteByID without DeletePermanently).
+	//
+	// A naive cas=0 write would reject the recreate path because the version record
+	// still exists for soft-deleted entries. We instead inspect the metadata to
+	// decide what to send to Vault.
+	state, currentVersion, err := r.existingVersionState(ctx, id)
+	if err != nil {
+		return err
+	}
+	switch state {
+	case versionStateLive:
+		return crud.ErrAlreadyExists.F("%T already exists with id: %v", *new(ENT), id)
+	case versionStateGone:
+		// Recreate-after-soft-delete: pin CAS to the current version so Vault
+		// accepts the write on top of the surviving version record.
+		return r.writeWithCAS(ctx, ptr, id, currentVersion)
+	default: // versionStateNone
+		// Fresh write: cas=0 ensures Vault rejects the request if a parallel writer
+		// raced us between the metadata read and the write.
+		return r.writeWithCAS(ctx, ptr, id, 0)
+	}
+}
+
+// writeWithCAS persists the dto for the given id using KV v2,
+// optionally pinning the write to a specific Check-And-Set version via cas.
+//
+//   - cas == 0  : create-only (Vault rejects the write if the path already exists).
+//   - cas > 0   : conditional update; Vault rejects the write if the current version does not match.
+//
+// The 412 Precondition Failed that Vault returns on a CAS conflict is translated
+// to crud.ErrAlreadyExists for the create-only path; other paths surface the
+// raw vault error so callers can distinguish version conflicts.
+func (r Repository[ENT, ID]) writeWithCAS(ctx context.Context, ptr *ENT, id ID, cas int64) error {
 	dto, err := r.Mapper.MapToIDTO(ctx, *ptr)
 	if err != nil {
 		return errorkit.F("failed to map %T to its dto format: %w", ptr, err)
@@ -194,24 +242,6 @@ func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	data, err := toVaultDataDTO(dto)
 	if err != nil {
 		return err
-	}
-
-	id, _ := r.IDA.Lookup(*ptr)
-
-	if zerokit.IsZero(id) {
-		if r.MakeID == nil {
-			return fmt.Errorf("missing hashicorpvault.Repository#MakeID")
-		}
-
-		var err error
-		id, err = r.MakeID(ctx)
-		if err != nil {
-			return fmt.Errorf("error from hashicorpvault.Repository#MakeID: %w", err)
-		}
-
-		if err := r.IDA.Set(ptr, id); err != nil {
-			return err
-		}
 	}
 
 	requestOptions, err := r.requestOptions(ctx)
@@ -224,16 +254,123 @@ func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
+	req := schema.KvV2WriteRequest{Data: data}
+	if cas >= 0 {
+		req.Options = map[string]interface{}{"cas": cas}
+	}
+
 	_, err = vaultClient.Secrets.KvV2Write(ctx, r.getVaultPath(id),
-		schema.KvV2WriteRequest{
-			Data: data,
-		}, requestOptions...)
+		req, requestOptions...)
 
 	if err != nil {
+		if cas == 0 && vault.IsErrorStatus(err, http.StatusPreconditionFailed) {
+			return crud.ErrAlreadyExists.F("%T already exists with id: %v", *new(ENT), id)
+		}
 		return err
 	}
 
 	return nil
+}
+
+// versionState describes whether a Vault KV v2 secret path holds
+// a logically-present record according to the repository contract.
+type versionState int
+
+const (
+	// versionStateNone means no version record exists at this path
+	// (never written, or hard-deleted via KvV2DeleteMetadataAndAllVersions).
+	versionStateNone versionState = iota
+	// versionStateLive means the latest version is live: it has no
+	// deletion_time and has not been destroyed, so it counts as an
+	// existing entity for crud.Creator purposes.
+	versionStateLive
+	// versionStateGone means the latest version was soft-deleted
+	// (deletion_time set) or destroyed (destroyed=true). The version
+	// record still exists, which is why a cas=0 write would be rejected,
+	// but logically the entity is gone and Create should succeed.
+	versionStateGone
+)
+
+// existingVersionState inspects the KV v2 metadata of the secret at
+// r.getVaultPath(id) and classifies its state. When the state is not
+// versionStateNone, the second return value is the current_version of
+// the record (useful as a CAS pin for subsequent writes).
+func (r Repository[ENT, ID]) existingVersionState(ctx context.Context, id ID) (versionState, int64, error) {
+	requestOptions, err := r.requestOptions(ctx)
+	if err != nil {
+		return versionStateNone, 0, err
+	}
+
+	vaultClient, err := r.Client.vaultClient()
+	if err != nil {
+		return versionStateNone, 0, err
+	}
+
+	resp, err := vaultClient.Secrets.KvV2ReadMetadata(ctx, r.getVaultPath(id), requestOptions...)
+	if err != nil {
+		if vault.IsErrorStatus(err, http.StatusNotFound) {
+			return versionStateNone, 0, nil
+		}
+		return versionStateNone, 0, err
+	}
+	if resp == nil || resp.Data.CurrentVersion == 0 {
+		return versionStateNone, 0, nil
+	}
+
+	current := resp.Data.CurrentVersion
+	raw, ok := resp.Data.Versions[strconv.FormatInt(current, 10)]
+	if !ok {
+		// Metadata has a current_version but no matching per-version entry;
+		// treat conservatively as live so we don't lose data.
+		return versionStateLive, current, nil
+	}
+
+	rawMap, ok := raw.(map[string]interface{})
+	if !ok {
+		return versionStateLive, current, nil
+	}
+
+	var v struct {
+		DeletionTime string `json:"deletion_time"`
+		Destroyed    bool   `json:"destroyed"`
+	}
+	b, mErr := json.Marshal(rawMap)
+	if mErr != nil {
+		return versionStateNone, 0, mErr
+	}
+	if uErr := json.Unmarshal(b, &v); uErr != nil {
+		// If we cannot decode the per-version shape, fall back to "live"
+		// so the caller doesn't accidentally overwrite a real record.
+		return versionStateLive, current, nil
+	}
+
+	if v.Destroyed || v.DeletionTime != "" {
+		return versionStateGone, current, nil
+	}
+	return versionStateLive, current, nil
+}
+
+// ensureID resolves the entity's ID, generating one via r.MakeID if absent.
+func (r Repository[ENT, ID]) ensureID(ctx context.Context, ptr *ENT) (ID, error) {
+	id, _ := r.IDA.Lookup(*ptr)
+	if !zerokit.IsZero(id) {
+		return id, nil
+	}
+
+	if r.MakeID == nil {
+		var zero ID
+		return zero, fmt.Errorf("missing hashicorpvault.Repository#MakeID")
+	}
+
+	generated, err := r.MakeID(ctx)
+	if err != nil {
+		return generated, fmt.Errorf("error from hashicorpvault.Repository#MakeID: %w", err)
+	}
+
+	if err := r.IDA.Set(ptr, generated); err != nil {
+		return generated, err
+	}
+	return generated, nil
 }
 
 func (r Repository[ENT, ID]) requestOptions(ctx context.Context) ([]vault.RequestOption, error) {
@@ -522,11 +659,16 @@ func (r Repository[ENT, ID]) Save(ctx context.Context, ptr *ENT) error {
 		return r.Update(ctx, ptr)
 	}
 
-	// Entity doesn't exist, create it
+	// Entity doesn't exist, create it.
+	// We use cas=0 so Save does not silently overwrite an entity that another
+	// process created between our FindByID and our write.
 	return r.Create(ctx, ptr)
 }
 
 // Update updates an existing entity. Returns an error if the entity doesn't exist.
+//
+// The write pins cas to the current KV v2 version so concurrent updates are
+// detected instead of silently overwriting each other.
 func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	ctx = withLoggingFields(ctx)
 
@@ -544,8 +686,12 @@ func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return crud.ErrNotFound.F("entity with id=%v not found", id)
 	}
 
-	// Perform the update by creating (which overwrites in Vault KV v2)
-	return r.Create(ctx, ptr)
+	_, currentVersion, err := r.existingVersionState(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return r.writeWithCAS(ctx, ptr, id, currentVersion)
 }
 
 // DeleteAll implements crud.AllDeleter interface.
@@ -567,9 +713,10 @@ func (r Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 
-	// Delete each entity
+	// Delete each entity. Concurrent DeleteAll calls may discover the same IDs;
+	// an entity deleted by another caller is already in the desired end state.
 	for _, id := range ids {
-		if err := r.DeleteByID(ctx, id); err != nil {
+		if err := r.DeleteByID(ctx, id); err != nil && !errors.Is(err, crud.ErrNotFound) {
 			return err
 		}
 	}
