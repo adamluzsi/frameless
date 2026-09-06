@@ -144,23 +144,6 @@ func MakeEntityFunc(tb testing.TB) func() Entity {
 	}
 }
 
-type EntityDTO struct {
-	ID  string `ext:"ID" json:"id"`
-	Foo string `json:"foo"`
-	Bar string `json:"bar"`
-	Baz string `json:"baz"`
-}
-
-type EntityJSONMapping struct{}
-
-func (n EntityJSONMapping) MapToDTO(_ context.Context, ent Entity) (EntityDTO, error) {
-	return EntityDTO{ID: ent.ID, Foo: ent.Foo, Bar: ent.Bar, Baz: ent.Baz}, nil
-}
-
-func (n EntityJSONMapping) MapToENT(_ context.Context, dto EntityDTO) (Entity, error) {
-	return Entity{ID: dto.ID, Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
-}
-
 func EntityMapping() flsql.Mapping[Entity, string] {
 	var (
 		idc int = 1

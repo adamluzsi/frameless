@@ -21,7 +21,7 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-var _ migration.Migratable = postgresql.Queue[Entity, EntityDTO]{}
+var _ migration.Migratable = postgresql.Queue[Entity]{}
 
 func ExampleQueue() {
 
@@ -31,10 +31,9 @@ func ExampleQueue() {
 	}
 	defer cm.Close()
 
-	q := postgresql.Queue[Entity, EntityDTO]{
+	q := postgresql.Queue[Entity]{
 		Name:       "queue_name",
 		Connection: cm,
-		Mapping:    EntityJSONMapping{},
 	}
 
 	ctx := context.Background()
@@ -59,29 +58,24 @@ func TestQueue(t *testing.T) {
 	c := GetConnection(t)
 
 	assert.NoError(t,
-		postgresql.Queue[Entity, EntityDTO]{Name: queueName, Connection: c}.
+		postgresql.Queue[Entity]{Name: queueName, Connection: c}.
 			Migrate(MakeContext(t)))
 
-	mapping := EntityJSONMapping{}
-
-	basicQueue := postgresql.Queue[Entity, EntityDTO]{
+	basicQueue := postgresql.Queue[Entity]{
 		Name:       queueName,
 		Connection: c,
-		Mapping:    mapping,
 	}
 
-	lifoQueue := postgresql.Queue[Entity, EntityDTO]{
+	lifoQueue := postgresql.Queue[Entity]{
 		Name:       queueName,
 		Connection: c,
-		Mapping:    mapping,
 
 		LIFO: true,
 	}
 
-	blockingQueue := postgresql.Queue[Entity, EntityDTO]{
+	blockingQueue := postgresql.Queue[Entity]{
 		Name:       queueName,
 		Connection: c,
-		Mapping:    mapping,
 
 		Blocking: true,
 	}
@@ -105,10 +99,9 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	now := time.Now().UTC()
 	timecop.Travel(t, now)
 
-	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
+	q := postgresql.Queue[testent.Foo]{
 		Name:                queueName,
 		Connection:          GetConnection(t),
-		Mapping:             testent.FooJSONMapping(),
 		EmptyQueueBreakTime: time.Hour,
 	}
 	assert.NoError(t, q.Migrate(MakeContext(t)))
@@ -167,10 +160,9 @@ func TestQueue_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	cm := GetConnection(t)
 	s.Test("single", func(t *testcase.T) {
-		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
+		q1 := postgresql.Queue[testent.Foo]{
 			Name:       "42",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping(),
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -197,16 +189,14 @@ func TestQueue_smoke(t *testing.T) {
 	s.Test("multi", func(t *testcase.T) {
 		cm := GetConnection(t)
 
-		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
+		q1 := postgresql.Queue[testent.Foo]{
 			Name:       "42",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping(),
 		}
 
-		q2 := postgresql.Queue[testent.Foo, testent.FooDTO]{
+		q2 := postgresql.Queue[testent.Foo]{
 			Name:       "24",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping(),
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -255,10 +245,9 @@ func BenchmarkQueue(b *testing.B) {
 		ctx = MakeContext(b)
 		rnd = random.New(random.CryptoSeed{})
 		cm  = GetConnection(b)
-		q   = postgresql.Queue[Entity, EntityDTO]{
+		q   = postgresql.Queue[Entity]{
 			Name:       queueName,
 			Connection: cm,
-			Mapping:    EntityJSONMapping{},
 		}
 	)
 

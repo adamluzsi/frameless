@@ -22,10 +22,9 @@ func main() {
 		logger.Error(ctx, err.Error())
 	}
 
-	q := postgresql.Queue[MyDomainEventEntity, MyDomainEventEntityPGQueueJSONDTO]{
+	q := postgresql.Queue[MyDomainEventEntity]{
 		Name:       "my_domain_event",
 		Connection: cm,
-		Mapping:    MappingForMyDomainEventEntity{},
 	}
 
 	myHTTPRequestHandler := MyHTTPRequestHandler{
@@ -105,22 +104,4 @@ func (h MyHTTPRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-}
-
-// package mypostgresqladapter
-
-type MyDomainEventEntityPGQueueJSONDTO struct {
-	Foo string `json:"foo"`
-	Bar int    `json:"bar"`
-	Baz bool   `json:"baz"`
-}
-
-type MappingForMyDomainEventEntity struct{}
-
-func (MappingForMyDomainEventEntity) MapToDTO(ctx context.Context, ent MyDomainEventEntity) (MyDomainEventEntityPGQueueJSONDTO, error) {
-	return MyDomainEventEntityPGQueueJSONDTO(ent), nil
-}
-
-func (MappingForMyDomainEventEntity) MapToENT(ctx context.Context, dto MyDomainEventEntityPGQueueJSONDTO) (MyDomainEventEntity, error) {
-	return MyDomainEventEntity(dto), nil
 }

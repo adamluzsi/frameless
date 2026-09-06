@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+
+cd "${WDP}"
+cd adapter/postgresql/
+source .envrc
+go test "${@}"
