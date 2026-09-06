@@ -50,16 +50,36 @@ func (d ExecuteCondition) evaluate(ctx context.Context, input []any) (_result bo
 		return false, ErrConditionNotFound{ID: d.ID}
 	}
 
-	fn, err := condition.(*conditionWrapper).rfn(ctx)
+	cw := condition.(*conditionWrapper)
+	fn, err := cw.rfn(ctx)
 	if err != nil {
 		return false, err
 	}
 
+	funcType := fn.Type()
 	var args []reflect.Value
 	args = append(args, reflect.ValueOf(ctx))
-	for _, value := range input {
+	for i, value := range input {
+		if i+1 >= funcType.NumIn() {
+			// input has more values than the function declares — let the
+			// length check below produce a clear error rather than panicking
+			// on an out-of-range reflect.Type access.
+			continue
+		}
+		// The index offset is +1 because the function's first argument is the
+		// context, which we appended above.
+		targetType := funcType.In(i + 1)
+
 		rval := reflect.ValueOf(value)
+		if rval.Type() != targetType && rval.Type().ConvertibleTo(targetType) {
+			rval = rval.Convert(targetType)
+		}
 		args = append(args, rval)
+	}
+
+	if len(args) != funcType.NumIn() {
+		const format = "condition execution arguments don't match the input arguments mapping.\nsignature in the format of func(inputs) (outputs)\n%s"
+		return false, ErrConditionFuncMappingMismatch.F(format, cw.funcSignature(ctx))
 	}
 
 	out := fn.Call(args)
@@ -144,11 +164,14 @@ func (c *conditionWrapper) Evaluate(ctx context.Context, pid ProcessID) (bool, e
 
 	var args []reflect.Value
 	args = append(args, reflect.ValueOf(ctx))
-	// TODO: add input argument handling similar to ExecuteParticipant
-	// for _, value := range input {
-	// 	rval := reflect.ValueOf(value)
-	// 	args = append(args, rval)
-	// }
+	// conditionWrapper.Evaluate is invoked for ad-hoc Condition evaluations
+	// (not through ExecuteCondition). The reflective input handling and
+	// argument count validation live on ExecuteCondition.evaluate because
+	// that is the path that knows the variable mapping declared in the
+	// definition. Calling this path directly with a condition whose function
+	// declares extra arguments will panic at fn.Call below; that mirrors
+	// the behaviour of any reflect.Call with a mismatched arity and is not
+	// part of the ExecuteCondition contract.
 
 	out := rfunc.Call(args)
 

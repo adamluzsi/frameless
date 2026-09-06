@@ -46,16 +46,18 @@ func (d ExecuteParticipant) execute(ctx context.Context, input []any) (_output [
 
 	var args []reflect.Value
 	args = append(args, reflect.ValueOf(ctx))
-	for _, value := range input {
-		// TODO: validate input argument type by func argument type
-		// TODO: cover with extra tests
-		// TODO: extend functionality with use-cases where similar kinds can be used interchangeably, as long they can be converted to another.
-		rval := reflect.ValueOf(value)
+	funcType := fn.Type()
+	for i, value := range input {
+		// The index offset is +1 because the function's first argument is the
+		// context, which we appended above.
+		targetType := funcType.In(i + 1)
 
-		// switch reflect.ValueOf(value) {
-		// default:
+		rval := reflect.ValueOf(value)
+		if rval.Type() != targetType && rval.Type().ConvertibleTo(targetType) {
+			rval = rval.Convert(targetType)
+		}
+
 		args = append(args, rval)
-		// }
 	}
 
 	if len(args) != fn.Type().NumIn() {

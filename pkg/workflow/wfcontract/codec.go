@@ -489,6 +489,51 @@ func Codec(codec workflow.Codec) contract.Contract {
 		assertRoundTripEvent(t, codec, event)
 	})
 
+	// EventUseDefinition and EventParticipant carry a workflow.Definition field
+	// whose custom codec recurses through c.Marshal. Marshalling a slice of
+	// events goes through jsonkit's marshalSequencePlaceholderWithReg, which
+	// must forward the codec down to each element so the recursive call has a
+	// usable codec instead of a nil pointer. This test pins that contract from
+	// the consumer's perspective: a slice of mixed events containing both
+	// offenders must round-trip cleanly.
+	s.Test("[]workflow.Event round-trips through the codec", func(t *testcase.T) {
+		events := []workflow.Event{
+			workflow.EventUseDefinition{
+				EventID:    randomEventID(t),
+				ProcessID:  randomEventProcessID(t),
+				Timestamp:  clock.Now().UTC(),
+				Definition: MakeDefinition(t),
+			},
+			workflow.EventParticipant{
+				EventID:       randomEventID(t),
+				ProcessID:     randomEventProcessID(t),
+				Timestamp:     clock.Now().UTC(),
+				ParticipantID: workflow.ParticipantID(t.Random.String()),
+				Path:          randomPath(t),
+				Input: random.Slice(t.Random.IntBetween(0, 3), func() any {
+					return randomSetVarValue(t)
+				}),
+				Output: random.Slice(t.Random.IntBetween(0, 3), func() any {
+					return randomSetVarValue(t)
+				}),
+				// Follow-up Definition forces the recursive-codec path on
+				// EventParticipant; MakeDefinition covers ForEach/For as
+				// recursive-codec offenders via EventUseDefinition above.
+				Definition: MakeDefinition(t),
+			},
+		}
+
+		data, err := codec.Marshal(events)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		var got []workflow.Event
+		assert.NoError(t, codec.Unmarshal(data, &got))
+		assert.Equal(t, len(events), len(got))
+		assert.Equal(t, events, got,
+			assert.MessageF("expected a slice of events with recursive-codec fields to round-trip\nJSON: %s", string(data)))
+	})
+
 	s.Test("Definition reached only via the interface round-trips", func(t *testcase.T) {
 		defs := []workflow.Definition{
 			workflow.Sequence{MakeDefinition(t), MakeDefinition(t)},

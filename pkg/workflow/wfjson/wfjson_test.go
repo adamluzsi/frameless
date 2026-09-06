@@ -309,6 +309,227 @@ func Test_nestedSequenceRoundTrip(t *testing.T) {
 	assert.Equal[workflow.Definition](t, outer, got)
 }
 
+// TestMarshalEventSlice_DefinitionWithRecursiveCodec pins Bug #3.
+//
+// Originally filed as: marshalling []workflow.Event whose first element is
+// workflow.EventUseDefinition carrying a workflow.ForEach{Do: workflow.Sequence}
+// panics with a nil pointer dereference at the recursive codec call:
+//
+//	go.llib.dev/frameless/pkg/workflow/wfjson.WorkflowEventUseDefinition.Marshal
+//	  defBytes, err := c.Marshal(v.Definition)
+//	                ^^^   <-- c is nil
+//
+// Root cause: jsonkit.marshalSequencePlaceholderWithReg forwards the slice
+// element marshaling with codec=nil, which is fine for events that don't
+// recurse through the codec, but breaks for events whose custom codec
+// implementation calls back into c.Marshal (e.g. EventUseDefinition for its
+// embedded Definition, EventParticipant for its follow-up Definition, and
+// ForEach / For for their Do bodies).
+//
+// The bug is observed at the top-level entry point, but the contract that
+// this test pins is narrower:
+//
+//   - For any []workflow.Event whose elements are marshaled through a custom
+//     codec that recurses via the codec, Marshal must not panic and must
+//     round-trip.
+func TestMarshalEventSlice_DefinitionWithRecursiveCodec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	// A minimal reproducer: one EventUseDefinition with a Definition tree
+	// that uses every recursive-codec culprit in a single value.
+	//
+	//   EventUseDefinition.Definition = workflow.Sequence{
+	//       workflow.SetVar{Name: "v", Value: "ok"},
+	//       workflow.ForEach{
+	//           Over: "v",
+	//           Do:   workflow.Sequence{workflow.SetVar{Name: "x", Value: "y"}},
+	//       },
+	//       workflow.For{
+	//           Init: workflow.SetVar{Name: "i", Value: "0"},
+	//           Cond: wftemplate.Condition(".i < 3"),
+	//           Do:   workflow.Sequence{workflow.SetVar{Name: "x", Value: "y"}},
+	//       },
+	//   }
+	//
+	// Note: SetVar#Value is typed as any, and JSON has only one number kind.
+	// An int literal like 0 round-trips as float64, which fails deep equality
+	// even when the codec itself is correct. Strings are stable across the
+	// round trip, so the reproducer uses string-typed values throughout.
+	defWithRecursiveCodec := let.Var(s, func(t *testcase.T) workflow.Definition {
+		return workflow.Sequence{
+			workflow.SetVar{Name: "v", Value: "ok"},
+			workflow.ForEach{
+				Over: "v",
+				Do:   workflow.Sequence{workflow.SetVar{Name: "x", Value: "y"}},
+			},
+			workflow.For{
+				Init: workflow.SetVar{Name: "i", Value: "0"},
+				Cond: wftemplate.Condition(".i < 3"),
+				Do:   workflow.Sequence{workflow.SetVar{Name: "x", Value: "y"}},
+			},
+		}
+	})
+
+	// participantEventWithFollowUp covers the EventParticipant recursive-codec
+	// path: a follow-up Definition on a participant event also recurses
+	// through the codec.
+	participantEventWithFollowUp := let.Var(s, func(t *testcase.T) workflow.Event {
+		eventID, err := workflow.MakeEventID()
+		assert.NoError(t, err)
+		processID, err := workflow.MakeProcessID()
+		assert.NoError(t, err)
+		return workflow.EventParticipant{
+			EventID:       eventID,
+			ProcessID:     processID,
+			Timestamp:     time.Now().UTC(),
+			ParticipantID: "p",
+			Input:         []any{"hello"},
+			Output:        nil,
+			Definition:    workflow.Sequence{workflow.SetVar{Name: "v", Value: "ok"}},
+		}
+	})
+
+	subject := let.Var(s, func(t *testcase.T) workflow.Codec {
+		return wfjson.NewCodec()
+	})
+
+	s.Describe("#Marshal", func(s *testcase.Spec) {
+		act := func(t *testcase.T) ([]byte, error) {
+			return subject.Get(t).Marshal([]workflow.Event{
+				workflow.EventUseDefinition{
+					EventID:    workflow.EventID{},
+					ProcessID:  workflow.ProcessID{},
+					Timestamp:  time.Unix(0, 0).UTC(),
+					Definition: defWithRecursiveCodec.Get(t),
+				},
+			})
+		}
+
+		s.Then("does not panic when an element's custom codec recurses through the codec", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, data,
+				"a slice containing an EventUseDefinition whose Definition uses ForEach/For must marshal without panicking")
+		})
+
+		s.Then("round-trips back into []workflow.Event with the recursive Definition intact", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+
+			var got []workflow.Event
+			assert.NoError(t, subject.Get(t).Unmarshal(data, &got))
+			assert.Equal(t, 1, len(got))
+
+			ud, ok := got[0].(workflow.EventUseDefinition)
+			assert.True(t, ok,
+				assert.MessageF("expected the round-tripped first event to be EventUseDefinition, got %T", got[0]))
+			assert.Equal[workflow.Definition](t, defWithRecursiveCodec.Get(t), ud.Definition,
+				assert.MessageF("round-tripped Definition must equal the original\nJSON: %s", string(data)))
+		})
+
+		s.Then("does not panic for an EventParticipant with a follow-up Definition either", func(t *testcase.T) {
+			pe := participantEventWithFollowUp.Get(t)
+			data, err := subject.Get(t).Marshal([]workflow.Event{pe})
+			assert.NoError(t, err)
+			assert.NotEmpty(t, data)
+		})
+	})
+}
+
+// TestEventParticipant_DefinitionRoundTrip pins the wire-format and
+// round-trip contract for EventParticipant.Definition — the field set on
+// the happy-error path by idempotentExecutor#handleResultDefinition.
+//
+// The wfcontract Codec helper generates EventParticipant values without a
+// Definition, so this codec path is uncovered by the contract suite.
+// Pinning it here ensures:
+//
+//   - When a participant returns nil, Definition is omitted from the wire
+//     (the DTO uses `omitempty` on `json.RawMessage`).
+//   - When a participant returns a workflow.Definition, Definition is
+//     emitted as a typed envelope and survives the round-trip intact.
+func TestEventParticipant_DefinitionRoundTrip(t *testing.T) {
+	c := wfjson.NewCodec()
+
+	t.Run("nil Definition is omitted from the wire", func(t *testing.T) {
+		eventID, err := workflow.MakeEventID()
+		assert.NoError(t, err)
+		processID, err := workflow.MakeProcessID()
+		assert.NoError(t, err)
+
+		event := workflow.EventParticipant{
+			EventID:       eventID,
+			ProcessID:     processID,
+			Timestamp:     time.Unix(0, 0).UTC(),
+			ParticipantID: "p",
+			Input:         []any{"x"},
+			Output:        []any{"y"},
+			// Definition deliberately left nil.
+		}
+
+		data, err := c.Marshal(event)
+		assert.NoError(t, err)
+
+		// Wire-format check: the omitempty tag on the DTO means a nil
+		// Definition is dropped entirely, not serialized as `null`. A
+		// future regression that drops omitempty (or starts writing the
+		// raw message differently) would change the wire, so pin the
+		// current shape.
+		assert.NotContains(t, string(data), `"definition"`,
+			assert.MessageF("a nil Definition must be omitted from the wire\nJSON: %s", string(data)))
+
+		var got workflow.EventParticipant
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, event, got,
+			assert.MessageF("a nil Definition must round-trip as nil\nJSON: %s", string(data)))
+	})
+
+	t.Run("non-nil Definition round-trips intact", func(t *testing.T) {
+		eventID, err := workflow.MakeEventID()
+		assert.NoError(t, err)
+		processID, err := workflow.MakeProcessID()
+		assert.NoError(t, err)
+
+		// Use a Sequence with a few stable-typed leaf values so the
+		// round-trip is unaffected by JSON's int→float64 quirk.
+		def := workflow.Sequence{
+			workflow.SetVar{Name: "v", Value: "ok"},
+			workflow.ExecuteParticipant{ID: "echo"},
+		}
+
+		event := workflow.EventParticipant{
+			EventID:       eventID,
+			ProcessID:     processID,
+			Timestamp:     time.Unix(0, 0).UTC(),
+			ParticipantID: "p",
+			Input:         []any{"x"},
+			Output:        nil, // happy-error path: Output is always nil
+			Definition:    def,
+		}
+
+		data, err := c.Marshal(event)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		// Wire-format check: the recursive Definition is wrapped in its
+		// own typed envelope (`workflow::sequence`) and embedded under
+		// the `definition` key. Without this the round-trip below would
+		// still pass on a happy-path, but a regression in the envelope
+		// shape would silently break any external consumer that reads
+		// the JSON directly.
+		assert.Contains(t, string(data), `"definition":`,
+			assert.MessageF("a non-nil Definition must appear on the wire\nJSON: %s", string(data)))
+		assert.Contains(t, string(data), `"@type":"workflow::sequence"`,
+			assert.MessageF("a nested Sequence Definition must carry its @type envelope\nJSON: %s", string(data)))
+
+		var got workflow.EventParticipant
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, event, got,
+			assert.MessageF("a non-nil Definition must round-trip intact\nJSON: %s", string(data)))
+		assert.Equal[workflow.Definition](t, def, got.Definition)
+	})
+}
+
 // TestWfjsonC_EmptySequenceDirectUnmarshal pins Bug #2.
 //
 // Originally filed as: "marshalling an empty workflow.Sequence produces

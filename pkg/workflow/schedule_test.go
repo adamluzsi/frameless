@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"sync"
 	"testing"
@@ -611,6 +612,96 @@ func TestRuntime_Run_numQueueSubscriber(t *testing.T) {
 
 			assert.Equal(t, meter.Get(t).Peak(), numScheduledProcess.Get(t))
 		})
+	})
+}
+
+// TestRuntime_Run_faultyDoesNotStarveHealthy pins that a Process which never
+// recovers (a faulty participant that always errors) cannot starve a healthy
+// Process scheduled on the same single-worker runtime.
+//
+// The runtime has one queue subscriber and orders entries by StartTime ASC.
+// When a faulty Process fails, Runtime#runSignalHandler re-queues it with a
+// StartTime pushed forward by Runtime#WaitTime, so it lands behind any
+// healthy entry that was already queued. Without that deferral, a single
+// worker would loop on the faulty entry forever and the healthy Process
+// would never run.
+//
+// The test floods the queue with several faulty Processes alongside a single
+// healthy one. The faulty ones are enough to keep retry pressure high; the
+// healthy one is the canary whose completion proves the scheduler actually
+// defers the faulty retries instead of hot-looping on them.
+func TestRuntime_Run_faultyDoesNotStarveHealthy(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	// One worker is deliberate. With a larger pool the healthy Process
+	// would be served by a free worker in parallel, and the test would
+	// pass even if the faulty Processes were retried in a tight loop.
+	// The single-worker setting is what makes this a regression test
+	// rather than a happy accident — it pins that the scheduling
+	// contract protects the healthy Process on its own.
+	c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+		var rt = c.Runtime.Super(t)
+		rt.NumQueueSubscriber = 1
+		return rt
+	})
+
+	var (
+		// faultyPID is registered with a participant that always returns
+		// an error, so every Process bound to it is doomed to retry.
+		faultyPID = wftest.LetParticipantID(s)
+		_         = wftest.LetParticipantWithID(s, faultyPID, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				return errors.New("faulty participant never recovers")
+			}
+		})
+
+		// healthyPID is registered with a participant that always
+		// returns nil, so its Process completes on the first attempt.
+		healthyPID = wftest.LetParticipantID(s)
+		_          = wftest.LetParticipantWithID(s, healthyPID, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				return nil
+			}
+		})
+	)
+
+	// Flood the queue with faulty Processes so the worker has plenty
+	// of failed entries to loop over if the deferral ever breaks.
+	numFaulty := let.VarOf(s, 5)
+
+	faultyProcesses := let.Var(s, func(t *testcase.T) []workflow.ProcessID {
+		var pids []workflow.ProcessID
+		for range numFaulty.Get(t) {
+			pids = append(pids, mustProcessID(t))
+		}
+		return pids
+	})
+
+	healthyProcess := let.Var(s, func(t *testcase.T) workflow.ProcessID {
+		return mustProcessID(t)
+	})
+
+	s.Before(func(t *testcase.T) {
+		for _, pid := range faultyProcesses.Get(t) {
+			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), pid,
+				workflow.ExecuteParticipant{ID: faultyPID.Get(t)}))
+		}
+		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), healthyProcess.Get(t),
+			workflow.ExecuteParticipant{ID: healthyPID.Get(t)}))
+	})
+
+	s.Test("a healthy Process reaches completion while faulty Processes are retrying", func(t *testcase.T) {
+		// Schedule all the faulty ones first so they dominate the queue,
+		// then schedule the healthy one. If the runtime ever forgets to
+		// defer a faulty's retry, the worker will burn its budget on
+		// the faulty entries and the healthy one will not complete.
+		for _, pid := range faultyProcesses.Get(t) {
+			assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), pid))
+		}
+		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), healthyProcess.Get(t)))
+
+		c.ProcessCompletionIs(t, healthyProcess.Get(t), true)
 	})
 }
 

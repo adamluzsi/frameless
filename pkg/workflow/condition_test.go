@@ -222,6 +222,249 @@ func TestExecuteCondition(t *testing.T) {
 		})
 	})
 
+	// #Evaluate with input argument type conversion pins the contract that
+	// values stored in process variables can flow into a condition function.
+	// The spec is built from the lowest-level acceptance upward: the happy
+	// path asserts that the variable's value reaches the condition function
+	// under the simplest possible arrangement (same source and target Go
+	// types), and each When block layers an additional convertibility rule
+	// on top of that base.
+	s.Describe("#Evaluate with input argument type conversion", func(s *testcase.Spec) {
+		// Lowest-level acceptance: a string-typed variable flowing into a
+		// string-typed condition parameter. The variable's value must be
+		// what the condition sees.
+		var acceptCID = LetConditionID(s)
+
+		var (
+			acceptCalls = let.VarOf(s, 0)
+			// lastIn records what the condition actually received, as the
+			// condition sees it (typed as string for the happy path).
+			acceptLast = let.VarOf[string](s, "")
+		)
+
+		acceptInKey := let.As[workflow.VarName](let.UUID(s))
+		acceptInVal := let.Var(s, func(t *testcase.T) string {
+			return t.Random.String()
+		})
+		acceptInput := let.Var(s, func(t *testcase.T) []workflow.VarName {
+			return []workflow.VarName{acceptInKey.Get(t)}
+		})
+
+		// The condition declares its argument as plain string and the
+		// variable holds a plain string. No conversion is needed; this pins
+		// that the variable's value is what reaches the condition function.
+		LetCondition(s, c, acceptCID, func(t *testcase.T) func(ctx context.Context, in string) (out bool, _ error) {
+			return func(ctx context.Context, in string) (bool, error) {
+				acceptLast.Set(t, in)
+				acceptCalls.Set(t, acceptCalls.Get(t)+1)
+				return t.Random.Bool(), nil
+			}
+		})
+
+		acceptSubject := let.Var(s, func(t *testcase.T) *workflow.ExecuteCondition {
+			return &workflow.ExecuteCondition{
+				ID:    acceptCID.Get(t),
+				Input: acceptInput.Get(t),
+			}
+		})
+
+		var (
+			ctx             = let.Context(s)
+			acceptProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				p := c.ProcessID.Super(t)
+				setVar(t, c.Runtime.Get(t), p, acceptInKey.Get(t), acceptInVal.Get(t))
+				return p
+			})
+		)
+
+		act := let.Act(func(t *testcase.T) error {
+			execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+			_, err := acceptSubject.Get(t).Evaluate(execCTX, acceptProcessID.Get(t))
+			return err
+		})
+
+		// Happy path: same source and target Go types. The value is accepted
+		// and reaches the condition function unchanged.
+		s.Then("the variable's value is accepted and reaches the condition as the declared argument type", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, 1, acceptCalls.Get(t),
+				"the condition must be called exactly once")
+
+			assert.Equal(t, acceptInVal.Get(t), acceptLast.Get(t),
+				"the condition must receive the variable's string value as a string")
+		})
+
+		// The conversion rules apply when the variable's stored Go type
+		// is convertible (per reflect.Value.ConvertibleTo) to the parameter
+		// type. Each When block below exercises a different convertible
+		// pair to pin the general rule on top of the base acceptance.
+		s.When("the variable's type is convertible to a string-based named type", func(s *testcase.Spec) {
+			// The condition declares its parameter as workflow.ConditionID,
+			// which is also a string-based named type (see
+			// `type ConditionID string` in pkg/workflow/workflow.go). The
+			// conversion rule must apply uniformly, not just to identical
+			// types.
+			var (
+				condCID   = LetConditionID(s)
+				condCalls = let.VarOf(s, 0)
+				condLast  = let.VarOf[workflow.ConditionID](s, "")
+			)
+			LetCondition(s, c, condCID, func(t *testcase.T) func(ctx context.Context, in workflow.ConditionID) (out bool, _ error) {
+				return func(ctx context.Context, in workflow.ConditionID) (bool, error) {
+					condLast.Set(t, in)
+					condCalls.Set(t, condCalls.Get(t)+1)
+					return t.Random.Bool(), nil
+				}
+			})
+
+			var (
+				condInKey = let.As[workflow.VarName](let.UUID(s))
+				condInVal = acceptInVal
+				condInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{condInKey.Get(t)}
+				})
+				condSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteCondition {
+					return &workflow.ExecuteCondition{
+						ID:    condCID.Get(t),
+						Input: condInput.Get(t),
+					}
+				})
+				condProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, condInKey.Get(t), condInVal.Get(t))
+					return p
+				})
+			)
+
+			actCond := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				_, err := condSubject.Get(t).Evaluate(execCTX, condProcessID.Get(t))
+				return err
+			})
+
+			s.Then("the string-typed variable is converted to a ConditionID", func(t *testcase.T) {
+				assert.NoError(t, actCond(t))
+
+				assert.Equal(t, 1, condCalls.Get(t),
+					"the ConditionID-taking condition must be called exactly once")
+
+				assert.Equal(t, workflow.ConditionID(condInVal.Get(t)), condLast.Get(t),
+					"the condition must receive the variable's string value as a workflow.ConditionID")
+			})
+		})
+
+		s.When("the variable's type is convertible to a different string-based named type", func(s *testcase.Spec) {
+			// The conversion rule applies to any named type with the same
+			// underlying kind, not only to ConditionID. The condition
+			// declares its parameter as workflow.ParticipantID here.
+			var (
+				partCID   = LetConditionID(s)
+				partCalls = let.VarOf(s, 0)
+				partLast  = let.VarOf[workflow.ParticipantID](s, "")
+			)
+			LetCondition(s, c, partCID, func(t *testcase.T) func(ctx context.Context, in workflow.ParticipantID) (out bool, _ error) {
+				return func(ctx context.Context, in workflow.ParticipantID) (bool, error) {
+					partLast.Set(t, in)
+					partCalls.Set(t, partCalls.Get(t)+1)
+					return t.Random.Bool(), nil
+				}
+			})
+
+			var (
+				partInKey = let.As[workflow.VarName](let.UUID(s))
+				partInVal = acceptInVal
+				partInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{partInKey.Get(t)}
+				})
+				partSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteCondition {
+					return &workflow.ExecuteCondition{
+						ID:    partCID.Get(t),
+						Input: partInput.Get(t),
+					}
+				})
+				partProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, partInKey.Get(t), partInVal.Get(t))
+					return p
+				})
+			)
+
+			actPart := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				_, err := partSubject.Get(t).Evaluate(execCTX, partProcessID.Get(t))
+				return err
+			})
+
+			s.Then("the string-typed variable is converted to a ParticipantID", func(t *testcase.T) {
+				assert.NoError(t, actPart(t))
+
+				assert.Equal(t, 1, partCalls.Get(t),
+					"the ParticipantID-taking condition must be called exactly once")
+
+				assert.Equal(t, workflow.ParticipantID(partInVal.Get(t)), partLast.Get(t),
+					"the condition must receive the variable's string value as a workflow.ParticipantID")
+			})
+		})
+
+		s.When("the variable's type is convertible across underlying kinds", func(s *testcase.Spec) {
+			// Demonstrate the rule on a non-string underlying kind: a
+			// bool JSON value is convertible to any named type whose
+			// underlying is bool, because both share the bool underlying
+			// type.
+			type featureFlag bool
+			var (
+				boolCID   = LetConditionID(s)
+				boolCalls = let.VarOf(s, 0)
+				boolLast  = let.VarOf[featureFlag](s, false)
+			)
+			LetCondition(s, c, boolCID, func(t *testcase.T) func(ctx context.Context, in featureFlag) (out bool, _ error) {
+				return func(ctx context.Context, in featureFlag) (bool, error) {
+					boolLast.Set(t, in)
+					boolCalls.Set(t, boolCalls.Get(t)+1)
+					return t.Random.Bool(), nil
+				}
+			})
+
+			boolInVal := let.Var(s, func(t *testcase.T) bool {
+				return t.Random.Bool()
+			})
+			var (
+				boolInKey = let.As[workflow.VarName](let.UUID(s))
+				boolInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{boolInKey.Get(t)}
+				})
+				boolSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteCondition {
+					return &workflow.ExecuteCondition{
+						ID:    boolCID.Get(t),
+						Input: boolInput.Get(t),
+					}
+				})
+				boolProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, boolInKey.Get(t), boolInVal.Get(t))
+					return p
+				})
+			)
+
+			actBool := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				_, err := boolSubject.Get(t).Evaluate(execCTX, boolProcessID.Get(t))
+				return err
+			})
+
+			s.Then("the bool-typed variable is converted to the custom bool named type", func(t *testcase.T) {
+				assert.NoError(t, actBool(t))
+
+				assert.Equal(t, 1, boolCalls.Get(t),
+					"the featureFlag-taking condition must be called exactly once")
+
+				assert.Equal(t, featureFlag(boolInVal.Get(t)), boolLast.Get(t),
+					"the condition must receive the variable's bool value as a featureFlag")
+			})
+		})
+	})
+
 	s.Context("smoke", func(s *testcase.Spec) {
 		s.Context("idempotency", func(s *testcase.Spec) {
 			s.Test("same repeating don't execute conditions twice", func(t *testcase.T) {

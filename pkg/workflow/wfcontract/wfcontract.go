@@ -11,7 +11,6 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/frameless/port/contract"
@@ -72,12 +71,9 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 
 	s.Describe("#Create", func(s *testcase.Spec) {
 		varEvent := let.Var(s, func(t *testcase.T) workflow.EventSetVar {
-			processID, err := uuid.Parse(t.Random.UUID())
-			assert.NoError(t, err)
-			eventID, err := uuid.Parse(t.Random.UUID())
 			return workflow.EventSetVar{
-				EventID:   workflow.EventID(eventID),
-				ProcessID: workflow.ProcessID(processID),
+				EventID:   wftest.MakeEventID(t),
+				ProcessID: wftest.MakeProcessID(t),
 				Timestamp: t.Random.Time(),
 				Name:      "foo",
 				Value:     "bar",
@@ -94,7 +90,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 			assert.NoError(t, act(t))
 		})
 
-		s.When("EventID is unset", func(s *testcase.Spec) {
+		s.When("EventID is missing", func(s *testcase.Spec) {
 			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
 				e := varEvent.Super(t)
 				var zero workflow.EventID
@@ -107,19 +103,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 			})
 		})
 
-		s.When("timestamp is missing/zero", func(s *testcase.Spec) {
-			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
-				e := varEvent.Super(t)
-				e.Timestamp = time.Time{}
-				return e
-			})
-
-			s.Then("it must yield an error when an event doesn't have timestamp", func(t *testcase.T) {
-				assert.Error(t, act(t))
-			})
-		})
-
-		s.When("processID is missing/zero", func(s *testcase.Spec) {
+		s.When("ProcessID is missing", func(s *testcase.Spec) {
 			varEvent.Let(s, func(t *testcase.T) workflow.EventSetVar {
 				e := varEvent.Super(t)
 				var zeroProcessID workflow.ProcessID
@@ -196,7 +180,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 				assert.NotEmpty(t, got)
 
 				slicekit.SortBy(exp.Get(t), func(a, b workflow.Event) bool {
-					return a.GetTimestamp().Before(b.GetTimestamp())
+					return a.GetEventID().Less(b.GetEventID())
 				})
 				assert.Equal(t, exp.Get(t), got)
 			})
@@ -250,7 +234,7 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 	t := testcase.ToT(&tb)
 	return random.Pick[func() workflow.Event](t.Random, func() workflow.Event {
 		return workflow.EventSetVar{
-			EventID:   MakeEventID(t),
+			EventID:   wftest.MakeEventID(t),
 			ProcessID: processID,
 			Timestamp: clock.Now().UTC(),
 			Name:      "foo",
@@ -258,13 +242,13 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 		}
 	}, func() workflow.Event {
 		return workflow.EventCompleted{
-			EventID:   MakeEventID(t),
+			EventID:   wftest.MakeEventID(t),
 			ProcessID: processID,
 			Timestamp: clock.Now().UTC(),
 		}
 	}, func() workflow.Event {
 		return workflow.EventParticipant{
-			EventID:       MakeEventID(t),
+			EventID:       wftest.MakeEventID(t),
 			ProcessID:     processID,
 			Timestamp:     clock.Now().UTC(),
 			ParticipantID: "participant-id",
@@ -276,13 +260,6 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 			}),
 		}
 	})()
-}
-
-func MakeEventID(tb testing.TB) workflow.EventID {
-	t := testcase.ToT(&tb)
-	id, err := uuid.Parse(t.Random.UUID())
-	assert.NoError(tb, err)
-	return workflow.EventID(id)
 }
 
 // ProcessLocks expresses that the subject acts as the workflow Runtime's
@@ -382,13 +359,9 @@ func NotificationBroadcast(
 			ctx := mctx(t)
 
 			subCtx, cancel := context.WithCancel(ctx)
-			defer cancel()
+			t.Cleanup(cancel)
 
 			sub := subject.Subscribe(subCtx)
-			t.Cleanup(func() {
-				for range sub {
-				}
-			})
 
 			ev := makeData(t)
 			assert.NoError(t, subject.Publish(ctx, ev))

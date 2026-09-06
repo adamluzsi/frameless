@@ -89,7 +89,6 @@ type Event interface {
 	GetEventID() EventID
 	GetProcessID() ProcessID
 	GetTimestamp() time.Time
-	// GetPath() Path .
 }
 
 type EventType string
@@ -98,6 +97,24 @@ type EventID = uuid.UUID
 
 func MakeEventID() (EventID, error) {
 	return uuid.MakeV7()
+}
+
+func ValidateEventID(id EventID) error {
+	return validateV7UUID(id, "EventID")
+}
+
+func ValidateProcessID(id ProcessID) error {
+	return validateV7UUID(id, "ProcessID")
+}
+
+func validateV7UUID(id uuid.UUID, name string) error {
+	if id.IsZero() {
+		return fmt.Errorf("zero %s UUID v7", name)
+	}
+	if version := id.Version(); version != 7 {
+		return fmt.Errorf("invalid %s UUID v7, expected v7 but got v%d", name, version)
+	}
+	return nil
 }
 
 func sortEvents(events []Event) {

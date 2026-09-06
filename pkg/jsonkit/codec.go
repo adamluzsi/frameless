@@ -666,10 +666,10 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 		if v.IsNil() {
 			return reflect.Zero(reflect.SliceOf(rawMessageType)), nil
 		}
-		return marshalSequencePlaceholderWithReg(v, false, reg)
+		return marshalSequencePlaceholderWithReg(v, false, reg, codec)
 
 	case reflect.Array:
-		return marshalSequencePlaceholderWithReg(v, true, reg)
+		return marshalSequencePlaceholderWithReg(v, true, reg, codec)
 
 	case reflect.Map:
 		if v.IsNil() {
@@ -723,15 +723,11 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 	}
 }
 
-func marshalSequencePlaceholder(v reflect.Value, array bool) (reflect.Value, error) {
-	return marshalSequencePlaceholderWithReg(v, array, nil)
-}
-
-func marshalSequencePlaceholderWithReg(v reflect.Value, array bool, reg *_TypeRegistry) (reflect.Value, error) {
+func marshalSequencePlaceholderWithReg(v reflect.Value, array bool, reg *_TypeRegistry, codec *Codec) (reflect.Value, error) {
 	values := make([]reflect.Value, v.Len())
 	var elemType reflect.Type
 	for i := 0; i < v.Len(); i++ {
-		value, err := marshalPlaceholderWithReg(v.Index(i), v.Type().Elem(), reg, nil, false)
+		value, err := marshalPlaceholderWithReg(v.Index(i), v.Type().Elem(), reg, codec, false)
 		if err != nil {
 			return reflect.Value{}, err
 		}

@@ -38,6 +38,8 @@ func (e ErrConditionNotFound) Error() string {
 
 const ErrParticipantFuncMappingMismatch errorkitlite.Error = "ErrParticipantFuncMappingMismatch"
 
+const ErrConditionFuncMappingMismatch errorkitlite.Error = "ErrConditionFuncMappingMismatch"
+
 const ErrInvalidConditionFunc errorkitlite.Error = `Invalid workflow.Condition#Func signature:
 expected func(context.Context, arg1 T1, ...OtherArgs) (bool, error)
 where the function signature starts with a context.Context, then user defined argument types,

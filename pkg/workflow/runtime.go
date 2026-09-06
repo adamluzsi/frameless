@@ -109,9 +109,11 @@ type ConditionRepository interface {
 type EventRepository interface {
 	comproto.OnePhaseCommitProtocol
 	crud.Creator[Event]
+	FindByProcessID(ctx context.Context, pid ProcessID) iter.Seq2[Event, error]
+
+	// for testing
 	crud.AllFinder[Event]
 	crud.ByIDFinder[Event, EventID]
-	FindByProcessID(ctx context.Context, pid ProcessID) iter.Seq2[Event, error]
 }
 
 func LookupEventsRepository(ctx context.Context) (EventRepository, error) {

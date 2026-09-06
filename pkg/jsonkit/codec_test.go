@@ -2235,3 +2235,119 @@ func TestCodec_customUnmarshalReceivesOriginatingCodec(t *testing.T) {
 func _internalMarshal(c jsonkit.Codec, v any) ([]byte, error) {
 	return c.Marshal(v)
 }
+
+// TestCodec_sliceElementCustomCodecReceivesOriginatingCodec pins the rule
+// that when the codec marshals a slice whose elements have user-registered
+// custom Marshal closures, each closure receives the originating *Codec —
+// not a nil pointer — so that any recursive `c.Marshal(...)` call inside
+// the closure can resolve the slice element's nested registrations.
+//
+// Originally filed as: marshalling a []workflow.Event whose first element
+// was workflow.EventUseDefinition carrying a workflow.ForEach{Do: …}
+// panicked with:
+//
+//	runtime error: invalid memory address or nil pointer dereference
+//	  ...WorkflowEventUseDefinition.Marshal(_, ...)
+//	  defBytes, err := c.Marshal(v.Definition)
+//	                ^^^   <-- c was nil
+//
+// Root cause: the slice marshalling path (marshalSequencePlaceholderWithReg)
+// forwarded slice element marshaling with codec=nil. Custom closures that
+// recurse via c.Marshal then dereferenced a nil *Codec.
+//
+// The bug was at the jsonkit level, surfacing through the wfjson package.
+// This test pins the jsonkit-level contract directly so a future regression
+// is caught by `go test ./pkg/jsonkit/...` alone, without needing to also
+// run the workflow-level tests.
+func TestCodec_sliceElementCustomCodecReceivesOriginatingCodec(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	// MT_SliceInner is a struct with its own custom codec. Its wire
+	// shape is a JSON object carrying a `marker` field.
+	type MT_SliceInner struct{ Marker string }
+
+	// MT_SliceOuter holds an inner value and its custom codec recurses
+	// into the codec for the inner. This mirrors workflow.EventUseDefinition,
+	// whose Marshal closure calls c.Marshal(v.Definition).
+	type MT_SliceOuter struct{ Inner MT_SliceInner }
+
+	s.Test("a custom codec inside a slice element receives a non-nil *Codec", func(t *testcase.T) {
+		var c jsonkit.Codec
+
+		defer jsonkit.CodecRegister[MT_SliceInner](&c, "slice-inner",
+			jsonkit.TypeCodec[MT_SliceInner]{
+				MarshalFunc: func(_ *jsonkit.Codec, v MT_SliceInner) ([]byte, error) {
+					return json.Marshal(struct {
+						Marker string `json:"marker"`
+					}{Marker: v.Marker})
+				},
+				UnmarshalFunc: func(_ *jsonkit.Codec, data []byte, p *MT_SliceInner) error {
+					var dto struct {
+						Marker string `json:"marker"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					p.Marker = dto.Marker
+					return nil
+				},
+			},
+		)()
+
+		defer jsonkit.CodecRegister[MT_SliceOuter](&c, "slice-outer",
+			jsonkit.TypeCodec[MT_SliceOuter]{
+				MarshalFunc: func(supplied *jsonkit.Codec, v MT_SliceOuter) ([]byte, error) {
+					// A nil supplied codec is the regression: the closure
+					// must call supplied.Marshal(...) to round-trip the
+					// nested MT_SliceInner, and a nil pointer panics at
+					// the recursive call. Asserting here turns a deep
+					// panic into a clear test failure.
+					if supplied == nil {
+						return nil, fmt.Errorf("custom codec for slice element received a nil *Codec")
+					}
+					innerBytes, err := supplied.Marshal(v.Inner)
+					if err != nil {
+						return nil, err
+					}
+					return json.Marshal(struct {
+						Inner json.RawMessage `json:"inner"`
+					}{Inner: innerBytes})
+				},
+				UnmarshalFunc: func(supplied *jsonkit.Codec, data []byte, p *MT_SliceOuter) error {
+					var dto struct {
+						Inner json.RawMessage `json:"inner"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					var inner MT_SliceInner
+					if err := supplied.Unmarshal(dto.Inner, &inner); err != nil {
+						return err
+					}
+					p.Inner = inner
+					return nil
+				},
+			},
+		)()
+
+		outers := []MT_SliceOuter{
+			{Inner: MT_SliceInner{Marker: "a"}},
+			{Inner: MT_SliceInner{Marker: "b"}},
+		}
+
+		// Marshalling must not panic with a nil pointer dereference.
+		data, err := c.Marshal(outers)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		// Each slice element emitted its @type envelope plus the inner
+		// value's envelope. Both pieces are observable, so a regression
+		// in the slice dispatch path shows up as a wire-shape failure.
+		assert.Contains(t, string(data), `"@type":"slice-outer"`)
+		assert.Contains(t, string(data), `"@type":"slice-inner"`)
+
+		var got []MT_SliceOuter
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, outers, got)
+	})
+}

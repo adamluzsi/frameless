@@ -121,7 +121,7 @@ func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workf
 		}
 
 		slicekit.SortBy(events, func(a, b workflow.Event) bool {
-			return a.GetTimestamp().Before(b.GetTimestamp())
+			return a.GetEventID().Less(b.GetEventID())
 		})
 
 		for _, event := range events {

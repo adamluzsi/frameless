@@ -225,6 +225,381 @@ func TestExecuteParticipant(t *testing.T) {
 		})
 	})
 
+	// #Execute with input argument type conversion pins the contract that
+	// values stored in process variables can flow into a participant function
+	// whose declared argument type differs from the variable's stored type, as
+	// long as Go's reflect rules deem the conversion valid (e.g. a `string`
+	// value can be passed where the participant expects a
+	// `workflow.ParticipantID`).
+	s.Describe("#Execute with input argument type conversion", func(s *testcase.Spec) {
+		var convPID = wftest.LetParticipantID(s)
+
+		var (
+			convCallCount = let.VarOf(s, 0)
+			// lastIn records the value the participant actually received, as
+			// the participant sees it (typed as workflow.ParticipantID).
+			lastIn = let.VarOf[workflow.ParticipantID](s, "")
+		)
+
+		convInKey := let.As[workflow.VarName](let.UUID(s))
+		// convInVal is intentionally a plain string so it is convertible to
+		// workflow.ParticipantID (a string-based named type) but is NOT the
+		// same type.
+		convInVal := let.Var(s, func(t *testcase.T) string {
+			return t.Random.String()
+		})
+		convInput := let.Var(s, func(t *testcase.T) []workflow.VarName {
+			return []workflow.VarName{convInKey.Get(t)}
+		})
+
+		// The participant declares its argument as workflow.ParticipantID. The
+		// variable the workflow writes holds a plain string. If the conversion
+		// contract holds, the participant receives the string as a
+		// workflow.ParticipantID without an error.
+		wftest.LetParticipantWithID(s, convPID, func(t *testcase.T) func(ctx context.Context, in workflow.ParticipantID) error {
+			return func(ctx context.Context, in workflow.ParticipantID) error {
+				lastIn.Set(t, in)
+				convCallCount.Set(t, convCallCount.Get(t)+1)
+				return nil
+			}
+		})
+
+		convSubject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+			return &workflow.ExecuteParticipant{
+				ID:    convPID.Get(t),
+				Input: convInput.Get(t),
+			}
+		})
+
+		var (
+			ctx           = let.Context(s)
+			convProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				p := c.ProcessID.Super(t)
+				setVar(t, c.Runtime.Get(t), p, convInKey.Get(t), convInVal.Get(t))
+				return p
+			})
+		)
+
+		act := let.Act(func(t *testcase.T) error {
+			execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+			return convSubject.Get(t).Execute(execCTX, convProcessID.Get(t))
+		})
+
+		// Happy path: a string-typed variable flowing into a
+		// workflow.ParticipantID-typed argument must be converted.
+		s.Then("the variable's value is converted to the participant's argument type before being passed", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, 1, convCallCount.Get(t),
+				"the participant must be called exactly once when its argument type matches after conversion")
+
+			assert.Equal(t, workflow.ParticipantID(convInVal.Get(t)), lastIn.Get(t),
+				"the participant must receive the variable's string value as a workflow.ParticipantID")
+		})
+
+		// The conversion contract is not specific to ParticipantID: any pair
+		// where the variable's stored Go type is convertible (per
+		// reflect.Value.ConvertibleTo) to the participant's declared parameter
+		// type must flow through. Each When block below exercises a different
+		// convertible pair to pin the general rule.
+		s.When("the variable is convertible to a different string-based named type", func(s *testcase.Spec) {
+			// The participant declares its parameter as workflow.ConditionID,
+			// which is also a string-based named type (see type ConditionID
+			// string in pkg/workflow/workflow.go). The conversion rule must
+			// apply uniformly, not just to ParticipantID.
+			var (
+				condPID   = wftest.LetParticipantID(s)
+				condCalls = let.VarOf(s, 0)
+				condLast  = let.VarOf[workflow.ConditionID](s, "")
+			)
+			wftest.LetParticipantWithID(s, condPID,
+				func(t *testcase.T) func(ctx context.Context, in workflow.ConditionID) error {
+					return func(ctx context.Context, in workflow.ConditionID) error {
+						condLast.Set(t, in)
+						condCalls.Set(t, condCalls.Get(t)+1)
+						return nil
+					}
+				})
+
+			var (
+				condInKey = let.As[workflow.VarName](let.UUID(s))
+				condInVal = convInVal // reuse the parent's string value
+				condInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{condInKey.Get(t)}
+				})
+				condSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+					return &workflow.ExecuteParticipant{
+						ID:    condPID.Get(t),
+						Input: condInput.Get(t),
+					}
+				})
+				condProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, condInKey.Get(t), condInVal.Get(t))
+					return p
+				})
+			)
+
+			actCond := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				return condSubject.Get(t).Execute(execCTX, condProcessID.Get(t))
+			})
+
+			s.Then("the string-typed variable is converted to a ConditionID", func(t *testcase.T) {
+				assert.NoError(t, actCond(t))
+
+				assert.Equal(t, 1, condCalls.Get(t),
+					"the ConditionID-taking participant must be called exactly once")
+
+				assert.Equal(t, workflow.ConditionID(condInVal.Get(t)), condLast.Get(t),
+					"the participant must receive the variable's string value as a workflow.ConditionID")
+			})
+		})
+
+		s.When("the variable's type already equals the participant's parameter type", func(s *testcase.Spec) {
+			// No conversion needed: the participant declares its parameter as
+			// plain string and the variable holds a string. The conversion
+			// branch at participant.go must be skipped cleanly without
+			// changing the value.
+			var (
+				strPID   = wftest.LetParticipantID(s)
+				strCalls = let.VarOf(s, 0)
+				strLast  = let.VarOf[string](s, "")
+			)
+			wftest.LetParticipantWithID(s, strPID,
+				func(t *testcase.T) func(ctx context.Context, in string) error {
+					return func(ctx context.Context, in string) error {
+						strLast.Set(t, in)
+						strCalls.Set(t, strCalls.Get(t)+1)
+						return nil
+					}
+				})
+
+			var (
+				strInKey = let.As[workflow.VarName](let.UUID(s))
+				strInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{strInKey.Get(t)}
+				})
+				strSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+					return &workflow.ExecuteParticipant{
+						ID:    strPID.Get(t),
+						Input: strInput.Get(t),
+					}
+				})
+				strProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, strInKey.Get(t), convInVal.Get(t))
+					return p
+				})
+			)
+
+			actStr := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				return strSubject.Get(t).Execute(execCTX, strProcessID.Get(t))
+			})
+
+			s.Then("the value is passed through unchanged", func(t *testcase.T) {
+				assert.NoError(t, actStr(t))
+
+				assert.Equal(t, 1, strCalls.Get(t),
+					"the string-taking participant must be called exactly once when no conversion is needed")
+
+				assert.Equal(t, convInVal.Get(t), strLast.Get(t),
+					"the participant must receive the variable's value unchanged")
+			})
+		})
+
+		s.When("the variable is a bool convertible to a custom bool named type", func(s *testcase.Spec) {
+			// Demonstrate the rule on a non-string underlying kind: a bool
+			// JSON value is convertible to any named type whose underlying is
+			// bool, because both share the bool underlying type.
+			type featureFlag bool
+			var (
+				boolPID   = wftest.LetParticipantID(s)
+				boolCalls = let.VarOf(s, 0)
+				boolLast  = let.VarOf[featureFlag](s, false)
+			)
+			wftest.LetParticipantWithID(s, boolPID,
+				func(t *testcase.T) func(ctx context.Context, in featureFlag) error {
+					return func(ctx context.Context, in featureFlag) error {
+						boolLast.Set(t, in)
+						boolCalls.Set(t, boolCalls.Get(t)+1)
+						return nil
+					}
+				})
+
+			boolInVal := let.Var(s, func(t *testcase.T) bool {
+				return t.Random.Bool()
+			})
+			var (
+				boolInKey = let.As[workflow.VarName](let.UUID(s))
+				boolInput = let.Var(s, func(t *testcase.T) []workflow.VarName {
+					return []workflow.VarName{boolInKey.Get(t)}
+				})
+				boolSubject = let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+					return &workflow.ExecuteParticipant{
+						ID:    boolPID.Get(t),
+						Input: boolInput.Get(t),
+					}
+				})
+				boolProcessID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+					p := c.ProcessID.Super(t)
+					setVar(t, c.Runtime.Get(t), p, boolInKey.Get(t), boolInVal.Get(t))
+					return p
+				})
+			)
+
+			actBool := let.Act(func(t *testcase.T) error {
+				execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+				return boolSubject.Get(t).Execute(execCTX, boolProcessID.Get(t))
+			})
+
+			s.Then("the bool-typed variable is converted to the custom bool named type", func(t *testcase.T) {
+				assert.NoError(t, actBool(t))
+
+				assert.Equal(t, 1, boolCalls.Get(t),
+					"the featureFlag-taking participant must be called exactly once")
+
+				assert.Equal(t, featureFlag(boolInVal.Get(t)), boolLast.Get(t),
+					"the participant must receive the variable's bool value as a featureFlag")
+			})
+		})
+	})
+
+	// #Execute with follow-up Definition return value pins the contract from
+	// idempotent.go#handleResultDefinition for the participant-execution
+	// surface. When a participant function returns a workflow.Definition instead
+	// of nil, the runtime must:
+	//
+	//   - persist an EventParticipant whose Definition field carries that
+	//     returned Definition, so a replay can short-circuit without re-running
+	//     the follow-up,
+	//   - dispatch the follow-up Definition exactly once,
+	//   - propagate the follow-up Definition's outcome (e.g. a RuntimeSignal)
+	//     back through Execute.
+	//
+	// The runtime does not read EventParticipant.Definition on replay; this
+	// field exists so an external observer (debugger, analytics, the v1 wire
+	// codec) can see "which follow-up Definition this participant triggered"
+	// without re-executing anything. The contract pinned here makes that
+	// observable.
+	s.Describe("#Execute with follow-up Definition return value", func(s *testcase.Spec) {
+		var (
+			participantCalls = let.VarOf(s, 0)
+			followUpCalls    = let.VarOf(s, 0)
+			// followUp is the Definition the participant function hands back to
+			// the runtime. The default stub increments followUpCalls so
+			// follow-up dispatch can be observed by counting; When blocks
+			// override StubExecute to test alternative outcomes (suspend).
+			followUp = let.Var(s, func(t *testcase.T) workflow.Definition {
+				return wftest.Stub{
+					StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						followUpCalls.Set(t, followUpCalls.Get(t)+1)
+						return nil
+					},
+				}
+			})
+		)
+
+		pid := wftest.LetParticipantID(s)
+		wftest.LetParticipantWithID(s, pid, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				participantCalls.Set(t, participantCalls.Get(t)+1)
+				// Returning the Definition as an error is the documented
+				// "happy error" pathway: the runtime type-asserts it to
+				// workflow.Definition and dispatches it via handleResultDefinition.
+				return followUp.Get(t)
+			}
+		})
+
+		subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+			return &workflow.ExecuteParticipant{ID: pid.Get(t)}
+		})
+
+		ctx := let.Context(s)
+
+		act := let.Act(func(t *testcase.T) error {
+			execCTX := c.Runtime.Get(t).Context(ctx.Get(t))
+			return subject.Get(t).Execute(execCTX, c.ProcessID.Get(t))
+		})
+
+		// Happy path: the follow-up Definition is recorded on the persisted
+		// event, and the follow-up's Execute is dispatched once.
+		s.Then("the follow-up Definition is persisted on EventParticipant.Definition", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			events := participantEventsOf(t, c)
+			assert.Equal(t, 1, len(events),
+				"exactly one EventParticipant must be persisted per Execute call")
+
+			assert.Equal(t, followUp.Get(t), events[0].Definition,
+				"the persisted EventParticipant must carry the follow-up Definition the participant returned")
+		})
+
+		s.Then("the follow-up Definition's Execute is invoked exactly once", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, 1, participantCalls.Get(t))
+			assert.Equal(t, 1, followUpCalls.Get(t),
+				"the runtime must dispatch the follow-up Definition once on first execution")
+		})
+
+		// Idempotency: a replay must not re-invoke the participant function or
+		// re-dispatch the follow-up Definition. The cache hit short-circuits
+		// before handleResultDefinition, so the cached EventParticipant's
+		// Definition is what stops the second dispatch.
+		s.When("Execute is called again on the same logical step", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+
+			s.Then("the participant function is not re-invoked", func(t *testcase.T) {
+				assert.Equal(t, 1, participantCalls.Get(t))
+
+				assert.NoError(t, act(t))
+				assert.Equal(t, 1, participantCalls.Get(t),
+					"replaying the same logical step must not re-invoke the participant function")
+			})
+
+			s.Then("the follow-up Definition is not re-dispatched", func(t *testcase.T) {
+				assert.Equal(t, 1, followUpCalls.Get(t))
+
+				assert.NoError(t, act(t))
+				assert.Equal(t, 1, followUpCalls.Get(t),
+					"the follow-up Definition is part of the cached step outcome and must not be re-executed")
+			})
+		})
+
+		// Signal propagation: a follow-up Definition that raises a
+		// RuntimeSignal must surface that signal through Execute, while the
+		// participant call itself stays recorded (suspension is an expected
+		// outcome, not a failure of the call).
+		s.When("the follow-up Definition raises a runtime signal", func(s *testcase.Spec) {
+			followUp.Let(s, func(t *testcase.T) workflow.Definition {
+				return wftest.Stub{
+					StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						followUpCalls.Set(t, followUpCalls.Get(t)+1)
+						return workflow.Suspend{}
+					},
+				}
+			})
+
+			s.Then("the signal is propagated back through Execute", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+			})
+
+			s.Then("the participant execution is still recorded in the event history", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+				events := participantEventsOf(t, c)
+				assert.Equal(t, 1, len(events),
+					"a participant call that returned a Definition is a step outcome; suspension must not erase it")
+				assert.NotNil(t, events[0].Definition,
+					"the cached EventParticipant must retain the follow-up Definition even when its execution suspended")
+			})
+		})
+	})
+
 	s.Context("smoke", func(s *testcase.Spec) {
 		s.Context("idempotency", func(s *testcase.Spec) {
 			s.Test("same repetition don't execute participants twice", func(t *testcase.T) {

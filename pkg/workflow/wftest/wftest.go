@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/resilience"
+	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 
@@ -383,14 +384,18 @@ func (noFaultTolerance) ShouldTry(ctx context.Context, attempt resilience.RetryA
 	return false
 }
 
-func MakeEventID(tb testing.TB) workflow.EventID {
-	id, err := workflow.MakeEventID()
+func v7UUID(tb testing.TB) uuid.UUID {
+	var t = testcase.ToT(&tb)
+	var v7 = uuid.V7{Random: t.Random}
+	id, err := v7.Make()
 	assert.NoError(tb, err)
 	return id
 }
 
+func MakeEventID(tb testing.TB) workflow.EventID {
+	return v7UUID(tb)
+}
+
 func MakeProcessID(tb testing.TB) workflow.ProcessID {
-	id, err := workflow.MakeProcessID()
-	assert.NoError(tb, err)
-	return id
+	return v7UUID(tb)
 }
