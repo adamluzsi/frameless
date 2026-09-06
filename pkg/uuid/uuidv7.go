@@ -34,6 +34,7 @@ var v7 = V7{}
 //	-------------------------------------------
 type V7 struct {
 	Random io.Reader
+	Now    func() time.Time
 	RandA  func(now time.Time) (UInt12, error)
 }
 
@@ -54,6 +55,13 @@ var defaultV7RandA = func() func(now time.Time) (UInt12, error) {
 	return V7MonotonicCounter()
 }()
 
+func (g *V7) now() time.Time {
+	if g.Now != nil {
+		return g.Now()
+	}
+	return clock.Now()
+}
+
 func (g *V7) counter() func(time.Time) (UInt12, error) {
 	if g.RandA != nil {
 		return g.RandA
@@ -64,7 +72,7 @@ func (g *V7) counter() func(time.Time) (UInt12, error) {
 func (g *V7) Make() (UUID, error) {
 	var uuid UUID
 
-	now := clock.Now()
+	now := g.now()
 	// Use 48-bit millisecond timestamp (required by spec).
 	g.setTimestamp(&uuid, now)
 

@@ -2,11 +2,14 @@ package uuid_test
 
 import (
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 )
 
@@ -89,5 +92,60 @@ func TestV7(t *testing.T) {
 			})
 		})
 
+		s.When("V7#TimeNow is supplied", func(s *testcase.Spec) {
+			now := let.Time(s)
+
+			v7.Let(s, func(t *testcase.T) *uuid.V7 {
+				g := v7.Super(t)
+				g.Now = func() time.Time { return now.Get(t) }
+				return g
+			})
+
+			s.Then("the UUID's unix_ts_ms field is sourced from V7#TimeNow", func(t *testcase.T) {
+				assert.Equal(t, v7UnixMilliOf(onSuccess(t)), now.Get(t).UnixMilli())
+			})
+
+			s.And("the global clock points to a different time", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					timecop.Travel(t, now.Get(t).AddDate(0, 0, t.Random.IntBetween(1, 42)), timecop.Freeze)
+				})
+
+				s.Then("V7#TimeNow takes precedence over the global clock", func(t *testcase.T) {
+					assert.Equal(t, v7UnixMilliOf(onSuccess(t)), now.Get(t).UnixMilli())
+					assert.NotEqual(t, v7UnixMilliOf(onSuccess(t)), clock.Now().UnixMilli())
+				})
+			})
+		})
+
+		s.When("V7#TimeNow is absent", func(s *testcase.Spec) {
+			now := let.Time(s)
+
+			v7.Let(s, func(t *testcase.T) *uuid.V7 {
+				g := v7.Super(t)
+				g.Now = nil
+				return g
+			})
+
+			s.Before(func(t *testcase.T) {
+				timecop.Travel(t, now.Get(t), timecop.Freeze)
+			})
+
+			s.Then("it defaults back to the global clock.Now()", func(t *testcase.T) {
+				assert.Equal(t, v7UnixMilliOf(onSuccess(t)), clock.Now().UnixMilli())
+			})
+		})
+
 	})
+}
+
+// v7UnixMilliOf decodes the 48 bit unix_ts_ms field of a UUID v7.
+//
+// https://www.rfc-editor.org/rfc/rfc9562#section-4.3
+func v7UnixMilliOf(u uuid.UUID) int64 {
+	return int64(u[0])<<40 |
+		int64(u[1])<<32 |
+		int64(u[2])<<24 |
+		int64(u[3])<<16 |
+		int64(u[4])<<8 |
+		int64(u[5])
 }
