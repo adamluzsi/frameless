@@ -88,8 +88,8 @@ func Test_resilience(t *testing.T) {
 	s.Context("flaky queue", func(s *testcase.Spec) {
 		c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 			rt := c.Runtime.Super(t)
-			rt.Queue = &FlakyProcessExecutionQueue{
-				Q:   c.ProcessExecutionQueue.Get(t),
+			rt.Queue = &FlakyQueue{
+				Q:   c.Queue.Get(t),
 				RND: t.Random,
 			}
 			return rt
@@ -261,20 +261,20 @@ func (r *FlakyEventRepository) FindByProcessID(ctx context.Context, pid workflow
 	return r.R.FindByProcessID(r.withFlake(ctx), pid)
 }
 
-type FlakyProcessExecutionQueue struct {
-	Q *memory.WorkflowProcessExecutionQueue
+type FlakyQueue struct {
+	Q *memory.WorkflowQueue
 
 	RND *random.Random
 }
 
-var _ workflow.ProcessExecutionQueue = (*FlakyProcessExecutionQueue)(nil)
+var _ workflow.Queue = (*FlakyQueue)(nil)
 
-func (q *FlakyProcessExecutionQueue) Publish(ctx context.Context, d workflow.ProcessExecution) error {
+func (q *FlakyQueue) Publish(ctx context.Context, d workflow.ExecutionRequest) error {
 	return q.Q.Publish(q.withFlake(ctx), d)
 }
 
-func (q *FlakyProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessExecution] {
-	return func(yield func(pubsub.Message[workflow.ProcessExecution], error) bool) {
+func (q *FlakyQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ExecutionRequest] {
+	return func(yield func(pubsub.Message[workflow.ExecutionRequest], error) bool) {
 		if flake(q.RND) {
 			yield(nil, q.RND.Error())
 			return
@@ -294,8 +294,8 @@ func (q *FlakyProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Subsc
 }
 
 type FlakyMessage struct {
-	Q *FlakyProcessExecutionQueue
-	pubsub.Message[workflow.ProcessExecution]
+	Q *FlakyQueue
+	pubsub.Message[workflow.ExecutionRequest]
 }
 
 func (msg *FlakyMessage) ACK() error {
@@ -306,7 +306,7 @@ func (msg *FlakyMessage) ACK() error {
 	return msg.Message.ACK()
 }
 
-func (q *FlakyProcessExecutionQueue) withFlake(ctx context.Context) context.Context {
+func (q *FlakyQueue) withFlake(ctx context.Context) context.Context {
 	if !flake(q.RND) {
 		return ctx
 	}

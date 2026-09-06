@@ -62,8 +62,8 @@ func NewCodec() *jsonkit.Codec {
 
 	// Schedule-side types: not part of Definition/Condition/Event but
 	// still persisted across the runtime, so they need a stable wire format too.
-	jsonkit.CodecRegister[workflow.ProcessExecution](&c, "workflow::execution", WorkflowSchedule{})
-	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow::schedule", WorkflowEventProcessSchedule{})
+	jsonkit.CodecRegister[workflow.ExecutionRequest](&c, "workflow::execution", WorkflowExecutionRequest{})
+	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow::schedule", WorkflowProcessSchedule{})
 	jsonkit.CodecRegister[workflow.ProcessCancel](&c, "workflow::cancel", WorkflowEventProcessCancel{})
 
 	return &c
@@ -1078,9 +1078,9 @@ func (WorkflowEventJoin) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Ev
 
 // Schedule
 
-type WorkflowSchedule struct{}
+type WorkflowExecutionRequest struct{}
 
-var _ jsonkit.ITypeCodec[workflow.ProcessExecution] = WorkflowSchedule{}
+var _ jsonkit.ITypeCodec[workflow.ExecutionRequest] = WorkflowExecutionRequest{}
 
 type workflowScheduleDTO struct {
 	ProcessID    workflow.ProcessID `json:"process_id"`
@@ -1089,7 +1089,7 @@ type workflowScheduleDTO struct {
 	FailureCount int                `json:"failure_count,omitzero"`
 }
 
-func (WorkflowSchedule) Marshal(c *jsonkit.Codec, v workflow.ProcessExecution) ([]byte, error) {
+func (WorkflowExecutionRequest) Marshal(c *jsonkit.Codec, v workflow.ExecutionRequest) ([]byte, error) {
 	return json.Marshal(workflowScheduleDTO{
 		ProcessID:    v.ProcessID,
 		StartTime:    v.StartTime,
@@ -1098,7 +1098,7 @@ func (WorkflowSchedule) Marshal(c *jsonkit.Codec, v workflow.ProcessExecution) (
 	})
 }
 
-func (WorkflowSchedule) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ProcessExecution) error {
+func (WorkflowExecutionRequest) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ExecutionRequest) error {
 	var dto workflowScheduleDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
@@ -1110,23 +1110,23 @@ func (WorkflowSchedule) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Pro
 	return nil
 }
 
-// ProcessChangeEvent is a polymorphic interface; each concrete implementation
+// Notification is a polymorphic interface; each concrete implementation
 // gets its own registered codec so jsonkit's @type envelope can dispatch
 // Marshal/Unmarshal to the right DTO shape on the wire.
 
-type WorkflowEventProcessSchedule struct{}
+type WorkflowProcessSchedule struct{}
 
-var _ jsonkit.ITypeCodec[workflow.ProcessSchedule] = WorkflowEventProcessSchedule{}
+var _ jsonkit.ITypeCodec[workflow.ProcessSchedule] = WorkflowProcessSchedule{}
 
 type workflowProcessScheduleDTO struct {
 	ProcessID workflow.ProcessID `json:"process_id"`
 }
 
-func (WorkflowEventProcessSchedule) Marshal(c *jsonkit.Codec, v workflow.ProcessSchedule) ([]byte, error) {
+func (WorkflowProcessSchedule) Marshal(c *jsonkit.Codec, v workflow.ProcessSchedule) ([]byte, error) {
 	return json.Marshal(workflowProcessScheduleDTO{ProcessID: v.ProcessID})
 }
 
-func (WorkflowEventProcessSchedule) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ProcessSchedule) error {
+func (WorkflowProcessSchedule) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ProcessSchedule) error {
 	var dto workflowProcessScheduleDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err

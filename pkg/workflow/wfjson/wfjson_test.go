@@ -214,12 +214,12 @@ func TestWfjsonCodec_PrimitiveConditionRoundTrip(t *testing.T) {
 	assert.Equal(t, string(data), string(data2))
 }
 
-func TestWfjsonCodec_ProcessExecutionRoundTrip(t *testing.T) {
+func TestWfjsonCodec_ExecutionRequestRoundTrip(t *testing.T) {
 	c := wfjson.NewCodec()
 	pid, err := workflow.MakeProcessID()
 	assert.NoError(t, err)
 
-	exp := workflow.ProcessExecution{
+	exp := workflow.ExecutionRequest{
 		ProcessID:    pid,
 		StartTime:    time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		CreatedAt:    time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC),
@@ -230,13 +230,13 @@ func TestWfjsonCodec_ProcessExecutionRoundTrip(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
 
-	var got workflow.ProcessExecution
+	var got workflow.ExecutionRequest
 	assert.NoError(t, c.Unmarshal(data, &got))
-	assert.Equal[workflow.ProcessExecution](t, exp, got)
+	assert.Equal[workflow.ExecutionRequest](t, exp, got)
 }
 
-func TestWfjsonCodec_ProcessChangeEventDispatch(t *testing.T) {
-	// ProcessChangeEvent is an interface with multiple concrete
+func TestWfjsonCodec_NotificationDispatch(t *testing.T) {
+	// Notification is an interface with multiple concrete
 	// implementations. The codec must dispatch on the @type envelope so
 	// each concrete type round-trips back to its own Go type (rather than
 	// to a single shared envelope struct).
@@ -246,7 +246,7 @@ func TestWfjsonCodec_ProcessChangeEventDispatch(t *testing.T) {
 
 	cases := []struct {
 		name string
-		ev   workflow.ProcessChangeEvent
+		ev   workflow.Notification
 	}{
 		{"start", workflow.ProcessSchedule{ProcessID: pid}},
 		{"cancel", workflow.ProcessCancel{ProcessID: pid}},
@@ -258,15 +258,15 @@ func TestWfjsonCodec_ProcessChangeEventDispatch(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotEmpty(t, data)
 
-			var got workflow.ProcessChangeEvent
+			var got workflow.Notification
 			assert.NoError(t, c.Unmarshal(data, &got))
 			assert.NotNil(t, got)
 
 			if got.GetProcessID() != tc.ev.GetProcessID() {
 				t.Fatalf("ProcessID mismatch: got %s, want %s", got.GetProcessID(), tc.ev.GetProcessID())
 			}
-			if got.ChangeType() != tc.ev.ChangeType() {
-				t.Fatalf("ChangeType mismatch: got %s, want %s", got.ChangeType(), tc.ev.ChangeType())
+			if got.NotificationType() != tc.ev.NotificationType() {
+				t.Fatalf("NotificationType mismatch: got %s, want %s", got.NotificationType(), tc.ev.NotificationType())
 			}
 		})
 	}

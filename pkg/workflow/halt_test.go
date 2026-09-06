@@ -152,7 +152,7 @@ func TestHalt(t *testing.T) {
 		// schedule a Process for execution. It is the call the user makes,
 		// not the queue subscriber.
 		scheduleAct := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Schedule(Context.Get(t), process.Get(t), func(s *workflow.ProcessExecution) {
+			return subject.Get(t).Schedule(Context.Get(t), process.Get(t), func(s *workflow.ExecutionRequest) {
 				s.StartTime = startTime.Get(t)
 			})
 		})

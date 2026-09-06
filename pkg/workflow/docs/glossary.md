@@ -180,7 +180,7 @@ The engine. A plain struct of interfaces — no constructor, no hidden drivers, 
 global registry:
 
 ```go
-rt := workflow.Runtime{Events: ..., Participants: ..., ProcessLockers: ...}
+rt := workflow.Runtime{Events: ..., Participants: ..., Locks: ...}
 ```
 
 Everything it needs is a field you assign, which is why the whole engine runs
@@ -204,7 +204,7 @@ Two ways to actually run a bound process.
 | -------------- | -------------------------------------------- | ------------------------------------------------------------- |
 | Runs           | here and now, on the caller's goroutine      | later, on a worker node running `rt.Run(ctx)`                 |
 | Returns        | when the process finished, suspended, or failed | as soon as the entry is on the queue                          |
-| Needs          | an `EventRepository`                          | plus a `ProcessExecutionQueue` and a `ProcessChangeBroadcast`  |
+| Needs          | an `EventRepository`                          | plus a `Queue` and a `NotificationBroadcast`                   |
 | Good for       | tests, and synchronous request handling      | production durability, suspension, and back-off               |
 
 `Execute` replays the process: it reads the most recent `EventUseDefinition` and
@@ -376,12 +376,12 @@ implementation. See [Codec][CODEC].
 Four role interfaces. The engine has no opinion about what implements them —
 that is what lets it run on the storage and messaging you already operate.
 
-| Port                     | `Runtime` field          | Responsibility                                                                                     |
-| ------------------------ | ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `EventRepository`        | `Events`                 | The append-only source of truth: create events, find them by `ProcessID`, and provide the transaction boundary. |
-| `ProcessExecutionQueue`  | `ProcessExecutionQueue`  | A durable, ordered queue of `ProcessExecution` entries; `Schedule` publishes to it, `Run` consumes it. |
-| `ProcessChangeBroadcast` | `ProcessChangeBroadcast` | A volatile fan-out channel announcing start/stop/sleep, so idle workers can wake early instead of polling. |
-| `ProcessLocks`           | `ProcessLockers`         | Non-blocking mutual exclusion per `ProcessID`, so only one node executes a given process at a time.  |
+| Port                 | `Runtime` field  | Responsibility                                                                                     |
+| -------------------- | ---------------- | --------------------------------------------------------------------------------------------------- |
+| `EventRepository`    | `Events`         | The append-only source of truth: create events, find them by `ProcessID`, and provide the transaction boundary. |
+| `Queue`              | `Queue`          | A durable, ordered queue of `ExecutionRequest` entries; `Schedule` publishes to it, `Run` consumes it. |
+| `NotificationBroadcast` | `Notifications` | A volatile fan-out channel announcing schedule/cancel events, so idle workers can wake early instead of polling. |
+| `ProcessLocks`       | `Locks`          | Non-blocking mutual exclusion per `ProcessID`, so only one node executes a given process at a time.  |
 
 `memory.*` implementations exist for all four, which is how the whole engine
 fits inside a unit test. See [Testing][TESTING].

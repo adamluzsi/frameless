@@ -16,8 +16,8 @@ Copy this into a `main.go` and run it. Everything is in-memory, so there is
 nothing to install or start. About fifty lines, with one of everything: an
 engine, two participants, a three-step workflow, and a `main` that runs it.
 
-The four `Runtime` fields at the top — `Events`, `ProcessExecutionQueue`,
-`ProcessChangeBroadcast`, `ProcessLockers` — are the *plumbing*: where the
+The four `Runtime` fields at the top — `Events`, `Queue`,
+`Notifications`, `Locks` — are the *plumbing*: where the
 event log lives, where queued executions wait, how workers learn something
 changed, and how a process is locked to a single worker at a time. The
 `memory.*` values are stand-ins for whatever you run in production (Postgres,
@@ -40,10 +40,10 @@ func main() {
 
 	// 1. The engine, wired to in-memory dependencies.
 	rt := workflow.Runtime{
-		Events:                 &memory.WorkflowEventRepository{},
-		ProcessExecutionQueue:  &memory.WorkflowProcessExecutionQueue{},
-		ProcessChangeBroadcast: &memory.WorkflowProcessChangeBroadcast{},
-		ProcessLockers:         &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{},
+		Events:        &memory.WorkflowEventRepository{},
+		Queue:         &memory.WorkflowQueue{},
+		Notifications: &memory.WorkflowNotificationBroadcast{},
+		Locks:         &memory.WorkflowProcessLocks{},
 
 		// 2. The capabilities you expose. Just Go functions.
 		Participants: workflow.Participants{
@@ -239,7 +239,7 @@ boundaries:
 
 Both problems have the same shape: the work needs to leave the calling
 goroutine and live somewhere that survives the call. The queue already exists
-— `ProcessExecutionQueue`, the second field on `Runtime` — but until now
+— `Queue`, the second field on `Runtime` — but until now
 nothing has read from it. That is what `rt.Run` does. It is a worker: it
 blocks, reads entries off the queue, and runs each one. Call it once at
 startup and let it run for the lifetime of the process.
@@ -345,7 +345,7 @@ Three guarantees fall out of how the runtime treats it:
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Idempotent**                           | Calling it on an already-terminated process is a no-op — no second `EventTerminated`, the log stays a reliable answer to *when* it stopped. |
 | **Refuses to overwrite a completed process** | If the process ran to its natural end first, the call does nothing. The two outcomes — *finished* and *called off* — stay distinct. |
-| **Cancels in-flight work**               | If a worker is mid-step, the process lock is acquired; the runtime publishes a `ProcessCancel` over the change broadcast, and the in-flight participant sees its `ctx` cancelled and unwinds. |
+| **Cancels in-flight work**               | If a worker is mid-step, the process lock is acquired; the runtime publishes a `ProcessCancel` notification, and the in-flight participant sees its `ctx` cancelled and unwinds. |
 
 Once terminated, the process keeps its full event history — `Bind`, every step
 that did record, and the trailing `EventTerminated`. Re-running `rt.Execute` on

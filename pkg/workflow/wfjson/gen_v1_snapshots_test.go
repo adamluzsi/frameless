@@ -146,7 +146,7 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Path:     workflow.Path{"sequence", "[0]"},
 		}},
 		// Schedule-side
-		{"ProcessExecution", workflow.ProcessExecution{
+		{"ExecutionRequest", workflow.ExecutionRequest{
 			ProcessID: pid, StartTime: ts, CreatedAt: ts,
 			// FailureCount zero so the omitempty path is exercised
 		}},

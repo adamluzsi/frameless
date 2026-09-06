@@ -103,17 +103,17 @@ However, whatever will be your choice, you need to be compliant
 with contracts defined in the built-in `wfcontract` package.
 But these tests are pre-written for you using interface testing suites (contract testing).
 
-| Field                    | Purpose                                                  | Cheap option                                 |
-| ------------------------ | -------------------------------------------------------- | -------------------------------------------- |
-| `Participants`           | Resolves a `Participant` by `ID`.                        | `workflow.Participants` (an in-process map). |
-| `Conditions`             | Resolves a `Condition` by `ID`.                          | `workflow.Conditions` (an in-process map).   |
-| `Events`                 | The event source                                         | Your app's existing relational DB.           |
-| `ProcessExecutionQueue`  | Schedules a `ProcessID` for execution.                   | The same DB, or queue you already have.      |
-| `ProcessChangeBroadcast` | Notifies worker nodes that the queue changed.            | Any fan-out exchange you already have.       |
-| `ProcessLockers`         | Mutual exclusion per process.                            |                                              |
-| `Codec`                  | Polymorphic (de)serialisation of definitions and events. | `wfjson.NewCodec()`                          |
-| `RetryStrategy`          | Wraps execution in a retry loop.                         | `pkg/resilience`.                            |
-| `ContextSetup`           | execution context decoration (logging, tracing, etc.).   |                                              |
+| Field            | Purpose                                                  | Cheap option                                 |
+| ---------------- | -------------------------------------------------------- | -------------------------------------------- |
+| `Participants`   | Resolves a `Participant` by `ID`.                        | `workflow.Participants` (an in-process map). |
+| `Conditions`     | Resolves a `Condition` by `ID`.                          | `workflow.Conditions` (an in-process map).   |
+| `Events`         | The event source                                         | Your app's existing relational DB.           |
+| `Queue`          | Schedules a `ProcessID` for execution.                   | The same DB, or queue you already have.      |
+| `Notifications`  | Notifies worker nodes that the queue changed.            | Any fan-out exchange you already have.       |
+| `Locks`          | Mutual exclusion per process.                            |                                              |
+| `Codec`          | Polymorphic (de)serialisation of definitions and events. | `wfjson.NewCodec()`                          |
+| `RetryStrategy`  | Wraps execution in a retry loop.                         | `pkg/resilience`.                            |
+| `ContextSetup`   | execution context decoration (logging, tracing, etc.).   |                                              |
 
 ---
 

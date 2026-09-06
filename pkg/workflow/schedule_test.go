@@ -69,7 +69,7 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 		waitTime := time.Hour * 24
 		target := clock.Now().Add(waitTime)
 
-		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID, func(s *workflow.ProcessExecution) {
+		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID, func(s *workflow.ExecutionRequest) {
 			s.StartTime = target
 		}))
 
@@ -164,7 +164,7 @@ func TestRuntime_scheduling(t *testing.T) {
 			})
 		)
 		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Schedule(Context.Get(t), process.Get(t), func(s *workflow.ProcessExecution) {
+			return subject.Get(t).Schedule(Context.Get(t), process.Get(t), func(s *workflow.ExecutionRequest) {
 				s.StartTime = startTime.Get(t)
 			})
 		})
@@ -278,7 +278,7 @@ func TestRuntime_scheduling(t *testing.T) {
 				var schedules []func()
 				t.Random.Repeat(3, 7, func() {
 					schedules = append(schedules, func() {
-						assert.NoError(t, scheduler.Schedule(ctx, p, func(s *workflow.ProcessExecution) {
+						assert.NoError(t, scheduler.Schedule(ctx, p, func(s *workflow.ExecutionRequest) {
 							s.StartTime = st
 						}))
 					})

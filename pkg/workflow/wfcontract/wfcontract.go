@@ -292,23 +292,23 @@ func MakeEventID(tb testing.TB) workflow.EventID {
 func ProcessLocks(subject workflow.ProcessLocks,
 	opts ...guardcontract.LockerFactoryOption[workflow.ProcessID]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	testcase.RunSuite(s, guardcontract.LockerFactory[workflow.ProcessID, workflow.ProcessLock](subject, opts...))
-	return s.AsSuite("ProcessLockers")
+	testcase.RunSuite(s, guardcontract.LockerFactory[workflow.ProcessID, workflow.Lock](subject, opts...))
+	return s.AsSuite("ProcessLocks")
 }
 
-// ProcessExecutionQueue expresses that the subject acts as the workflow Runtime's
+// Queue expresses that the subject acts as the workflow Runtime's
 // process scheduler queue. It is a non-blocking pub/sub channel whose
 // published Schedules must be eventually delivered to subscribers ordered by
 // Schedule.StartTime ascending. Publishers must NOT block waiting for
 // subscriber acknowledgement — a blocking queue would deadlock the runtime.
-func ProcessExecutionQueue(subject workflow.ProcessExecutionQueue, opts ...pubsubcontract.Option[workflow.ProcessExecution]) contract.Contract {
+func Queue(subject workflow.Queue, opts ...pubsubcontract.Option[workflow.ExecutionRequest]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	c := option.ToConfig[pubsubcontract.Config[workflow.ProcessExecution], pubsubcontract.Option[workflow.ProcessExecution]](opts)
+	c := option.ToConfig[pubsubcontract.Config[workflow.ExecutionRequest], pubsubcontract.Option[workflow.ExecutionRequest]](opts)
 
 	testcase.RunSuite(s,
-		pubsubcontract.Queue[workflow.ProcessExecution](subject, subject, c),
-		pubsubcontract.Ordering[workflow.ProcessExecution](subject, subject,
-			func(items []workflow.ProcessExecution) {
+		pubsubcontract.Queue[workflow.ExecutionRequest](subject, subject, c),
+		pubsubcontract.Ordering[workflow.ExecutionRequest](subject, subject,
+			func(items []workflow.ExecutionRequest) {
 				sort.Slice(items, func(i, j int) bool {
 					return items[i].StartTime.Before(items[j].StartTime)
 				})
@@ -317,44 +317,44 @@ func ProcessExecutionQueue(subject workflow.ProcessExecutionQueue, opts ...pubsu
 		),
 	)
 
-	return s.AsSuite("ProcessQueue")
+	return s.AsSuite("Queue")
 }
 
-// ProcessChangeBroadcast expresses that the subject acts as the workflow
+// NotificationBroadcast expresses that the subject acts as the workflow
 // Runtime's process-queue change-notification channel. The runtime uses it
 // both to publish ProcessQueueChange events (e.g. ProcessStart) and to
 // subscribe to them in runListenToChanges; therefore the contract asserts
 // that messages are delivered to subscribers in publish order (Queue) and
 // are not durable across subscriber reconnects (Volatile).
 //
-// The runtime's ProcessChangeBroadcast interface combines Publisher +
+// The runtime's NotificationBroadcast interface combines Publisher +
 // Subscriber on a single value, so this wrapper takes that combined shape.
 // Real implementations are expected to provide a fan-out under the hood
 // (RabbitMQ topic exchange, NATS, Kafka consumer group, or an in-memory
 // FanOutExchange with a single queue bound to it). To exercise the
 // multi-subscriber fan-out contract directly, use pubsubcontract.Broadcast
 // against the underlying exchange primitive.
-func ProcessChangeBroadcast(
-	subject workflow.ProcessChangeBroadcast,
-	opts ...pubsubcontract.Option[workflow.ProcessChangeEvent],
+func NotificationBroadcast(
+	subject workflow.NotificationBroadcast,
+	opts ...pubsubcontract.Option[workflow.Notification],
 ) contract.Contract {
 	s := testcase.NewSpec(nil)
 
-	// ProcessChangeEvent is a polymorphic interface. The default MakeData
+	// Notification is a polymorphic interface. The default MakeData
 	// (spechelper.MakeValue) cannot fabricate an interface value, so we
 	// supply one that picks a concrete implementation at random. This
 	// also exercises the channel against every concrete type the runtime
 	// could publish, which is what we actually want to assert.
-	makeData := func(tb testing.TB) workflow.ProcessChangeEvent {
+	makeData := func(tb testing.TB) workflow.Notification {
 		pid, err := workflow.MakeProcessID()
 		assert.NoError(tb, err)
-		return random.Pick[workflow.ProcessChangeEvent](tbRandom(tb),
+		return random.Pick[workflow.Notification](tbRandom(tb),
 			workflow.ProcessSchedule{ProcessID: pid},
 			workflow.ProcessCancel{ProcessID: pid},
 		)
 	}
 
-	opts = append(opts, pubsubcontract.Config[workflow.ProcessChangeEvent]{
+	opts = append(opts, pubsubcontract.Config[workflow.Notification]{
 		MakeData: makeData,
 	})
 
@@ -372,10 +372,10 @@ func ProcessChangeBroadcast(
 	// which the role interface does not expose. To exercise the fan-out
 	// primitive directly, drive pubsubcontract.Broadcast against the
 	// underlying FanOutExchange (see adapter/memory TestWorkflowFanOutBroadcast).
-	pubsubcontract.Volatile[workflow.ProcessChangeEvent](subject, subject, opts...).Spec(s)
+	pubsubcontract.Volatile[workflow.Notification](subject, subject, opts...).Spec(s)
 
 	s.Context("publish-then-consume", func(s *testcase.Spec) {
-		c := option.ToConfig[pubsubcontract.Config[workflow.ProcessChangeEvent], pubsubcontract.Option[workflow.ProcessChangeEvent]](opts)
+		c := option.ToConfig[pubsubcontract.Config[workflow.Notification], pubsubcontract.Option[workflow.Notification]](opts)
 		mctx := c.MakeContext
 
 		s.Test("a subscriber sees events published while it was subscribed", func(t *testcase.T) {
@@ -395,19 +395,19 @@ func ProcessChangeBroadcast(
 
 			t.Eventually(func(it *testcase.T) {
 				pubsubtest.Waiter.Wait()
-				var got []workflow.ProcessChangeEvent
+				var got []workflow.Notification
 				for msg, err := range sub {
 					assert.NoError(it, err)
 					got = append(got, msg.Data())
 					assert.NoError(it, msg.ACK())
 					break
 				}
-				assert.ContainsExactly(it, []workflow.ProcessChangeEvent{ev}, got)
+				assert.ContainsExactly(it, []workflow.Notification{ev}, got)
 			})
 		})
 	})
 
-	return s.AsSuite("ProcessQueueChangeBroadcast")
+	return s.AsSuite("NotificationBroadcast")
 }
 
 func Definition(mk func(tb testing.TB, c DefinitionContext) workflow.Definition) contract.Contract {

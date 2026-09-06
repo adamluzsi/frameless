@@ -120,9 +120,9 @@ inside a nested spec block.
 | `ContextSetup`           | Context decorators applied per execution.          |
 | `ErrRuntimeRun`          | The error the background `Run` returned, if any.   |
 | `EventRepository`        | `*memory.WorkflowEventRepository` — the state.     |
-| `ProcessExecutionQueue`  | `*memory.WorkflowProcessExecutionQueue`            |
-| `ProcessChangeBroadcast` | `*memory.WorkflowProcessChangeBroadcast`           |
-| `ProcessLocks`           | `*memory.LockerFactory[...]`                       |
+| `Queue`                  | `*memory.WorkflowQueue`                            |
+| `NotificationBroadcast`  | `*memory.WorkflowNotificationBroadcast`            |
+| `ProcessLocks`           | `*memory.WorkflowProcessLocks`                     |
 
 ### The `C` methods
 
@@ -221,8 +221,8 @@ s.Test("it executes", func(t *testcase.T) {
 
 ## 3. Adapters: don't write those tests yourself
 
-Backing `EventRepository`, `ProcessExecutionQueue`, `ProcessLocks`, or
-`ProcessChangeBroadcast` with Postgres, Kafka, or Redis? The behaviour those
+Backing `EventRepository`, `Queue`, `ProcessLocks`, or
+`NotificationBroadcast` with Postgres, Kafka, or Redis? The behaviour those
 interfaces demand is already written down as executable contracts:
 
 ```go
@@ -232,7 +232,7 @@ func TestWorkflowEventRepository(t *testing.T) {
 }
 
 func TestWorkflowProcessLocks(t *testing.T) {
-	subject := &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{}
+	subject := &memory.WorkflowProcessLocks{}
 	t.Run("implements workflow ProcessLocks", wfcontract.ProcessLocks(subject).Test)
 }
 ```
@@ -246,8 +246,8 @@ value to `t.Run` for a named subtest. To fold one into a larger spec, use
 | Contract                                     | Subject                            |
 | -------------------------------------------- | ---------------------------------- |
 | `wfcontract.EventRepository(subject)`         | Your event store.                  |
-| `wfcontract.ProcessExecutionQueue(subject, opts...)` | Your scheduler queue.       |
-| `wfcontract.ProcessChangeBroadcast(subject, opts...)` | Your change-notification channel. |
+| `wfcontract.Queue(subject, opts...)`          | Your scheduler queue.              |
+| `wfcontract.NotificationBroadcast(subject, opts...)` | Your change-notification channel. |
 | `wfcontract.ProcessLocks(subject, opts...)`   | Your per-process locker factory.   |
 | `wfcontract.Definition(mk)`                   | Your own `Definition` type.        |
 | `wfcontract.Codec(codec)`                     | Your own wire format. See [Codec][CODEC]. |
@@ -256,14 +256,14 @@ value to `t.Run` for a named subtest. To fold one into a larger spec, use
 
 This is why running the contract beats writing your own tests:
 
-- **`ProcessExecutionQueue` must not block on acknowledgement.** The runtime
+- **`Queue` must not block on acknowledgement.** The runtime
   publishes to the queue from inside execution. A queue that waits for a
   subscriber to ACK deadlocks the whole engine.
-- **`ProcessExecutionQueue` must deliver ordered by `StartTime` ascending.**
+- **`Queue` must deliver ordered by `StartTime` ascending.**
   That ordering *is* the scheduling: a process suspended until later must not
   overtake one that is due now.
-- **`ProcessChangeBroadcast` must be volatile, not durable.** The runtime both
-  publishes and subscribes here. Replaying old change events to a reconnecting
+- **`NotificationBroadcast` must be volatile, not durable.** The runtime both
+  publishes and subscribes here. Replaying old notifications to a reconnecting
   subscriber would resurrect stale wake-ups.
 - **`EventRepository` must reject events with a zero ID, process ID, or
   timestamp.** The history is the state; an event that cannot be ordered or

@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -18,14 +19,14 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-// ProcessExecutionQueue is an ordered queue, where process execution requests are published.
+// Queue is an ordered queue, where process execution requests are published.
 // It is expected to be a Durable and Ordered queue where ordering is sorted by ProcessScheduleEntry#StartTime ASC.
-type ProcessExecutionQueue interface {
-	pubsub.Publisher[ProcessExecution]
-	pubsub.Subscriber[ProcessExecution]
+type Queue interface {
+	pubsub.Publisher[ExecutionRequest]
+	pubsub.Subscriber[ExecutionRequest]
 }
 
-type ProcessExecution struct {
+type ExecutionRequest struct {
 	// ProcessID specifies which ProcessID should be scheduled for execution
 	ProcessID ProcessID
 	// StartTime defines when it is expected to schedule the process for the next time
@@ -36,30 +37,33 @@ type ProcessExecution struct {
 	FailureCount int
 }
 
-// ProcessChangeBroadcast is a Volatile, FanOut exchange based broadcasting pubsub channel,
-// where worker nodes can subscribe, to get notified if a new workflow Process was scheduled for execution.
-// It allows optimisations, such as sleeping on time until the start of the next event arrives.
-type ProcessChangeBroadcast interface {
-	pubsub.Publisher[ProcessChangeEvent]
-	pubsub.Subscriber[ProcessChangeEvent]
+// NotificationBroadcast is a Volatile, FanOut exchange based broadcasting pubsub channel,
+// where worker nodes can subscribe, to get notified about workflow related events which might are relevant to them.
+type NotificationBroadcast interface {
+	pubsub.Publisher[Notification]
+	pubsub.Subscriber[Notification]
 }
 
-type ProcessChangeEvent interface {
+type Notification interface {
 	GetProcessID() ProcessID
-	ChangeType() ProcessChangeType
+	NotificationType() NotificationType
 }
 
-type ProcessChangeType string
+type NotificationType string
 
 type ProcessSchedule struct{ ProcessID ProcessID }
 
-func (ch ProcessSchedule) ChangeType() ProcessChangeType { return "schedule" }
-func (ch ProcessSchedule) GetProcessID() ProcessID       { return ch.ProcessID }
+var _ Notification = ProcessSchedule{}
+
+func (ch ProcessSchedule) NotificationType() NotificationType { return "schedule" }
+func (ch ProcessSchedule) GetProcessID() ProcessID            { return ch.ProcessID }
 
 type ProcessCancel struct{ ProcessID ProcessID }
 
-func (ch ProcessCancel) ChangeType() ProcessChangeType { return "cancel" }
-func (ch ProcessCancel) GetProcessID() ProcessID       { return ch.ProcessID }
+var _ Notification = ProcessCancel{}
+
+func (ch ProcessCancel) NotificationType() NotificationType { return "cancel" }
+func (ch ProcessCancel) GetProcessID() ProcessID            { return ch.ProcessID }
 
 // Schedule will Schedule a Process for eventually processing.
 //
@@ -67,13 +71,13 @@ func (ch ProcessCancel) GetProcessID() ProcessID       { return ch.ProcessID }
 // retrying a failed Schedule always yields the SAME ProcessID, making the
 // scheduling contract safe under any kind of caller-side failure
 // (network blip, timeout, panic recovery, etc.).
-func (rt Runtime) Schedule(ctx context.Context, pid ProcessID, opts ...func(*ProcessExecution)) error {
+func (rt Runtime) Schedule(ctx context.Context, pid ProcessID, opts ...func(*ExecutionRequest)) error {
 	return rt.withRetry(ctx, func() error {
 		return rt.schedule(ctx, pid, opts...)
 	})
 }
 
-func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*ProcessExecution)) error {
+func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*ExecutionRequest)) error {
 	if err := rt.Validate(ctx); err != nil {
 		return err
 	}
@@ -82,7 +86,7 @@ func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*Pro
 		return ErrZeroProcessID.F("Scheduling requires a non-zero processID")
 	}
 
-	var schedule = ProcessExecution{}
+	var schedule = ExecutionRequest{}
 	for _, opt := range opts {
 		opt(&schedule)
 	}
@@ -96,7 +100,7 @@ func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*Pro
 		return err
 	}
 
-	if err := rt.Changes.Publish(ctx, ProcessSchedule{ProcessID: pid}); err != nil {
+	if err := rt.Notifications.Publish(ctx, ProcessSchedule{ProcessID: pid}); err != nil {
 		return err
 	}
 
@@ -116,20 +120,20 @@ func (rt Runtime) Run(ctx context.Context) error {
 		Isolation:     true,
 	}
 
-	var changeBroadcast synckit.Broadcast[ProcessChangeEvent]
+	var notificationsBC synckit.Broadcast[Notification]
 
 	g.Go(ctx, func(ctx context.Context) (err error) {
 		return rt.withRetry(ctx, func() error {
-			return rt.runListenToRemoteChanges(ctx, &changeBroadcast)
+			return rt.runListenToNotifications(ctx, &notificationsBC)
 		})
 	})
 
 	for range rt.getNumQueueSubscriber() {
 		g.Go(ctx, func(ctx context.Context) error {
 			return rt.withRetry(ctx, func() error {
-				changes, job := rt.listenToLocalChangeBroadcast(ctx, &changeBroadcast)
+				notificationsCH, job := rt.listenToLocalChangeBroadcast(ctx, &notificationsBC)
 				defer job.Cancel()
-				return rt.runListenToScheduling(ctx, changes)
+				return rt.runListenToScheduling(ctx, notificationsCH)
 			})
 		})
 	}
@@ -137,10 +141,10 @@ func (rt Runtime) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (rt Runtime) listenToLocalChangeBroadcast(ctx context.Context, broadcast *synckit.Broadcast[ProcessChangeEvent]) (<-chan ProcessChangeEvent, synckit.Job) {
-	var changes = make(chan ProcessChangeEvent)
+func (rt Runtime) listenToLocalChangeBroadcast(ctx context.Context, broadcast *synckit.Broadcast[Notification]) (<-chan Notification, synckit.Job) {
+	var notifications = make(chan Notification)
 	var job = synckit.Go(ctx, func(ctx context.Context) error {
-		defer close(changes)
+		defer close(notifications)
 		const timeout = time.Second
 		var outdate = clock.NewTicker(timeout)
 		defer outdate.Stop()
@@ -155,7 +159,7 @@ func (rt Runtime) listenToLocalChangeBroadcast(ctx context.Context, broadcast *s
 			select {
 			case <-ctx.Done():
 				return nil
-			case changes <- change.Data():
+			case notifications <- change.Data():
 				change.ACK()
 			case <-outdate.C:
 				change.ACK()
@@ -163,7 +167,7 @@ func (rt Runtime) listenToLocalChangeBroadcast(ctx context.Context, broadcast *s
 		}
 		return nil
 	})
-	return changes, job
+	return notifications, job
 }
 
 func (rt Runtime) getNumQueueSubscriber() int {
@@ -210,22 +214,22 @@ func (rt Runtime) withRetry(ctx context.Context, do func() error) (err error) {
 	return
 }
 
-func (rt Runtime) runListenToScheduling(ctx context.Context, changes <-chan ProcessChangeEvent) error {
+func (rt Runtime) runListenToScheduling(ctx context.Context, notifications <-chan Notification) error {
 	if rt.Queue == nil {
-		return ErrFatal.F("Error, missing %T#ProcessQueue", rt)
+		return ErrFatal.F("Error, missing %T#Queue", rt)
 	}
 	for msg, err := range rt.Queue.Subscribe(ctx) {
 		if err != nil {
 			return err
 		}
-		if err := rt.runSignalHandler(rt, msg, changes); err != nil {
+		if err := rt.runSignalHandler(rt, msg, notifications); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (rt Runtime) guardAgainstEarlyExecution(ctx context.Context, msg pubsub.Message[ProcessExecution], changes <-chan ProcessChangeEvent) (ok bool) {
+func (rt Runtime) guardAgainstEarlyExecution(ctx context.Context, msg pubsub.Message[ExecutionRequest], notifications <-chan Notification) (ok bool) {
 	var sch = msg.Data()
 	if sch.StartTime.IsZero() {
 		return true
@@ -253,14 +257,14 @@ waiting:
 	case <-ctx.Done():
 		return false
 
-	case ch, ok := <-changes:
+	case n, ok := <-notifications:
 		if !ok {
 			return false
 		}
-		switch ch.ChangeType() {
-		case (ProcessSchedule{}).ChangeType():
+		switch n.NotificationType() {
+		case (ProcessSchedule{}).NotificationType():
 			goto waiting
-		case (ProcessCancel{}).ChangeType():
+		case (ProcessCancel{}).NotificationType():
 			_ = msg.ACK() // process execution no longer needed
 			return false
 		default:
@@ -272,13 +276,13 @@ waiting:
 	}
 }
 
-func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecution], changes <-chan ProcessChangeEvent) (rErr error) {
+func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionRequest], notifications <-chan Notification) (rErr error) {
 	var (
 		ctx = msg.Context()
 		sch = msg.Data()
 	)
 
-	if !s.guardAgainstEarlyExecution(ctx, msg, changes) {
+	if !s.guardAgainstEarlyExecution(ctx, msg, notifications) {
 		// Re-queue the entry for later; it is not yet time to execute it.
 		// NOTE: FinishTx must be deferred only after this point, otherwise a
 		// nil rErr from a successful NACK would make FinishTx ACK (delete) the
@@ -294,14 +298,14 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 		select {
 		case <-ctx.Done():
 			return nil
-		case ch, ok := <-changes:
+		case ch, ok := <-notifications:
 			if !ok {
 				return nil
 			}
-			switch ch.ChangeType() {
-			case (ProcessSchedule{}).ChangeType():
+			switch ch.NotificationType() {
+			case (ProcessSchedule{}).NotificationType():
 				goto waiting
-			case (ProcessCancel{}).ChangeType():
+			case (ProcessCancel{}).NotificationType():
 				if sch.ProcessID.Equal(ch.GetProcessID()) {
 					_ = msg.ACK()
 					cancel(ErrProcessCancel)
@@ -350,7 +354,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 				logging.Field("bind_grace_period", rt.getBindGracePeriod().String()))
 			return nil
 		}
-		return s.Queue.Publish(ctx, ProcessExecution{
+		return s.Queue.Publish(ctx, ExecutionRequest{
 			ProcessID:    sch.ProcessID,
 			StartTime:    rt.backoffStartTime(),
 			CreatedAt:    sch.CreatedAt,
@@ -359,7 +363,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 
 	// Suspend requires some revision
 	case errors.Is(err, Suspend{}):
-		return s.Queue.Publish(ctx, ProcessExecution{
+		return s.Queue.Publish(ctx, ExecutionRequest{
 			ProcessID:    sch.ProcessID,
 			StartTime:    rt.backoffStartTime(),
 			FailureCount: sch.FailureCount,
@@ -368,7 +372,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 
 	// Halt is the no-reschedule signal: the participant asked the runtime to
 	// stop asking. The queue entry is acknowledged and dropped, no fresh
-	// ProcessExecution is published, FailureCount does not advance. Resuming
+	// ExecutionRequest is published, FailureCount does not advance. Resuming
 	// the Process is the caller's responsibility, by calling Schedule again
 	// with the same ProcessID.
 	//
@@ -382,7 +386,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 		return nil
 
 	default:
-		return s.Queue.Publish(ctx, ProcessExecution{
+		return s.Queue.Publish(ctx, ExecutionRequest{
 			ProcessID:    sch.ProcessID,
 			StartTime:    rt.backoffStartTime(),
 			FailureCount: sch.FailureCount + 1,
@@ -394,10 +398,10 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ProcessExecutio
 // isBindGracePeriodExpired tells whether a schedule entry has been waiting for
 // its Definition longer than the Runtime is willing to wait for it.
 //
-// The waiting is measured from ProcessExecution#CreatedAt, the moment the
+// The waiting is measured from ExecutionRequest#CreatedAt, the moment the
 // Process was scheduled, and not from StartTime, which is pushed forward on
 // every requeue and would consequently never grow old enough to expire.
-func (rt Runtime) isBindGracePeriodExpired(sch ProcessExecution) bool {
+func (rt Runtime) isBindGracePeriodExpired(sch ExecutionRequest) bool {
 	if sch.CreatedAt.IsZero() { // age unknown, assume the entry is still fresh
 		return false
 	}
@@ -427,16 +431,16 @@ func (errOutdatedChange) Error() string {
 	return "[error] outdated change"
 }
 
-func (rt Runtime) runListenToRemoteChanges(ctx context.Context, changes *synckit.Broadcast[ProcessChangeEvent]) error {
-	defer changes.Close()
-	if rt.Changes == nil {
-		return ErrFatal.F("Error, missing %T#ProcessChangeBroadcast", rt)
+func (rt Runtime) runListenToNotifications(ctx context.Context, notifications *synckit.Broadcast[Notification]) error {
+	defer notifications.Close()
+	if rt.Notifications == nil {
+		return ErrFatal.F("missing %T", reflectkit.TypeOf[NotificationBroadcast]().String())
 	}
-	var handle = func(msg pubsub.Message[ProcessChangeEvent]) (rerr error) {
+	var handle = func(msg pubsub.Message[Notification]) (rerr error) {
 		defer comproto.FinishTx(&rerr, msg.ACK, msg.NACK)
-		return changes.Publish(ctx, msg.Data())
+		return notifications.Publish(ctx, msg.Data())
 	}
-	for msg, err := range rt.Changes.Subscribe(ctx) {
+	for msg, err := range rt.Notifications.Subscribe(ctx) {
 		if err != nil {
 			return err
 		}
@@ -455,13 +459,13 @@ func (rt Runtime) Validate(ctx context.Context) error {
 	// (default resilience.Jitter: 5 attempts × up to 5s jitter) before the
 	// caller observes the error, which looks like a hang.
 	if rt.Events == nil {
-		return ErrFatal.F("missing %T#EventsRepository", rt)
+		return ErrFatal.F("missing %T", reflectkit.TypeOf[EventRepository]().String())
 	}
 	if rt.Queue == nil {
-		return ErrFatal.F("missing %T#ProcessQueue", rt)
+		return ErrFatal.F("missing %T", reflectkit.TypeOf[Queue]().String())
 	}
-	if rt.Changes == nil {
-		return ErrFatal.F("missing %T#ProcessQueueChangeBroadcast", rt)
+	if rt.Notifications == nil {
+		return ErrFatal.F("missing %T", reflectkit.TypeOf[Notification]().String())
 	}
 	return validate.Value(ctx, rt)
 }

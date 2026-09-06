@@ -24,13 +24,13 @@ type Runtime struct {
 	Participants ParticipantRepository
 	// Conditions is the system provided Condition repository that can be used by workflow builders.
 	Conditions ConditionRepository
-	// Locks is a external distributed lock that enables the blocking by ProcessID.
+	// Locks is an external distributed lock factory that serializes execution per ProcessID.
 	Locks ProcessLocks
 	// Queue contains the scheduled metadata about which Process requires execution.
-	Queue ProcessExecutionQueue
-	// Changes contains the information about whether or not
-	// ProcessExecutionQueue might have a new higher priority Process to be executed
-	Changes ProcessChangeBroadcast
+	Queue Queue
+	// Notifications contains the information about whether or not
+	// the Queue might have a new higher priority Process to be executed
+	Notifications NotificationBroadcast
 
 	// --- [OPTIONAL FIELDS] --- //
 
@@ -38,7 +38,7 @@ type Runtime struct {
 	Codec Codec
 	// NumQueueSubscriber [optional] is the number of queue subscribers.
 	//
-	// Each subscriber takes one entry off the ProcessExecutionQueue at a time and
+	// Each subscriber takes one entry off the Queue at a time and
 	// executes it to completion before reaching for the next one, which makes this
 	// the number of workflow processes the node runs at once.
 	//
@@ -60,7 +60,7 @@ type Runtime struct {
 	// and an entry that can never execute must not stay in a shared queue.
 	//
 	// The grace period is measured from the moment the Process was scheduled
-	// (ProcessExecution#CreatedAt), and it is expressed in wall-clock time rather
+	// (ExecutionRequest#CreatedAt), and it is expressed in wall-clock time rather
 	// than in a number of attempts on purpose: attempts accumulate faster the more
 	// worker nodes are running, so an attempt based budget would expire much
 	// sooner on a large cluster than on a small one.
@@ -73,10 +73,10 @@ type Runtime struct {
 }
 
 type ProcessLocks interface {
-	guard.LockerFactory[ProcessID, ProcessLock]
+	guard.LockerFactory[ProcessID, Lock]
 }
 
-type ProcessLock interface {
+type Lock interface {
 	guard.NonBlockingLocker
 }
 
@@ -370,7 +370,7 @@ func (rt Runtime) terminate(ctx context.Context, pid ProcessID) (err error) {
 		if acquired { // no processing is running, and it is safe to terminate
 			break
 		}
-		if err := rt.Changes.Publish(ctx, ProcessCancel{ProcessID: pid}); err != nil {
+		if err := rt.Notifications.Publish(ctx, ProcessCancel{ProcessID: pid}); err != nil {
 			return err
 		}
 	}

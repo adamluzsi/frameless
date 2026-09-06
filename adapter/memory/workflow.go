@@ -150,50 +150,50 @@ func (r *WorkflowEventRepository) validateEvent(ctx context.Context, ptr *workfl
 	return nil
 }
 
-type WorkflowProcessChangeBroadcast struct {
-	exchange FanOutExchange[workflow.ProcessChangeEvent]
+type WorkflowNotificationBroadcast struct {
+	exchange FanOutExchange[workflow.Notification]
 }
 
-var _ workflow.ProcessChangeBroadcast = (*WorkflowProcessChangeBroadcast)(nil)
+var _ workflow.NotificationBroadcast = (*WorkflowNotificationBroadcast)(nil)
 
-func (ex *WorkflowProcessChangeBroadcast) Publish(ctx context.Context, event workflow.ProcessChangeEvent) error {
+func (ex *WorkflowNotificationBroadcast) Publish(ctx context.Context, event workflow.Notification) error {
 	return ex.exchange.Publish(ctx, event)
 }
 
-func (ex *WorkflowProcessChangeBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessChangeEvent] {
+func (ex *WorkflowNotificationBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
 	return ex.exchange.Subscribe(ctx)
 }
 
-type WorkflowProcessExecutionQueue struct {
-	q *Queue[workflow.ProcessExecution]
+type WorkflowQueue struct {
+	q *Queue[workflow.ExecutionRequest]
 	o sync.Once
 }
 
-var _ workflow.ProcessExecutionQueue = (*WorkflowProcessExecutionQueue)(nil)
+var _ workflow.Queue = (*WorkflowQueue)(nil)
 
-func (q *WorkflowProcessExecutionQueue) init() {
+func (q *WorkflowQueue) init() {
 	q.o.Do(func() {
-		q.q = &Queue[workflow.ProcessExecution]{
+		q.q = &Queue[workflow.ExecutionRequest]{
 
-			SortLessFunc: func(i, j workflow.ProcessExecution) bool {
+			SortLessFunc: func(i, j workflow.ExecutionRequest) bool {
 				return i.StartTime.Before(j.StartTime)
 			},
 		}
 	})
 }
 
-func (q *WorkflowProcessExecutionQueue) Publish(ctx context.Context, pe workflow.ProcessExecution) error {
+func (q *WorkflowQueue) Publish(ctx context.Context, pe workflow.ExecutionRequest) error {
 	q.init()
 	return q.q.Publish(ctx, pe)
 }
 
-func (q *WorkflowProcessExecutionQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ProcessExecution] {
+func (q *WorkflowQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ExecutionRequest] {
 	q.init()
 	return q.q.Subscribe(ctx)
 }
 
 type WorkflowProcessLocks struct {
-	LockerFactory[workflow.ProcessID, workflow.ProcessLock]
+	LockerFactory[workflow.ProcessID, workflow.Lock]
 }
 
 var _ workflow.ProcessLocks = (*WorkflowProcessLocks)(nil)

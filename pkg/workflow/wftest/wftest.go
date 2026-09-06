@@ -163,17 +163,17 @@ var EventRepository = testcase.Var[*memory.WorkflowEventRepository]{
 	},
 }
 
-var ProcessExecutionQueue = testcase.Var[*memory.WorkflowProcessExecutionQueue]{
-	ID: "workflow ProcessExecutionQueue",
-	Init: func(t *testcase.T) *memory.WorkflowProcessExecutionQueue {
-		return &memory.WorkflowProcessExecutionQueue{}
+var Queue = testcase.Var[*memory.WorkflowQueue]{
+	ID: "workflow Queue",
+	Init: func(t *testcase.T) *memory.WorkflowQueue {
+		return &memory.WorkflowQueue{}
 	},
 }
 
-var ProcessChangeBroadcast = testcase.Var[*memory.WorkflowProcessChangeBroadcast]{
-	ID: "workflow ProcessChangeBroadcast",
-	Init: func(t *testcase.T) *memory.WorkflowProcessChangeBroadcast {
-		return &memory.WorkflowProcessChangeBroadcast{}
+var NotificationBroadcast = testcase.Var[*memory.WorkflowNotificationBroadcast]{
+	ID: "workflow NotificationBroadcast",
+	Init: func(t *testcase.T) *memory.WorkflowNotificationBroadcast {
+		return &memory.WorkflowNotificationBroadcast{}
 	},
 }
 
@@ -195,8 +195,8 @@ var Runtime = testcase.Var[workflow.Runtime]{
 			Participants:       Participants.Get(t),
 			Conditions:         Conditions.Get(t),
 			Events:             EventRepository.Get(t),
-			Queue:              ProcessExecutionQueue.Get(t),
-			Changes:            ProcessChangeBroadcast.Get(t),
+			Queue:              Queue.Get(t),
+			Notifications:      NotificationBroadcast.Get(t),
 			Locks:              ProcessLocks.Get(t),
 			RetryStrategy:      noFaultTolerance{},
 			WaitTime:           time.Nanosecond,
@@ -219,8 +219,8 @@ var Runtime = testcase.Var[workflow.Runtime]{
 		Participants,
 		Conditions,
 		EventRepository,
-		ProcessExecutionQueue,
-		ProcessChangeBroadcast,
+		Queue,
+		NotificationBroadcast,
 		ProcessLocks,
 	},
 }
@@ -236,11 +236,10 @@ type C struct {
 
 	ErrRuntimeRun testcase.Var[error]
 
-	EventRepository        testcase.Var[*memory.WorkflowEventRepository]
-	ProcessExecutionQueue  testcase.Var[*memory.WorkflowProcessExecutionQueue]
-	ProcessChangeBroadcast testcase.Var[*memory.WorkflowProcessChangeBroadcast]
-
-	ProcessLocks testcase.Var[*memory.WorkflowProcessLocks]
+	EventRepository       testcase.Var[*memory.WorkflowEventRepository]
+	Queue                 testcase.Var[*memory.WorkflowQueue]
+	ProcessLocks          testcase.Var[*memory.WorkflowProcessLocks]
+	NotificationBroadcast testcase.Var[*memory.WorkflowNotificationBroadcast]
 }
 
 func LetC(s *testcase.Spec) C {
@@ -251,8 +250,8 @@ func LetC(s *testcase.Spec) C {
 	c.Participants = Participants.Bind(s)
 	c.Conditions = Conditions.Bind(s)
 	c.EventRepository = EventRepository.Bind(s)
-	c.ProcessExecutionQueue = ProcessExecutionQueue.Bind(s)
-	c.ProcessChangeBroadcast = ProcessChangeBroadcast.Bind(s)
+	c.Queue = Queue.Bind(s)
+	c.NotificationBroadcast = NotificationBroadcast.Bind(s)
 	c.ProcessLocks = ProcessLocks.Bind(s)
 	c.ErrRuntimeRun = ErrRuntimeRun
 	c.Runtime = Runtime.Bind(s)

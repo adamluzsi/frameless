@@ -116,7 +116,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.EventUseDefinition` | `workflow::event::use-definition`|
 | `workflow.EventSpawn`         | `workflow::event::spawn`         |
 | `workflow.EventJoin`          | `workflow::event::join`          |
-| `workflow.ProcessExecution`   | `workflow::execution`            |
+| `workflow.ExecutionRequest`   | `workflow::execution`            |
 | `workflow.ProcessSchedule`    | `workflow::schedule`             |
 | `workflow.ProcessCancel`      | `workflow::cancel`               |
 
@@ -130,10 +130,10 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 
 ```go
 rt := workflow.Runtime{
-	Events:                 myEventRepository,
-	ProcessExecutionQueue:  myQueue,
-	ProcessChangeBroadcast: myBroadcast,
-	ProcessLockers:         myLocks,
+	Events:        myEventRepository,
+	Queue:         myQueue,
+	Notifications: myBroadcast,
+	Locks:         myLocks,
 
 	Codec: wfjson.NewCodec(),
 }

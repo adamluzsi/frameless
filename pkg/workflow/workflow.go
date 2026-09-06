@@ -66,9 +66,7 @@ type Condition interface {
 // implementation of port/codec.Codec qualifies, and so that new wire formats
 // (JSON, YAML, msgpack, ...) can be exercised against the same wfcontract.Codec
 // contract test.
-type Codec interface {
-	codec.Codec
-}
+type Codec codec.Codec
 
 type ConditionID string
 

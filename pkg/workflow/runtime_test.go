@@ -63,13 +63,13 @@ func TestRuntime(t *testing.T) {
 	)
 	runtime := wftest.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 		return workflow.Runtime{
-			Participants: participants.Get(t),
-			Conditions:   conditions.Get(t),
-			ContextSetup: contextSetup.Get(t),
-			Events:       &memory.WorkflowEventRepository{},
-			Queue:        &memory.WorkflowProcessExecutionQueue{},
-			Changes:      &memory.WorkflowProcessChangeBroadcast{},
-			Locks:        &memory.WorkflowProcessLocks{},
+			Participants:  participants.Get(t),
+			Conditions:    conditions.Get(t),
+			ContextSetup:  contextSetup.Get(t),
+			Events:        &memory.WorkflowEventRepository{},
+			Queue:         &memory.WorkflowQueue{},
+			Notifications: &memory.WorkflowNotificationBroadcast{},
+			Locks:         &memory.WorkflowProcessLocks{},
 		}
 	})
 
@@ -1037,10 +1037,10 @@ func TestRuntime_missingMandatoryDependencyFailsFast(t *testing.T) {
 
 	rt := workflow.Runtime{
 		// Events is set so the runtime does not bail on the first Validate
-		// check, exposing the ProcessExecutionQueue dependency path.
+		// check, exposing the Queue dependency path.
 		Events: &memory.WorkflowEventRepository{},
-		// ProcessExecutionQueue intentionally left nil.
-		// ProcessChangeBroadcast intentionally left nil.
+		// Queue intentionally left nil.
+		// Notifications intentionally left nil.
 	}
 
 	pid, err := workflow.MakeProcessID()

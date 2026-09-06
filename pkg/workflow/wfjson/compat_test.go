@@ -149,8 +149,8 @@ func roundTripViaInterface(t *testcase.T, c workflow.Codec, actual []byte, v any
 		reEmitted, err := c.Marshal(got)
 		assert.NoError(t, err)
 		return got, reEmitted
-	case workflow.ProcessExecution:
-		var got workflow.ProcessExecution
+	case workflow.ExecutionRequest:
+		var got workflow.ExecutionRequest
 		assert.NoError(t, c.Unmarshal(actual, &got))
 		reEmitted, err := c.Marshal(got)
 		assert.NoError(t, err)
@@ -448,12 +448,12 @@ func TestCompat_v1WireFormat(t *testing.T) {
 
 	// ---- Schedule-side ----
 
-	s.Test("ProcessExecution", func(t *testcase.T) {
+	s.Test("ExecutionRequest", func(t *testcase.T) {
 		// FailureCount is omitempty in the DTO, so the zero value drops from
 		// the wire. That is the only field shape quirk the test has to know
 		// about — pin the marshalled bytes accordingly.
 		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.ProcessExecution{
+			workflow.ExecutionRequest{
 				ProcessID: pid.Get(t),
 				StartTime: ts.Get(t),
 				CreatedAt: ts.Get(t),

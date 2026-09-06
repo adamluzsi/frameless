@@ -13,18 +13,18 @@ import (
 )
 
 func TestWorkflowLockerFactory(t *testing.T) {
-	subject := &memory.LockerFactory[workflow.ProcessID, workflow.ProcessLock]{}
+	subject := &memory.LockerFactory[workflow.ProcessID, workflow.Lock]{}
 	t.Run("implements workflow ProcessLockers", wfcontract.ProcessLocks(subject).Test)
 }
 
-func TestWorkflowProcessExecutionQueue(t *testing.T) {
-	var subject memory.WorkflowProcessExecutionQueue
-	wfcontract.ProcessExecutionQueue(&subject).Test(t)
+func TestWorkflowQueue(t *testing.T) {
+	var subject memory.WorkflowQueue
+	wfcontract.Queue(&subject).Test(t)
 }
 
-func TestWorkflowProcessChangeBroadcast(t *testing.T) {
-	var subject memory.WorkflowProcessChangeBroadcast
-	wfcontract.ProcessChangeBroadcast(&subject).Test(t)
+func TestWorkflowNotificationBroadcast(t *testing.T) {
+	var subject memory.WorkflowNotificationBroadcast
+	wfcontract.NotificationBroadcast(&subject).Test(t)
 }
 
 func TestWorkflowProcessLocks(t *testing.T) {
