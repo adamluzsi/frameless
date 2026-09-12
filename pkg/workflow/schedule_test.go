@@ -19,7 +19,7 @@ import (
 	"go.llib.dev/testcase/let"
 )
 
-const waitTime = time.Second / 4
+const waitTime = time.Second / 8
 const deadline = time.Second
 
 func TestRuntime_Schedule_E2E(t *testing.T) {

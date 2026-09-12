@@ -116,8 +116,8 @@ func (rt Runtime) Run(ctx context.Context) error {
 	}
 
 	var g = synckit.Group{
-		ErrorOnGoexit: true,
-		Isolation:     true,
+		// ErrorOnGoexit: true,
+		Isolation: true,
 	}
 
 	var notificationsBC synckit.Broadcast[Notification]
@@ -131,7 +131,7 @@ func (rt Runtime) Run(ctx context.Context) error {
 	for range rt.getNumQueueSubscriber() {
 		g.Go(ctx, func(ctx context.Context) error {
 			return rt.withRetry(ctx, func() error {
-				notificationsCH, job := rt.listenToLocalChangeBroadcast(ctx, &notificationsBC)
+				var notificationsCH, job = rt.listenToLocalChangeBroadcast(ctx, &notificationsBC)
 				defer job.Cancel()
 				return rt.runListenToScheduling(ctx, notificationsCH)
 			})
@@ -142,7 +142,17 @@ func (rt Runtime) Run(ctx context.Context) error {
 }
 
 func (rt Runtime) listenToLocalChangeBroadcast(ctx context.Context, broadcast *synckit.Broadcast[Notification]) (<-chan Notification, synckit.Job) {
-	var notifications = make(chan Notification)
+	// Buffer the per-subscriber notification channel so that the broadcast
+	// forwarder is not blocked by the (unbuffered) channel-send waiting for
+	// a reader that may not exist — most subscribers sit idle at any given
+	// time, and an unbuffered channel would make Broadcast#Publish stall on
+	// every idle subscriber for the full outdate window, turning a single
+	// cancellation into a multi-second chain. A buffered channel lets the
+	// forwarder drop notifications for subscribers whose cancel-watching
+	// goroutine is not currently parked on the channel; the very first
+	// notification for an active subscriber still goes through the select
+	// below and can be dropped by outdate if no one is reading.
+	var notifications = make(chan Notification, 256)
 	var job = synckit.Go(ctx, func(ctx context.Context) error {
 		defer close(notifications)
 		const timeout = time.Second
@@ -265,8 +275,11 @@ waiting:
 		case (ProcessSchedule{}).NotificationType():
 			goto waiting
 		case (ProcessCancel{}).NotificationType():
-			_ = msg.ACK() // process execution no longer needed
-			return false
+			if n.GetProcessID().Equal(sch.ProcessID) {
+				_ = msg.ACK() // process execution no longer needed
+				return false
+			}
+			goto waiting
 		default:
 			return false
 		}

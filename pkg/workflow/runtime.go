@@ -353,31 +353,8 @@ func (rt Runtime) Terminate(ctx context.Context, pid ProcessID) (err error) {
 }
 
 func (rt Runtime) terminate(ctx context.Context, pid ProcessID) (err error) {
-	if pid.IsZero() {
-		return ErrZeroProcessID.F("workflow.Runtime#Terminate")
-	}
-	var (
-		lockContext context.Context
-		unlock      func() error
-	)
-	for {
-		var (
-			acquired bool
-			lockErr  error
-		)
-		lockContext, acquired, unlock, lockErr = rt.tryLock(ctx, pid)
-		if lockErr != nil {
-			return lockErr
-		}
-		if acquired { // no processing is running, and it is safe to terminate
-			break
-		}
-		if err := rt.Notifications.Publish(ctx, ProcessCancel{ProcessID: pid}); err != nil {
-			return err
-		}
-	}
-	defer errorkit.Finish(&err, unlock)
-	return Terminate{}.RuntimeSignalExecute(lockContext, rt, pid)
+
+	return Terminate{}.RuntimeSignalExecute(ctx, rt, pid)
 }
 
 type ctxKeyRuntime struct{}

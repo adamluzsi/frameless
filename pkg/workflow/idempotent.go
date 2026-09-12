@@ -30,6 +30,16 @@ type idempotentExecutor[E Event, ID ~string] struct {
 	// AcceptDefinition configures idempotentExecutor to let it know,
 	// the E event type supports signal persistence.
 	AcceptDefinition func(e *E, def Definition)
+	// MakeEventError, when set, returns an Event value (typically a workflow.EventError)
+	// describing the failure produced by Do. It is recorded once per genuine failure
+	// so that the workflow has a per-occurrence audit trail of what went wrong.
+	//
+	// It is only invoked for errors that are neither a workflow.RuntimeSignal
+	// (control flow) nor a workflow.Definition (happy follow-up); those are
+	// handled by commitEventsTx / handleResultDefinition respectively.
+	//
+	// When nil, no error event is recorded (the legacy behaviour).
+	MakeEventError func(id ID, path Path, err error) (EventError, error)
 }
 
 func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) {
@@ -87,6 +97,8 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, pid ProcessID) 
 
 func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID) (_ []any, rErr error) {
 	ctx = WithName(ctx, string(ie.ID))
+	baseContext := ctx
+	_ = baseContext
 
 	path := CurrentPath(ctx)
 
@@ -194,6 +206,15 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		if def, ok := err.(Definition); ok {
 			return ie.handleResultDefinition(ctx, eventsRepo, pid, path, input, def)
 		}
+		// A RuntimeSignal is the runtime's own control flow (suspend, terminate,
+		// complete, halt) and is deliberately raised by a step that ran fine.
+		// It is not a failure to be audited, so it must not produce an EventError.
+		//
+		// Everything else is a genuine failure: record it as an EventError so the
+		// process has a per-occurrence audit trail of what went wrong.
+		if !isRuntimeSignal(err) {
+			ie.recordErrorEvent(baseContext, eventsRepo, pid, path, err)
+		}
 		return nil, err
 	}
 
@@ -222,6 +243,30 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	}
 
 	return slicekit.Clone(output), nil
+}
+
+// recordErrorEvent persists an EventError describing a genuine failure from Do.
+//
+// It deliberately writes the event in a *sibling* transaction — one that is
+// not nested inside the executor's own tx — so the audit record survives the
+// rollback that commitEventsTx performs on a non-signal error. Without this,
+// every failed attempt would erase its own audit trail.
+//
+// It is best-effort: any failure to create the event is swallowed. The audit
+// record is a diagnostic, never a reason to mask the original error.
+func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, eventsRepo EventRepository, pid ProcessID, path Path, gotErr error) {
+	if ie.MakeEventError == nil {
+		return
+	}
+	eventError, err := ie.MakeEventError(ie.ID, path, gotErr)
+	if err != nil {
+		return
+	}
+	if !eventError.GetProcessID().Equal(pid) {
+		return
+	}
+	var event Event = eventError
+	_ = eventsRepo.Create(ctx, &event)
 }
 
 // handleResultDefinition will handle a Definition result from a participant's

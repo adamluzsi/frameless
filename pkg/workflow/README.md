@@ -4,6 +4,7 @@ A lightweight, code-first workflow engine for Go.
 
 - [Glossary][GLOSSARY]
 - [Definition][DEFINITION]
+- [Custom Definition][CUSTOM_DEFINITION]
 - [Participant][PARTICIPANT]
 - [Signals][SIGNAL]
 - [Condition][CONDITION]
@@ -142,12 +143,11 @@ sequence of `EventUseDefinition` entries on a process.
 
 - [ ] optimise suspending with a suspended repository
   - continuous requeueing can be exhausting to the system if the `workflow.Suspend` feature is heavily used
-- [ ] add new runtime signal: `workflow.Halt`
-  - the ability to halt completely a process, without any rescheduling could be valuable in various system designs
 - [ ] add non-testcase specific helper functions to `wftest`
 
 [GLOSSARY]: ./docs/glossary.md
 [DEFINITION]: ./docs/definition.md
+[CUSTOM_DEFINITION]: ./docs/custom-definition.md
 [PARTICIPANT]: ./docs/participant.md
 [CONDITION]: ./docs/condition.md
 [VARIABLES]: ./docs/vars.md

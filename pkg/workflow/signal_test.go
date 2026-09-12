@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftest"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -603,6 +604,7 @@ func TestTerminate(t *testing.T) {
 		events = let.Var(s, func(t *testcase.T) *memory.WorkflowEventRepository {
 			return &memory.WorkflowEventRepository{}
 		})
+		locks = wftest.ProcessLocks.Bind(s)
 	)
 
 	// subject is the system under test: the termination signal.
@@ -621,13 +623,17 @@ func TestTerminate(t *testing.T) {
 	}
 
 	s.Describe("#RuntimeSignalExecute", func(s *testcase.Spec) {
+
 		// runtime is the smallest Runtime the signal needs: it reads and
 		// writes the event history and touches nothing else. Keeping it bare
 		// is deliberate. If Terminate ever starts reaching for the queue, the
 		// locks or the participants, this spec fails loudly on a nil
 		// dependency instead of quietly passing.
 		var runtime = let.Var(s, func(t *testcase.T) workflow.Runtime {
-			return workflow.Runtime{Events: events.Get(t)}
+			return workflow.Runtime{
+				Events: events.Get(t),
+				Locks:  locks.Get(t),
+			}
 		})
 
 		act := let.Act(func(t *testcase.T) error {

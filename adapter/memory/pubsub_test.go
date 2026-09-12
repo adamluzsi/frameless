@@ -153,9 +153,26 @@ func TestQueue_implementsTransactionalMessageContext(t *testing.T) {
 		},
 	}
 
-	q := &memory.Queue[TestEntity]{}
+	q := &memory.Queue[TestEntity]{TransactionalMessageContext: true}
 
 	pubsubcontract.TransactionalMessageContext(q, q, pubsubConfig).Test(t)
+}
+
+func TestQueue_implementsNonTransactionalMessageContext(t *testing.T) {
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeData: func(tb testing.TB) TestEntity {
+			v := makeTestEntity(tb)
+			v.Data = testcase.ToT(&tb).Random.UUID()
+			return v
+		},
+	}
+
+	q := &memory.Queue[TestEntity]{}
+
+	pubsubcontract.NonTransactionalMessageContext(q, q, pubsubConfig).Test(t)
 }
 
 func TestQueue_implementsTransactionalPublisher(t *testing.T) {

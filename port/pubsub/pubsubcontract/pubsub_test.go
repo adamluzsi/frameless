@@ -152,7 +152,7 @@ func TestTransactionalMessageContext(t *testing.T) {
 		},
 	}
 
-	q := &memory.Queue[TestEntity]{}
+	q := &memory.Queue[TestEntity]{TransactionalMessageContext: true}
 
 	pubsubcontract.TransactionalMessageContext(q, q, pubsubConfig).Test(t)
 }

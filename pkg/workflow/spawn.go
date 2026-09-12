@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/validate"
@@ -32,6 +33,26 @@ type Spawn struct {
 	//
 	// The transferred values must be encodable by the Runtime#Codec.
 	Vars VarMapping
+}
+
+func iterChildren(ctx context.Context, er EventRepository, parentID ProcessID) iterkit.SeqE[ProcessID] {
+	return func(yield func(ProcessID, error) bool) {
+		for event, err := range er.FindByProcessID(ctx, parentID) {
+			if err != nil {
+				if !yield(ProcessID{}, err) {
+					return
+				}
+				continue
+			}
+			var spawn, ok = event.(EventSpawn)
+			if !ok {
+				continue
+			}
+			if !yield(spawn.ChildID, nil) {
+				return
+			}
+		}
+	}
 }
 
 func (spawn Spawn) Validate(ctx context.Context) error {

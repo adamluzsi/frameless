@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 )
@@ -52,3 +53,21 @@ const ErrAlreadyRunningProcess errorkitlite.Error = "The given workflow process 
 const ErrNoProcessDefinition errorkitlite.Error = "The given workflow process doesn't have a workflow definition to executed, perhaps workflow.Runtime#Bind is forgotten"
 
 const ErrNoContextRuntime errorkitlite.Error = "current context doesn't have workflow.Runtime in it"
+
+type EventError struct {
+	EventID   EventID `ext:"id"`
+	ProcessID ProcessID
+	Timestamp time.Time
+
+	Error string
+	Path  Path
+
+	ParticipantID ParticipantID
+}
+
+var _ Event = EventError{}
+
+func (e EventError) EventType() EventType    { return "error" }
+func (e EventError) GetEventID() EventID     { return e.EventID }
+func (e EventError) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventError) GetTimestamp() time.Time { return e.Timestamp }

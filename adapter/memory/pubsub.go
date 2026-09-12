@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"math"
 	"runtime"
 	"sort"
 	"sync"
@@ -34,6 +33,10 @@ type Queue[Data any] struct {
 	// SortLessFunc will define how to sort data, when we look for what message to handle next.
 	// if not supplied FIFO is the default ordering.
 	SortLessFunc func(i Data, j Data) bool
+	// TransactionalMessageContext will configure the Queue
+	// to make consequent Queue#Publish done using the Queue#Subscription's message context is done immediately,
+	// and is not needed to wait for a pubsub.Message#ACK
+	TransactionalMessageContext bool
 
 	m    sync.RWMutex
 	msgs []*queueMessage[Data]
@@ -89,13 +92,21 @@ func (q *Queue[Data]) blockingWait(ctx context.Context, data Data) error {
 
 func (q *Queue[Data]) rIter() iter.Seq[*queueMessage[Data]] {
 	return func(yield func(*queueMessage[Data]) bool) {
+		// Take a sorted snapshot of the queue under the write lock,
+		// then release the lock before yielding each message.
+		//
+		// Holding q.m for the whole iteration would let the busy-wait loop
+		// in take() starve any concurrent publisher that needs the write
+		// lock to enqueue a new message: as long as one reader keeps the
+		// RLock, RWMutex keeps the writer waiting, and a steady stream of
+		// (re)acquisitions from other workers can keep that reader present
+		// forever.
 		q.m.Lock()
-		q.sort(q.msgs)
+		var snapshot = append([]*queueMessage[Data](nil), q.msgs...)
+		q.sort(snapshot)
 		q.m.Unlock()
 
-		q.m.RLock()
-		defer q.m.RUnlock()
-		for _, msg := range q.msgs {
+		for _, msg := range snapshot {
 			if !yield(msg) {
 				return
 			}
@@ -118,11 +129,19 @@ do:
 	}
 
 	// TransactionalMessageContext support
+	//
+	// When TransactionalMessageContext is enabled, we wrap the message delivery in a
+	// transaction so that any Publish call performed under msg.Context() is committed
+	// on ACK and rolled back on NACK.
+	//
+	// When it is disabled (the default), the message context is a plain passthrough:
+	// publishes performed under msg.Context() land in the queue immediately and are
+	// unaffected by the delivery's ACK/NACK outcome.
 	var tx context.Context = ctx
 	var txCommit, txRollback func() error
 	txCommit = func() error { return nil }
 	txRollback = func() error { return nil }
-	if !q.Blocking {
+	if !q.Blocking && q.TransactionalMessageContext {
 		var err error
 		tx, err = q.BeginTx(tx)
 		if err != nil {
@@ -145,7 +164,15 @@ do:
 		if msg.take(s.id) {
 			var ack, nack func() error
 
+			var msgContext context.Context = tx
+			var msgContextCancel = func() {}
+
+			if !q.TransactionalMessageContext {
+				msgContext, msgContextCancel = context.WithCancel(ctx)
+			}
+
 			ack = func() error {
+				defer msgContextCancel()
 				if err := txCommit(); err != nil {
 					// Transaction commit failed, so the message should be released
 					// so it can be picked up again. We cannot call nack() because
@@ -165,13 +192,14 @@ do:
 			}
 
 			nack = func() error {
+				defer msgContextCancel()
 				q.m.Lock()
 				defer q.m.Unlock()
 				msg.release(s.id)
 				return txRollback()
 			}
 
-			return msg, tx, ack, nack, nil
+			return msg, msgContext, ack, nack, nil
 		}
 
 		runtime.Gosched()
@@ -275,26 +303,25 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 	// the goroutine starts iterating the subscription) is correctly included
 	// under Volatile semantics. If we set createdAt inside the closure body,
 	// such a publish would have qm.timestamp < s.createdAt and be filtered out.
-	createdAt := clock.Now()
-	return func(yield func(pubsub.Message[Data], error) bool) {
+	var createdAt = clock.Now()
+	var subscribe = func() *QueueSubscription[Data] {
+		q.m.Lock()
+		defer q.m.Unlock()
 		sub := &QueueSubscription[Data]{
 			ctx:       ctx,
 			q:         q,
 			createdAt: createdAt,
 		}
-		for i := 1; i < math.MaxInt; i++ {
-			q.m.Lock()
-			sub.id = subscriptionID(i)
-			if q.subs == nil {
-				q.subs = make(map[subscriptionID]*QueueSubscription[Data])
-			}
-			if _, ok := q.subs[sub.id]; !ok {
-				q.subs[sub.id] = sub
-				q.m.Unlock()
-				break
-			}
-			q.m.Unlock()
+		id := mapkit.FreeKey(q.subs, 1, sub.nextID)
+		sub.id = id
+		if q.subs == nil {
+			q.subs = make(map[subscriptionID]*QueueSubscription[Data])
 		}
+		q.subs[id] = sub
+		return sub
+	}
+	return func(yield func(pubsub.Message[Data], error) bool) {
+		var sub = subscribe()
 		defer sub.Close()
 		for sub.Next() {
 			v := sub.Value()
@@ -369,6 +396,11 @@ type QueueSubscription[Data any] struct {
 
 	value *pubsubMessage[Data]
 	err   error
+}
+
+func (pss *QueueSubscription[Data]) nextID(current subscriptionID) subscriptionID {
+	current++
+	return current
 }
 
 func (pss *QueueSubscription[Data]) Close() error {

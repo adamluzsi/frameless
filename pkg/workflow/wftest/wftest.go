@@ -3,6 +3,7 @@ package wftest
 import (
 	"context"
 	"fmt"
+	"iter"
 	"reflect"
 	"testing"
 	"time"
@@ -98,6 +99,9 @@ func LetParticipant[Func any](s *testcase.Spec, mk func(t *testcase.T) Func) (te
 	return LetParticipantWithID(s, participantID, mk), participantID
 }
 
+// LetParticipantWithID is LetParticipant with the option to specify the participantID
+// in case if you MUST provide it yourself,
+// and you are not happy with the randomly assigned one in LetParticipant.
 func LetParticipantWithID[Func any](s *testcase.Spec, pid testcase.Var[workflow.ParticipantID], mk func(t *testcase.T) Func) testcase.Var[Func] {
 	typ := reflect.TypeFor[Func]()
 	if typ.Kind() != reflect.Func {
@@ -346,6 +350,22 @@ func (c *C) WaitForSpawn(t *testcase.T, parentID workflow.ProcessID) {
 			assert.NotEmpty(t, spawn.Timestamp)
 		}, "expected that one of the workflow events signaling about a sub workflow spawn event")
 	})
+}
+
+func IterChildren(tb testing.TB, er workflow.EventRepository, parentID workflow.ProcessID) iter.Seq[workflow.ProcessID] {
+	assert.NotNil(tb, er)
+	return func(yield func(workflow.ProcessID) bool) {
+		for event, err := range er.FindByProcessID(tb.Context(), parentID) {
+			assert.NoError(tb, err)
+			spawn, ok := event.(workflow.EventSpawn)
+			if !ok {
+				continue
+			}
+			if !yield(spawn.ChildID) {
+				return
+			}
+		}
+	}
 }
 
 func (c *C) ChildrenCompletionAre(tc *testcase.T, parentID workflow.ProcessID, done bool) {

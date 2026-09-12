@@ -133,6 +133,20 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, pid ProcessID) (
 		AcceptDefinition: func(e *EventParticipant, def Definition) {
 			e.Definition = def
 		},
+		MakeEventError: func(id ParticipantID, path Path, err error) (EventError, error) {
+			eventID, mErr := MakeEventID()
+			if mErr != nil {
+				return EventError{}, mErr
+			}
+			return EventError{
+				EventID:       eventID,
+				ProcessID:     pid,
+				Timestamp:     timeNow(),
+				Path:          path,
+				Error:         err.Error(),
+				ParticipantID: id,
+			}, nil
+		},
 	}
 	return exec.Execute(ctx, pid)
 }
