@@ -2,6 +2,8 @@ package workflow_test
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -885,32 +887,33 @@ func TestRuntime(t *testing.T) {
 				isCancelled          = let.VarOf(s, false)
 			)
 
-			_, pid := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+			_, parentPAID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 				return func(ctx context.Context) error {
 					isParticipantStarted.Set(t, true)
 					select {
 					case <-ctx.Done():
 						isCancelled.Set(t, true)
-					case <-time.After(time.Minute):
-						// safety net so a missed cancellation cannot wedge the
-						// Runtime worker goroutine past the test's lifetime
+					case <-t.Done():
 					}
 					return nil
 				}
 			})
 
+			parentDef := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.ExecuteParticipant{ID: parentPAID.Get(t)}
+			})
+
 			s.Before(func(t *testcase.T) {
 				t.Go(runtime.Get(t).Run)
 
-				def := workflow.ExecuteParticipant{ID: pid.Get(t)}
-				assert.NoError(t, runtime.Get(t).Spawn(t.Context(), processID.Get(t), def))
+				assert.NoError(t, runtime.Get(t).Spawn(t.Context(), processID.Get(t), parentDef.Get(t)))
 
 				t.Eventually(func(t *testcase.T) {
 					assert.True(t, isParticipantStarted.Get(t))
 				})
 			})
 
-			s.Then("the in-flight participant is still recorded as terminated", func(t *testcase.T) {
+			s.Then("the in-flight participant is terminated", func(t *testcase.T) {
 				var before = mustHistory(t, runtime.Get(t), processID.Get(t))
 
 				assert.NoError(t, act(t))
@@ -926,11 +929,95 @@ func TestRuntime(t *testing.T) {
 					assert.MessageF("the Process reads as terminated after the call"))
 			})
 
-			s.Then("the in-flight process is cancelled", func(t *testcase.T) {
+			s.Then("the in-flight process is context cancelled", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
 				t.Eventually(func(t *testcase.T) {
 					assert.True(t, isCancelled.Get(t))
+				})
+			})
+
+			s.And("if the process had a child too", func(s *testcase.Spec) {
+
+				var (
+					startedChildN = let.Var[*int32](s, func(t *testcase.T) *int32 {
+						var n int32
+						return &n
+					})
+					cancelledChildN = let.Var[*int32](s, func(t *testcase.T) *int32 {
+						var n int32
+						return &n
+					})
+				)
+
+				_, childPAID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+					return func(ctx context.Context) error {
+						atomic.AddInt32(startedChildN.Get(t), 1)
+						select {
+						case <-ctx.Done():
+							atomic.AddInt32(cancelledChildN.Get(t), 1)
+						case <-t.Done():
+						}
+						return nil
+					}
+				})
+
+				childrenN := let.IntB(s, 1, 7)
+				parentDef.Let(s, func(t *testcase.T) workflow.Definition {
+					var children workflow.Sequence
+					for i := range childrenN.Get(t) {
+						children = append(children, workflow.Spawn{
+							Name:       workflow.SpawnName(fmt.Sprintf("child[%d]", i)),
+							Definition: workflow.ExecuteParticipant{ID: childPAID.Get(t)},
+						})
+					}
+					return workflow.Sequence{
+						children,
+						parentDef.Super(t),
+					}
+				})
+
+				s.Before(func(t *testcase.T) {
+					t.Eventually(func(t *testcase.T) {
+						assert.Equal(t, int32(childrenN.Get(t)), atomic.LoadInt32(startedChildN.Get(t)),
+							"expected that all children are up and running")
+					})
+				})
+
+				s.Then("the parent is marked terminated", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					t.Eventually(func(t *testcase.T) {
+						isTerminated, err := workflow.IsTerminated(t.Context(),
+							runtime.Get(t).Events, processID.Get(t))
+						assert.NoError(t, err)
+						assert.True(t, isTerminated, assert.MessageF(
+							"after rt.Terminate, the parent's event history must report the "+
+								"Process as called off"))
+					})
+				})
+
+				s.Then("spawned children are terminated", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					for childID := range wftest.IterChildren(t, runtime.Get(t).Events, processID.Get(t)) {
+						t.Eventually(func(t *testcase.T) {
+							isTerminated, err := workflow.IsTerminated(t.Context(), runtime.Get(t).Events, childID)
+							assert.NoError(t, err)
+							assert.True(t, isTerminated)
+						})
+					}
+				})
+
+				s.Then("spawned children are cancelled", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					t.Eventually(func(t *testcase.T) {
+						t.Eventually(func(t *testcase.T) {
+							assert.Equal(t, int32(childrenN.Get(t)), atomic.LoadInt32(cancelledChildN.Get(t)),
+								"expected that all children to be cancelled")
+						})
+					})
 				})
 			})
 		})

@@ -367,8 +367,10 @@ the change with a note that calls out the format change.
 | "How do I test my adapter and my codec?" | [Testing][TESTING]        |
 | "Why must definitions be data at all?"   | [End Users][END_USER]     |
 | "What is that word again?"               | [Glossary][GLOSSARY]      |
+| "I want to author a definition as JSON." | [Definitions as JSON][JSON_REF] |
 
 [DEFINITION]: ./definition.md
 [TESTING]: ./testing.md
 [END_USER]: ./end-user.md
 [GLOSSARY]: ./glossary.md
+[JSON_REF]: ../../.agents/skills/frameless-workflow/references/definitions-as-json.md

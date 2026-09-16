@@ -330,31 +330,48 @@ An unknown `SpawnName` is an error, not a silent pass.
 Implement two methods and you are a first-class citizen of the tree:
 
 ```go
-type AwaitApproval struct {
-	Approver workflow.VarName
+// ChargeOrder is a named, reusable unit: take an amount from one variable,
+// pass it to a registered participant, and record the receipt.
+// The body could also be written as a workflow.Sequence{}, but a named type
+// travels through the codec with a stable @type tag, which makes it auditable
+// and reviewable in a UI.
+type ChargeOrder struct {
+    Amount workflow.VarName
 }
 
-var _ workflow.Definition = AwaitApproval{}
+var _ workflow.Definition = ChargeOrder{}
 
-func (AwaitApproval) Error() string { return "acme::await-approval" }
+func (ChargeOrder) Error() string { return "acme::charge-order" }
 
-func (d AwaitApproval) Execute(ctx context.Context, pid workflow.ProcessID) error {
-	ctx = workflow.WithName(ctx, "await-approval") // contribute a path segment
+func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error {
+    // Contribute a path segment so this step is distinct from its siblings
+    // in the event log. Without it, two sibling ChargeOrder values would
+    // share a path and the second one would replay the first's events.
+    ctx = workflow.WithName(ctx, "charge-order")
 
-	repo, err := workflow.LookupEventsRepository(ctx)
-	if err != nil {
-		return err
-	}
-	vars := workflow.Vars{ProcessID: pid, EventsRepository: repo}
+    repo, err := workflow.LookupEventsRepository(ctx)
+    if err != nil {
+        return err
+    }
+    vars := workflow.Vars{ProcessID: pid, EventsRepository: repo}
 
-	approver, ok, err := vars.Lookup(ctx, d.Approver)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return workflow.Suspend{} // nobody signed off yet — come back later
-	}
-	return vars.Set(ctx, "approved_by", approver)
+    amount, ok, err := vars.Lookup(ctx, d.Amount)
+    if err != nil {
+        return err
+    }
+    if !ok {
+        // Missing input is an authoring error, not a workflow-level condition.
+        return workflow.ErrFatal.F("missing input variable %q", d.Amount)
+    }
+
+    // Delegate the actual side effect to a registered participant. Doing the
+    // I/O in a participant keeps the domain work out of the definition tree
+    // and gives you its event-cache boundary for free.
+    return workflow.ExecuteParticipant{
+        ID:     "charge-card",
+        Input:  []workflow.VarName{d.Amount},
+        Output: []workflow.VarName{"receipt"},
+    }.Execute(ctx, pid)
 }
 ```
 
@@ -362,25 +379,33 @@ Three things make this well-behaved:
 
 1. **`WithName`** adds a path segment, so nested steps get distinct identities.
 2. **No fields that cannot serialise** — just a `VarName`.
-3. **Idempotent** — `Vars#Set` is a no-op when the value is already there, and
-   returning `Suspend{}` leaves no partial state behind.
+3. **Stateless and replay-safe** — the definition reads what the tree has
+   accumulated, writes what it produces, and never assumes the runtime will
+   come back later with a different value. If you need to wait on something
+   the process does not own (a payment, a webhook, an external approval),
+   that is a participant's job — return a `RuntimeSignal` from the
+   participant, not from the definition.
 
 Register it with your [Codec][CODEC] before you rely on persistence, and reach
 for the [contract tests][TESTING] to prove the round-trip.
+
+For the full checklist — path identity, scoping, codec registration,
+migration, and testing — see [Custom Definitions][CUSTOM_DEFINITION].
 
 ---
 
 ## 8. Where to go next
 
-| Your question                                       | Read                        |
-| --------------------------------------------------- | --------------------------- |
-| "How do I write the yes/no part?"                   | [Conditions][CONDITION]     |
-| "How do I expose my domain logic?"                  | [Participants][PARTICIPANT] |
-| "How do scoping and `Global` really work?"          | [Variables][VARIABLES]      |
-| "How do I pause, stop or swap a running workflow?"  | [Signals][SIGNAL]           |
-| "How do I persist definitions to my own database?"  | [Codec][CODEC]              |
-| "How do I test a definition?"                       | [Testing][TESTING]          |
-| "What is that word again?"                          | [Glossary][GLOSSARY]        |
+| Your question                                       | Read                            |
+| --------------------------------------------------- | ------------------------------- |
+| "How do I write the yes/no part?"                   | [Conditions][CONDITION]         |
+| "How do I expose my domain logic?"                  | [Participants][PARTICIPANT]     |
+| "How do scoping and `Global` really work?"          | [Variables][VARIABLES]          |
+| "How do I pause, stop or swap a running workflow?"  | [Signals][SIGNAL]               |
+| "How do I persist a definition to my own database?" | [Codec][CODEC]                  |
+| "How do I write a reusable custom definition?"      | [Custom Definitions][CUSTOM_DEFINITION] |
+| "How do I test a definition?"                       | [Testing][TESTING]              |
+| "What is that word again?"                          | [Glossary][GLOSSARY]            |
 
 [GETTING_STARTED]: ./getting-started.md
 [GLOSSARY]: ./glossary.md
@@ -391,3 +416,4 @@ for the [contract tests][TESTING] to prove the round-trip.
 [END_USER]: ./end-user.md
 [TESTING]: ./testing.md
 [SIGNAL]: ./signal.md
+[CUSTOM_DEFINITION]: ./custom-definition.md

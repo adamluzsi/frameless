@@ -3,6 +3,9 @@ package workflow
 import (
 	"context"
 	"time"
+
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/port/comproto"
 )
 
 // Complete is a completion RuntimeSignal.
@@ -74,7 +77,7 @@ type EventCompleted struct {
 
 var _ Event = (*EventCompleted)(nil)
 
-func (EventCompleted) EventType() EventType      { return "workflow::completed" }
+func (EventCompleted) EventType() EventType      { return "completed" }
 func (e EventCompleted) GetEventID() EventID     { return e.EventID }
 func (e EventCompleted) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventCompleted) GetTimestamp() time.Time { return e.Timestamp }
@@ -87,10 +90,64 @@ var _ RuntimeSignal = Terminate{}
 
 func (sig Terminate) Error() string { return "workflow::terminate" }
 
-func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) error {
+func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
+	return sig.sigTERM(ctx, rt, id)
+}
+
+func (sig Terminate) sigTERM(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
+	if id.IsZero() {
+		return ErrZeroProcessID.F("terminate")
+	}
+	var (
+		lockContext context.Context
+		unlock      func() error
+	)
+	// Give the in-flight worker a moment to react to the cancel before
+	// we re-check the lock. Without this wait, sigTERM would spin as a
+	// tight CPU loop: each iteration publishes another cancel and tries
+	// to re-acquire the lock before the worker has had a chance to
+	// observe it and release the lock. The wait here is what lets the
+	// worker drain its current step, write its outcome, and return from
+	// Execute so the lock becomes available.
+	const cancelPropagationWait = 10 * time.Millisecond
+	for {
+		var (
+			acquired bool
+			lockErr  error
+		)
+		lockContext, acquired, unlock, lockErr = rt.tryLock(ctx, id)
+		if lockErr != nil {
+			return lockErr
+		}
+		if acquired { // no processing is running, and it is safe to terminate
+			break
+		}
+		if err := rt.Notifications.Publish(ctx, ProcessCancel{ProcessID: id}); err != nil {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(cancelPropagationWait):
+		}
+	}
+	defer errorkit.Finish(&rerr, unlock)
+	return sig.terminate(lockContext, rt, id)
+}
+
+func (sig Terminate) terminate(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
+	ctx, err := rt.Events.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rerr, rt.Events, ctx)
+	var children []ProcessID
 	for event, err := range rt.Events.FindByProcessID(ctx, id) {
 		if err != nil {
 			return err
+		}
+		if spawn, ok := event.(EventSpawn); ok {
+			children = append(children, spawn.ChildID)
 		}
 		if _, ok := event.(EventCompleted); ok {
 			return nil
@@ -99,7 +156,7 @@ func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pr
 			return nil
 		}
 	}
-	var eventID, err = MakeEventID()
+	eventID, err := MakeEventID()
 	if err != nil {
 		return err
 	}
@@ -108,7 +165,15 @@ func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pr
 		ProcessID: id,
 		Timestamp: timeNow(),
 	}
-	return rt.Events.Create(ctx, &event)
+	if err := rt.Events.Create(ctx, &event); err != nil {
+		return err
+	}
+	for _, childID := range children {
+		if err := sig.RuntimeSignalExecute(ctx, rt, childID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // IsTerminated reports whether pid was called off — terminated without
@@ -148,7 +213,7 @@ type EventTerminated struct {
 
 var _ Event = (*EventTerminated)(nil)
 
-func (EventTerminated) EventType() EventType      { return "workflow::terminated" }
+func (EventTerminated) EventType() EventType      { return "terminated" }
 func (e EventTerminated) GetEventID() EventID     { return e.EventID }
 func (e EventTerminated) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventTerminated) GetTimestamp() time.Time { return e.Timestamp }

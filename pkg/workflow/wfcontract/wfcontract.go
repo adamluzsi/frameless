@@ -278,20 +278,30 @@ func ProcessLocks(subject workflow.ProcessLocks,
 // published Schedules must be eventually delivered to subscribers ordered by
 // Schedule.StartTime ascending. Publishers must NOT block waiting for
 // subscriber acknowledgement — a blocking queue would deadlock the runtime.
+//
+// The workflow queue is also expected to be NonTransactional: publishes
+// performed under a delivery's message context (notably Spawn's child
+// schedule, which is enqueued from inside the parent's execution) must be
+// visible to other workers as soon as they are made, and must not be rolled
+// back by NACK. The runtime guarantees repeatability through the event log
+// (replay-safe execution, per-process locks, EventCompleted short-circuit),
+// so it has no use for transactional delivery semantics — and would be
+// broken by them, because a busy parent would otherwise hold its spawned
+// children's schedule entries invisible until its own execution ACKed.
 func Queue(subject workflow.Queue, opts ...pubsubcontract.Option[workflow.ExecutionRequest]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig[pubsubcontract.Config[workflow.ExecutionRequest], pubsubcontract.Option[workflow.ExecutionRequest]](opts)
 
+	var sorting = func(items []workflow.ExecutionRequest) {
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].StartTime.Before(items[j].StartTime)
+		})
+	}
+
 	testcase.RunSuite(s,
-		pubsubcontract.Queue[workflow.ExecutionRequest](subject, subject, c),
-		pubsubcontract.Ordering[workflow.ExecutionRequest](subject, subject,
-			func(items []workflow.ExecutionRequest) {
-				sort.Slice(items, func(i, j int) bool {
-					return items[i].StartTime.Before(items[j].StartTime)
-				})
-			},
-			c,
-		),
+		pubsubcontract.Queue(subject, subject, c),
+		pubsubcontract.Ordering(subject, subject, sorting, c),
+		pubsubcontract.NonTransactionalMessageContext(subject, subject, c),
 	)
 
 	return s.AsSuite("Queue")

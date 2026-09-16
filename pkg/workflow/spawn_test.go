@@ -75,6 +75,9 @@ func TestSpawn(t *testing.T) {
 		act := let.Act(func(t *testcase.T) error {
 			return c.ActExecute(t)
 		})
+		spawn := let.Act(func(t *testcase.T) error {
+			return c.Runtime.Get(t).Spawn(t.Context(), c.ProcessID.Get(t), c.Definition.Get(t))
+		})
 
 		s.Then("workflow execution will NOT wait on the subprocess", func(t *testcase.T) {
 			assert.Within(t, deadline, func(ctx context.Context) {
@@ -134,8 +137,67 @@ func TestSpawn(t *testing.T) {
 			c.ProcessCompletionIs(t, c.ProcessID.Get(t), true)
 			c.ChildrenCompletionAre(t, c.ProcessID.Get(t), true)
 		})
-	})
 
+		s.When("the parent process remains busy after spawning", func(s *testcase.Spec) {
+			var (
+				parentBusy    = let.Phaser(s).EagerLoading(s)
+				parentBlocked = let.VarOf(s, false)
+				_, parentPAID = wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+					return func(ctx context.Context) error {
+						parentBlocked.Set(t, true)
+						parentBusy.Get(t).Wait()
+						return nil
+					}
+				})
+			)
+
+			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					c.Definition.Super(t), // og spawn
+					workflow.ExecuteParticipant{ID: parentPAID.Get(t)},
+				}
+			})
+
+			c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+				rt := c.Runtime.Super(t)
+				if rt.NumQueueSubscriber < 2 {
+					// ensure concurrent processing
+					rt.NumQueueSubscriber = 2
+				}
+				return rt
+			})
+
+			s.Before(func(t *testcase.T) {
+				assert.Assert(t, 1 < c.Runtime.Get(t).NumQueueSubscriber,
+					"expected that num queue s")
+			})
+
+			s.Then("the spawned child is executed even though the parent is still blocked", func(t *testcase.T) {
+				assert.NoError(t, spawn(t))
+
+				t.Eventually(func(t *testcase.T) {
+					assert.True(t, parentBlocked.Get(t),
+						"precondition: the parent must reach its blocking participant, proving it already spawned the child")
+				})
+
+				var events = c.EventRepository.Get(t)
+
+				t.Eventually(func(t *testcase.T) {
+					assert.NotEmpty(t, iterkit.Count(wftest.IterChildren(t, events, c.ProcessID.Get(t))))
+				})
+
+				blockingParticipantPhaser.Get(t).Finish()
+
+				for childID := range wftest.IterChildren(t, events, c.ProcessID.Get(t)) {
+					assert.Eventually(t, deadline, func(t testing.TB) {
+						ok, err := workflow.IsCompleted(t.Context(), events, childID)
+						assert.NoError(t, err)
+						assert.Assert(t, ok, "child should finish up eventually, while the parent is still busy")
+					})
+				}
+			})
+		})
+	})
 }
 
 // TestSpawn_Vars asserts the parent->child variable forwarding
@@ -596,4 +658,91 @@ func TestJoin_multiStagesJoin(tt *testing.T) {
 	})
 
 	c.ProcessCompletionIs(t, pid, true)
+}
+
+// TestSpawn_TerminateCascade asserts that calling rt.Terminate against a
+// parent Process cascades the termination down to its spawned children, so
+// the entire sub-workflow tree is unwound by a single external Terminate
+// call rather than leaving busy children running.
+//
+// Scenario:
+//   - The parent definition Spawns a child and then Joins on it.
+//   - The child's only step is a blocking participant (phaser.Wait), so the
+//     child stays busy while the parent reaches the Join and Suspends.
+//   - rt.Terminate(ctx, parentPID) is then called from outside.
+//
+// Expectation:
+//   - The parent is marked terminated (EventTerminated recorded).
+//   - The child is also marked terminated, without the test needing to drive
+//     the child's blocking participant to completion first.
+//   - The child never reaches its natural completion (EventCompleted), so
+//     the log distinguishes "called off" from "finished".
+func TestTerminate_cascadeSpawn(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+
+	_, blockingParticipantID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			select {
+			case <-ctx.Done(): // waits until cancellation
+			case <-t.Done():
+			}
+			return nil
+		}
+	})
+
+	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+		return workflow.Sequence{
+			workflow.Spawn{
+				Name: workflow.SpawnName(t.Random.UUID()),
+				Definition: workflow.Sequence{
+					workflow.ExecuteParticipant{ID: blockingParticipantID.Get(t)},
+				},
+			},
+			workflow.Join{},
+		}
+	})
+
+	s.Before(func(t *testcase.T) {
+		assert.ErrorIs(t, c.ActExecute(t), workflow.Suspend{}, assert.MessageF(
+			"arrangement: the parent must reach Join and Suspend while "+
+				"the child is still busy on its blocking participant"))
+		c.WaitForSpawn(t, c.ProcessID.Get(t))
+	})
+
+	// act: terminate the parent from outside.
+	act := let.Act(func(t *testcase.T) error {
+		return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
+	})
+
+	s.Then("the parent is marked terminated", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		t.Eventually(func(t *testcase.T) {
+			isTerminated, err := workflow.IsTerminated(t.Context(),
+				c.EventRepository.Get(t), c.ProcessID.Get(t))
+			assert.NoError(t, err)
+			assert.True(t, isTerminated, assert.MessageF(
+				"after rt.Terminate, the parent's event history must report the "+
+					"Process as called off"))
+		})
+	})
+
+	s.Then("the spawned child is also terminated", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		for childID := range wftest.IterChildren(t, c.EventRepository.Get(t), c.ProcessID.Get(t)) {
+			t.Eventually(func(t *testcase.T) {
+
+				isTerminated, err := workflow.IsTerminated(t.Context(),
+					c.EventRepository.Get(t), childID)
+				assert.NoError(t, err)
+				assert.True(t, isTerminated, assert.MessageF(
+					"a single rt.Terminate against the parent must cascade to the "+
+						"spawned child so the caller does not need to walk the spawn "+
+						"tree by hand; the child's event history must report it as "+
+						"called off without first driving its blocking participant"))
+			})
+		}
+	})
 }
