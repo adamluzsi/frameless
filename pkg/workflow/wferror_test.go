@@ -34,11 +34,13 @@ func TestEventError_participant(t *testing.T) {
 	var (
 		callCount = let.VarOf(s, 0)
 		// failUntil defines how many times the participant should fail before it
-		// returns successfully. Used by tests that exercise the "fails N times
-		// then passes" pattern, so the test can cleanly observe N distinct
-		// EventError events AND a successful final attempt (with its downstream
-		// side effects, e.g. output variable values) in a single spec.
-		failUntil = let.VarOf(s, 0)
+		// returns successfully. Default is 1: the first call fails (so the happy
+		// path test sees a single EventError). Tests that exercise the "fails N
+		// times then passes" pattern override this to N, so the test can cleanly
+		// observe N distinct EventError events AND a successful final attempt
+		// (with its downstream side effects, e.g. output variable values) in a
+		// single spec. Tests that expect a successful execution set it to 0.
+		failUntil = let.VarOf(s, 1)
 		// expErr is the error the participant returns when it fails.
 		// let.Error(s) yields a fresh random error per test, so the spec
 		// exercises the runtime's error classification behaviour against a
