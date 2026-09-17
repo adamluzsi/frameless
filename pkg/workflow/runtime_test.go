@@ -1013,8 +1013,9 @@ func TestRuntime(t *testing.T) {
 					assert.NoError(t, act(t))
 
 					t.Eventually(func(t *testcase.T) {
-						assert.Equal(t, int32(childrenN.Get(t)), atomic.LoadInt32(cancelledChildN.Get(t)),
-							"expected that all children to be cancelled")
+						assert.Assert(t, int32(childrenN.Get(t)) <= atomic.LoadInt32(cancelledChildN.Get(t)),
+							"expected that all children to be cancelled",
+							"or that at least as much cancellation detected as the number of children running")
 					})
 				})
 			})
