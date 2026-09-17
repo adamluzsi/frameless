@@ -340,6 +340,19 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 		return nil
 	}
 
+	// A context.Canceled returned from the in-flight participant work means
+	// the work was aborted by a cancellation that arrived mid-flight (e.g.
+	// Terminate's ProcessCancel notification, or a parent ctx cancellation).
+	// Re-queueing in that case would re-invoke the participant as if it had
+	// never ran: the EventParticipant audit row was never written, the
+	// idempotency check on the next attempt would not find a match, and the
+	// participant would run a second time. Skip the re-queue and ACK the
+	// message so the runtime keeps the outcome the next Terminate/Complete pass
+	// observes on disk.
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
 	switch {
 	case err == nil:
 		return nil

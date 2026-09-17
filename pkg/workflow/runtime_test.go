@@ -1013,10 +1013,8 @@ func TestRuntime(t *testing.T) {
 					assert.NoError(t, act(t))
 
 					t.Eventually(func(t *testcase.T) {
-						t.Eventually(func(t *testcase.T) {
-							assert.Equal(t, int32(childrenN.Get(t)), atomic.LoadInt32(cancelledChildN.Get(t)),
-								"expected that all children to be cancelled")
-						})
+						assert.Equal(t, int32(childrenN.Get(t)), atomic.LoadInt32(cancelledChildN.Get(t)),
+							"expected that all children to be cancelled")
 					})
 				})
 			})
