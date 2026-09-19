@@ -57,7 +57,7 @@ type _LoggerStrategy struct {
 	strategy strategy
 }
 
-type HijackFunc func(ctc context.Context, level Level, msg string, fields Fields)
+type HijackFunc func(ctx context.Context, level Level, msg string, fields Fields)
 
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()

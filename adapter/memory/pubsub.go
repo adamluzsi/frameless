@@ -187,7 +187,10 @@ do:
 				q.msgs = slicekit.Filter(q.msgs, func(m *queueMessage[Data]) bool {
 					return m.id != msg.id
 				})
-				msg.release(s.id)
+				// Other consumers may still hold this message in a queue snapshot.
+				// Mark it terminal rather than releasing it for another delivery;
+				// a later implicit NACK must not make it claimable either.
+				atomic.StoreInt32((*int32)(&msg.takenBy), int32(acknowledgedSubscriptionID))
 				return nil
 			}
 
@@ -509,6 +512,8 @@ type queueMessage[Data any] struct {
 }
 
 type subscriptionID int32
+
+const acknowledgedSubscriptionID subscriptionID = -1
 
 func (msg *queueMessage[Data]) take(subID subscriptionID) bool {
 	for {

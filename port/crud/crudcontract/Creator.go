@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
@@ -76,39 +77,31 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		s.Test(`concurrent calls to Create are race-free`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 
-			type pair struct {
-				ptr *ENT
-				id  ID
-			}
-			var pairs []pair
+			var ops []func()
 			t.Random.Repeat(2, 5, func() {
 				v := c.MakeEntity(t)
-				id, hasID := lookupNonZeroID(c, v)
-				if !hasID {
-					return
-				}
-				pairs = append(pairs, pair{ptr: &v, id: id})
-			})
-
-			var ops []func()
-			for i := range pairs {
-				p := pairs[i]
 				ops = append(ops, func() {
-					assert.NoError(t, subject.Create(ctx, p.ptr))
-				})
-				t.Cleanup(func() {
-					if byIDDeleter, ok := subject.(crud.ByIDDeleter[ID]); ok {
-						_ = byIDDeleter.DeleteByID(ctx, p.id)
+					assert.NoError(t, subject.Create(ctx, &v))
+
+					if ByIDFinderOK {
+						if id, ok := lookupNonZeroID(c, v); ok {
+							c.Helper().IsPresent(t, byIDF, ctx, id)
+						}
 					}
 				})
-			}
+				if byIDDeleter, ok := subject.(crud.ByIDDeleter[ID]); ok {
+					t.Cleanup(func() {
+						if id, ok := lookupNonZeroID(c, v); ok {
+							_ = byIDDeleter.DeleteByID(ctx, id)
+						}
+					})
+				}
+			})
+
+			defer spechelper.TryCleanup(t, c.MakeContext(t), subject)
+
 			raceConcurrently(ops)
 
-			if ByIDFinderOK {
-				for _, p := range pairs {
-					c.Helper().IsPresent(t, byIDF, ctx, p.id)
-				}
-			}
 		})
 
 		if c.SupportIDReuse && byIDDeleterOK {

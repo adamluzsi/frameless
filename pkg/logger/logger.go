@@ -78,7 +78,8 @@ func Testing(tb testingTB) {
 	tb.Helper()
 	Stub(tb, func(l *logging.Logger) {
 		tb.Helper()
-		l.Hijack = testingTBLogger(tb)
+		l.Level = logging.LevelDebug
+		l.Hijack = testingTBLogger(l, tb)
 	})
 }
 
@@ -131,9 +132,12 @@ type testingTB interface {
 	Log(args ...any)
 }
 
-func testingTBLogger(tb testingTB) func(ctx context.Context, lvl logging.Level, msg string, fields logging.Fields) {
+func testingTBLogger(l *logging.Logger, tb testingTB) func(ctx context.Context, lvl logging.Level, msg string, fields logging.Fields) {
 	tb.Helper()
 	return func(ctx context.Context, lvl logging.Level, msg string, fields logging.Fields) {
+		if lvl.Less(l.Level) {
+			return
+		}
 		tb.Helper()
 		var parts []string
 		parts = append(parts, fmt.Sprintf("[%s] %s", lvl.String(), msg))
