@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/cache/cachecontract"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker/taskercontract"
 	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/guard/guardcontract"
@@ -26,6 +27,11 @@ import (
 
 func TestRepository(t *testing.T) {
 	logger.Testing(t)
+
+	logger.Configure(func(l *logging.Logger) {
+		l.Level = logging.LevelInfo
+	})
+
 	cm := GetConnection(t)
 
 	subject := &mariadb.Repository[Entity, EntityID]{

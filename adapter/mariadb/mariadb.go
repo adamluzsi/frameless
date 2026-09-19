@@ -752,7 +752,7 @@ func (l Locker) lock(ctx context.Context, tx *sql.Tx) (context.Context, error) {
 	context.AfterFunc(ctx, func() {
 		_ = lck.Unlock(ctx)
 	})
-	return context.WithValue(ctx, lockerCtxKey{}, lck), nil
+	return context.WithValue(ctx, lockerCtxKey{Name: l.Name}, lck), nil
 }
 
 func (l Locker) Unlock(ctx context.Context) error {
@@ -767,7 +767,7 @@ func (l Locker) Unlock(ctx context.Context) error {
 }
 
 type (
-	lockerCtxKey   struct{}
+	lockerCtxKey   struct{ Name string }
 	lockerCtxValue struct {
 		tx       *sql.Tx
 		ctx      context.Context
@@ -800,7 +800,7 @@ func (l Locker) Migrate(ctx context.Context) error {
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
-	v, ok := ctx.Value(lockerCtxKey{}).(*lockerCtxValue)
+	v, ok := ctx.Value(lockerCtxKey{Name: l.Name}).(*lockerCtxValue)
 	return v, ok
 }
 
