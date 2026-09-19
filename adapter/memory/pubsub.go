@@ -262,7 +262,12 @@ func (q *Queue[Data]) dbPublishMessages(msgs ...*queueMessage[Data]) error {
 
 func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qPublisher[Data]] {
 	return txkit.Manager[Queue[Data], queueTx[Data], qPublisher[Data]]{
-		DB: q,
+		R: q,
+		ResAdapter: func(db *Queue[Data]) qPublisher[Data] {
+			return qPublisher[Data](func(ctx context.Context, ds Data) error {
+				return db.dbPublish(ds)
+			})
+		},
 		TxAdapter: func(tx *queueTx[Data]) qPublisher[Data] {
 			return func(ctx context.Context, data Data) error {
 				tx.m.Lock()
@@ -270,11 +275,6 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qPublisher
 				tx.ds = append(tx.ds, data)
 				return nil
 			}
-		},
-		DBAdapter: func(db *Queue[Data]) qPublisher[Data] {
-			return qPublisher[Data](func(ctx context.Context, ds Data) error {
-				return db.dbPublish(ds)
-			})
 		},
 		Begin: func(ctx context.Context, db *Queue[Data]) (*queueTx[Data], error) {
 			return &queueTx[Data]{q: db, ds: []Data{}}, nil

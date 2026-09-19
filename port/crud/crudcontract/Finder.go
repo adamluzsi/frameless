@@ -52,9 +52,10 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 		}
 
 		s.When("id points to an existing value", func(s *testcase.Spec) {
+			// Register entity cleanup on the test, not inside an Eventually attempt.
 			ent := testcase.Let(s, func(t *testcase.T) ENT {
 				return mkEnt(t)
-			})
+			}).EagerLoading(s)
 
 			id.Let(s, func(t *testcase.T) ID {
 				return c.Helper().HasID(t, pointer.Of(ent.Get(t)))

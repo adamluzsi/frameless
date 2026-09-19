@@ -73,6 +73,8 @@ func TestMigrator(t *testing.T) {
 		}
 	})
 
+	specMigratorTransactions(s)
+
 	s.Describe("#Migrate", func(s *testcase.Spec) {
 		var (
 			ctx = let.Context(s)

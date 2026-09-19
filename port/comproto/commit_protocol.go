@@ -39,3 +39,9 @@ type TwoPhaseCommitProtocol interface {
 	// must be interpreted as Two Phase Commit Protocol's Commit or Rollback action.
 	PrepareTx(context.Context) (context.Context, error)
 }
+
+// InTx is an optional capability of a commit protocol manager
+// for enabling the user of the manager to detect an active transaction.
+type InTx interface {
+	InTx(context.Context) bool
+}

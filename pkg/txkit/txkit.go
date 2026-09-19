@@ -128,20 +128,22 @@ func OnRollback[StepFn onRollbackStepFn](ctx context.Context, step StepFn) error
 //	type Connection = txkit.Manager[*sql.DB, *sql.Tx]
 //
 // Type Arguments:
-// - DB: the main connection that
-type Manager[DB, TX, Queryable any] struct {
-	// DB  is the underlying Database type to access.
-	// It is ideal if ConnectionAdapter used as the Connection type implementation, but you need access to not exposed functionalities.
+//   - DB: the underlying resource handle used to begin transactions. In the
+//     standard database example this is *sql.DB, but it can be any type whose
+//     Begin function returns a *TX.
+type Manager[RES, TX, Q any] struct {
+	// R is the underlying transactional resource. In the database example it is
+	// a *sql.DB; in other contexts it can be any handle capable of starting a TX.
 	//
 	// 		type Connection txkit.Manager[*sql.DB, *sql.Tx]
 	//
-	DB *DB
+	R *RES
 	// TxAdapter provides the mapping for a native driver specific TX type to be usable as a Queryable.
-	TxAdapter func(tx *TX) Queryable
-	// DBAdapter provides the mapping for a native driver specific DB type to be usable as a Queryable.
-	DBAdapter func(db *DB) Queryable
+	TxAdapter func(tx *TX) Q
+	// ResAdapter provides the mapping for a native driver specific DB type to be usable as a Queryable.
+	ResAdapter func(db *RES) Q
 	// Begin is a function that must create a new transaction that is also a connection.
-	Begin func(ctx context.Context, db *DB) (*TX, error)
+	Begin func(ctx context.Context, db *RES) (*TX, error)
 	// Commit is a function that must commit a given transaction.
 	Commit func(ctx context.Context, tx *TX) error
 	// Rollback is a function that must rollback a given transaction.
@@ -157,13 +159,20 @@ type Manager[DB, TX, Queryable any] struct {
 	//
 	// default: DB.Close()
 	OnClose func() error
+	// ResourceID [optional] scopes transactions together with the same resource and transaction type.
+	// Use a stable, distinct ID for each transactional resource;
+	// managers using the same ID and TX type share transactions.
+	// Do not change it while contexts are in use.
+	//
+	// Default: pointer identifier value of *RES
+	ResourceID string
 }
 
-func (m Manager[DB, TX, Queryable]) Close() error {
+func (m Manager[RES, TX, Q]) Close() error {
 	if m.OnClose != nil {
 		return m.OnClose()
 	}
-	if closer, ok := any(m.DB).(io.Closer); ok {
+	if closer, ok := any(m.R).(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
@@ -176,7 +185,7 @@ type txInContext[TX any] struct {
 	cancel func()
 }
 
-func (m Manager[DB, TX, Queryable]) BeginTx(ctx context.Context) (context.Context, error) {
+func (m Manager[RES, TX, Q]) BeginTx(ctx context.Context) (context.Context, error) {
 	if err := ctx.Err(); err != nil {
 		return ctx, err
 	}
@@ -188,7 +197,7 @@ func (m Manager[DB, TX, Queryable]) BeginTx(ctx context.Context) (context.Contex
 	}
 
 	if tx.parent == nil {
-		transaction, err := m.Begin(ctx, m.DB)
+		transaction, err := m.Begin(ctx, m.R)
 		if err != nil {
 			return nil, err
 		}
@@ -198,10 +207,10 @@ func (m Manager[DB, TX, Queryable]) BeginTx(ctx context.Context) (context.Contex
 	ctx, cancel := context.WithCancel(ctx)
 	tx.cancel = cancel
 
-	return context.WithValue(ctx, ctxKeyForContextTxHandler[TX]{}, tx), nil
+	return context.WithValue(ctx, m.ctxKey(), tx), nil
 }
 
-func (m Manager[DB, TX, Queryable]) CommitTx(ctx context.Context) error {
+func (m Manager[RES, TX, Q]) CommitTx(ctx context.Context) error {
 	tx, ok := m.lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
@@ -220,7 +229,7 @@ func (m Manager[DB, TX, Queryable]) CommitTx(ctx context.Context) error {
 	return m.Commit(ctx, tx.tx)
 }
 
-func (m Manager[DB, TX, Queryable]) RollbackTx(ctx context.Context) error {
+func (m Manager[RES, TX, Q]) RollbackTx(ctx context.Context) error {
 	tx, ok := m.lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
@@ -244,7 +253,30 @@ func (m Manager[DB, TX, Queryable]) RollbackTx(ctx context.Context) error {
 	}
 }
 
-func (m Manager[DB, TX, Queryable]) LookupTx(ctx context.Context) (*TX, bool) {
+// InTx reports whether ctx carries an active scope for this resource and TX type.
+// It returns false if ctx has an error, no transaction is present, or the current
+// scope or any of its transaction ancestors has completed. WithoutCancel can
+// suppress context cancellation, but cannot revive a completed scope.
+//
+// InTx observes manager-tracked completion, not the native transaction's health.
+// It does not change LookupTx or Q, which still resolve completed transactions.
+// Calls must be serialized with CommitTx and RollbackTx for the same transaction.
+func (m Manager[RES, TX, Q]) InTx(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	for tx, _ := m.lookupTx(ctx); tx != nil; tx = tx.parent {
+		if tx.done {
+			return false
+		}
+		if tx.parent == nil {
+			return tx.tx != nil
+		}
+	}
+	return false
+}
+
+func (m Manager[RES, TX, Q]) LookupTx(ctx context.Context) (*TX, bool) {
 	tx, ok := m.lookupRootTx(ctx)
 	if !ok {
 		return nil, false
@@ -254,7 +286,7 @@ func (m Manager[DB, TX, Queryable]) LookupTx(ctx context.Context) (*TX, bool) {
 
 // Connection returns the current context's sql Q.
 // This can be a *sql.DB or if we within a transaction, then a *sql.Tx.
-func (m Manager[DB, TX, Queryable]) Q(ctx context.Context) Queryable {
+func (m Manager[RES, TX, Q]) Q(ctx context.Context) Q {
 	// Panics in this function the idiomatic way,
 	// as it can only happen when the manager constructed incorrectly,
 	// and it is impossible to recover from this during runtime.
@@ -265,28 +297,36 @@ func (m Manager[DB, TX, Queryable]) Q(ctx context.Context) Queryable {
 		// TODO: add done tx connection here
 		return m.TxAdapter(tx.tx)
 	}
-	if m.DBAdapter == nil {
+	if m.ResAdapter == nil {
 		// panicking here is the idiomatic way
 		panic("txkit.Manager implementation error, missing DBAdapter")
 	}
-	return m.DBAdapter(m.DB)
+	return m.ResAdapter(m.R)
 }
 
-func (m Manager[DB, TX, Queryable]) txDoneErr() error {
+func (m Manager[RES, TX, Q]) txDoneErr() error {
 	if m.ErrTxDone != nil {
 		return m.ErrTxDone
 	}
 	return ErrTxDone
 }
 
-type ctxKeyForContextTxHandler[T any] struct{}
+type ctxKeyForContextTxHandler[T any] struct{ ResourceID string }
 
-func (m Manager[DB, TX, Queryable]) lookupTx(ctx context.Context) (*txInContext[TX], bool) {
-	tx, ok := ctx.Value(ctxKeyForContextTxHandler[TX]{}).(*txInContext[TX])
+func (m Manager[RES, TX, Queryable]) ctxKey() ctxKeyForContextTxHandler[TX] {
+	var resourceID = m.ResourceID
+	if len(resourceID) == 0 {
+		resourceID = fmt.Sprintf("%p", m.R)
+	}
+	return ctxKeyForContextTxHandler[TX]{ResourceID: resourceID}
+}
+
+func (m Manager[RES, TX, Queryable]) lookupTx(ctx context.Context) (*txInContext[TX], bool) {
+	tx, ok := ctx.Value(m.ctxKey()).(*txInContext[TX])
 	return tx, ok
 }
 
-func (m Manager[DB, TX, Queryable]) lookupRootTx(ctx context.Context) (*txInContext[TX], bool) {
+func (m Manager[RES, TX, Queryable]) lookupRootTx(ctx context.Context) (*txInContext[TX], bool) {
 	tx, ok := m.lookupTx(ctx)
 	if !ok {
 		return nil, false

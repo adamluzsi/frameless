@@ -40,23 +40,26 @@ type ConnectionAdapter[DB, TX any] struct {
 	//
 	// default: DB.Close()
 	OnClose func() error
-	// ErrTxDone is the error returned when the transaction is already finished.
+	// ErrTxDone [optional] is the error returned when the transaction is already finished.
 	// ErrTxDone is an optional field.
 	//
 	// default: sql.ErrTxDone
 	ErrTxDone error
+
+	// ID [Optional] is a symbolic identifier of the *DB value
+	ID string
 }
 
 func (c ConnectionAdapter[DB, TX]) txm() txkit.Manager[DB, TX, Queryable] {
 	return txkit.Manager[DB, TX, Queryable]{
-		Begin:     c.Begin,
-		Commit:    c.Commit,
-		Rollback:  c.Rollback,
-		ErrTxDone: c.txDoneErr(),
-		DB:        c.DB,
-		TxAdapter: c.TxAdapter,
-		DBAdapter: c.DBAdapter,
-		OnClose:   c.OnClose,
+		Begin:      c.Begin,
+		Commit:     c.Commit,
+		Rollback:   c.Rollback,
+		ErrTxDone:  c.txDoneErr(),
+		R:          c.DB,
+		TxAdapter:  c.TxAdapter,
+		ResAdapter: c.DBAdapter,
+		OnClose:    c.OnClose,
 	}
 }
 
@@ -81,6 +84,14 @@ func (c ConnectionAdapter[DB, TX]) CommitTx(ctx context.Context) error {
 
 func (c ConnectionAdapter[DB, TX]) RollbackTx(ctx context.Context) error {
 	return c.txm().RollbackTx(ctx)
+}
+
+// InTx reports whether ctx carries an active transaction scope for this DB and
+// TX type, using txkit.Manager.InTx. Canceled contexts and completed scopes or
+// ancestors return false, even if completion's cancellation is detached.
+// Calls must be serialized with CommitTx and RollbackTx for the same transaction.
+func (c ConnectionAdapter[DB, TX]) InTx(ctx context.Context) bool {
+	return c.txm().InTx(ctx)
 }
 
 func (c ConnectionAdapter[DB, TX]) LookupTx(ctx context.Context) (*TX, bool) {

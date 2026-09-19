@@ -64,6 +64,53 @@ With `txkit`, your code focuses on individual entities and their actions, reduci
 
 The package supports nested transactions seamlessly, automatically joining an existing transaction if present in the context. This allows smaller transactions to combine into larger units without code changes.
 
+## Transaction Resource Identity
+
+`Manager.ResourceID` scopes context transactions by **resource ID and `TX` type**.
+Use a stable, distinct ID for each independent transactional resource. Managers
+with matching IDs and transaction types share and nest transactions, including
+when manager values are copied or reconstructed. Different IDs can have separate
+transactions in the same context chain; lookup, query routing, commit and rollback
+select only that manager's scope. Normal parent-context cancellation still applies.
+
+An empty ID defaults to `fmt.Sprintf("%p", m.R)`: wrappers around the same
+resource pointer and `TX` type share a scope, while distinct pointers remain
+isolated. An explicit ID can share a logical resource across different handles.
+Do not change the ID or resource pointer while transaction contexts are in use.
+
+`flsql.ConnectionAdapter` derives the ID from `fmt.Sprintf("%p", c.DB)`: wrappers
+around the same database handle share transactions, while distinct handles/pools
+remain separate even if they connect to the same database server. This ID is
+process-local, not a durable identifier. It uses `c.DB`, not `&c.DB`, so copying
+the adapter does not change its identity.
+
+## Active Transaction Detection
+
+`Manager.InTx(ctx)` and `flsql.ConnectionAdapter.InTx(ctx)` implement the optional
+`comproto.InTx` capability. They report whether the context carries an active
+scope for that resource and transaction type. Plain contexts return false; live
+contexts derived with `WithValue`, `WithCancel`, `WithDeadline`, or `WithoutCancel`
+retain the scope.
+
+A context with an error returns false. A completed current scope or transaction
+ancestor also returns false, even through `context.WithoutCancel`. Detaching
+cancellation alone does not complete a scope; detection tracks protocol-managed
+completion, not native driver health. Committing an inner scope leaves its parent
+active. Rolling back an inner scope may finish the parent as well.
+
+`LookupTx` and `Q` retain their existing behaviour: they can still resolve the
+native transaction after completion or cancellation, rather than silently falling
+back to the resource. Calls to `InTx` must be serialized with `CommitTx` and
+`RollbackTx` for the same transaction; this capability adds no concurrency guarantee.
+
+## Transactional Resource
+
+`Manager.R` is the underlying transactional resource. In the standard
+database example it is a `*sql.DB`, but `flsql.ConnectionAdapter` also uses
+`*pgxpool.Pool`. Other implementations can use any handle whose `Begin`
+function returns a `*TX`. `flsql.ConnectionAdapter` deliberately keeps its
+`DB` field name because it specifically holds a SQL database pool.
+
 ## Dynamic Rollback Mechanism
 
 `txkit` dynamically adapts to refactored business logic, tying rollback steps to small atomic changes rather than high-level scenarios. This flexibility simplifies maintaining the rollback mechanism as your code evolves.

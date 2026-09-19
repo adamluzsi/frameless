@@ -24,6 +24,11 @@ type Migrator[R resourceConnection] struct {
 	Steps Steps[R]
 	// StateRepository is the crud resource that contains the state of the migration steps.
 	// The state repository doesn't have to be the same as the actual resource which is being managed.
+	// If Resource implements comproto.InTx and recognizes a transaction only after
+	// StateRepository.BeginTx, migration steps join that transaction. Changes and
+	// migration state then commit together. Otherwise they use separate transaction
+	// scopes, which cannot guarantee atomic commits across independent resources.
+	// Transactions already present in the caller's context remain caller-owned.
 	StateRepository StateRepository
 	// EnsureStateRepository is an optional field that is guaranteed to be called before each migration.
 	// If your StateRepository is not needing this, because it creates itself upon interaction,
@@ -94,13 +99,18 @@ func (m Migrator[R]) Migrate(ctx context.Context) (rErr error) {
 		return err
 	}
 
-	schemaCTX, err := m.StateRepository.BeginTx(ctx) // &sql.TxOptions{Isolation: sql.LevelSerializable}
+	resourceInTx := m.inTx(ctx)
+	schemaCTX, err := m.StateRepository.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.StateRepository, schemaCTX)
 
-	stepCTX, err := m.Resource.BeginTx(ctx)
+	stepParent := ctx
+	if !resourceInTx && m.inTx(schemaCTX) {
+		stepParent = schemaCTX
+	}
+	stepCTX, err := m.Resource.BeginTx(stepParent)
 	if err != nil {
 		return err
 	}
@@ -145,13 +155,18 @@ func (m Migrator[R]) MigrateDown(ctx context.Context, targetVersion Version) (rE
 		return err
 	}
 
+	resourceInTx := m.inTx(ctx)
 	schemaCTX, err := m.StateRepository.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.StateRepository, schemaCTX)
 
-	stepCTX, err := m.Resource.BeginTx(ctx)
+	stepParent := ctx
+	if !resourceInTx && m.inTx(schemaCTX) {
+		stepParent = schemaCTX
+	}
+	stepCTX, err := m.Resource.BeginTx(stepParent)
 	if err != nil {
 		return err
 	}
@@ -170,6 +185,11 @@ func (m Migrator[R]) MigrateDown(ctx context.Context, targetVersion Version) (rE
 	}
 
 	return nil
+}
+
+func (m Migrator[R]) inTx(ctx context.Context) bool {
+	resource, ok := any(m.Resource).(comproto.InTx)
+	return ok && resource.InTx(ctx)
 }
 
 func (m Migrator[R]) up(schemaTx, stepTx context.Context, version Version, step Step[R]) error {
