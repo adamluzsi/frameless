@@ -9,6 +9,7 @@ This package provides a set of adapters that allow you to use PostgreSQL databas
 * Repository implementation for CRUD operations (Create, Read, Update, Delete)
 * Shared Locker implementation for locking across application instances
 * Message queueing system with publish/subscribe functionality
+* Generic broadcasts through PostgreSQL LISTEN/NOTIFY or a polling feed
 * Support for transactional queries using the `postgresql.Connection`
 
 ## Example Usage
@@ -53,6 +54,45 @@ Take a look at the documentation for more information on how to use each feature
 
 We hope you find this package useful! If you have any questions or issues, please don't hesitate to reach out.
 
+## QueueV2
+
+`QueueV2[T]` offers automatically renewed message ownership without reserving a
+connection during default message processing. It supports injectable codecs,
+FIFO/LIFO/metadata ordering, blocking publishing, and per-name storage.
+
+`OwnershipDuration` defaults to 30 seconds; renewal runs at one tenth of that
+window. `TransactionalMessageContext` is an explicit opt-in that reserves a
+handler transaction. `Purge` removes only unclaimed or expired messages.
+
+See [QueueV2's contract and migration notes](QueueV2_spec.md) for ownership-loss
+signals, timing assumptions, naming rules, transaction semantics, and validation
+status. Existing `Queue` and its storage are unchanged; V1 message migration is
+application-owned.
+
+## Broadcast
+
+`Broadcast[T]` sends each published value to every active subscriber through
+`pubsub.Publisher[T]` and `pubsub.Subscriber[T]`. It defaults to `jsonkit.Codec{}`
+with an injectable `codec.Codec`:
+
+```go
+broadcast := &postgresql.Broadcast[domain.Update]{
+    Connection: connection,
+    Name: "updates",
+    StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
+}
+```
+
+A nil `StatelessSubscribe` selects LISTEN, which reserves one connection per
+subscription. A non-nil `*BroadcastStatelessSubscribe` enables short polling
+operations with automatic retention, lease renewal and cancellation cleanup.
+The config groups `PollInterval` (default 42ms) and `SubscriberLeaseDuration`
+(default 30s); an empty config uses both defaults. These are volatile broadcasts,
+not acknowledgement-driven queues.
+
+See [broadcast transport and retention semantics](workflow_notification.md) for
+naming, codecs, payload limits, migrations and transaction constraints.
+
 ## Tasker Integration
 
 This package also provides an implementation for the `frameless/pkg/tasker` package, allowing you to store and manage scheduled tasks in a PostgreSQL database.
@@ -65,10 +105,31 @@ This package also provides implementations for the components required to back t
 | --- | --- | --- |
 | `WorkflowEventRepository` | `workflow.EventRepository` | Append-only event log |
 | `WorkflowQueue` | `workflow.Queue` | Durable execution-request queue |
-| `WorkflowNotificationBroadcast` | `workflow.NotificationBroadcast` | Cross-process notifications (PostgreSQL `LISTEN`/`NOTIFY`) |
+| `WorkflowNotificationBroadcast` | `workflow.NotificationBroadcast` | Cross-process notifications (`LISTEN`/`NOTIFY` or a polling feed) |
 | `WorkflowLockerFactory` | `workflow.ProcessLocks` | Per-process locks |
 
 The runtime is built to be adapter-agnostic, so wiring these four pieces together produces a workflow engine that runs against any PostgreSQL database. See `Test_workflowE2E` for an end-to-end example.
+
+### Polling notifications
+
+`WorkflowNotificationBroadcast` delegates to `Broadcast[workflow.Notification]`,
+retaining its workflow channel name and `wfjson` codec. Both components use the
+same optional `*BroadcastStatelessSubscribe` configuration.
+The generic extraction preserves the notification-feed tables; no migration is required.
+
+Set `WorkflowNotificationBroadcast.StatelessSubscribe` to a non-nil config to
+register a polling subscriber without holding a pool connection between operations.
+Each subscriber retains its unread feed from the moment `Subscribe` returns, including before
+iteration starts; reading or cancelling releases retention. Healthy subscriptions
+renew automatically, and expired registrations are pruned on channel activity.
+
+Updated publishers write the feed and emit `pg_notify` atomically, so both
+subscription modes can coexist. This adds notification-feed tables for publishers
+as well: use `Migrate` at startup when provisioning with a separate database role,
+and upgrade publishers before enabling polling subscribers.
+
+See [notification transport and retention semantics](workflow_notification.md)
+for configuration, cleanup, transaction-duration constraints and deployment notes.
 
 ### Storage decisions
 

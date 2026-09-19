@@ -10,8 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
 	"go.llib.dev/frameless/pkg/flsql"
-	"go.llib.dev/frameless/pkg/logger"
+
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/port/comproto"
@@ -217,6 +218,8 @@ func (r *WorkflowEventRepository) Migrate(ctx context.Context) error {
 }
 
 // WorkflowQueue is a durable PostgreSQL queue for runtime schedules.
+// Delivered message contexts retain the subscription context, not the internal
+// delivery transaction: handler work must not depend on ACK/NACK to commit.
 type WorkflowQueue struct {
 	Connection Connection
 	// Codec is the workflow entity codec
@@ -231,15 +234,14 @@ type WorkflowQueue struct {
 	q    Queue[workflow.ExecutionRequest]
 }
 
-const workflowQueueDefaultName = "frameless_workflow_queue"
-
 var _ workflow.Queue = (*WorkflowQueue)(nil)
 
 func (q *WorkflowQueue) init() {
 	q.o.Do(func() {
 		var name = q.Name
 		if name == "" {
-			name = workflowQueueDefaultName
+			const DefaultName = "frameless_workflow"
+			name = DefaultName
 		}
 
 		var codec = q.Codec
@@ -248,10 +250,9 @@ func (q *WorkflowQueue) init() {
 		}
 
 		q.q = Queue[workflow.ExecutionRequest]{
-			Name:       name,
 			Connection: q.Connection,
+			Table:      name,
 			Codec:      codec,
-
 			// wfcontract.Queue asserts items come out ordered by
 			// ExecutionRequest.StartTime ascending. The StartTime is
 			// exposed via the JSONB meta column as `start_time` and the
@@ -272,27 +273,49 @@ func (q *WorkflowQueue) Publish(ctx context.Context, v workflow.ExecutionRequest
 
 func (q *WorkflowQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ExecutionRequest] {
 	q.init()
-	return q.q.Subscribe(ctx)
+	return func(yield func(pubsub.Message[workflow.ExecutionRequest], error) bool) {
+		for msg, err := range q.q.Subscribe(ctx) {
+			if msg != nil {
+				// Keep V1's delivery transaction private to ACK/NACK. Workflow
+				// rescheduling and event writes must survive a delivery's NACK.
+				msg = workflowQueueMessage{Message: msg, ctx: ctx}
+			}
+			if !yield(msg, err) {
+				return
+			}
+		}
+	}
 }
+
+type workflowQueueMessage struct {
+	pubsub.Message[workflow.ExecutionRequest]
+	ctx context.Context
+}
+
+func (m workflowQueueMessage) Context() context.Context { return m.ctx }
 
 func (q *WorkflowQueue) Migrate(ctx context.Context) error {
 	q.init()
 	return q.q.Migrate(ctx)
 }
 
-// WorkflowNotificationBroadcast publishes workflow notifications using
-// PostgreSQL's LISTEN/NOTIFY so that worker nodes on different processes
-// (and on different hosts) can be notified about queue changes in real time.
-//
-// The on-wire notification payload is owned by pkg/workflow/wfjson, which keeps
-// the format identical to the durable event log and the runtime's codec.
+// WorkflowNotificationBroadcast delegates to Broadcast[workflow.Notification]
+// with the workflow channel name and wfjson codec defaults. Its public fields
+// mirror Broadcast, including the optional stateless subscription configuration.
+// Configure a value before first use; do not copy or modify it afterwards.
 type WorkflowNotificationBroadcast struct {
 	Connection Connection
 	Name       string
 	Codec      workflow.Codec
 
-	o       sync.Once
-	channel string
+	// StatelessSubscribe enables table-backed polling when non-nil; nil uses LISTEN.
+	// An empty config uses the default polling interval and subscriber lease.
+	// Registration and heartbeats start at Subscribe, not at iteration. Cancel the
+	// subscription context even if you never iterate.
+	StatelessSubscribe *BroadcastStatelessSubscribe
+
+	o sync.Once
+	b Broadcast[workflow.Notification]
 }
 
 const workflowNotificationBroadcastDefaultName = "frameless_workflow_notifications"
@@ -302,183 +325,32 @@ var _ workflow.NotificationBroadcast = (*WorkflowNotificationBroadcast)(nil)
 func (b *WorkflowNotificationBroadcast) init() {
 	b.o.Do(func() {
 		name := b.Name
-		if name == "" {
+		if strings.TrimSpace(name) == "" {
 			name = workflowNotificationBroadcastDefaultName
 		}
-		// PostgreSQL identifiers are lowercase-folded; lowercasing the name
-		// here gives a stable, predictable channel even if the caller passes
-		// a mixed-case Name. We also strip characters that are not legal in
-		// a PostgreSQL identifier so the channel name is always safe.
-		b.channel = sanitizePGListenChannel(name)
 		if b.Codec == nil {
 			b.Codec = wfjson.NewCodec()
+		}
+		b.b = Broadcast[workflow.Notification]{
+			Connection:         b.Connection,
+			Name:               name,
+			Codec:              b.Codec,
+			StatelessSubscribe: b.StatelessSubscribe,
 		}
 	})
 }
 
 func (b *WorkflowNotificationBroadcast) Publish(ctx context.Context, event workflow.Notification) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
 	b.init()
-
-	payload, err := b.Codec.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("marshal workflow notification: %w", err)
-	}
-
-	// pg_notify is delivered to listeners even when the publisher is inside
-	// a transaction; raw NOTIFY would not be, so we use the function form.
-	_, err = b.Connection.ExecContext(ctx, `SELECT pg_notify($1, $2)`, b.channel, payload)
-	return err
+	return b.b.Publish(ctx, event)
 }
 
 func (b *WorkflowNotificationBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
 	b.init()
-
-	// LISTEN requires a dedicated session. Acquiring a *pgxpool.Conn reserves
-	// one from the pool for the lifetime of the subscription.
-	rawConn, err := b.Connection.DB.Acquire(ctx)
-	if err != nil {
-		return func(yield func(pubsub.Message[workflow.Notification], error) bool) {
-			yield(nil, err)
-		}
-	}
-
-	pgxConn := rawConn.Conn()
-
-	if _, err := pgxConn.Exec(ctx, fmt.Sprintf(`LISTEN %s`, pgxIdentifier(b.channel))); err != nil {
-		rawConn.Release()
-		return func(yield func(pubsub.Message[workflow.Notification], error) bool) {
-			yield(nil, err)
-		}
-	}
-
-	// Derive a cancellable context for the waiter goroutine so we can unblock
-	// WaitForNotification deterministically when the subscription ends, even if
-	// the caller's ctx is not canceled.
-	waitCtx, cancelWait := context.WithCancel(ctx)
-
-	// Run WaitForNotification in a dedicated goroutine and bridge it with a
-	// buffered channel. This makes Subscribe responsive to context
-	// cancellation regardless of whether WaitForNotification itself respects
-	// ctx promptly, and it also keeps the dedicated connection alive for the
-	// lifetime of the subscription.
-	notifications := make(chan *pgconn.Notification, 32)
-	waitErr := make(chan error, 1)
-	stopWaiter := make(chan struct{})
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		defer close(notifications)
-		for {
-			select {
-			case <-stopWaiter:
-				return
-			default:
-			}
-			n, err := pgxConn.WaitForNotification(waitCtx)
-			if err != nil {
-				select {
-				case waitErr <- err:
-				case <-stopWaiter:
-				}
-				return
-			}
-			select {
-			case notifications <- n:
-			case <-stopWaiter:
-				return
-			}
-		}
-	}()
-
-	// closeStopWaiter is idempotent so that a misuse of the returned iterator
-	// (calling the subscription function more than once) cannot panic with
-	// "close of closed channel".
-	var closeStop sync.Once
-	closeStopFn := func() { closeStop.Do(func() { close(stopWaiter) }) }
-
-	return func(yield func(pubsub.Message[workflow.Notification], error) bool) {
-		defer func() {
-			closeStopFn()
-			// Unblock WaitForNotification if it is still parked on the
-			// dedicated connection. The pgx contextWatcher issues a backend
-			// cancel in the wake so the goroutine returns promptly.
-			cancelWait()
-			<-done
-			// pgxpool does not call DISCARD ALL on Release, so without an
-			// explicit UNLISTEN the LISTEN registration would survive on the
-			// pooled connection. Any notifications published while the conn is
-			// idle in the pool would then be queued for that backend and
-			// replayed to whichever subscriber later acquires it, breaking
-			// the volatile contract.
-			if _, err := pgxConn.Exec(context.Background(), `UNLISTEN *`); err != nil {
-				logger.Error(ctx, err.Error())
-			}
-			rawConn.Release()
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case err := <-waitErr:
-				if ctx.Err() != nil {
-					return
-				}
-				yield(nil, err)
-				return
-			case n, ok := <-notifications:
-				if !ok {
-					return
-				}
-				if n == nil || n.Channel != b.channel {
-					continue
-				}
-
-				var event workflow.Notification
-				if err := b.Codec.Unmarshal([]byte(n.Payload), &event); err != nil {
-					yield(nil, fmt.Errorf("decode workflow notification: %w", err))
-					continue
-				}
-				if !yield(pubsub.MakeMessage(ctx, event, nil, nil), nil) {
-					return
-				}
-			}
-		}
-	}
+	return b.b.Subscribe(ctx)
 }
 
-// pgxIdentifier quotes a channel name so it is safe to interpolate into a
-// LISTEN statement. PostgreSQL does not accept bind parameters on LISTEN/UNLISTEN.
-func pgxIdentifier(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
-}
-
-func sanitizePGListenChannel(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if name == "" {
-		return workflowNotificationBroadcastDefaultName
-	}
-	var b strings.Builder
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z',
-			r >= '0' && r <= '9',
-			r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('_')
-		}
-	}
-	out := b.String()
-	if out == "" {
-		return workflowNotificationBroadcastDefaultName
-	}
-	if out[0] >= '0' && out[0] <= '9' {
-		out = "_" + out
-	}
-	return out
+func (b *WorkflowNotificationBroadcast) Migrate(ctx context.Context) error {
+	b.init()
+	return b.b.Migrate(ctx)
 }

@@ -2,13 +2,17 @@ package postgresql_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfcontract"
+	"go.llib.dev/frameless/port/pubsub/pubsubcontract"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 )
 
 func Test_workflowE2E(t *testing.T) {
@@ -101,9 +105,40 @@ func TestWorkflowQueue(t *testing.T) {
 }
 
 func TestWorkflowNotificationBroadcast(t *testing.T) {
-	c := GetConnection(t)
-	subject := &postgresql.WorkflowNotificationBroadcast{Connection: c}
-	wfcontract.NotificationBroadcast(subject).Test(t)
+	s := testcase.NewSpec(t)
+	var (
+		stateless = let.Var(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe { return nil })
+		poolSize  = let.Var(s, func(t *testcase.T) int32 { return 8 })
+		subject   = let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+			return &postgresql.WorkflowNotificationBroadcast{
+				Connection:         queueV2Connection(t, poolSize.Get(t)),
+				Name:               "wf_" + strings.ReplaceAll(t.Random.UUID(), "-", ""),
+				StatelessSubscribe: stateless.Get(t),
+			}
+		})
+	)
+
+	var tests = func(t *testcase.T) {
+		testcase.RunSuite(testcase.NewSpec(t.TB),
+			wfcontract.NotificationBroadcast(subject.Get(t), pubsubcontract.Config[workflow.Notification]{
+				MakeContext: workflowNotificationContext,
+			}))
+	}
+
+	s.Test("satisfies the notification contract using LISTEN by default", tests)
+
+	s.When("StatelessSubscribe is configured with zero values", func(s *testcase.Spec) {
+		stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+			return &postgresql.BroadcastStatelessSubscribe{}
+		})
+
+		s.Test("satisfies the notification contract without LISTEN", tests)
+
+		s.Context("stateless life-cycle", func(s *testcase.Spec) {
+			poolSize.LetValue(s, 1)
+			workflowNotificationSpec(s, subject, poolSize)
+		})
+	})
 }
 
 func TestWorkflowEventRepository(t *testing.T) {

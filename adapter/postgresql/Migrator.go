@@ -28,7 +28,7 @@ func EnsureStateRepository(ctx context.Context, conn Connection) error {
 	if err != nil {
 		return err
 	}
-	_, err = conn.ExecContext(ctx, query)
+	_, err = conn.DB.Exec(ctx, query)
 	return err
 }
 

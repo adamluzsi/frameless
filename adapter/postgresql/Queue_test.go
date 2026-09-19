@@ -6,6 +6,7 @@ import (
 	"iter"
 	"os"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func ExampleQueue() {
 	defer cm.Close()
 
 	q := postgresql.Queue[Entity]{
-		Name:       "queue_name",
+		Table:      "queue_name",
 		Connection: cm,
 	}
 
@@ -58,51 +59,52 @@ func TestQueue(t *testing.T) {
 	c := GetConnection(t)
 
 	assert.NoError(t,
-		postgresql.Queue[Entity]{Name: queueName, Connection: c}.
+		postgresql.Queue[Entity]{Table: queueName, Connection: c}.
 			Migrate(MakeContext(t)))
 
 	basicQueue := postgresql.Queue[Entity]{
-		Name:       queueName,
+		Table:      queueName,
 		Connection: c,
 	}
 
 	lifoQueue := postgresql.Queue[Entity]{
-		Name:       queueName,
+		Table:      queueName,
 		Connection: c,
 
 		LIFO: true,
 	}
 
 	blockingQueue := postgresql.Queue[Entity]{
-		Name:       queueName,
+		Table:      queueName,
 		Connection: c,
 
 		Blocking: true,
 	}
+	assert.NoError(t, blockingQueue.Migrate(MakeContext(t)))
 
 	testcase.RunSuite(t,
 		pubsubcontract.FIFO[Entity](basicQueue, basicQueue),
 		pubsubcontract.LIFO[Entity](lifoQueue, lifoQueue),
-		pubsubcontract.Buffered[Entity](basicQueue, basicQueue),
+		pubsubcontract.Durable[Entity](basicQueue, basicQueue),
 		pubsubcontract.Blocking[Entity](blockingQueue, blockingQueue),
 		pubsubcontract.Queue[Entity](basicQueue, basicQueue),
 	)
 }
 
-func TestQueue_emptyQueueBreakTime(t *testing.T) {
+func TestQueue_emptyBreakTime(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 
-	const queueName = "TestQueue_emptyQueueBreakTime"
+	const queueName = "test_queue_empty_queue_break_time"
 	ctx := context.Background()
 	now := time.Now().UTC()
 	timecop.Travel(t, now)
 
 	q := postgresql.Queue[testent.Foo]{
-		Name:                queueName,
-		Connection:          GetConnection(t),
-		EmptyQueueBreakTime: time.Hour,
+		Table:          queueName,
+		Connection:     GetConnection(t),
+		EmptyBreakTime: time.Hour,
 	}
 	assert.NoError(t, q.Migrate(MakeContext(t)))
 
@@ -110,14 +112,9 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 
 	t.Log("we wait until the subscription is idle")
 	time.Sleep(time.Second)
-	// idler, ok := res.Subscription().(interface{ IsIdle() bool })
-	// assert.True(t, ok)
-	// assert.Eventually(t, 5*time.Second, func(it testing.TB) {
-	// 	it.Should.True(idler.IsIdle())
-	// })
 
-	waitTime := 256 * time.Millisecond
-	time.Sleep(waitTime)
+	var waitTime = time.Second
+	timecop.Travel(t, waitTime)
 
 	foo := testent.MakeFoo(t)
 	assert.NoError(t, q.Publish(ctx, foo))
@@ -161,9 +158,11 @@ func TestQueue_smoke(t *testing.T) {
 	cm := GetConnection(t)
 	s.Test("single", func(t *testcase.T) {
 		q1 := postgresql.Queue[testent.Foo]{
-			Name:       "42",
+			Table:      "q42",
 			Connection: cm,
 		}
+
+		assert.NoError(t, q1.Migrate(t.Context()))
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
 
@@ -174,13 +173,9 @@ func TestQueue_smoke(t *testing.T) {
 			expected1 = []testent.Foo{ent1A, ent1B, ent1C}
 		)
 
-		if t.Random.Bool() {
-			assert.NoError(t, q1.PublishMany(context.Background(), ent1A, ent1B, ent1C))
-		} else {
-			assert.NoError(t, q1.PublishMany(context.Background(), ent1A))
-			assert.NoError(t, q1.PublishMany(context.Background(), ent1B))
-			assert.NoError(t, q1.PublishMany(context.Background(), ent1C))
-		}
+		assert.NoError(t, q1.Publish(t.Context(), ent1A))
+		assert.NoError(t, q1.Publish(t.Context(), ent1B))
+		assert.NoError(t, q1.Publish(t.Context(), ent1C))
 
 		res1.Eventually(t, func(tb testing.TB, foos []testent.Foo) {
 			assert.ContainsExactly(tb, expected1, foos)
@@ -190,17 +185,21 @@ func TestQueue_smoke(t *testing.T) {
 		cm := GetConnection(t)
 
 		q1 := postgresql.Queue[testent.Foo]{
-			Name:       "42",
+			Table:      "q42",
 			Connection: cm,
 		}
+
+		assert.NoError(t, q1.Migrate(t.Context()))
 
 		q2 := postgresql.Queue[testent.Foo]{
-			Name:       "24",
+			Table:      "q24",
 			Connection: cm,
 		}
 
-		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
-		res2 := pubsubtest.Subscribe[testent.Foo](t, q2, context.Background())
+		assert.NoError(t, q2.Migrate(t.Context()))
+
+		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, t.Context())
+		res2 := pubsubtest.Subscribe[testent.Foo](t, q2, t.Context())
 
 		var (
 			rnd = random.New(random.CryptoSeed{})
@@ -216,10 +215,13 @@ func TestQueue_smoke(t *testing.T) {
 			expected2 = []testent.Foo{ent2A, ent2B, ent2C}
 		)
 
-		assert.NoError(t, q1.Publish(context.Background(), ent1A))
-		assert.NoError(t, q1.Publish(context.Background(), ent1B))
-		assert.NoError(t, q1.Publish(context.Background(), ent1C))
-		assert.NoError(t, q2.PublishMany(context.Background(), ent2A, ent2B, ent2C))
+		assert.NoError(t, q1.Publish(t.Context(), ent1A))
+		assert.NoError(t, q1.Publish(t.Context(), ent1B))
+		assert.NoError(t, q1.Publish(t.Context(), ent1C))
+
+		assert.NoError(t, q2.Publish(t.Context(), ent2A))
+		assert.NoError(t, q2.Publish(t.Context(), ent2B))
+		assert.NoError(t, q2.Publish(t.Context(), ent2C))
 
 		t.Cleanup(func() {
 			if !t.Failed() {
@@ -246,7 +248,7 @@ func BenchmarkQueue(b *testing.B) {
 		rnd = random.New(random.CryptoSeed{})
 		cm  = GetConnection(b)
 		q   = postgresql.Queue[Entity]{
-			Name:       queueName,
+			Table:      queueName,
 			Connection: cm,
 		}
 	)
@@ -269,14 +271,18 @@ func BenchmarkQueue(b *testing.B) {
 
 	b.Run("single element fetch", func(b *testing.B) {
 		assert.NoError(b, q.Purge(ctx))
-		assert.NoError(b, q.PublishMany(ctx, random.Slice(b.N, func() Entity {
+		vs := random.Slice(b.N, func() Entity {
 			return Entity{
 				ID:  rnd.UUID(),
 				Foo: rnd.UUID(),
 				Bar: rnd.UUID(),
 				Baz: rnd.UUID(),
 			}
-		})...))
+		})
+
+		for _, v := range vs {
+			assert.NoError(b, q.Publish(ctx, v))
+		}
 
 		sub := q.Subscribe(ctx)
 		assert.NotNil(b, sub)
@@ -304,7 +310,60 @@ func BenchmarkQueue(b *testing.B) {
 		})
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = q.PublishMany(ctx, msgs...)
+			for _, msg := range msgs {
+				_ = q.Publish(ctx, msg)
+			}
 		}
 	})
+}
+
+func BenchmarkQueue_mvp(b *testing.B) {
+	values := random.Slice(b.N, func() testent.Foo {
+		return testent.MakeFoo(b)
+	})
+
+	var q = postgresql.Queue[testent.Foo]{
+		Table:      "queue_benchmark_foo",
+		Connection: GetConnection(b),
+	}
+
+	b.Run("#Publish", func(b *testing.B) {
+		assert.NoError(b, q.Purge(b.Context()))
+		assert.Equal(b, len(values), b.N)
+		b.ResetTimer()
+
+		for _, v := range values {
+			_ = q.Publish(b.Context(), v)
+		}
+	})
+
+	b.Run("#Subscribe", func(b *testing.B) {
+		assert.NoError(b, q.Purge(b.Context()))
+
+		for _, v := range values {
+			_ = q.Publish(b.Context(), v)
+		}
+
+		sub := q.Subscribe(b.Context())
+
+		for range 42 {
+			runtime.Gosched()
+			time.Sleep(time.Millisecond)
+		}
+
+		b.ResetTimer()
+
+		var n = b.N
+		for msg, err := range sub {
+			if err != nil {
+				assert.NoError(b, err)
+			}
+			_ = msg.ACK()
+			n--
+			if n == 0 {
+				return
+			}
+		}
+	})
+
 }
