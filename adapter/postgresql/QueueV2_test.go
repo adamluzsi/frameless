@@ -39,7 +39,7 @@ func TestQueueV2(t *testing.T) {
 					Codec: cfg.Codec, ToMeta: cfg.ToMeta,
 					LIFO: cfg.LIFO, SortBy: cfg.SortBy, Blocking: cfg.Blocking,
 					EmptyQueueBreakTime:         cfg.EmptyQueueBreakTime,
-					LeaseDuration:               cfg.OwnershipDuration,
+					FencingLeaseDuration:        cfg.OwnershipDuration,
 					TransactionalMessageContext: cfg.TransactionalMessageContext,
 				}
 			}
@@ -666,7 +666,7 @@ func TestQueueV2(t *testing.T) {
 				msg := delivery.Get(t)
 				queueV2AwaitCanceled(t, msg.Context(), queueV2OperationBudget)
 				assert.ErrorIs(t, context.Cause(msg.Context()), context.Canceled)
-				assert.False(t, errors.Is(context.Cause(msg.Context()), postgresql.ErrQueueOwnershipLost))
+				assert.False(t, errors.Is(context.Cause(msg.Context()), postgresql.ErrFencingLeaseLost))
 				assert.NoError(t, act(t))
 				assert.NoError(t, act(t))
 				deliverySub.Get(t).Stop()
@@ -935,24 +935,24 @@ func TestQueueV2(t *testing.T) {
 			s.Then("signals ownership loss without settlement or iterator progress", func(t *testcase.T) {
 				msg := act(t)
 				queueV2AwaitCanceled(t, msg.Context(), 3*ownershipDuration.Get(t))
-				assert.ErrorIs(t, context.Cause(msg.Context()), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, context.Cause(msg.Context()), postgresql.ErrFencingLeaseLost)
 				release.Get(t)()
-				assert.ErrorIs(t, msg.ACK(), postgresql.ErrQueueOwnershipLost)
-				assert.ErrorIs(t, msg.NACK(), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, msg.ACK(), postgresql.ErrFencingLeaseLost)
+				assert.ErrorIs(t, msg.NACK(), postgresql.ErrFencingLeaseLost)
 			})
 
 			s.Then("recovery never revalidates stale handles or lets them settle the replacement", func(t *testcase.T) {
 				stale := act(t)
 				queueV2AwaitCanceled(t, stale.Context(), 3*ownershipDuration.Get(t))
-				assert.ErrorIs(t, context.Cause(stale.Context()), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, context.Cause(stale.Context()), postgresql.ErrFencingLeaseLost)
 				release.Get(t)()
 				recovered := replacement.Get(t)
 				assert.Equal(t, recovered.Data(), data.Get(t))
 				for range 2 {
-					assert.ErrorIs(t, stale.ACK(), postgresql.ErrQueueOwnershipLost)
-					assert.ErrorIs(t, stale.NACK(), postgresql.ErrQueueOwnershipLost)
+					assert.ErrorIs(t, stale.ACK(), postgresql.ErrFencingLeaseLost)
+					assert.ErrorIs(t, stale.NACK(), postgresql.ErrFencingLeaseLost)
 				}
-				assert.ErrorIs(t, context.Cause(stale.Context()), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, context.Cause(stale.Context()), postgresql.ErrFencingLeaseLost)
 				assert.NoError(t, recovered.Context().Err())
 				queueV2AssertEmpty(t, ready.Get(t))
 				assert.NoError(t, recovered.ACK())
@@ -971,8 +971,8 @@ func TestQueueV2(t *testing.T) {
 				queueV2AwaitCanceled(t, stale.Context(), queueV2OperationBudget)
 				assert.ErrorIs(t, context.Cause(stale.Context()), context.Canceled)
 				time.Sleep(2 * ownershipDuration.Get(t))
-				assert.ErrorIs(t, stale.ACK(), postgresql.ErrQueueOwnershipLost)
-				assert.ErrorIs(t, stale.NACK(), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, stale.ACK(), postgresql.ErrFencingLeaseLost)
+				assert.ErrorIs(t, stale.NACK(), postgresql.ErrFencingLeaseLost)
 				assert.ErrorIs(t, context.Cause(stale.Context()), context.Canceled)
 				recovered := replacement.Get(t)
 				assert.Equal(t, recovered.Data(), data.Get(t))
@@ -1302,7 +1302,7 @@ func TestQueueV2(t *testing.T) {
 				assert.Equal(t, pool.Stat().AcquiredConns(), int32(2))
 
 				queueV2AwaitCanceled(t, msg.Context(), 3*ownershipDuration.Get(t))
-				assert.ErrorIs(t, context.Cause(msg.Context()), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, context.Cause(msg.Context()), postgresql.ErrFencingLeaseLost)
 				release()
 				assert.Eventually(t, queueV2OperationBudget, func(it testing.TB) {
 					assert.Equal(it, pool.Stat().AcquiredConns(), int32(0))
@@ -1312,8 +1312,8 @@ func TestQueueV2(t *testing.T) {
 
 				recovered := replacement.Get(t)
 				assert.Equal(t, recovered.Data(), data.Get(t))
-				assert.ErrorIs(t, msg.ACK(), postgresql.ErrQueueOwnershipLost)
-				assert.ErrorIs(t, msg.NACK(), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, msg.ACK(), postgresql.ErrFencingLeaseLost)
+				assert.ErrorIs(t, msg.NACK(), postgresql.ErrFencingLeaseLost)
 				assert.NoError(t, recovered.ACK())
 				queueV2AssertEmpty(t, other.Get(t))
 			})
@@ -1512,8 +1512,8 @@ func TestQueueV2(t *testing.T) {
 			s.Then("removes the expired message without allowing the stale handle to settle it", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 				assert.Equal(t, queueV2MessageCount(t, connection.Get(t), name.Get(t)), 0)
-				assert.ErrorIs(t, stale.Get(t).ACK(), postgresql.ErrQueueOwnershipLost)
-				assert.ErrorIs(t, stale.Get(t).NACK(), postgresql.ErrQueueOwnershipLost)
+				assert.ErrorIs(t, stale.Get(t).ACK(), postgresql.ErrFencingLeaseLost)
+				assert.ErrorIs(t, stale.Get(t).NACK(), postgresql.ErrFencingLeaseLost)
 				queueV2AssertEmpty(t, ready.Get(t))
 			})
 		})

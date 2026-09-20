@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	// ErrQueueOwnershipLost marks a revoked/expired delivery, including its context cause.
-	ErrQueueOwnershipLost = errors.New("queue delivery ownership lost")
+	// ErrFencingLeaseLost marks a revoked/expired delivery, including its context cause.
+	ErrFencingLeaseLost = errors.New("queue delivery fencing lease lost")
 	// ErrQueueOutcomeUncertain means the database outcome could not be verified.
 	// It must not be interpreted as either successful processing or proof of rollback.
 	ErrQueueOutcomeUncertain = errors.New("queue outcome uncertain")
@@ -52,11 +52,11 @@ type QueueV2[Entity any] struct {
 	Blocking            bool
 	EmptyQueueBreakTime time.Duration
 
-	// LeaseDuration defaults to 30s and must be at least 10ms if set.
-	// Renewal is attempted every LeaseDuration/10. Local ownership expires
+	// FencingLeaseDuration defaults to 30s and must be at least 10ms if set.
+	// Renewal is attempted every FencingLeaseDuration/10. Local ownership expires
 	// conservatively at 90% of the duration since the last confirmed request's start.
 	// Choose a duration comfortably above database latency and scheduler delays.
-	LeaseDuration time.Duration
+	FencingLeaseDuration time.Duration
 
 	// TransactionalMessageContext opts into a handler transaction exposed through
 	// Message.Context: ACK commits it atomically with queue completion; NACK rolls
@@ -81,7 +81,7 @@ func (q QueueV2[E]) settings() (queueV2Settings, error) {
 	if q.Connection.DB == nil {
 		return s, fmt.Errorf("queue %q: missing connection", q.Name)
 	}
-	s.duration = q.LeaseDuration
+	s.duration = q.FencingLeaseDuration
 	if s.duration == 0 {
 		s.duration = 30 * time.Second
 	}
@@ -424,7 +424,7 @@ func (m *queueV2Message[E]) active() error {
 		return ErrQueueMessageSettled
 	}
 	if !time.Now().Before(m.deadline) {
-		return ErrQueueOwnershipLost
+		return ErrFencingLeaseLost
 	}
 	return nil
 }
@@ -462,9 +462,9 @@ func (m *queueV2Message[E]) watch() {
 				m.mu.Unlock()
 				continue
 			}
-			m.outcome, m.err = "lost", ErrQueueOwnershipLost
+			m.outcome, m.err = "lost", ErrFencingLeaseLost
 			m.mu.Unlock()
-			m.cancel(ErrQueueOwnershipLost)
+			m.cancel(ErrFencingLeaseLost)
 			m.stop()
 			m.stopCaller()
 			m.disposeTransaction(true)
@@ -516,7 +516,7 @@ FROM owned WHERE message.id = owned.id AND owned.owner = $2 AND owned.owned_unti
 		return
 	}
 	if result.RowsAffected() == 0 {
-		m.finish("lost", ErrQueueOwnershipLost)
+		m.finish("lost", ErrFencingLeaseLost)
 		return
 	}
 	m.mu.Lock()
@@ -590,8 +590,8 @@ func (m *queueV2Message[E]) settle(outcome string) error {
 	}
 	if count == 0 {
 		m.rollback()
-		m.finish("lost", ErrQueueOwnershipLost)
-		return ErrQueueOwnershipLost
+		m.finish("lost", ErrFencingLeaseLost)
+		return ErrFencingLeaseLost
 	}
 	if outcome == "acked" && m.txctx != nil {
 		err := m.queue.Connection.CommitTx(ctx)
