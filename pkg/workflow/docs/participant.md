@@ -57,12 +57,29 @@ Output: []workflow.VarName{"receipt"}   //  ─┼─► func(ctx, orderID strin
 
 | Problem                                | Error                                   |
 | -------------------------------------- | --------------------------------------- |
-| No participant with that `ID`          | `ErrParticipantNotFound`                |
+| No participant with that `ID` (or no `Participants` repository) | `ErrParticipantNotFound{ID: id}` — nonfatal availability error |
 | `Input`/`Output` count ≠ the signature | `ErrParticipantFuncMappingMismatch`     |
 | An `Input` variable is not set         | `ErrFatal` naming the missing variable  |
 | The registered value is not a func     | `ErrInvalidParticipantFunc`             |
 
-All of them are explicit errors. A mapping mistake never panics.
+All of them are explicit error values. A mapping mistake never panics.
+
+### Missing registration waits for availability
+
+`workflow.ErrParticipantNotFound{ID: id}` retains its type, name and missing `ID`.
+It is a **plain, nonfatal availability error**: it does not implement
+`workflow.RuntimeSignal` and does not match `errors.Is(err, workflow.Suspend{})`.
+Participant lookup returns it when an uncached step's ID is not registered,
+including when no `Participants` repository is configured.
+
+The runtime explicitly avoids immediate retry and returns the error from
+`Runtime.Execute`. The scheduler in `Runtime.Run` reschedules after `WaitTime`,
+preserving `FailureCount`. The idempotent executor preserves prior work and
+records neither a failed `EventParticipant` nor an `EventError` for missing
+availability. A later attempt reuses completed steps and tries lookup again.
+
+Missing conditions remain fatal (`ErrConditionNotFound`). See
+[End Users][END_USER] for shared execution and independent ID validation.
 
 ---
 
@@ -191,7 +208,8 @@ side-effect free.
 
 ## 5. Failing
 
-A plain error is treated as transient and goes through `Runtime#RetryStrategy`.
+Ordinary operational errors go through `Runtime#RetryStrategy`. The missing
+registration error described above is handled separately, without immediate retry.
 
 When retrying cannot possibly help — a validation failure, a rejected payment,
 a malformed definition — say so, and the runtime stops immediately:

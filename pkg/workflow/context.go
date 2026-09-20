@@ -2,9 +2,11 @@ package workflow
 
 import (
 	"context"
+	"time"
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/testcase/clock"
 )
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -66,5 +68,58 @@ func (prs ctxCRS) FindByID(ctx context.Context, id ConditionID) (v Condition, fo
 var ctxConditionsH contextkit.ValueHandler[ctxKeyCRS, ctxCRS]
 
 type ctxKeyCRS struct{}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+var ctxTimeToLiveH contextkit.ValueHandler[ctxKeyTTL, *ctxTTL]
+
+type ctxKeyTTL struct{}
+
+type ctxTTL struct {
+	// Active counts nested activities. A cached parent skips its follow-up on
+	// replay, so TTL must not interrupt that follow-up before the parent finishes.
+	Active int
+	// StartedAt is when the current definition execution started at.
+	StartedAt time.Time
+	// TTL is the TimeToLive duration
+	TTL time.Duration
+}
+
+func (ct *ctxTTL) shouldSuspend() bool {
+	if ct == nil {
+		return false
+	}
+	if ct.TTL <= 0 {
+		return false
+	}
+	if ct.Active != 0 {
+		return false
+	}
+	return !clock.Now().Before(ct.StartedAt.Add(ct.TTL))
+}
+
+// withTTL isolates the budget from any enclosing execution, even when disabled.
+func withTTL(rt Runtime, ctx context.Context) context.Context {
+	return ctxTimeToLiveH.ContextWith(ctx, &ctxTTL{
+		StartedAt: clock.Now(),
+		TTL:       rt.TTL,
+	})
+}
+
+func (ct *ctxTTL) Finish(rErr *error, ctx context.Context) {
+	if ct == nil {
+		return
+	}
+	if ct == nil {
+		return
+	}
+	ct.Active--
+	if rErr == nil || *rErr != nil {
+		return
+	}
+	if ct.shouldSuspend() {
+		*rErr = Suspend{}
+	}
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

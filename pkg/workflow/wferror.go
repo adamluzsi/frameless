@@ -13,7 +13,6 @@ func ErrIsFatal(err error) bool {
 	return errors.Is(err, ErrInvalidDefinition) ||
 		errors.Is(err, ErrInvalidParticipantFunc) ||
 		errors.Is(err, ErrInvalidConditionFunc) ||
-		errors.As(err, &ErrParticipantNotFound{}) ||
 		errors.As(err, &ErrConditionNotFound{}) ||
 		errors.Is(err, ErrNoContextRuntime) ||
 		errors.Is(err, ErrNoProcessDefinition) ||
@@ -25,10 +24,17 @@ const ErrFatal errorkitlite.Error = "WORKFLOW_FATAL_ERROR"
 // ErrInvalidDefinition is an error raised for invalid definition composition.
 const ErrInvalidDefinition errorkitlite.Error = "ErrInvalidDefinition"
 
+// ErrParticipantNotFound reports that this node does not have the requested
+// participant. It is not fatal and is not retried locally: the scheduler requeues
+// the process so another node can resume it, without increasing FailureCount.
 type ErrParticipantNotFound struct{ ID ParticipantID }
 
 func (err ErrParticipantNotFound) Error() string {
 	return fmt.Sprintf("[%T] %s", err, err.ID)
+}
+
+func isParticipantNotFound(err error) bool {
+	return errors.As(err, &ErrParticipantNotFound{})
 }
 
 type ErrConditionNotFound struct{ ID ConditionID }

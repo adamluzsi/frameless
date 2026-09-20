@@ -62,7 +62,8 @@ func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo Event
 	// Those events describe work that genuinely happened — variables set earlier
 	// in the process, and the enclosing steps' own recorded executions.
 	// TestRuntime_Execute_participantFollowUpDefinition pins one such case.
-	if *rErr != nil && !isRuntimeSignal(*rErr) {
+	// Missing participants likewise yield to another node; preserve prior work.
+	if *rErr != nil && !isRuntimeSignal(*rErr) && !isParticipantNotFound(*rErr) {
 		*rErr = errorkitlite.Merge(*rErr, eventsRepo.RollbackTx(tx))
 		return
 	}
@@ -123,7 +124,11 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	// tx is finished instead of ctx on purpose: ctx is reassigned further down
 	// for the output variable transaction, and a closure would capture that
 	// later value rather than this transaction.
-	defer ie.commitEventsTx(&rErr, eventsRepo, tx)
+	var ttl *ctxTTL
+	defer func() {
+		ie.commitEventsTx(&rErr, eventsRepo, tx)
+		ttl.Finish(&rErr, tx)
+	}()
 
 	ctx = tx
 
@@ -184,6 +189,11 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		return slicekit.Clone(matchingEE.Result), nil
 	}
 
+	ttl, _ = ctxTimeToLiveH.Lookup(ctx)
+	if ttl != nil {
+		ttl.Active++
+	}
+
 	vars := Vars{
 		ProcessID:        pid,
 		EventsRepository: eventsRepo,
@@ -210,9 +220,10 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		// complete, halt) and is deliberately raised by a step that ran fine.
 		// It is not a failure to be audited, so it must not produce an EventError.
 		//
+		// A missing participant is a node availability issue, not a failed call.
 		// Everything else is a genuine failure: record it as an EventError so the
 		// process has a per-occurrence audit trail of what went wrong.
-		if !isRuntimeSignal(err) {
+		if !isRuntimeSignal(err) && !isParticipantNotFound(err) {
 			ie.recordErrorEvent(baseContext, eventsRepo, pid, path, err)
 		}
 		return nil, err

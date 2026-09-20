@@ -116,6 +116,25 @@ return workflow.Suspend{}
 pass: it propagates out of `Execute` unchanged, and the scheduler re-queues the
 process to be picked up again after `Runtime#WaitTime`.
 
+#### Cooperative execution budget
+
+Set `Runtime.TTL` to give each execution attempt a time budget. Once that
+budget is reached, the definition will attempt to yield with suspend when it is done with its last operation.
+It does not cancel an in-flight activity.
+Participant-returned definitions finish their follow-up work before yielding,
+because replay treats the parent activity and its follow-up as one cached unit.
+
+Cached results never trigger a TTL suspension. Even if walking the definition
+takes longer than TTL, each pass can complete new work rather than repeatedly
+suspending during replay. The next execution gets a fresh budget and reuses
+recorded results. Expiration after the last activity may require one final,
+cache-only pass to record completion.
+
+`Execute` returns the suspension to its caller; `Run` reschedules it after
+`WaitTime`, without increasing the failure count. Zero or negative TTL disables
+the budget. This is cooperative, not a hard timeout: custom definition logic
+and variable-only steps do not themselves check TTL.
+
 `workflow.Sleep` is `Suspend` wrapped in a definition, so you rarely raise it
 by hand for time-based waiting:
 
@@ -282,6 +301,12 @@ Two rules to respect:
 ---
 
 ## 5. Signal or error?
+
+`workflow.ErrParticipantNotFound{ID: id}` is a plain, nonfatal availability error,
+**not** a `RuntimeSignal`, and does not match `errors.Is(err, workflow.Suspend{})`.
+Its deferred retry is explicit runtime/scheduler handling, not signal dispatch:
+there is no immediate retry; `Run` reschedules after `WaitTime` with `FailureCount`
+unchanged. See [Participants][PARTICIPANT] for lookup and event-preservation details.
 
 | Situation                                    | Return                                      |
 | -------------------------------------------- | ------------------------------------------- |

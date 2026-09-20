@@ -29,7 +29,7 @@ func (d ExecuteParticipant) Execute(ctx context.Context, pid ProcessID) error {
 func (d ExecuteParticipant) execute(ctx context.Context, input []any) (_output []any, _ error) {
 	pr, ok := ctxParticipantsH.Lookup(ctx)
 	if !ok {
-		return nil, ErrFatal.F("missing participant mapping from workflow runtime")
+		return nil, ErrParticipantNotFound{ID: d.ID}
 	}
 	participant, found, err := pr.FindByID(ctx, d.ID)
 	if err != nil {

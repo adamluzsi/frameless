@@ -104,15 +104,33 @@ they are. The design makes this survivable:
 
 - A definition can only *name* participants and conditions by ID. It cannot
   express arbitrary code, arbitrary calls, or arbitrary I/O.
-- An ID you never registered resolves to `ErrParticipantNotFound` /
-  `ErrConditionNotFound`, which are fatal — the process stops rather than
-  retrying forever.
+- A participant ID missing on the executing node produces
+  `workflow.ErrParticipantNotFound{ID: id}`, even if no `Participants` repository
+  is configured. This is a plain, nonfatal availability error, not a runtime
+  signal. Missing condition IDs still produce a fatal `ErrConditionNotFound`.
 - The [Codec][CODEC] only reconstructs the definition and condition types it has
   been taught, so an unknown type on the wire fails to decode at the boundary.
 
 So the worst a hostile definition can do is compose the capabilities you already
 chose to publish, in an order you did not expect. **That containment is what
 makes end-user composition viable at all.**
+
+Builders should validate participant IDs independently against the capabilities
+available across their deployment, not just one node's registrations. Rescheduling
+is not validation: a typo or an ID that no node provides leaves the process
+waiting for availability indefinitely. Validate condition IDs too.
+
+## Specialised nodes can share execution
+
+Nodes with different participant registrations can share the same queue, events,
+locks and notifications. Missing participant availability defers execution until
+after `WaitTime`, preserving `FailureCount` and cached completed steps rather
+than recording a failure (see [Participants][PARTICIPANT]).
+
+A later attempt can run on another node and reuse that work. This lets differently
+specialised nodes take turns, but introduces **no routing changes**: there is no
+capability-aware routing or guarantee that the next attempt lands on a node with
+the required ID.
 
 Next: [Definitions][DEFINITION] for the building blocks,
 [Participants][PARTICIPANT] for publishing your vocabulary well, or the

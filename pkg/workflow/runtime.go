@@ -70,6 +70,21 @@ type Runtime struct {
 	// ContextSetup [optional] allows you to configure the request context of a workflow process execution.
 	// Ideal for adding tracing and logging fields to the workflow execution context
 	ContextSetup ContextSetup
+	// TTL [optional] is the cooperative time budget for one execution attempt.
+	// The TTL respecting suspend is definition execution dictated.
+	// Zero and negative TTL values disable the budget.
+	// TTL does not cancel the context!
+	//
+	// After the budget is reached,
+	// the definition execution upon the last successful operation,
+	// will attempts to suspend temporarily.
+	//
+	// Cached idempotent event results will not trigger a suspension,
+	// ensuring that a progress is always made upon an execution.
+	//
+	// Each fresh execution context starts a new budget.
+	// Execute returns Suspend to its caller;
+	TTL time.Duration
 }
 
 type ProcessLocks interface {
@@ -166,7 +181,7 @@ func (rt Runtime) Context(ctx context.Context) context.Context {
 		ctx = ContextWithConditions(ctx, rt.Conditions)
 	}
 	ctx = rt.ContextSetup.SetUp(ctx)
-	return ctx
+	return withTTL(rt, ctx)
 }
 
 // Spawn starts a new workflow Process bound to the given id and Definition.

@@ -116,7 +116,6 @@ func (rt Runtime) Run(ctx context.Context) error {
 	}
 
 	var g = synckit.Group{
-		// ErrorOnGoexit: true,
 		Isolation: true,
 	}
 
@@ -208,6 +207,10 @@ func (rt Runtime) withRetry(ctx context.Context, do func() error) (err error) {
 			// free either: raising a signal is deliberately never recorded in
 			// the event history, so each attempt walks back to the waiting
 			// step and asks it again straight away.
+			return err
+		case isParticipantNotFound(err):
+			// Retrying on this node cannot supply the missing participant.
+			// Let the scheduler offer the process to another node instead.
 			return err
 		case ErrIsFatal(err):
 			return err
@@ -345,11 +348,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 		return nil
 
 	case errors.Is(err, ErrAlreadyRunningProcess):
-		// a simple requeue should be okay,
-		// as whoever picks it up when the process no longer busy,
-		// can either verify process completion
-		// or continue with processing.
-		return nil
+		return nil // deduplication of the process execution
 
 	case errors.Is(err, ErrNoProcessDefinition):
 		if rt.isBindGracePeriodExpired(sch) {
@@ -374,8 +373,9 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 			FailureCount: sch.FailureCount,
 		})
 
-	// Suspend requires some revision
-	case errors.Is(err, Suspend{}):
+	// This includes ErrParticipantNotFound: another node sharing the queue
+	// may have the participant needed to resume the process.
+	case errors.Is(err, Suspend{}), isParticipantNotFound(err):
 		return s.Queue.Publish(ctx, ExecutionRequest{
 			ProcessID:    sch.ProcessID,
 			StartTime:    rt.backoffStartTime(),

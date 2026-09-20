@@ -75,6 +75,10 @@ func TestRuntime(t *testing.T) {
 		}
 	})
 
+	s.Context("cooperative execution budget", func(s *testcase.Spec) {
+		specRuntimeTTL(s, runtime)
+	})
+
 	s.Describe("#Execute", func(s *testcase.Spec) {
 		var (
 			ctx     = let.Context(s)

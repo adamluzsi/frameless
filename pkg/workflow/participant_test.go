@@ -103,7 +103,7 @@ func TestExecuteParticipant(t *testing.T) {
 			t.Fatal("missing ExecuteParticipantEvent from process history")
 		})
 
-		s.When("the ExecuteParticipant.ID (participant ID) is invalid", func(s *testcase.Spec) {
+		s.When("the participant is not available on this node", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *workflow.ExecuteParticipant {
 				randomPID := workflow.ParticipantID(random.Unique(t.Random.String, string(pid.Get(t))))
 				ep := subject.Super(t)
@@ -111,8 +111,10 @@ func TestExecuteParticipant(t *testing.T) {
 				return ep
 			})
 
-			s.Then("we get back a validation error", func(t *testcase.T) {
-				assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{ID: subject.Get(t).ID})
+			s.Then("returns a nonfatal error with the requested participant ID", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, workflow.ErrParticipantNotFound{ID: subject.Get(t).ID})
+				assert.False(t, workflow.ErrIsFatal(err))
 			})
 		})
 
