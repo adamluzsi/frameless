@@ -53,6 +53,21 @@ Take a look at the documentation for more information on how to use each feature
 
 We hope you find this package useful! If you have any questions or issues, please don't hesitate to reach out.
 
+## QueueV2
+
+`QueueV2[T]` offers automatically renewed message ownership without reserving a
+connection during default message processing. It supports injectable codecs,
+FIFO/LIFO/metadata ordering, blocking publishing, and per-name storage.
+
+`OwnershipDuration` defaults to 30 seconds; renewal runs at one tenth of that
+window. `TransactionalMessageContext` is an explicit opt-in that reserves a
+handler transaction. `Purge` removes only unclaimed or expired messages.
+
+See [QueueV2's contract and migration notes](QueueV2_spec.md) for ownership-loss
+signals, timing assumptions, naming rules, transaction semantics, and validation
+status. Existing `Queue` and its storage are unchanged; V1 message migration is
+application-owned.
+
 ## Tasker Integration
 
 This package also provides an implementation for the `frameless/pkg/tasker` package, allowing you to store and manage scheduled tasks in a PostgreSQL database.

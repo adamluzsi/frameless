@@ -190,27 +190,25 @@ func (l *Lock) insLock(ctx context.Context) (*lockRecord, error) {
 	return rec, err
 }
 
-func (l *Lock) getLocks(ctx context.Context) iter.Seq2[lockRecord, error] {
-	return func(yield func(lockRecord, error) bool) {
+func (l *Lock) getLocks(ctx context.Context) iter.Seq2[*lockRecord, error] {
+	return func(yield func(*lockRecord, error) bool) {
 		if err := l.init(); err != nil {
-			var zero lockRecord
-			yield(zero, err)
+			yield(nil, err)
 			return
 		}
 		if err := l.autoUnlock(ctx); err != nil {
-			var zero lockRecord
-			yield(zero, err)
+			yield(nil, err)
 			return
 		}
 		var queryString = fmt.Sprintf(`SELECT "id", "owner", "expires" FROM %s WHERE name = $1 ORDER BY id ASC`, l.tableName())
-		var queryMany = flsql.QueryMany(l.Connection, ctx, func(s flsql.Scanner) (lockRecord, error) {
+		var queryMany = flsql.QueryMany(l.Connection, ctx, func(s flsql.Scanner) (*lockRecord, error) {
 			var rec lockRecord
 			rec.Name = l.Name
 			err := s.Scan(&rec.ID, &rec.Owner, &rec.Expires)
-			return rec, err
+			return &rec, err
 		}, queryString, l.Name)
 		var now = clock.Now()
-		queryMany = iterkit.Filter(queryMany, func(l lockRecord) bool {
+		queryMany = iterkit.Filter(queryMany, func(l *lockRecord) bool {
 			return l.Expires.After(now)
 		})
 		for rec, err := range queryMany {

@@ -217,6 +217,8 @@ func (r *WorkflowEventRepository) Migrate(ctx context.Context) error {
 }
 
 // WorkflowQueue is a durable PostgreSQL queue for runtime schedules.
+// Delivered message contexts retain the subscription context, not the internal
+// delivery transaction: handler work must not depend on ACK/NACK to commit.
 type WorkflowQueue struct {
 	Connection Connection
 	// Codec is the workflow entity codec
@@ -228,7 +230,7 @@ type WorkflowQueue struct {
 	// Default: frameless_workflow_queue
 	Name string
 	o    sync.Once
-	q    Queue[workflow.ExecutionRequest]
+	q    QueueV2[workflow.ExecutionRequest]
 }
 
 const workflowQueueDefaultName = "frameless_workflow_queue"
@@ -247,11 +249,10 @@ func (q *WorkflowQueue) init() {
 			codec = wfjson.NewCodec()
 		}
 
-		q.q = Queue[workflow.ExecutionRequest]{
-			Name:       name,
+		q.q = QueueV2[workflow.ExecutionRequest]{
 			Connection: q.Connection,
+			Name:       name,
 			Codec:      codec,
-
 			// wfcontract.Queue asserts items come out ordered by
 			// ExecutionRequest.StartTime ascending. The StartTime is
 			// exposed via the JSONB meta column as `start_time` and the
@@ -272,8 +273,26 @@ func (q *WorkflowQueue) Publish(ctx context.Context, v workflow.ExecutionRequest
 
 func (q *WorkflowQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ExecutionRequest] {
 	q.init()
-	return q.q.Subscribe(ctx)
+	return func(yield func(pubsub.Message[workflow.ExecutionRequest], error) bool) {
+		for msg, err := range q.q.Subscribe(ctx) {
+			if msg != nil {
+				// Keep V1's delivery transaction private to ACK/NACK. Workflow
+				// rescheduling and event writes must survive a delivery's NACK.
+				msg = workflowQueueMessage{Message: msg, ctx: ctx}
+			}
+			if !yield(msg, err) {
+				return
+			}
+		}
+	}
 }
+
+type workflowQueueMessage struct {
+	pubsub.Message[workflow.ExecutionRequest]
+	ctx context.Context
+}
+
+func (m workflowQueueMessage) Context() context.Context { return m.ctx }
 
 func (q *WorkflowQueue) Migrate(ctx context.Context) error {
 	q.init()
@@ -290,6 +309,8 @@ type WorkflowNotificationBroadcast struct {
 	Connection Connection
 	Name       string
 	Codec      workflow.Codec
+
+	StatelessSubscribe bool
 
 	o       sync.Once
 	channel string
@@ -334,6 +355,17 @@ func (b *WorkflowNotificationBroadcast) Publish(ctx context.Context, event workf
 }
 
 func (b *WorkflowNotificationBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
+	if b.StatelessSubscribe {
+		return b.statelessSubscribe(ctx)
+	}
+	return b.statefulSubscribe(ctx)
+}
+
+func (b *WorkflowNotificationBroadcast) statelessSubscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
+	panic("not implemented")
+}
+
+func (b *WorkflowNotificationBroadcast) statefulSubscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
 	b.init()
 
 	// LISTEN requires a dedicated session. Acquiring a *pgxpool.Conn reserves
