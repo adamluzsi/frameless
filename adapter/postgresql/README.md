@@ -9,6 +9,7 @@ This package provides a set of adapters that allow you to use PostgreSQL databas
 * Repository implementation for CRUD operations (Create, Read, Update, Delete)
 * Shared Locker implementation for locking across application instances
 * Message queueing system with publish/subscribe functionality
+* Generic broadcasts through PostgreSQL LISTEN/NOTIFY or a polling feed
 * Support for transactional queries using the `postgresql.Connection`
 
 ## Example Usage
@@ -68,6 +69,29 @@ signals, timing assumptions, naming rules, transaction semantics, and validation
 status. Existing `Queue` and its storage are unchanged; V1 message migration is
 application-owned.
 
+## Broadcast
+
+`Broadcast[T]` sends each published value to every active subscriber through
+`pubsub.Publisher[T]` and `pubsub.Subscriber[T]`. It defaults to `jsonkit.Codec{}`
+with an injectable `codec.Codec`:
+
+```go
+broadcast := &postgresql.Broadcast[domain.Update]{
+    Connection: connection,
+    Name: "updates",
+    StatelessSubscribe: true,
+}
+```
+
+The default LISTEN transport reserves one connection per subscription. Set
+`StatelessSubscribe` to use short polling operations instead, with automatic
+retention, lease renewal and cancellation cleanup. `PollInterval` defaults to
+42ms and `SubscriberLeaseDuration` to 30s. These are volatile broadcasts, not
+acknowledgement-driven queues.
+
+See [broadcast transport and retention semantics](workflow_notification.md) for
+naming, codecs, payload limits, migrations and transaction constraints.
+
 ## Tasker Integration
 
 This package also provides an implementation for the `frameless/pkg/tasker` package, allowing you to store and manage scheduled tasks in a PostgreSQL database.
@@ -86,6 +110,10 @@ This package also provides implementations for the components required to back t
 The runtime is built to be adapter-agnostic, so wiring these four pieces together produces a workflow engine that runs against any PostgreSQL database. See `Test_workflowE2E` for an end-to-end example.
 
 ### Polling notifications
+
+`WorkflowNotificationBroadcast` delegates to `Broadcast[workflow.Notification]`,
+retaining its workflow channel name, `wfjson` codec and existing configuration API.
+The generic extraction preserves the notification-feed tables; no migration is required.
 
 Set `WorkflowNotificationBroadcast.StatelessSubscribe` to register a polling
 subscriber without holding a pool connection between operations. Each subscriber

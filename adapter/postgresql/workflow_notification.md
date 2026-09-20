@@ -1,6 +1,31 @@
-# Workflow notifications: LISTEN or polling
+# Broadcasts and workflow notifications: LISTEN or polling
 
-`WorkflowNotificationBroadcast.StatelessSubscribe` selects a table-backed polling subscription instead of a dedicated PostgreSQL LISTEN session. The notification API remains `pubsub.Publisher[workflow.Notification]` / `pubsub.Subscriber[workflow.Notification]`.
+`Broadcast[T]` implements `pubsub.Publisher[T]` and `pubsub.Subscriber[T]` for any payload type. `StatelessSubscribe` selects a table-backed polling subscription instead of a dedicated PostgreSQL LISTEN session. Both transports broadcast to every subscriber; they do not divide messages as a queue would.
+
+```go
+type Update struct {
+    ID string
+    Version int
+}
+
+updates := &postgresql.Broadcast[Update]{
+    Connection: connection,
+    Name: "updates",
+    StatelessSubscribe: true,
+    // Codec is injectable; the default is jsonkit.Codec{}.
+}
+```
+
+`WorkflowNotificationBroadcast` is a thin wrapper around `Broadcast[workflow.Notification]`. It preserves existing configuration fields and supplies the workflow-specific defaults:
+
+| Component | Default channel name | Default codec |
+| --- | --- | --- |
+| `Broadcast[T]` | `frameless_broadcast` | `jsonkit.Codec{}` |
+| `WorkflowNotificationBroadcast` | `frameless_workflow_notifications` | `wfjson.NewCodec()` |
+
+Empty and whitespace-only names select the respective default. Type arguments do not create separate channels: all participants on a channel must use compatible types and codecs. Direct `Broadcast[workflow.Notification]` users should inject `wfjson.NewCodec()` and select the workflow channel to interoperate with the wrapper. Configure either component before its first use, and do not copy or modify it afterwards.
+
+The following lifetime and transport rules apply to both components. For workflow notifications:
 
 ```go
 notifications := &postgresql.WorkflowNotificationBroadcast{
@@ -55,7 +80,7 @@ Polling acquires connections only during individual database operations. Waiting
 
 Heartbeats run at one third of the lease duration, including before iteration starts. Claim/cursor/renewal operations are bounded by `min(5 seconds, lease/3)`. A separate five-second cap applies to publishing and schema initialization. Caller deadlines can shorten these limits.
 
-A registration expires in PostgreSQL one lease duration after its last server-applied registration/renewal. The local subscriber stops assuming continuity at 90% of a lease duration from the start of its last confirmed request. Transient renewal failures may be tolerated within that earlier deadline; unverified renewals do not extend it. Expired/missing registrations are never silently recreated: iteration returns `ErrWorkflowNotificationSubscriptionExpired`, and the message context is cancelled. Ordinary caller cancellation retains its own cause.
+A registration expires in PostgreSQL one lease duration after its last server-applied registration/renewal. The local subscriber stops assuming continuity at 90% of a lease duration from the start of its last confirmed request. Transient renewal failures may be tolerated within that earlier deadline; unverified renewals do not extend it. Expired/missing registrations are never silently recreated: iteration returns `ErrSubscriptionExpired`, and the message context is cancelled. Ordinary caller cancellation retains its own cause.
 
 Choose a lease comfortably above database, connection-acquisition and scheduler latency. Timing assumes a runnable scheduler and bounded database clock changes/rate differences; notification during a suspended process is not instantaneous.
 
@@ -69,13 +94,13 @@ If cleanup fails or a consumer crashes, subsequent publication, registration, cu
 - LISTEN recipients use PostgreSQL/pgx buffering, not feed cursors. Feed retention counts polling subscribers only.
 - Keep all feed participants on the same database namespace and stable `search_path`. PostgreSQL LISTEN channels are database-wide, whereas these tables reside in the configured schema.
 - Existing name normalization is preserved: trim, lowercase, replace unsupported characters with underscores, and prefix numeric-leading names. Names that normalize to the same channel still share a broadcast.
-- `Codec` remains injectable, defaulting to `wfjson.NewCodec`. The feed stores the original bytes. Because every publish also emits `pg_notify`, payloads must remain valid PostgreSQL notification text and fit its payload limit (less than 8,000 bytes on standard PostgreSQL). Oversized payloads fail without committing a feed event.
+- `Codec` is injectable via `codec.Codec`: it defaults to `jsonkit.Codec{}` for `Broadcast[T]`, and `wfjson.NewCodec()` for the workflow wrapper. The feed stores the original bytes. Because every publish also emits `pg_notify`, payloads must remain valid PostgreSQL notification text and fit its payload limit (less than 8,000 bytes on standard PostgreSQL). Oversized payloads fail without committing a feed event.
 
 **Deployment:** upgrade all publishers before enabling polling subscribers. Old binaries or external code that only call `pg_notify` do not write the feed and cannot reach polling readers. There is no listener daemon translating old NOTIFY traffic into table rows.
 
 ## Storage, transactions and cleanup ordering
 
-The adapter creates three shared tables, scoped by channel:
+The adapter creates three shared tables, scoped by channel. Their historical names are deliberately retained by the generic broadcast, so extracting the component does not require a storage migration or strand existing workflow subscriptions:
 
 - `frameless_workflow_notification_channels`: the channel's monotonic revision.
 - `frameless_workflow_notification_subscribers`: registration ID, cursor and lease expiry.
@@ -93,10 +118,12 @@ Normal publishing owns a short transaction. Publishing with an existing transact
 
 ## Tests
 
-`TestWorkflowNotificationBroadcast` runs the existing workflow notification contract against both transports. The polling lifecycle specs additionally cover delayed iteration, multi-subscriber fanout and retention, cancellation, no replay for newcomers, per-channel isolation, a single-connection pool, renewal/expiry, injected codecs, mixed-mode/cross-pool delivery and transactional commit ordering.
+`TestBroadcast` runs the pub/sub volatile and broadcast contracts against both transports with non-workflow payloads. It also covers default/custom codecs, encoding errors, delayed fan-out on one connection, and bidirectional interoperability with the workflow wrapper on explicit/default channel names.
+
+`TestWorkflowNotificationBroadcast` runs the existing workflow notification contract against both transports through that wrapper. The polling lifecycle specs additionally cover delayed iteration, multi-subscriber fanout and retention, cancellation, no replay for newcomers, per-channel isolation, a single-connection pool, renewal/expiry, injected codecs, mixed-mode/cross-pool delivery and transactional commit ordering.
 
 From `adapter/postgresql`, with `PG_DATABASE_DSN` pointing at a test database:
 
 ```sh
-go test -race -run '^TestWorkflowNotificationBroadcast$' -count=3 -timeout=120s .
+go test -race -run '^Test(Broadcast|WorkflowNotificationBroadcast)$' -count=3 -timeout=120s .
 ```

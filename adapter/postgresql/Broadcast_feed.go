@@ -11,22 +11,25 @@ import (
 	"github.com/jackc/pgx/v5"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/pkg/workflow"
+
 	"go.llib.dev/frameless/port/pubsub"
 )
 
 // ErrSubscriptionExpired means the subscription can no longer guarantee its unread history.
 // Start a new subscription; it will not replay history.
+// The historical error value is retained for compatibility with workflow callers.
 var ErrSubscriptionExpired errorkit.Error = "workflow notification subscription expired"
 
-const workflowNotificationOperationTimeout = 5 * time.Second
+const broadcastOperationTimeout = 5 * time.Second
 
-const workflowNotificationFeedExists = `SELECT
+const broadcastFeedExists = `SELECT
     to_regclass('frameless_workflow_notification_channels') IS NOT NULL AND
     to_regclass('frameless_workflow_notification_subscribers') IS NOT NULL AND
     to_regclass('frameless_workflow_notification_events') IS NOT NULL`
 
-const workflowNotificationFeedSchema = `
+// Keep the original notification-feed table names so existing subscriptions,
+// retained messages and mixed-version publishers share storage after extraction.
+const broadcastFeedSchema = `
 CREATE TABLE IF NOT EXISTS frameless_workflow_notification_channels (
     channel TEXT PRIMARY KEY,
     revision BIGINT NOT NULL DEFAULT 0
@@ -51,10 +54,10 @@ CREATE TABLE IF NOT EXISTS frameless_workflow_notification_events (
 // Migrate prepares notification-feed storage for both publishing modes. Publish
 // and stateless Subscribe also initialise it lazily. Provision it explicitly when
 // the application's database role cannot create tables. Use a stable search_path.
-func (b *WorkflowNotificationBroadcast) Migrate(ctx context.Context) error {
+func (b *Broadcast[E]) Migrate(ctx context.Context) error {
 	b.init()
 	if _, ok := b.Connection.LookupTx(ctx); ok {
-		return errors.New("migrate workflow notifications outside application transactions")
+		return errors.New("migrate broadcast outside application transactions")
 	}
 	b.feedMu.Lock()
 	defer b.feedMu.Unlock()
@@ -62,13 +65,13 @@ func (b *WorkflowNotificationBroadcast) Migrate(ctx context.Context) error {
 		return nil
 	}
 	if b.Connection.DB == nil {
-		return errors.New("workflow notification broadcast: missing connection")
+		return errors.New("broadcast: missing connection")
 	}
-	ctx, cancel := context.WithTimeout(ctx, workflowNotificationOperationTimeout)
+	ctx, cancel := context.WithTimeout(ctx, broadcastOperationTimeout)
 	defer cancel()
 	// Avoid requiring DDL privileges when storage was provisioned by a migrator.
 	var exists bool
-	err := b.Connection.DB.QueryRow(ctx, workflowNotificationFeedExists).Scan(&exists)
+	err := b.Connection.DB.QueryRow(ctx, broadcastFeedExists).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -86,7 +89,7 @@ func (b *WorkflowNotificationBroadcast) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, workflowNotificationFeedSchema); err != nil {
+	if _, err := tx.Exec(ctx, broadcastFeedSchema); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -99,7 +102,7 @@ func (b *WorkflowNotificationBroadcast) Migrate(ctx context.Context) error {
 func rollbackNotificationTx(operation context.Context, tx pgx.Tx) {
 	deadline, ok := operation.Deadline()
 	if !ok {
-		deadline = time.Now().Add(workflowNotificationOperationTimeout)
+		deadline = time.Now().Add(broadcastOperationTimeout)
 	}
 	// Cleanup must not extend a renewal beyond its lease safety deadline.
 	// pgx discards a connection if rollback cannot finish in this budget.
@@ -137,8 +140,8 @@ WHERE channel = $1 AND revision <= COALESCE(
 	return err
 }
 
-func (b *WorkflowNotificationBroadcast) publishNotification(ctx context.Context, payload []byte) error {
-	ctx, cancel := context.WithTimeout(ctx, workflowNotificationOperationTimeout)
+func (b *Broadcast[E]) publishNotification(ctx context.Context, payload []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, broadcastOperationTimeout)
 	defer cancel()
 	if tx, ok := b.Connection.LookupTx(ctx); ok {
 		// Registration and publication must observe each other after serialising
@@ -148,16 +151,16 @@ func (b *WorkflowNotificationBroadcast) publishNotification(ctx context.Context,
 			return err
 		}
 		if isolation != "read committed" {
-			return errors.New("workflow notification publishing requires READ COMMITTED isolation")
+			return errors.New("broadcast publishing requires READ COMMITTED isolation")
 		}
 		// Use the caller's connection, including on a pool of size one. Do not
 		// cache readiness observed through an uncommitted application transaction.
 		var exists bool
-		if err := (*tx).QueryRow(ctx, workflowNotificationFeedExists).Scan(&exists); err != nil {
+		if err := (*tx).QueryRow(ctx, broadcastFeedExists).Scan(&exists); err != nil {
 			return err
 		}
 		if !exists {
-			return errors.New("workflow notification feed is not initialized: call Migrate before beginning the transaction")
+			return errors.New("broadcast feed is not initialized: call Migrate before beginning the transaction")
 		}
 		return b.publishNotificationTx(ctx, *tx, payload)
 	}
@@ -175,7 +178,7 @@ func (b *WorkflowNotificationBroadcast) publishNotification(ctx context.Context,
 	return tx.Commit(ctx)
 }
 
-func (b *WorkflowNotificationBroadcast) publishNotificationTx(ctx context.Context, tx pgx.Tx, payload []byte) error {
+func (b *Broadcast[E]) publishNotificationTx(ctx context.Context, tx pgx.Tx, payload []byte) error {
 	if _, err := lockNotificationChannel(ctx, tx, b.channel); err != nil {
 		return err
 	}
@@ -204,7 +207,7 @@ type notificationFeedSettings struct {
 	poll, lease, refresh, timeout time.Duration
 }
 
-func (b *WorkflowNotificationBroadcast) notificationFeedSettings() (notificationFeedSettings, error) {
+func (b *Broadcast[E]) notificationFeedSettings() (notificationFeedSettings, error) {
 	s := notificationFeedSettings{poll: b.PollInterval, lease: b.SubscriberLeaseDuration}
 	if s.poll == 0 {
 		s.poll = 42 * time.Millisecond
@@ -213,31 +216,31 @@ func (b *WorkflowNotificationBroadcast) notificationFeedSettings() (notification
 		s.lease = 30 * time.Second
 	}
 	if s.poll < 0 || s.lease < 100*time.Millisecond {
-		return s, errors.New("workflow notification broadcast: PollInterval must be positive and SubscriberLeaseDuration at least 100ms")
+		return s, errors.New("broadcast: PollInterval must be positive and SubscriberLeaseDuration at least 100ms")
 	}
 	s.refresh = s.lease / 3
-	s.timeout = min(workflowNotificationOperationTimeout, s.refresh)
+	s.timeout = min(broadcastOperationTimeout, s.refresh)
 	return s, nil
 }
 
-func notificationSubscriptionError(err error) pubsub.Subscription[workflow.Notification] {
-	return func(yield func(pubsub.Message[workflow.Notification], error) bool) { yield(nil, err) }
+func notificationSubscriptionError[E any](err error) pubsub.Subscription[E] {
+	return func(yield func(pubsub.Message[E], error) bool) { yield(nil, err) }
 }
 
-func (b *WorkflowNotificationBroadcast) statelessSubscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
+func (b *Broadcast[E]) statelessSubscribe(ctx context.Context) pubsub.Subscription[E] {
 	b.init()
 	settings, err := b.notificationFeedSettings()
 	if err != nil {
-		return notificationSubscriptionError(err)
+		return notificationSubscriptionError[E](err)
 	}
 	if _, ok := b.Connection.LookupTx(ctx); ok {
-		return notificationSubscriptionError(errors.New("stateless notification subscription requires a non-transactional context"))
+		return notificationSubscriptionError[E](errors.New("stateless broadcast subscription requires a non-transactional context"))
 	}
 	if err := b.Migrate(ctx); err != nil {
-		return notificationSubscriptionError(err)
+		return notificationSubscriptionError[E](err)
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
-	sub := &notificationFeedSubscription{
+	sub := &notificationFeedSubscription[E]{
 		broadcast: b, settings: settings, id: rand.Text(), ctx: ctx, cancel: cancel,
 		done: make(chan struct{}),
 	}
@@ -247,14 +250,14 @@ func (b *WorkflowNotificationBroadcast) statelessSubscribe(ctx context.Context) 
 		// COMMIT could have succeeded even if its response was lost. Best-effort
 		// removal is safe for this unique ID; expiry covers an uncertain cleanup.
 		sub.unregister()
-		return notificationSubscriptionError(err)
+		return notificationSubscriptionError[E](err)
 	}
 	go sub.maintain(started.Add(settings.lease - settings.lease/10))
 	return sub.iterate
 }
 
-type notificationFeedSubscription struct {
-	broadcast *WorkflowNotificationBroadcast
+type notificationFeedSubscription[E any] struct {
+	broadcast *Broadcast[E]
 	settings  notificationFeedSettings
 	id        string
 	ctx       context.Context
@@ -263,7 +266,7 @@ type notificationFeedSubscription struct {
 	used      atomic.Bool
 }
 
-func (s *notificationFeedSubscription) transaction(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
+func (s *notificationFeedSubscription[E]) transaction(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
 	ctx, cancel := context.WithTimeout(ctx, s.settings.timeout)
 	defer cancel()
 	tx, err := s.broadcast.Connection.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite})
@@ -277,7 +280,7 @@ func (s *notificationFeedSubscription) transaction(ctx context.Context, fn func(
 	return tx.Commit(ctx)
 }
 
-func (s *notificationFeedSubscription) register() error {
+func (s *notificationFeedSubscription[E]) register() error {
 	return s.transaction(s.ctx, func(ctx context.Context, tx pgx.Tx) error {
 		revision, err := lockNotificationChannel(ctx, tx, s.broadcast.channel)
 		if err != nil {
@@ -293,7 +296,7 @@ VALUES ($1, $2, $3, clock_timestamp() + $4::bigint * interval '1 microsecond')`,
 	})
 }
 
-func (s *notificationFeedSubscription) renew(ctx context.Context) error {
+func (s *notificationFeedSubscription[E]) renew(ctx context.Context) error {
 	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := lockNotificationChannel(ctx, tx, s.broadcast.channel); err != nil {
 			return err
@@ -312,7 +315,7 @@ WHERE channel = $1 AND id = $2 AND expires_at > clock_timestamp()`,
 	})
 }
 
-func (s *notificationFeedSubscription) maintain(deadline time.Time) {
+func (s *notificationFeedSubscription[E]) maintain(deadline time.Time) {
 	defer close(s.done)
 	defer s.unregister()
 	for {
@@ -343,8 +346,8 @@ func (s *notificationFeedSubscription) maintain(deadline time.Time) {
 	}
 }
 
-func (s *notificationFeedSubscription) unregister() {
-	ctx, cancel := context.WithTimeout(context.Background(), workflowNotificationOperationTimeout)
+func (s *notificationFeedSubscription[E]) unregister() {
+	ctx, cancel := context.WithTimeout(context.Background(), broadcastOperationTimeout)
 	defer cancel()
 	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := lockNotificationChannel(ctx, tx, s.broadcast.channel); err != nil {
@@ -359,11 +362,11 @@ func (s *notificationFeedSubscription) unregister() {
 	if err != nil {
 		// A crashed/unreachable registration expires and is pruned by the next
 		// publish, subscribe, cursor advance or heartbeat on this channel.
-		logger.Error(ctx, "workflow notification subscription cleanup failed", logger.Field("error", err.Error()))
+		logger.Error(ctx, "broadcast subscription cleanup failed", logger.Field("error", err.Error()))
 	}
 }
 
-func (s *notificationFeedSubscription) next() (*int64, []byte, error) {
+func (s *notificationFeedSubscription[E]) next() (*int64, []byte, error) {
 	ctx, cancel := context.WithTimeout(s.ctx, s.settings.timeout)
 	defer cancel()
 	var revision *int64
@@ -383,7 +386,7 @@ WHERE subscriber.channel = $1 AND subscriber.id = $2 AND subscriber.expires_at >
 	return revision, data, err
 }
 
-func (s *notificationFeedSubscription) advance(revision int64) error {
+func (s *notificationFeedSubscription[E]) advance(revision int64) error {
 	return s.transaction(s.ctx, func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := lockNotificationChannel(ctx, tx, s.broadcast.channel); err != nil {
 			return err
@@ -401,9 +404,9 @@ WHERE channel = $1 AND id = $2 AND expires_at > clock_timestamp() AND cursor < $
 	})
 }
 
-func (s *notificationFeedSubscription) iterate(yield func(pubsub.Message[workflow.Notification], error) bool) {
+func (s *notificationFeedSubscription[E]) iterate(yield func(pubsub.Message[E], error) bool) {
 	if !s.used.CompareAndSwap(false, true) {
-		yield(nil, errors.New("workflow notification subscription is single-use"))
+		yield(nil, errors.New("broadcast subscription is single-use"))
 		return
 	}
 	defer func() {
@@ -427,9 +430,9 @@ func (s *notificationFeedSubscription) iterate(yield func(pubsub.Message[workflo
 			_ = waitNotificationFeed(s.ctx, s.settings.poll)
 			continue
 		}
-		var event workflow.Notification
+		var event E
 		if err := s.broadcast.Codec.Unmarshal(data, &event); err != nil {
-			err = fmt.Errorf("decode workflow notification: %w", err)
+			err = fmt.Errorf("decode broadcast message: %w", err)
 			s.cancel(err)
 			yield(nil, err)
 			return
