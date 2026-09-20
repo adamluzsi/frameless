@@ -7,6 +7,7 @@ import (
 	"iter"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -300,8 +301,8 @@ func (q *WorkflowQueue) Migrate(ctx context.Context) error {
 }
 
 // WorkflowNotificationBroadcast publishes workflow notifications using
-// PostgreSQL's LISTEN/NOTIFY so that worker nodes on different processes
-// (and on different hosts) can be notified about queue changes in real time.
+// PostgreSQL's LISTEN/NOTIFY or a polling feed so that worker nodes on different
+// processes (and on different hosts) can be notified about queue changes.
 //
 // The on-wire notification payload is owned by pkg/workflow/wfjson, which keeps
 // the format identical to the durable event log and the runtime's codec.
@@ -310,10 +311,20 @@ type WorkflowNotificationBroadcast struct {
 	Name       string
 	Codec      workflow.Codec
 
+	// StatelessSubscribe registers a leased cursor in a database feed instead of
+	// reserving a LISTEN connection. Registration and heartbeats start at Subscribe,
+	// not at iteration. Cancel the subscription context even if you never iterate.
 	StatelessSubscribe bool
+	// PollInterval controls empty-feed polling. Default: 42ms.
+	PollInterval time.Duration
+	// SubscriberLeaseDuration bounds retention by disconnected/crashed subscribers.
+	// Healthy registrations renew even while not iterating. Default: 30s; minimum: 100ms.
+	SubscriberLeaseDuration time.Duration
 
-	o       sync.Once
-	channel string
+	o         sync.Once
+	channel   string
+	feedMu    sync.Mutex
+	feedReady bool
 }
 
 const workflowNotificationBroadcastDefaultName = "frameless_workflow_notifications"
@@ -348,10 +359,9 @@ func (b *WorkflowNotificationBroadcast) Publish(ctx context.Context, event workf
 		return fmt.Errorf("marshal workflow notification: %w", err)
 	}
 
-	// pg_notify is delivered to listeners even when the publisher is inside
-	// a transaction; raw NOTIFY would not be, so we use the function form.
-	_, err = b.Connection.ExecContext(ctx, `SELECT pg_notify($1, $2)`, b.channel, payload)
-	return err
+	// Both the feed and pg_notify become visible on commit. The Subscribe mode
+	// does not change publishing, so polling and LISTEN subscribers can coexist.
+	return b.publishNotification(ctx, payload)
 }
 
 func (b *WorkflowNotificationBroadcast) Subscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
@@ -359,10 +369,6 @@ func (b *WorkflowNotificationBroadcast) Subscribe(ctx context.Context) pubsub.Su
 		return b.statelessSubscribe(ctx)
 	}
 	return b.statefulSubscribe(ctx)
-}
-
-func (b *WorkflowNotificationBroadcast) statelessSubscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {
-	panic("not implemented")
 }
 
 func (b *WorkflowNotificationBroadcast) statefulSubscribe(ctx context.Context) pubsub.Subscription[workflow.Notification] {

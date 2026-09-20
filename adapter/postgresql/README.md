@@ -80,10 +80,26 @@ This package also provides implementations for the components required to back t
 | --- | --- | --- |
 | `WorkflowEventRepository` | `workflow.EventRepository` | Append-only event log |
 | `WorkflowQueue` | `workflow.Queue` | Durable execution-request queue |
-| `WorkflowNotificationBroadcast` | `workflow.NotificationBroadcast` | Cross-process notifications (PostgreSQL `LISTEN`/`NOTIFY`) |
+| `WorkflowNotificationBroadcast` | `workflow.NotificationBroadcast` | Cross-process notifications (`LISTEN`/`NOTIFY` or a polling feed) |
 | `WorkflowLockerFactory` | `workflow.ProcessLocks` | Per-process locks |
 
 The runtime is built to be adapter-agnostic, so wiring these four pieces together produces a workflow engine that runs against any PostgreSQL database. See `Test_workflowE2E` for an end-to-end example.
+
+### Polling notifications
+
+Set `WorkflowNotificationBroadcast.StatelessSubscribe` to register a polling
+subscriber without holding a pool connection between operations. Each subscriber
+retains its unread feed from the moment `Subscribe` returns, including before
+iteration starts; reading or cancelling releases retention. Healthy subscriptions
+renew automatically, and expired registrations are pruned on channel activity.
+
+Updated publishers write the feed and emit `pg_notify` atomically, so both
+subscription modes can coexist. This adds notification-feed tables for publishers
+as well: use `Migrate` at startup when provisioning with a separate database role,
+and upgrade publishers before enabling polling subscribers.
+
+See [notification transport and retention semantics](workflow_notification.md)
+for configuration, cleanup, transaction-duration constraints and deployment notes.
 
 ### Storage decisions
 
