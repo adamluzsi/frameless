@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
@@ -205,7 +206,9 @@ func (b *Broadcast[E]) statefulSubscribe(ctx context.Context) pubsub.Subscriptio
 // pgxIdentifier quotes a channel name so it is safe to interpolate into a
 // LISTEN statement. PostgreSQL does not accept bind parameters on LISTEN/UNLISTEN.
 func pgxIdentifier(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	return pgx.Identifier(strings.Split(name, ".")).Sanitize()
+	// _ = pgx.Identifier{name}.Sanitize()
+	// return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func sanitizePGListenChannel(name string) string {
