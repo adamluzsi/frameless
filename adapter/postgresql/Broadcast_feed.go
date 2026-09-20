@@ -207,8 +207,8 @@ type notificationFeedSettings struct {
 	poll, lease, refresh, timeout time.Duration
 }
 
-func (b *Broadcast[E]) notificationFeedSettings() (notificationFeedSettings, error) {
-	s := notificationFeedSettings{poll: b.PollInterval, lease: b.SubscriberLeaseDuration}
+func (c BroadcastStatelessSubscribe) settings() (notificationFeedSettings, error) {
+	s := notificationFeedSettings{poll: c.PollInterval, lease: c.SubscriberLeaseDuration}
 	if s.poll == 0 {
 		s.poll = 42 * time.Millisecond
 	}
@@ -229,7 +229,7 @@ func notificationSubscriptionError[E any](err error) pubsub.Subscription[E] {
 
 func (b *Broadcast[E]) statelessSubscribe(ctx context.Context) pubsub.Subscription[E] {
 	b.init()
-	settings, err := b.notificationFeedSettings()
+	settings, err := b.StatelessSubscribe.settings()
 	if err != nil {
 		return notificationSubscriptionError[E](err)
 	}

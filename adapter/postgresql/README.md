@@ -79,15 +79,16 @@ with an injectable `codec.Codec`:
 broadcast := &postgresql.Broadcast[domain.Update]{
     Connection: connection,
     Name: "updates",
-    StatelessSubscribe: true,
+    StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
 }
 ```
 
-The default LISTEN transport reserves one connection per subscription. Set
-`StatelessSubscribe` to use short polling operations instead, with automatic
-retention, lease renewal and cancellation cleanup. `PollInterval` defaults to
-42ms and `SubscriberLeaseDuration` to 30s. These are volatile broadcasts, not
-acknowledgement-driven queues.
+A nil `StatelessSubscribe` selects LISTEN, which reserves one connection per
+subscription. A non-nil `*BroadcastStatelessSubscribe` enables short polling
+operations with automatic retention, lease renewal and cancellation cleanup.
+The config groups `PollInterval` (default 42ms) and `SubscriberLeaseDuration`
+(default 30s); an empty config uses both defaults. These are volatile broadcasts,
+not acknowledgement-driven queues.
 
 See [broadcast transport and retention semantics](workflow_notification.md) for
 naming, codecs, payload limits, migrations and transaction constraints.
@@ -112,12 +113,13 @@ The runtime is built to be adapter-agnostic, so wiring these four pieces togethe
 ### Polling notifications
 
 `WorkflowNotificationBroadcast` delegates to `Broadcast[workflow.Notification]`,
-retaining its workflow channel name, `wfjson` codec and existing configuration API.
+retaining its workflow channel name and `wfjson` codec. Both components use the
+same optional `*BroadcastStatelessSubscribe` configuration.
 The generic extraction preserves the notification-feed tables; no migration is required.
 
-Set `WorkflowNotificationBroadcast.StatelessSubscribe` to register a polling
-subscriber without holding a pool connection between operations. Each subscriber
-retains its unread feed from the moment `Subscribe` returns, including before
+Set `WorkflowNotificationBroadcast.StatelessSubscribe` to a non-nil config to
+register a polling subscriber without holding a pool connection between operations.
+Each subscriber retains its unread feed from the moment `Subscribe` returns, including before
 iteration starts; reading or cancelling releases retention. Healthy subscriptions
 renew automatically, and expired registrations are pruned on channel activity.
 

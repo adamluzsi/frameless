@@ -30,20 +30,26 @@ type Broadcast[Entity any] struct {
 	// PostgreSQL NOTIFY's text and payload-size constraints in both modes.
 	Codec codec.Codec
 
-	// StatelessSubscribe registers a leased cursor in a database feed instead of
-	// reserving a LISTEN connection. Registration and heartbeats start at Subscribe,
-	// not at iteration. Cancel the subscription context even if you never iterate.
-	StatelessSubscribe bool
-	// PollInterval controls empty-feed polling. Default: 42ms.
-	PollInterval time.Duration
-	// SubscriberLeaseDuration bounds retention by disconnected/crashed subscribers.
-	// Healthy registrations renew even while not iterating. Default: 30s; minimum: 100ms.
-	SubscriberLeaseDuration time.Duration
+	// StatelessSubscribe enables table-backed polling when non-nil; nil uses LISTEN.
+	// An empty config uses the default polling interval and subscriber lease.
+	// Registration and heartbeats start at Subscribe, not at iteration. Cancel the
+	// subscription context even if you never iterate.
+	StatelessSubscribe *BroadcastStatelessSubscribe
 
 	o         sync.Once
 	channel   string
 	feedMu    sync.Mutex
 	feedReady bool
+}
+
+// BroadcastStatelessSubscribe configures table-backed polling subscriptions.
+// Its zero value uses the default polling interval and subscriber lease.
+type BroadcastStatelessSubscribe struct {
+	// PollInterval controls empty-feed polling. Default: 42ms.
+	PollInterval time.Duration
+	// SubscriberLeaseDuration bounds retention by disconnected/crashed subscribers.
+	// Healthy registrations renew even while not iterating. Default: 30s; minimum: 100ms.
+	SubscriberLeaseDuration time.Duration
 }
 
 const broadcastDefaultName = "frameless_broadcast"
@@ -79,7 +85,7 @@ func (b *Broadcast[E]) Publish(ctx context.Context, event E) error {
 }
 
 func (b *Broadcast[E]) Subscribe(ctx context.Context) pubsub.Subscription[E] {
-	if b.StatelessSubscribe {
+	if b.StatelessSubscribe != nil {
 		return b.statelessSubscribe(ctx)
 	}
 	return b.statefulSubscribe(ctx)
@@ -204,13 +210,14 @@ func (b *Broadcast[E]) statefulSubscribe(ctx context.Context) pubsub.Subscriptio
 }
 
 // pgxIdentifier quotes a channel name so it is safe to interpolate into a
-// LISTEN statement. PostgreSQL does not accept bind parameters on LISTEN/UNLISTEN.
+// LISTEN statement. A channel is one identifier, not a schema-qualified path.
+// PostgreSQL does not accept bind parameters on LISTEN/UNLISTEN.
 func pgxIdentifier(name string) string {
-	return pgx.Identifier(strings.Split(name, ".")).Sanitize()
-	// _ = pgx.Identifier{name}.Sanitize()
-	// return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	return pgx.Identifier{name}.Sanitize()
 }
 
+// sanitizePGListenChannel normalizes the logical name shared by feed storage and
+// pg_notify. SQL identifier quoting belongs only at the LISTEN statement boundary.
 func sanitizePGListenChannel(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {

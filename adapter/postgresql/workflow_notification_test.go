@@ -22,7 +22,7 @@ import (
 func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql.WorkflowNotificationBroadcast], poolSize testcase.Var[int32]) {
 	subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 		b := subject.Super(t)
-		b.PollInterval = 10 * time.Millisecond
+		b.StatelessSubscribe.PollInterval = 10 * time.Millisecond
 		return b
 	})
 	var (
@@ -136,7 +136,9 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 
 		s.Test("isolates channels including cancellation and cleanup", func(t *testcase.T) {
 			sub, b := act(t), subject.Get(t)
-			other := &postgresql.WorkflowNotificationBroadcast{Connection: b.Connection, Name: b.Name + "_other", StatelessSubscribe: true}
+			other := &postgresql.WorkflowNotificationBroadcast{
+				Connection: b.Connection, Name: b.Name + "_other", StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
+			}
 			otherSub := workflowNotificationSubscribe(t, ctx.Get(t), other)
 			assert.Must(t).NoError(other.Publish(ctx.Get(t), batch.Get(t)[0]))
 			assert.Must(t).NoError(b.Publish(ctx.Get(t), batch.Get(t)[1]))
@@ -152,7 +154,7 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 		s.When("Name needs normalization", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 				b := subject.Super(t)
-				b.Name = " 1-" + strings.ToUpper(b.Name) + ".feed "
+				b.Name = " 1-" + strings.ToUpper(b.Name) + ".\"Feed\" "
 				return b
 			})
 			s.Then("uses the normalized channel for registration and feed storage", func(t *testcase.T) {
@@ -170,7 +172,9 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 				local, b := act(t), subject.Get(t)
 				remote := queueV2ConnectPool(t, b.Connection.DB.Config())
 				listen := &postgresql.WorkflowNotificationBroadcast{Connection: remote, Name: b.Name}
-				poll := &postgresql.WorkflowNotificationBroadcast{Connection: remote, Name: b.Name, StatelessSubscribe: true}
+				poll := &postgresql.WorkflowNotificationBroadcast{
+					Connection: remote, Name: b.Name, StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
+				}
 				subs := []*workflowNotificationSubscription{local,
 					workflowNotificationSubscribe(t, ctx.Get(t), listen), workflowNotificationSubscribe(t, ctx.Get(t), poll)}
 				assert.Must(t).NoError(b.Publish(ctx.Get(t), batch.Get(t)[0]))
@@ -185,7 +189,7 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 		s.When("the lease duration is short", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 				b := subject.Super(t)
-				b.SubscriberLeaseDuration = 250 * time.Millisecond
+				b.StatelessSubscribe.SubscriberLeaseDuration = 250 * time.Millisecond
 				return b
 			})
 			s.Then("renews an uniterated subscriber and preserves unread events beyond its original lease", func(t *testcase.T) {
@@ -237,11 +241,15 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 		for _, tc := range []struct {
 			name                  string
 			configured, effective time.Duration
-		}{{"default lease", 0, 30 * time.Second}, {"minimum lease", 100 * time.Millisecond, 100 * time.Millisecond}} {
+		}{
+			{"zero-valued stateless configuration", 0, 30 * time.Second},
+			{"minimum lease", 100 * time.Millisecond, 100 * time.Millisecond},
+			{"configured lease", 6 * time.Second, 6 * time.Second},
+		} {
 			s.When(tc.name, func(s *testcase.Spec) {
 				subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 					b := subject.Super(t)
-					b.SubscriberLeaseDuration = tc.configured
+					b.StatelessSubscribe = &postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: tc.configured}
 					return b
 				})
 				s.Then("registers with the effective lease duration", func(t *testcase.T) {
@@ -257,26 +265,35 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 			})
 		}
 
-		s.When("the lease duration is below the minimum", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
-				b := subject.Super(t)
-				b.SubscriberLeaseDuration = time.Millisecond
-				return b
+		for _, tc := range []struct {
+			name   string
+			config postgresql.BroadcastStatelessSubscribe
+		}{
+			{"the lease duration is below the minimum", postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: time.Millisecond}},
+			{"PollInterval is negative", postgresql.BroadcastStatelessSubscribe{PollInterval: -time.Millisecond}},
+		} {
+			s.When(tc.name, func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+					b := subject.Super(t)
+					cfg := tc.config
+					b.StatelessSubscribe = &cfg
+					return b
+				})
+				s.Before(func(t *testcase.T) { assert.Must(t).NoError(subject.Get(t).Migrate(ctx.Get(t))) })
+				s.Then("rejects the subscription without registering or retaining data", func(t *testcase.T) {
+					sub, b := act(t), subject.Get(t)
+					workflowNotificationRows(t, b, 0, 0)
+					msg, err, ok := sub.Next()
+					assert.True(t, ok)
+					assert.Nil(t, msg)
+					assert.Error(t, err)
+					assert.NoError(t, ctx.Get(t).Err(), "configuration errors must not wait for cancellation")
+					_, _, ok = sub.Next()
+					assert.False(t, ok)
+					workflowNotificationRows(t, b, 0, 0)
+				})
 			})
-			s.Before(func(t *testcase.T) { assert.Must(t).NoError(subject.Get(t).Migrate(ctx.Get(t))) })
-			s.Then("rejects the subscription without registering or retaining data", func(t *testcase.T) {
-				sub, b := act(t), subject.Get(t)
-				workflowNotificationRows(t, b, 0, 0)
-				msg, err, ok := sub.Next()
-				assert.True(t, ok)
-				assert.Nil(t, msg)
-				assert.Error(t, err)
-				assert.NoError(t, ctx.Get(t).Err(), "configuration errors must not wait for cancellation")
-				_, _, ok = sub.Next()
-				assert.False(t, ok)
-				workflowNotificationRows(t, b, 0, 0)
-			})
-		})
+		}
 
 		s.Test("reports a vanished registration as expired rather than silently subscribing again", func(t *testcase.T) {
 			sub, b := act(t), subject.Get(t)
@@ -305,6 +322,33 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 				_, _, ok = sub.Next()
 				assert.False(t, ok)
 				workflowNotificationRows(t, b, 0, 0)
+			})
+		})
+	})
+
+	s.Describe("#Subscribe polling interval", func(s *testcase.Spec) {
+		poll := let.Var(s, func(t *testcase.T) time.Duration { return 0 })
+		act := func(t *testcase.T) time.Duration {
+			b := subject.Get(t)
+			sub := bindBroadcastSubscriber(t, ctx.Get(t), b)
+			return broadcastEmptyPollInterval(t, ctx.Get(t), b.Connection, sub)
+		}
+
+		subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+			b := subject.Super(t)
+			b.StatelessSubscribe = &postgresql.BroadcastStatelessSubscribe{PollInterval: poll.Get(t)}
+			return b
+		})
+
+		s.Test("a zero-valued configuration defaults to 42ms between empty-feed reads", func(t *testcase.T) {
+			assert.True(t, act(t) >= 42*time.Millisecond)
+		})
+
+		s.When("PollInterval is configured", func(s *testcase.Spec) {
+			poll.LetValue(s, 250*time.Millisecond)
+
+			s.Then("forwards the configured interval to the underlying broadcast", func(t *testcase.T) {
+				assert.True(t, act(t) >= poll.Get(t))
 			})
 		})
 	})
@@ -464,7 +508,9 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 			poolSize.LetValue(s, 1)
 			subscriber := let.Var(s, func(t *testcase.T) *workflowNotificationSubscription {
 				b := subject.Get(t)
-				migrator := &postgresql.WorkflowNotificationBroadcast{Connection: b.Connection, Name: b.Name, StatelessSubscribe: true}
+				migrator := &postgresql.WorkflowNotificationBroadcast{
+					Connection: b.Connection, Name: b.Name, StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
+				}
 				assert.Must(t).NoError(migrator.Migrate(ctx.Get(t)))
 				return workflowNotificationSubscribe(t, ctx.Get(t), migrator)
 			})

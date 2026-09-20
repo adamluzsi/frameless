@@ -1,6 +1,6 @@
 # Broadcasts and workflow notifications: LISTEN or polling
 
-`Broadcast[T]` implements `pubsub.Publisher[T]` and `pubsub.Subscriber[T]` for any payload type. `StatelessSubscribe` selects a table-backed polling subscription instead of a dedicated PostgreSQL LISTEN session. Both transports broadcast to every subscriber; they do not divide messages as a queue would.
+`Broadcast[T]` implements `pubsub.Publisher[T]` and `pubsub.Subscriber[T]` for any payload type. A non-nil `StatelessSubscribe` config selects a table-backed polling subscription instead of a dedicated PostgreSQL LISTEN session. Both transports broadcast to every subscriber; they do not divide messages as a queue would.
 
 ```go
 type Update struct {
@@ -11,12 +11,23 @@ type Update struct {
 updates := &postgresql.Broadcast[Update]{
     Connection: connection,
     Name: "updates",
-    StatelessSubscribe: true,
+    StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
     // Codec is injectable; the default is jsonkit.Codec{}.
 }
 ```
 
-`WorkflowNotificationBroadcast` is a thin wrapper around `Broadcast[workflow.Notification]`. It preserves existing configuration fields and supplies the workflow-specific defaults:
+`StatelessSubscribe` bundles transport selection with its polling-only settings:
+
+- `nil` (the default): use LISTEN, without any polling configuration.
+- `&postgresql.BroadcastStatelessSubscribe{}`: use polling with default timings.
+- A non-empty config: override `PollInterval` and/or `SubscriberLeaseDuration`.
+
+**Source migration:** replace the former `true` flag with a config pointer, replace
+`false` with `nil` (or omit the field), and move the former top-level timing fields
+into that config. This applies to both `Broadcast[T]` and
+`WorkflowNotificationBroadcast`; no storage migration is needed.
+
+`WorkflowNotificationBroadcast` is a thin wrapper around `Broadcast[workflow.Notification]`. It uses the same optional subscription config and supplies the workflow-specific defaults:
 
 | Component | Default channel name | Default codec |
 | --- | --- | --- |
@@ -31,9 +42,10 @@ The following lifetime and transport rules apply to both components. For workflo
 notifications := &postgresql.WorkflowNotificationBroadcast{
     Connection: connection,
     Name:       "workflow_notifications",
-    StatelessSubscribe: true,
-    PollInterval: 42 * time.Millisecond,          // default
-    SubscriberLeaseDuration: 30 * time.Second,  // default
+    StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{
+        PollInterval: 42 * time.Millisecond,       // default
+        SubscriberLeaseDuration: 30 * time.Second, // default
+    },
 }
 
 // Optional: Publish and polling Subscribe initialise storage lazily.
@@ -73,6 +85,8 @@ These are **volatile notifications**, not a durable consumer-group log. Once a s
 
 Polling acquires connections only during individual database operations. Waiting between polls, decoding and running handlers do not reserve connections. The number of registered subscribers can exceed the pool size, provided the database can keep up with polls, publications and renewals. This is stateless **with respect to database sessions**: cursors still live in PostgreSQL and one maintenance goroutine lives in the subscribing process.
 
+The following settings belong to `BroadcastStatelessSubscribe` and apply only to polling subscriptions:
+
 | Setting | Default | Constraint |
 | --- | --- | --- |
 | `PollInterval` | 42 ms | Positive when nonzero |
@@ -88,12 +102,12 @@ If cleanup fails or a consumer crashes, subsequent publication, registration, cu
 
 ## Mixed-mode delivery and publishing
 
-`StatelessSubscribe` changes subscription transport only. Updated `Publish` always writes any needed feed event and sends `pg_notify` in the **same transaction**. Polling and LISTEN subscribers using the same channel can therefore coexist, and publisher instances need not set the flag.
+`StatelessSubscribe` changes subscription transport only. Updated `Publish` always writes any needed feed event and sends `pg_notify` in the **same transaction**. Polling and LISTEN subscribers using the same channel can therefore coexist, and publisher instances need not configure stateless subscriptions.
 
-- `StatelessSubscribe: false` remains the default. Each active LISTEN subscription still reserves one pool connection; enabling polling elsewhere does not change that.
+- `StatelessSubscribe: nil` is the default. Each active LISTEN subscription still reserves one pool connection; enabling polling elsewhere does not change that.
 - LISTEN recipients use PostgreSQL/pgx buffering, not feed cursors. Feed retention counts polling subscribers only.
 - Keep all feed participants on the same database namespace and stable `search_path`. PostgreSQL LISTEN channels are database-wide, whereas these tables reside in the configured schema.
-- Existing name normalization is preserved: trim, lowercase, replace unsupported characters with underscores, and prefix numeric-leading names. Names that normalize to the same channel still share a broadcast.
+- Existing name normalization is preserved: trim, lowercase, replace unsupported characters with underscores, and prefix numeric-leading names. Names that normalize to the same channel still share a broadcast. This is separate from SQL quoting: `LISTEN` quotes the normalized channel as one `pgx.Identifier`, while `pg_notify` and feed storage receive the unquoted logical name. Channels are not schema-qualified; a dot in the configured name is normalized to an underscore, not split into identifier parts.
 - `Codec` is injectable via `codec.Codec`: it defaults to `jsonkit.Codec{}` for `Broadcast[T]`, and `wfjson.NewCodec()` for the workflow wrapper. The feed stores the original bytes. Because every publish also emits `pg_notify`, payloads must remain valid PostgreSQL notification text and fit its payload limit (less than 8,000 bytes on standard PostgreSQL). Oversized payloads fail without committing a feed event.
 
 **Deployment:** upgrade all publishers before enabling polling subscribers. Old binaries or external code that only call `pg_notify` do not write the feed and cannot reach polling readers. There is no listener daemon translating old NOTIFY traffic into table rows.

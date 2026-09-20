@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/frameless/port/pubsub/pubsubcontract"
+	"go.llib.dev/frameless/port/pubsub/pubsubtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -31,7 +32,7 @@ func TestBroadcast(t *testing.T) {
 		poolSize   = let.Var(s, func(t *testcase.T) int32 { return 16 })
 		connection = let.Var(s, func(t *testcase.T) postgresql.Connection { return queueV2Connection(t, poolSize.Get(t)) })
 		name       = let.Var(s, func(t *testcase.T) string { return "broadcast_" + strings.ReplaceAll(t.Random.UUID(), "-", "") })
-		stateless  = let.Var(s, func(t *testcase.T) bool { return false })
+		stateless  = let.Var(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe { return nil })
 		encoding   = let.Var[codec.Codec](s, func(t *testcase.T) codec.Codec { return nil })
 		data       = let.Var(s, func(t *testcase.T) broadcastPayload { return makeBroadcastPayload(t) })
 		subject    = let.Var(s, func(t *testcase.T) *postgresql.Broadcast[broadcastPayload] {
@@ -90,7 +91,7 @@ func TestBroadcast(t *testing.T) {
 				// Keep a polling cursor idle so the wire payload remains observable,
 				// including when the consumer under test uses LISTEN.
 				bindBroadcastSubscriber(t, ctx.Get(t), &postgresql.Broadcast[broadcastPayload]{
-					Connection: b.Connection, Name: b.Name, StatelessSubscribe: true,
+					Connection: b.Connection, Name: b.Name, StatelessSubscribe: &postgresql.BroadcastStatelessSubscribe{},
 				})
 				assert.Must(t).NoError(act(t))
 
@@ -126,6 +127,27 @@ func TestBroadcast(t *testing.T) {
 
 				s.Then("preserves the marshal error for errors.Is", func(t *testcase.T) {
 					assert.ErrorIs(t, act(t), marshalError.Get(t))
+				})
+			})
+
+			s.When("Name contains mixed case, dots and quotes", func(s *testcase.Spec) {
+				suffix := let.Var(s, func(t *testcase.T) string { return strings.ReplaceAll(t.Random.UUID(), "-", "") })
+				name.Let(s, func(t *testcase.T) string { return " \t1-MiXeD.\"" + suffix.Get(t) + "\" \n" })
+
+				s.Then("delivers to LISTEN and polling subscribers on the same normalized channel", func(t *testcase.T) {
+					var peerStateless *postgresql.BroadcastStatelessSubscribe
+					if stateless.Get(t) == nil {
+						peerStateless = &postgresql.BroadcastStatelessSubscribe{}
+					}
+					peer := &postgresql.Broadcast[broadcastPayload]{
+						Connection: connection.Get(t), Name: "_1_mixed__" + suffix.Get(t) + "_",
+						StatelessSubscribe: peerStateless,
+					}
+					local := pullBroadcastSubscription(t, ctx.Get(t), subject.Get(t))
+					normalized := pullBroadcastSubscription(t, ctx.Get(t), peer)
+					assert.Must(t).NoError(act(t))
+					assert.Equal(t, local.Receive(t).Data(), data.Get(t))
+					assert.Equal(t, normalized.Receive(t).Data(), data.Get(t))
 				})
 			})
 
@@ -189,14 +211,111 @@ func TestBroadcast(t *testing.T) {
 	}
 
 	modeSpec(s)
-	s.When("StatelessSubscribe is enabled", func(s *testcase.Spec) {
-		stateless.LetValue(s, true)
+	s.When("StatelessSubscribe is configured with zero values", func(s *testcase.Spec) {
+		stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+			return &postgresql.BroadcastStatelessSubscribe{}
+		})
 		modeSpec(s)
+	})
+
+	s.Describe("#Subscribe configuration", func(s *testcase.Spec) {
+		var (
+			poll  = let.Var(s, func(t *testcase.T) time.Duration { return 42 * time.Millisecond })
+			lease = let.Var(s, func(t *testcase.T) time.Duration { return 30 * time.Second })
+		)
+		act := func(t *testcase.T) *broadcastBoundSubscriber[broadcastPayload] {
+			return bindBroadcastSubscriber(t, ctx.Get(t), subject.Get(t))
+		}
+
+		s.Test("nil configuration reserves a LISTEN connection without registering a feed cursor", func(t *testcase.T) {
+			b := subject.Get(t)
+			assert.Must(t).NoError(b.Migrate(ctx.Get(t)))
+			_ = act(t)
+			assert.Eventually(t, time.Second, func(it testing.TB) {
+				assert.Equal(it, b.Connection.DB.Stat().AcquiredConns(), int32(1))
+			})
+			var subscribers int
+			assert.Must(t).NoError(b.Connection.DB.QueryRow(ctx.Get(t),
+				`SELECT count(*) FROM frameless_workflow_notification_subscribers`).Scan(&subscribers))
+			assert.Equal(t, subscribers, 0)
+		})
+
+		statelessSpec := func(s *testcase.Spec) {
+			s.Then("registers with the effective lease without reserving a connection", func(t *testcase.T) {
+				b := subject.Get(t)
+				var before, expires, now time.Time
+				assert.Must(t).NoError(b.Connection.DB.QueryRow(ctx.Get(t), `SELECT clock_timestamp()`).Scan(&before))
+				_ = act(t)
+				assert.Eventually(t, time.Second, func(it testing.TB) {
+					assert.Equal(it, b.Connection.DB.Stat().AcquiredConns(), int32(0))
+				})
+				assert.Must(t).NoError(b.Connection.DB.QueryRow(ctx.Get(t), `SELECT expires_at, clock_timestamp()
+					FROM frameless_workflow_notification_subscribers WHERE channel = $1`, strings.ToLower(name.Get(t))).Scan(&expires, &now))
+				assert.False(t, expires.Before(before.Add(lease.Get(t))))
+				assert.False(t, expires.After(now.Add(lease.Get(t)+10*time.Millisecond)))
+			})
+			s.Then("waits for the effective poll interval between empty-feed reads", func(t *testcase.T) {
+				sub := act(t)
+				elapsed := broadcastEmptyPollInterval(t, ctx.Get(t), connection.Get(t), sub)
+				assert.True(t, elapsed >= poll.Get(t), "empty-feed reads must respect PollInterval")
+			})
+		}
+
+		s.When("StatelessSubscribe is configured with zero values", func(s *testcase.Spec) {
+			stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+				return &postgresql.BroadcastStatelessSubscribe{}
+			})
+			statelessSpec(s)
+		})
+
+		s.When("stateless timings are configured", func(s *testcase.Spec) {
+			stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+				return &postgresql.BroadcastStatelessSubscribe{
+					PollInterval: 250 * time.Millisecond, SubscriberLeaseDuration: 6 * time.Second,
+				}
+			})
+			poll.LetValue(s, 250*time.Millisecond)
+			lease.LetValue(s, 6*time.Second)
+			statelessSpec(s)
+		})
+
+		for _, tc := range []struct {
+			name   string
+			config postgresql.BroadcastStatelessSubscribe
+		}{
+			{"PollInterval is negative", postgresql.BroadcastStatelessSubscribe{PollInterval: -time.Millisecond}},
+			{"SubscriberLeaseDuration is below the minimum", postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: time.Millisecond}},
+		} {
+			s.When(tc.name, func(s *testcase.Spec) {
+				stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+					cfg := tc.config
+					return &cfg
+				})
+				s.Before(func(t *testcase.T) { assert.Must(t).NoError(subject.Get(t).Migrate(ctx.Get(t))) })
+
+				s.Then("rejects the subscription before registering a cursor", func(t *testcase.T) {
+					sub := pullBroadcastSubscription(t, ctx.Get(t), act(t))
+					msg, err, ok := sub.Next()
+					assert.True(t, ok)
+					assert.Nil(t, msg)
+					assert.Error(t, err)
+					assert.NoError(t, ctx.Get(t).Err(), "configuration errors must not wait for cancellation")
+					_, _, ok = sub.Next()
+					assert.False(t, ok)
+					var subscribers int
+					assert.Must(t).NoError(connection.Get(t).DB.QueryRow(ctx.Get(t),
+						`SELECT count(*) FROM frameless_workflow_notification_subscribers`).Scan(&subscribers))
+					assert.Equal(t, subscribers, 0)
+				})
+			})
+		}
 	})
 
 	s.Describe("stateless delayed fan-out", func(s *testcase.Spec) {
 		poolSize.LetValue(s, 1)
-		stateless.LetValue(s, true)
+		stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+			return &postgresql.BroadcastStatelessSubscribe{}
+		})
 		batch := let.Var(s, func(t *testcase.T) []broadcastPayload {
 			return []broadcastPayload{makeBroadcastPayload(t), makeBroadcastPayload(t), makeBroadcastPayload(t)}
 		})
@@ -222,24 +341,28 @@ func TestBroadcast(t *testing.T) {
 		var (
 			wrapperName      = let.Var(s, func(t *testcase.T) string { return name.Get(t) })
 			genericName      = let.Var(s, func(t *testcase.T) string { return name.Get(t) })
-			wrapperStateless = let.Var(s, func(t *testcase.T) bool { return false })
-			wrapper          = let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+			wrapperStateless = let.Var(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe { return nil })
+			genericStateless = let.Var(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+				if wrapperStateless.Get(t) != nil {
+					return nil
+				}
+				return &postgresql.BroadcastStatelessSubscribe{
+					PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+				}
+			})
+			wrapper = let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 				return &postgresql.WorkflowNotificationBroadcast{
-					Connection:              queueV2ConnectPool(t, connection.Get(t).DB.Config()),
-					Name:                    wrapperName.Get(t),
-					StatelessSubscribe:      wrapperStateless.Get(t),
-					PollInterval:            10 * time.Millisecond,
-					SubscriberLeaseDuration: 2 * time.Second,
+					Connection:         queueV2ConnectPool(t, connection.Get(t).DB.Config()),
+					Name:               wrapperName.Get(t),
+					StatelessSubscribe: wrapperStateless.Get(t),
 				}
 			})
 			generic = let.Var(s, func(t *testcase.T) *postgresql.Broadcast[workflow.Notification] {
 				return &postgresql.Broadcast[workflow.Notification]{
-					Connection:              connection.Get(t),
-					Name:                    genericName.Get(t),
-					Codec:                   wfjson.NewCodec(),
-					StatelessSubscribe:      !wrapperStateless.Get(t),
-					PollInterval:            10 * time.Millisecond,
-					SubscriberLeaseDuration: 2 * time.Second,
+					Connection:         connection.Get(t),
+					Name:               genericName.Get(t),
+					Codec:              wfjson.NewCodec(),
+					StatelessSubscribe: genericStateless.Get(t),
 				}
 			})
 			notifications = let.Var(s, func(t *testcase.T) []workflow.Notification {
@@ -263,7 +386,7 @@ func TestBroadcast(t *testing.T) {
 			fromGeneric := pullBroadcastSubscription(t, ctx.Get(t), b)
 			assert.Eventually(t, time.Second, func(it testing.TB) {
 				var wrapperConnections, genericConnections int32 = 1, 0
-				if wrapperStateless.Get(t) {
+				if wrapperStateless.Get(t) != nil {
 					wrapperConnections, genericConnections = 0, 1
 				}
 				assert.Equal(it, w.Connection.DB.Stat().AcquiredConns(), wrapperConnections)
@@ -279,8 +402,25 @@ func TestBroadcast(t *testing.T) {
 		s.Test("exchanges both notification types in both directions on an explicit name", exchange)
 
 		s.When("the wrapper polls and the generic broadcast uses LISTEN", func(s *testcase.Spec) {
-			wrapperStateless.LetValue(s, true)
+			wrapperStateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+				return &postgresql.BroadcastStatelessSubscribe{
+					PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+				}
+			})
 			s.Then("exchanges notifications in both directions", exchange)
+		})
+
+		s.When("the wrapper name contains mixed case, dots and quotes", func(s *testcase.Spec) {
+			wrapperName.Let(s, func(t *testcase.T) string { return " \t1-MiXeD.\"" + name.Get(t) + "\" \n" })
+			genericName.Let(s, func(t *testcase.T) string { return "_1_mixed__" + name.Get(t) + "_" })
+			s.Then("exchanges notifications on the same normalized channel across subscription modes", exchange)
+
+			s.And("the wrapper uses a zero-valued stateless configuration", func(s *testcase.Spec) {
+				wrapperStateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+					return &postgresql.BroadcastStatelessSubscribe{}
+				})
+				s.Then("polls the same normalized channel as the generic LISTEN subscriber", exchange)
+			})
 		})
 
 		s.When("the wrapper uses its default workflow name", func(s *testcase.Spec) {
@@ -289,11 +429,30 @@ func TestBroadcast(t *testing.T) {
 			s.Then("exchanges notifications on frameless_workflow_notifications rather than the generic default", exchange)
 
 			s.And("the wrapper polls and the generic broadcast uses LISTEN", func(s *testcase.Spec) {
-				wrapperStateless.LetValue(s, true)
+				wrapperStateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+					return &postgresql.BroadcastStatelessSubscribe{
+						PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+					}
+				})
 				s.Then("still exchanges notifications in both directions", exchange)
 			})
 		})
 	})
+}
+
+// Registration is complete before observation starts, and this pool has no other
+// work. Two acquisitions therefore include an initial empty read and its retry.
+// The observation window is shorter than the leases' first heartbeat.
+func broadcastEmptyPollInterval[T any](tb testing.TB, ctx context.Context, connection postgresql.Connection, sub pubsub.Subscriber[T]) time.Duration {
+	tb.Helper()
+	before := connection.DB.Stat().AcquireCount()
+	started := time.Now()
+	reader := pubsubtest.Subscribe(tb, sub, ctx)
+	defer reader.Finish()
+	assert.Eventually(tb, time.Second, func(it testing.TB) {
+		assert.True(it, connection.DB.Stat().AcquireCount() >= before+2, "expected an empty-feed retry within one second")
+	})
+	return time.Since(started)
 }
 
 type broadcastPayload struct {

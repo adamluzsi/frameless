@@ -7,7 +7,6 @@ import (
 	"iter"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -303,22 +302,18 @@ func (q *WorkflowQueue) Migrate(ctx context.Context) error {
 
 // WorkflowNotificationBroadcast delegates to Broadcast[workflow.Notification]
 // with the workflow channel name and wfjson codec defaults. Its public fields
-// mirror Broadcast so existing workflow configurations remain compatible.
+// mirror Broadcast, including the optional stateless subscription configuration.
 // Configure a value before first use; do not copy or modify it afterwards.
 type WorkflowNotificationBroadcast struct {
 	Connection Connection
 	Name       string
 	Codec      workflow.Codec
 
-	// StatelessSubscribe registers a leased cursor in a database feed instead of
-	// reserving a LISTEN connection. Registration and heartbeats start at Subscribe,
-	// not at iteration. Cancel the subscription context even if you never iterate.
-	StatelessSubscribe bool
-	// PollInterval controls empty-feed polling. Default: 42ms.
-	PollInterval time.Duration
-	// SubscriberLeaseDuration bounds retention by disconnected/crashed subscribers.
-	// Healthy registrations renew even while not iterating. Default: 30s; minimum: 100ms.
-	SubscriberLeaseDuration time.Duration
+	// StatelessSubscribe enables table-backed polling when non-nil; nil uses LISTEN.
+	// An empty config uses the default polling interval and subscriber lease.
+	// Registration and heartbeats start at Subscribe, not at iteration. Cancel the
+	// subscription context even if you never iterate.
+	StatelessSubscribe *BroadcastStatelessSubscribe
 
 	o sync.Once
 	b Broadcast[workflow.Notification]
@@ -338,12 +333,10 @@ func (b *WorkflowNotificationBroadcast) init() {
 			b.Codec = wfjson.NewCodec()
 		}
 		b.b = Broadcast[workflow.Notification]{
-			Connection:              b.Connection,
-			Name:                    name,
-			Codec:                   b.Codec,
-			StatelessSubscribe:      b.StatelessSubscribe,
-			PollInterval:            b.PollInterval,
-			SubscriberLeaseDuration: b.SubscriberLeaseDuration,
+			Connection:         b.Connection,
+			Name:               name,
+			Codec:              b.Codec,
+			StatelessSubscribe: b.StatelessSubscribe,
 		}
 	})
 }

@@ -107,7 +107,7 @@ func TestWorkflowQueue(t *testing.T) {
 func TestWorkflowNotificationBroadcast(t *testing.T) {
 	s := testcase.NewSpec(t)
 	var (
-		stateless = let.Var(s, func(t *testcase.T) bool { return false })
+		stateless = let.Var(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe { return nil })
 		poolSize  = let.Var(s, func(t *testcase.T) int32 { return 8 })
 		subject   = let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 			return &postgresql.WorkflowNotificationBroadcast{
@@ -127,8 +127,10 @@ func TestWorkflowNotificationBroadcast(t *testing.T) {
 
 	s.Test("satisfies the notification contract using LISTEN by default", tests)
 
-	s.When("StatelessSubscribe is enabled", func(s *testcase.Spec) {
-		stateless.LetValue(s, true)
+	s.When("StatelessSubscribe is configured with zero values", func(s *testcase.Spec) {
+		stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
+			return &postgresql.BroadcastStatelessSubscribe{}
+		})
 
 		s.Test("satisfies the notification contract without LISTEN", tests)
 
