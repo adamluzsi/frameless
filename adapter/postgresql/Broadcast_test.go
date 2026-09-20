@@ -271,7 +271,7 @@ func TestBroadcast(t *testing.T) {
 		s.When("stateless timings are configured", func(s *testcase.Spec) {
 			stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
 				return &postgresql.BroadcastStatelessSubscribe{
-					PollInterval: 250 * time.Millisecond, SubscriberLeaseDuration: 6 * time.Second,
+					PollInterval: 250 * time.Millisecond, LeaseDuration: 6 * time.Second,
 				}
 			})
 			poll.LetValue(s, 250*time.Millisecond)
@@ -284,7 +284,7 @@ func TestBroadcast(t *testing.T) {
 			config postgresql.BroadcastStatelessSubscribe
 		}{
 			{"PollInterval is negative", postgresql.BroadcastStatelessSubscribe{PollInterval: -time.Millisecond}},
-			{"SubscriberLeaseDuration is below the minimum", postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: time.Millisecond}},
+			{"SubscriberLeaseDuration is below the minimum", postgresql.BroadcastStatelessSubscribe{LeaseDuration: time.Millisecond}},
 		} {
 			s.When(tc.name, func(s *testcase.Spec) {
 				stateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
@@ -347,7 +347,7 @@ func TestBroadcast(t *testing.T) {
 					return nil
 				}
 				return &postgresql.BroadcastStatelessSubscribe{
-					PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+					PollInterval: 10 * time.Millisecond, LeaseDuration: 2 * time.Second,
 				}
 			})
 			wrapper = let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
@@ -404,7 +404,7 @@ func TestBroadcast(t *testing.T) {
 		s.When("the wrapper polls and the generic broadcast uses LISTEN", func(s *testcase.Spec) {
 			wrapperStateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
 				return &postgresql.BroadcastStatelessSubscribe{
-					PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+					PollInterval: 10 * time.Millisecond, LeaseDuration: 2 * time.Second,
 				}
 			})
 			s.Then("exchanges notifications in both directions", exchange)
@@ -431,7 +431,7 @@ func TestBroadcast(t *testing.T) {
 			s.And("the wrapper polls and the generic broadcast uses LISTEN", func(s *testcase.Spec) {
 				wrapperStateless.Let(s, func(t *testcase.T) *postgresql.BroadcastStatelessSubscribe {
 					return &postgresql.BroadcastStatelessSubscribe{
-						PollInterval: 10 * time.Millisecond, SubscriberLeaseDuration: 2 * time.Second,
+						PollInterval: 10 * time.Millisecond, LeaseDuration: 2 * time.Second,
 					}
 				})
 				s.Then("still exchanges notifications in both directions", exchange)

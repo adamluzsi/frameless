@@ -29,7 +29,6 @@ type Broadcast[Entity any] struct {
 	// Codec defaults to jsonkit.Codec. Encoded messages must also satisfy
 	// PostgreSQL NOTIFY's text and payload-size constraints in both modes.
 	Codec codec.Codec
-
 	// StatelessSubscribe enables table-backed polling when non-nil; nil uses LISTEN.
 	// An empty config uses the default polling interval and subscriber lease.
 	// Registration and heartbeats start at Subscribe, not at iteration. Cancel the
@@ -47,9 +46,9 @@ type Broadcast[Entity any] struct {
 type BroadcastStatelessSubscribe struct {
 	// PollInterval controls empty-feed polling. Default: 42ms.
 	PollInterval time.Duration
-	// SubscriberLeaseDuration bounds retention by disconnected/crashed subscribers.
+	// LeaseDuration bounds retention by disconnected/crashed subscribers.
 	// Healthy registrations renew even while not iterating. Default: 30s; minimum: 100ms.
-	SubscriberLeaseDuration time.Duration
+	LeaseDuration time.Duration
 }
 
 const broadcastDefaultName = "frameless_broadcast"

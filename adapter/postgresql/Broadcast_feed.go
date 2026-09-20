@@ -208,7 +208,7 @@ type notificationFeedSettings struct {
 }
 
 func (c BroadcastStatelessSubscribe) settings() (notificationFeedSettings, error) {
-	s := notificationFeedSettings{poll: c.PollInterval, lease: c.SubscriberLeaseDuration}
+	s := notificationFeedSettings{poll: c.PollInterval, lease: c.LeaseDuration}
 	if s.poll == 0 {
 		s.poll = 42 * time.Millisecond
 	}

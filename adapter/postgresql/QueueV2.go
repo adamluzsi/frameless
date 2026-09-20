@@ -52,11 +52,11 @@ type QueueV2[Entity any] struct {
 	Blocking            bool
 	EmptyQueueBreakTime time.Duration
 
-	// OwnershipDuration defaults to 30s and must be at least 10ms if set.
-	// Renewal is attempted every OwnershipDuration/10. Local ownership expires
+	// LeaseDuration defaults to 30s and must be at least 10ms if set.
+	// Renewal is attempted every LeaseDuration/10. Local ownership expires
 	// conservatively at 90% of the duration since the last confirmed request's start.
 	// Choose a duration comfortably above database latency and scheduler delays.
-	OwnershipDuration time.Duration
+	LeaseDuration time.Duration
 
 	// TransactionalMessageContext opts into a handler transaction exposed through
 	// Message.Context: ACK commits it atomically with queue completion; NACK rolls
@@ -81,7 +81,7 @@ func (q QueueV2[E]) settings() (queueV2Settings, error) {
 	if q.Connection.DB == nil {
 		return s, fmt.Errorf("queue %q: missing connection", q.Name)
 	}
-	s.duration = q.OwnershipDuration
+	s.duration = q.LeaseDuration
 	if s.duration == 0 {
 		s.duration = 30 * time.Second
 	}

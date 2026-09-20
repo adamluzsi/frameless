@@ -189,7 +189,7 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 		s.When("the lease duration is short", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 				b := subject.Super(t)
-				b.StatelessSubscribe.SubscriberLeaseDuration = 250 * time.Millisecond
+				b.StatelessSubscribe.LeaseDuration = 250 * time.Millisecond
 				return b
 			})
 			s.Then("renews an uniterated subscriber and preserves unread events beyond its original lease", func(t *testcase.T) {
@@ -249,7 +249,7 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 			s.When(tc.name, func(s *testcase.Spec) {
 				subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
 					b := subject.Super(t)
-					b.StatelessSubscribe = &postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: tc.configured}
+					b.StatelessSubscribe = &postgresql.BroadcastStatelessSubscribe{LeaseDuration: tc.configured}
 					return b
 				})
 				s.Then("registers with the effective lease duration", func(t *testcase.T) {
@@ -269,7 +269,7 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 			name   string
 			config postgresql.BroadcastStatelessSubscribe
 		}{
-			{"the lease duration is below the minimum", postgresql.BroadcastStatelessSubscribe{SubscriberLeaseDuration: time.Millisecond}},
+			{"the lease duration is below the minimum", postgresql.BroadcastStatelessSubscribe{LeaseDuration: time.Millisecond}},
 			{"PollInterval is negative", postgresql.BroadcastStatelessSubscribe{PollInterval: -time.Millisecond}},
 		} {
 			s.When(tc.name, func(s *testcase.Spec) {

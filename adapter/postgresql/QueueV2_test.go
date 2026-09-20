@@ -39,7 +39,7 @@ func TestQueueV2(t *testing.T) {
 					Codec: cfg.Codec, ToMeta: cfg.ToMeta,
 					LIFO: cfg.LIFO, SortBy: cfg.SortBy, Blocking: cfg.Blocking,
 					EmptyQueueBreakTime:         cfg.EmptyQueueBreakTime,
-					OwnershipDuration:           cfg.OwnershipDuration,
+					LeaseDuration:               cfg.OwnershipDuration,
 					TransactionalMessageContext: cfg.TransactionalMessageContext,
 				}
 			}
