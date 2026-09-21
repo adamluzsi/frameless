@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	// ErrFencingLeaseLost marks a revoked/expired delivery, including its context cause.
-	ErrFencingLeaseLost = errors.New("queue delivery fencing lease lost")
+	// ErrQueueFencingLeaseLost marks a revoked/expired delivery, including its context cause.
+	ErrQueueFencingLeaseLost = errors.New("queue delivery fencing lease lost")
 	// ErrQueueOutcomeUncertain means the database outcome could not be verified.
 	// It must not be interpreted as either successful processing or proof of rollback.
 	ErrQueueOutcomeUncertain = errors.New("queue outcome uncertain")
@@ -424,7 +424,7 @@ func (m *queueV2Message[E]) active() error {
 		return ErrQueueMessageSettled
 	}
 	if !time.Now().Before(m.deadline) {
-		return ErrFencingLeaseLost
+		return ErrQueueFencingLeaseLost
 	}
 	return nil
 }
@@ -462,9 +462,9 @@ func (m *queueV2Message[E]) watch() {
 				m.mu.Unlock()
 				continue
 			}
-			m.outcome, m.err = "lost", ErrFencingLeaseLost
+			m.outcome, m.err = "lost", ErrQueueFencingLeaseLost
 			m.mu.Unlock()
-			m.cancel(ErrFencingLeaseLost)
+			m.cancel(ErrQueueFencingLeaseLost)
 			m.stop()
 			m.stopCaller()
 			m.disposeTransaction(true)
@@ -516,7 +516,7 @@ FROM owned WHERE message.id = owned.id AND owned.owner = $2 AND owned.owned_unti
 		return
 	}
 	if result.RowsAffected() == 0 {
-		m.finish("lost", ErrFencingLeaseLost)
+		m.finish("lost", ErrQueueFencingLeaseLost)
 		return
 	}
 	m.mu.Lock()
@@ -590,8 +590,8 @@ func (m *queueV2Message[E]) settle(outcome string) error {
 	}
 	if count == 0 {
 		m.rollback()
-		m.finish("lost", ErrFencingLeaseLost)
-		return ErrFencingLeaseLost
+		m.finish("lost", ErrQueueFencingLeaseLost)
+		return ErrQueueFencingLeaseLost
 	}
 	if outcome == "acked" && m.txctx != nil {
 		err := m.queue.Connection.CommitTx(ctx)
