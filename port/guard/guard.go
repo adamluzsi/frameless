@@ -40,6 +40,12 @@ type Unlocker interface {
 
 const ErrNoLock constant.Error = "ErrNoLock"
 
+// ErrLockLost is the cause of a lock context's cancellation when the ownership of the lock was lost
+// (e.g. the lease expired or the lock record vanished) while the holder still believed it held the lock.
+// Unlock on such a lock context should report it as well,
+// so callers can tell a lost lock apart from a regular context cancellation.
+const ErrLockLost constant.Error = "ErrLockLost"
+
 // LockerFactory is a factory that can issue out lockers on a per Key basis.
 // The second type argument is expected to be either guard.Locker or guard.NonBlockingLocker
 type LockerFactory[Key any, L Unlocker] interface {
