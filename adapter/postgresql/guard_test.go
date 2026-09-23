@@ -4,8 +4,14 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -45,12 +51,21 @@ func TestLock(t *testing.T) {
 	l := postgresql.Lock{
 		Name:       rnd.StringNC(5, random.CharsetAlpha()),
 		Connection: cm,
+		Expiration: 2 * time.Second,
 	}
 	assert.NoError(t, l.Migrate(context.Background()))
 
+	conf := guardcontract.LockerConfig{
+		MakeLockLost: func(t testing.TB, lockCtx context.Context) {
+			// e.g. another instance's autoUnlock or a manual cleanup removes the lock record
+			_, err := cm.DB.Exec(context.Background(), `DELETE FROM "frameless_locks" WHERE "name" = $1`, l.Name)
+			assert.NoError(t, err)
+		},
+	}
+
 	testcase.RunSuite(t,
-		guardcontract.Locker(&l),
-		guardcontract.NonBlockingLocker(&l),
+		guardcontract.Locker(&l, conf),
+		guardcontract.NonBlockingLocker(&l, conf),
 	)
 }
 
@@ -83,11 +98,12 @@ func TestLockerFactory(t *testing.T) {
 	ctx := context.Background()
 	cm := GetConnection(t)
 
-	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm}
+	const expiration = 2 * time.Second
+	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm, Expiration: expiration}
 	assert.NoError(t, lockerFactoryStrKey.Migrate(ctx))
 	guardcontract.LockerFactory[string](lockerFactoryStrKey).Test(t)
 
-	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm}
+	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm, Expiration: expiration}
 	assert.NoError(t, lockerFactoryIntKey.Migrate(ctx))
 	guardcontract.LockerFactory[int](lockerFactoryIntKey).Test(t)
 }
@@ -196,6 +212,94 @@ func TestLock_TryLock_smoke(t *testing.T) {
 // 	assert.NoError(t, l.Unlock(lockCtx))
 // 	assert.Error(t, lockCtx.Err())
 // }
+
+// makeLockTestPool creates a dedicated, small pool so the tests can saturate it or trace its queries
+// without affecting the shared test connection.
+func makeLockTestPool(t *testing.T, maxConns int32, tracer pgx.QueryTracer) (*pgxpool.Pool, postgresql.Connection) {
+	cfg, err := pgxpool.ParseConfig(DatabaseDSN(t))
+	assert.NoError(t, err)
+	cfg.MaxConns = maxConns
+	if tracer != nil {
+		cfg.ConnConfig.Tracer = tracer
+	}
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	assert.NoError(t, err)
+	t.Cleanup(pool.Close)
+	return pool, postgresql.MakeConnectionFromPGXPool(pool)
+}
+
+type lockRefreshCounter struct{ n atomic.Int64 }
+
+func (c *lockRefreshCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if strings.HasPrefix(data.SQL, `UPDATE "frameless_locks" SET "expires"`) {
+		c.n.Add(1)
+	}
+	return ctx
+}
+
+func (c *lockRefreshCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func TestLock_heldBeyondExpirationWhileThePoolIsBusy(t *testing.T) {
+	const (
+		maxConns   = 3
+		expiration = time.Second
+	)
+	ctx := context.Background()
+	pool, conn := makeLockTestPool(t, maxConns, nil)
+
+	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, Expiration: expiration}
+	assert.NoError(t, l.Migrate(ctx))
+
+	lockCtx, err := l.Lock(ctx)
+	assert.NoError(t, err)
+	t.Cleanup(func() { _ = l.Unlock(lockCtx) })
+
+	// keep every pool connection busy, like a concurrent bulk load would
+	loadCtx, stopLoad := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	for range maxConns {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for loadCtx.Err() == nil {
+				_, _ = pool.Exec(loadCtx, "SELECT pg_sleep(0.2)")
+			}
+		}()
+	}
+	t.Cleanup(func() { stopLoad(); wg.Wait() })
+
+	select {
+	case <-lockCtx.Done():
+	case <-time.After(3 * expiration):
+	}
+
+	assert.NoError(t, lockCtx.Err(), "expected that a held lock survives beyond its Expiration while the pool is busy")
+	stopLoad()
+	wg.Wait()
+	assert.NoError(t, l.Unlock(lockCtx))
+}
+
+func TestLock_keepAliveRefreshRateIsBounded(t *testing.T) {
+	const expiration = time.Second
+	ctx := context.Background()
+	counter := &lockRefreshCounter{}
+	_, conn := makeLockTestPool(t, 3, counter)
+
+	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, Expiration: expiration}
+	assert.NoError(t, l.Migrate(ctx))
+
+	lockCtx, err := l.Lock(ctx)
+	assert.NoError(t, err)
+	t.Cleanup(func() { _ = l.Unlock(lockCtx) })
+
+	const periods = 2
+	time.Sleep(periods * expiration)
+	assert.NoError(t, lockCtx.Err())
+	assert.NoError(t, l.Unlock(lockCtx))
+
+	assert.True(t, counter.n.Load() < 10*periods,
+		assert.MessageF("expected a bounded number of keep-alive refreshes per Expiration, got %d", counter.n.Load()))
+}
 
 func TestLock_nestedLocking(t *testing.T) {
 	const timeout = 5 * time.Second

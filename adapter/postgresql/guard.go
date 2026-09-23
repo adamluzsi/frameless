@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"sync"
@@ -14,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/guard"
@@ -51,7 +51,7 @@ func (l *Lock) init() error {
 
 const defaultExpiration = 30 * time.Second
 
-const queryUnlock = `DELETE FROM "frameless_locks" WHERE "name" = $1 AND "owner" = $2`
+const queryUnlock = `DELETE FROM "frameless_locks" WHERE "id" = $1`
 
 func (l *Lock) TryLock(ctx context.Context) (_ context.Context, _ bool, rerr error) {
 	if err := l.init(); err != nil {
@@ -70,14 +70,12 @@ func (l *Lock) TryLock(ctx context.Context) (_ context.Context, _ bool, rerr err
 	if err != nil {
 		return nil, false, err
 	}
-	for lr, err := range l.getLocks(ctx) {
-		if err != nil {
-			return nil, false, err
-		}
-		if !lr.ID.Equal(rec.ID) { // if we are not the first in line, we bail
-			return nil, false, l.deleteLock(ctx, rec)
-		}
-		break // we own it
+	first, err := l.firstInLine(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if first == nil || !first.ID.Equal(rec.ID) { // if we are not the first in line, we bail
+		return nil, false, l.deleteLock(ctx, rec)
 	}
 	return l.lockContext(ctx, rec), true, nil
 }
@@ -99,28 +97,57 @@ func (l *Lock) Lock(ctx context.Context) (_ context.Context, rerr error) {
 	if err != nil {
 		return nil, err
 	}
-waitingInQueue:
 	for {
-		for lr, err := range l.getLocks(ctx) {
-			if err != nil {
-				return nil, err
-			}
-			if !lr.ID.Equal(rec.ID) { // if we are not the first in line, we bail
-				select {
-				case <-ctx.Done():
-					if err := l.deleteLock(ctx, rec); err != nil {
-						return nil, err
-					}
-					return nil, ctx.Err()
-				case <-clock.After(time.Second / 2):
-					goto waitingInQueue
-				}
-			}
+		first, err := l.firstInLine(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if first != nil && first.ID.Equal(rec.ID) {
 			break // we own it
 		}
-		break // all done we own it
+		select {
+		case <-ctx.Done():
+			if err := l.deleteLock(ctx, rec); err != nil {
+				return nil, err
+			}
+			return nil, ctx.Err()
+		case <-clock.After(min(time.Second/2, l.getExpiration()/3)):
+		}
+		// while waiting in the queue, our record must not expire,
+		// else autoUnlock removes it, and we would take the lock
+		// without being first in line, next to the current holder.
+		rec, err = l.keepQueued(ctx, rec)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return l.lockContext(ctx, rec), nil
+}
+
+// firstInLine returns the first non-expired lock record in the queue, or nil if the queue is empty.
+func (l *Lock) firstInLine(ctx context.Context) (*lockRecord, error) {
+	for lr, err := range l.getLocks(ctx) {
+		return lr, err
+	}
+	return nil, nil
+}
+
+// keepQueued extends the expiry of a queued lock record.
+// If the record is already gone, it re-enqueues with a new record at the end of the line.
+func (l *Lock) keepQueued(ctx context.Context, rec *lockRecord) (*lockRecord, error) {
+	var query = fmt.Sprintf(`UPDATE %s SET "expires" = $2 WHERE "id" = $1`, l.tableName())
+	nextExpires := l.getExpiresAt()
+	res, err := l.db().Exec(ctx, query, rec.ID, nextExpires)
+	if err != nil {
+		return nil, err
+	}
+	if res.RowsAffected() == 0 {
+		return l.insLock(ctx)
+	}
+	rec.expiresMu.Lock()
+	rec.Expires = nextExpires
+	rec.expiresMu.Unlock()
+	return rec, nil
 }
 
 func (l *Lock) Unlock(ctx context.Context) error {
@@ -220,34 +247,38 @@ func (l *Lock) getLocks(ctx context.Context) iter.Seq2[*lockRecord, error] {
 }
 
 func (l *Lock) refreshLock(ctx context.Context, rec *lockRecord) error {
-	if rec.isExpired() {
-		return fmt.Errorf("already expired")
-	}
 	var (
-		nextExpires = l.getExpiresAt()
-		retry       resilience.Waiter
-		db          = l.db()
-		err         error
+		query   = fmt.Sprintf(`UPDATE %s SET "expires" = $2 WHERE "id" = $1`, l.tableName())
+		lastErr error
 	)
-	rec.expiresMu.Lock()
-	remaining := rec.Expires.Sub(clock.Now())
-	rec.expiresMu.Unlock()
-	retry.Timeout = remaining
-	var query = fmt.Sprintf(`UPDATE %s SET "expires" = $2 WHERE "id" = $1`, l.tableName())
-	for range resilience.Retries(ctx, retry) {
-		err = db.Ping(ctx)
-		if err != nil {
-			continue
-		}
-		_, err = l.db().Exec(ctx, query, rec.ID, nextExpires)
-		if err != nil {
-			return err
-		}
+	for ctx.Err() == nil && !rec.isExpired() {
 		rec.expiresMu.Lock()
-		rec.Expires = nextExpires
+		deadline := rec.Expires
 		rec.expiresMu.Unlock()
+		// the next expiry is computed per attempt, so time spent waiting for a connection isn't lost from the lease
+		nextExpires := l.getExpiresAt()
+		attemptCtx, cancel := context.WithDeadline(ctx, deadline)
+		res, err := l.db().Exec(attemptCtx, query, rec.ID, nextExpires)
+		cancel()
+		if err == nil {
+			if res.RowsAffected() == 0 {
+				return fmt.Errorf("%w: lock record no longer exists", ErrLockLost)
+			}
+			rec.expiresMu.Lock()
+			rec.Expires = nextExpires
+			rec.expiresMu.Unlock()
+			return nil
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+		case <-clock.After(l.getExpiration() / 20):
+		}
 	}
-	return err
+	if ctx.Err() != nil {
+		return nil // regular unlock or parent context cancellation
+	}
+	return fmt.Errorf("%w: lock refresh failed before expiry: %v", ErrLockLost, lastErr)
 }
 
 func (l *Lock) deleteLock(ctx context.Context, rec *lockRecord) error {
@@ -277,11 +308,14 @@ func (l *Lock) db() *pgxpool.Pool {
 }
 
 func (l *Lock) getExpiresAt() time.Time {
-	var now = clock.Now()
+	return clock.Now().Add(l.getExpiration())
+}
+
+func (l *Lock) getExpiration() time.Duration {
 	if l.Expiration != 0 {
-		return now.Add(l.Expiration)
+		return l.Expiration
 	}
-	return now.Add(defaultExpiration)
+	return defaultExpiration
 }
 
 func (l *Lock) isLockedAlready(ctx context.Context) bool {
@@ -307,8 +341,10 @@ type lockContext struct {
 	Lock   *Lock
 	Record *lockRecord
 
-	cancel func()
+	cancel func(error)
 	ctx    context.Context
+	// keepAlive refreshes the lock record's expiry while the lock is held.
+	keepAlive synckit.Job
 
 	onUnlock  sync.Once
 	unlockErr error
@@ -319,43 +355,50 @@ func (lck *lockContext) Unlock(ctx context.Context) error {
 		return err
 	}
 	lck.onUnlock.Do(func() {
-		_, lck.unlockErr = lck.Lock.Connection.DB.Exec(context.WithoutCancel(ctx), queryUnlock, lck.Lock.Name, lck.Lock.owner.String())
+		// stop refreshing before the record is removed,
+		// else a refresh racing with the removal would report our own unlock as a lost lock.
+		lck.keepAlive.Cancel()
+		_ = lck.keepAlive.Wait()
+		// delete only this acquisition's record; a late Unlock of an earlier lock context must not release a newer lock
+		_, lck.unlockErr = lck.Lock.Connection.DB.Exec(context.WithoutCancel(ctx), queryUnlock, lck.Record.ID)
 		if lck.unlockErr == nil {
-			lck.unlockErr = ctx.Err()
+			if cause := context.Cause(lck.ctx); errors.Is(cause, ErrLockLost) {
+				lck.unlockErr = cause
+			} else {
+				lck.unlockErr = ctx.Err()
+			}
 		}
-		// if err := lck.tx.Rollback(lck.ctx); err != nil {
-		// 	if driver.ErrBadConn == err && ctx.Err() != nil {
-		// 		lck.unlockErr = ctx.Err()
-		// 		return
-		// 	}
-		// 	lck.unlockErr = err
-		// 	return
-		// }
-		lck.cancel()
+		lck.cancel(nil)
 	})
 	return lck.unlockErr
 }
 
 func (l *Lock) lockContext(ctx context.Context, lr *lockRecord) context.Context {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	lck := &lockContext{
 		ctx:    ctx,
 		cancel: cancel,
 		Lock:   l,
 		Record: lr,
 	}
-	keepAlive := synckit.Go(ctx, func(ctx context.Context) error {
-		for ctx.Err() == nil {
-			if err := l.refreshLock(ctx, lr); err != nil {
-				cancel()
-				return err
+	lck.keepAlive = synckit.Go(ctx, func(ctx context.Context) error {
+		ticker := clock.NewTicker(l.getExpiration() / 3)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				if err := l.refreshLock(ctx, lr); err != nil {
+					cancel(err)
+					return err
+				}
 			}
 		}
-		return nil
 	})
 	context.AfterFunc(ctx, func() {
-		keepAlive.Cancel()
-		_ = keepAlive.Wait()
+		lck.keepAlive.Cancel()
+		_ = lck.keepAlive.Wait()
 		_ = lck.Unlock(ctx)
 	})
 	return context.WithValue(ctx, ctxKeyLock{Name: l.Name}, lck)
@@ -399,21 +442,28 @@ func (l *Lock) legacyMigrate(ctx context.Context) error {
 	}).MigrateDown(ctx, "")
 }
 
-type LockerFactory[K any] struct{ Connection Connection }
+type LockerFactory[K any] struct {
+	Connection Connection
+	// Expiration is passed to the issued Lock values.
+	//
+	// Default: 30s
+	Expiration time.Duration
+}
 
 func (lf LockerFactory[K]) Migrate(ctx context.Context) error {
 	return (&Lock{Connection: lf.Connection}).Migrate(ctx)
 }
 
 func (lf LockerFactory[K]) LockerFor(key K) *Lock {
-	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection}
+	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection, Expiration: lf.Expiration}
 }
 
 func (lf LockerFactory[K]) NonBlockingLockerFor(key K) guard.NonBlockingLocker {
 	return lf.LockerFor(key)
 }
 
-const ErrLockLost errorkit.Error = "ErrLockLost"
+// ErrLockLost is an alias of guard.ErrLockLost.
+const ErrLockLost = guard.ErrLockLost
 
 func (lf LockerFactory[K]) nameFor(key K) string {
 	switch key := any(key).(type) {
