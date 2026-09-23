@@ -29,11 +29,12 @@ import (
 type Lock struct {
 	Name       string
 	Connection Connection
-	// Expiration is the time duration in which the lock expires
-	// if the control of the is lost for an unexpected reason.
+	// LeaseDuration [optional] is how long the lock survives without renewal,
+	// e.g. after the holder crashed or lost its connection to the database.
+	// While the holder is alive, the lease is renewed, and the lock is held for as long as the holder holds it.
 	//
 	// Default: 30s
-	Expiration time.Duration
+	LeaseDuration time.Duration
 
 	owner uuid.UUID
 
@@ -49,7 +50,7 @@ func (l *Lock) init() error {
 	return err
 }
 
-const defaultExpiration = 30 * time.Second
+const defaultLeaseDuration = 30 * time.Second
 
 const queryUnlock = `DELETE FROM "frameless_locks" WHERE "id" = $1`
 
@@ -111,7 +112,7 @@ func (l *Lock) Lock(ctx context.Context) (_ context.Context, rerr error) {
 				return nil, err
 			}
 			return nil, ctx.Err()
-		case <-clock.After(min(time.Second/2, l.getExpiration()/3)):
+		case <-clock.After(min(time.Second/2, l.getLeaseDuration()/3)):
 		}
 		// while waiting in the queue, our record must not expire,
 		// else autoUnlock removes it, and we would take the lock
@@ -272,7 +273,7 @@ func (l *Lock) refreshLock(ctx context.Context, rec *lockRecord) error {
 		lastErr = err
 		select {
 		case <-ctx.Done():
-		case <-clock.After(l.getExpiration() / 20):
+		case <-clock.After(l.getLeaseDuration() / 20):
 		}
 	}
 	if ctx.Err() != nil {
@@ -308,14 +309,14 @@ func (l *Lock) db() *pgxpool.Pool {
 }
 
 func (l *Lock) getExpiresAt() time.Time {
-	return clock.Now().Add(l.getExpiration())
+	return clock.Now().Add(l.getLeaseDuration())
 }
 
-func (l *Lock) getExpiration() time.Duration {
-	if l.Expiration != 0 {
-		return l.Expiration
+func (l *Lock) getLeaseDuration() time.Duration {
+	if l.LeaseDuration != 0 {
+		return l.LeaseDuration
 	}
-	return defaultExpiration
+	return defaultLeaseDuration
 }
 
 func (l *Lock) isLockedAlready(ctx context.Context) bool {
@@ -382,7 +383,7 @@ func (l *Lock) lockContext(ctx context.Context, lr *lockRecord) context.Context 
 		Record: lr,
 	}
 	lck.keepAlive = synckit.Go(ctx, func(ctx context.Context) error {
-		ticker := clock.NewTicker(l.getExpiration() / 3)
+		ticker := clock.NewTicker(l.getLeaseDuration() / 3)
 		defer ticker.Stop()
 		for {
 			select {
@@ -444,10 +445,10 @@ func (l *Lock) legacyMigrate(ctx context.Context) error {
 
 type LockerFactory[K any] struct {
 	Connection Connection
-	// Expiration is passed to the issued Lock values.
+	// LeaseDuration is passed to the issued Lock values.
 	//
 	// Default: 30s
-	Expiration time.Duration
+	LeaseDuration time.Duration
 }
 
 func (lf LockerFactory[K]) Migrate(ctx context.Context) error {
@@ -455,7 +456,7 @@ func (lf LockerFactory[K]) Migrate(ctx context.Context) error {
 }
 
 func (lf LockerFactory[K]) LockerFor(key K) *Lock {
-	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection, Expiration: lf.Expiration}
+	return &Lock{Name: lf.nameFor(key), Connection: lf.Connection, LeaseDuration: lf.LeaseDuration}
 }
 
 func (lf LockerFactory[K]) NonBlockingLockerFor(key K) guard.NonBlockingLocker {

@@ -49,9 +49,9 @@ func TestLock(t *testing.T) {
 	cm := GetConnection(t)
 
 	l := postgresql.Lock{
-		Name:       rnd.StringNC(5, random.CharsetAlpha()),
-		Connection: cm,
-		Expiration: 2 * time.Second,
+		Name:          rnd.StringNC(5, random.CharsetAlpha()),
+		Connection:    cm,
+		LeaseDuration: 2 * time.Second,
 	}
 	assert.NoError(t, l.Migrate(context.Background()))
 
@@ -98,12 +98,12 @@ func TestLockerFactory(t *testing.T) {
 	ctx := context.Background()
 	cm := GetConnection(t)
 
-	const expiration = 2 * time.Second
-	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm, Expiration: expiration}
+	const leaseDuration = 2 * time.Second
+	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm, LeaseDuration: leaseDuration}
 	assert.NoError(t, lockerFactoryStrKey.Migrate(ctx))
 	guardcontract.LockerFactory[string](lockerFactoryStrKey).Test(t)
 
-	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm, Expiration: expiration}
+	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm, LeaseDuration: leaseDuration}
 	assert.NoError(t, lockerFactoryIntKey.Migrate(ctx))
 	guardcontract.LockerFactory[int](lockerFactoryIntKey).Test(t)
 }
@@ -148,7 +148,7 @@ func TestLock_TryLock_smoke(t *testing.T) {
 // 	l := postgresql.Lock{
 // 		Name:       rnd.Domain(),
 // 		Connection: c,
-// 		Expiration: 100 * time.Millisecond,
+// 		LeaseDuration: 100 * time.Millisecond,
 // 	}
 // 	assert.NoError(t, l.Migrate(ctx))
 
@@ -191,7 +191,7 @@ func TestLock_TryLock_smoke(t *testing.T) {
 // 	l := postgresql.Lock{
 // 		Name:       rnd.Domain(),
 // 		Connection: c,
-// 		Expiration: 50 * time.Millisecond,
+// 		LeaseDuration: 50 * time.Millisecond,
 // 	}
 // 	assert.NoError(t, l.Migrate(ctx))
 
@@ -239,15 +239,15 @@ func (c *lockRefreshCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d
 
 func (c *lockRefreshCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
-func TestLock_heldBeyondExpirationWhileThePoolIsBusy(t *testing.T) {
+func TestLock_heldBeyondLeaseDurationWhileThePoolIsBusy(t *testing.T) {
 	const (
-		maxConns   = 3
-		expiration = time.Second
+		maxConns      = 3
+		leaseDuration = time.Second
 	)
 	ctx := context.Background()
 	pool, conn := makeLockTestPool(t, maxConns, nil)
 
-	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, Expiration: expiration}
+	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, LeaseDuration: leaseDuration}
 	assert.NoError(t, l.Migrate(ctx))
 
 	lockCtx, err := l.Lock(ctx)
@@ -270,22 +270,22 @@ func TestLock_heldBeyondExpirationWhileThePoolIsBusy(t *testing.T) {
 
 	select {
 	case <-lockCtx.Done():
-	case <-time.After(3 * expiration):
+	case <-time.After(3 * leaseDuration):
 	}
 
-	assert.NoError(t, lockCtx.Err(), "expected that a held lock survives beyond its Expiration while the pool is busy")
+	assert.NoError(t, lockCtx.Err(), "expected that a held lock survives beyond its LeaseDuration while the pool is busy")
 	stopLoad()
 	wg.Wait()
 	assert.NoError(t, l.Unlock(lockCtx))
 }
 
 func TestLock_keepAliveRefreshRateIsBounded(t *testing.T) {
-	const expiration = time.Second
+	const leaseDuration = time.Second
 	ctx := context.Background()
 	counter := &lockRefreshCounter{}
 	_, conn := makeLockTestPool(t, 3, counter)
 
-	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, Expiration: expiration}
+	l := postgresql.Lock{Name: rnd.Domain(), Connection: conn, LeaseDuration: leaseDuration}
 	assert.NoError(t, l.Migrate(ctx))
 
 	lockCtx, err := l.Lock(ctx)
@@ -293,12 +293,12 @@ func TestLock_keepAliveRefreshRateIsBounded(t *testing.T) {
 	t.Cleanup(func() { _ = l.Unlock(lockCtx) })
 
 	const periods = 2
-	time.Sleep(periods * expiration)
+	time.Sleep(periods * leaseDuration)
 	assert.NoError(t, lockCtx.Err())
 	assert.NoError(t, l.Unlock(lockCtx))
 
 	assert.True(t, counter.n.Load() < 10*periods,
-		assert.MessageF("expected a bounded number of keep-alive refreshes per Expiration, got %d", counter.n.Load()))
+		assert.MessageF("expected a bounded number of keep-alive refreshes per LeaseDuration, got %d", counter.n.Load()))
 }
 
 func TestLock_nestedLocking(t *testing.T) {
