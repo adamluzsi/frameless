@@ -2,6 +2,7 @@ package tasker_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -315,17 +316,6 @@ func TestConcurrence_Run(t *testing.T) {
 			assert.ErrorIs(t, expErr1, gotErr)
 			assert.ErrorIs(t, expErr2, gotErr)
 			assert.ErrorIs(t, expErr3, gotErr)
-		})
-	})
-
-	t.Run("when task fails with context cancellation, it is not reported back", func(t *testing.T) {
-		s := tasker.Concurrence(
-			func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() },
-			func(ctx context.Context) error { return context.Canceled },
-			func(ctx context.Context) error { <-ctx.Done(); return nil },
-		)
-		assert.Within(t, time.Second, func(ctx context.Context) {
-			assert.NoError(t, s.Run(ctx))
 		})
 	})
 
@@ -1170,6 +1160,88 @@ func TestWithSignalNotify(t *testing.T) {
 			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				assert.Must(t).ErrorIs(expectedErr.Get(t), act(t))
 			})
+		})
+	})
+}
+
+func TestConcurrence(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		ctx = let.Var(s, func(t *testcase.T) context.Context {
+			return context.Background()
+		})
+		awaitShutdown = func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		tasks = let.Var(s, func(t *testcase.T) []func(context.Context) error {
+			return []func(context.Context) error{
+				func(ctx context.Context) error { return nil },
+				func(ctx context.Context) error { return nil },
+			}
+		})
+	)
+	act := func(t *testcase.T) error {
+		var err error
+		assert.Within(t, time.Second, func(context.Context) {
+			err = tasker.Concurrence(tasks.Get(t)...).Run(ctx.Get(t))
+		})
+		return err
+	}
+
+	s.Then("it finishes without an error", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+	})
+
+	s.When("a task fails and Concurrence cancels its siblings", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+		tasks.Let(s, func(t *testcase.T) []func(context.Context) error {
+			return []func(context.Context) error{
+				func(ctx context.Context) error { return expErr.Get(t) },
+				awaitShutdown,
+				awaitShutdown,
+			}
+		})
+
+		s.Then("the failure is reported without the siblings' cancellation errors", func(t *testcase.T) {
+			err := act(t)
+			assert.ErrorIs(t, err, expErr.Get(t))
+			assert.False(t, errors.Is(err, context.Canceled))
+		})
+	})
+
+	s.When("the caller's context is cancelled", func(s *testcase.Spec) {
+		ctx.Let(s, func(t *testcase.T) context.Context {
+			c, cancel := context.WithCancel(ctx.Super(t))
+			cancel()
+			return c
+		})
+		tasks.Let(s, func(t *testcase.T) []func(context.Context) error {
+			return []func(context.Context) error{awaitShutdown, awaitShutdown}
+		})
+
+		s.Then("the tasks' cancellation errors are not reported back", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+	})
+
+	s.When("a task returns context.Canceled while nothing cancelled the Concurrence", func(s *testcase.Spec) {
+		taskErr := let.Var(s, func(t *testcase.T) error {
+			return fmt.Errorf("%s: %w", t.Random.String(), context.Canceled)
+		})
+		tasks.Let(s, func(t *testcase.T) []func(context.Context) error {
+			return []func(context.Context) error{
+				func(ctx context.Context) error { return taskErr.Get(t) },
+				awaitShutdown,
+			}
+		})
+
+		s.Then("the cancellation error is reported as a task failure", func(t *testcase.T) {
+			err := act(t)
+			assert.Error(t, err)
+			assert.ErrorIs(t, err, taskErr.Get(t))
+			assert.ErrorIs(t, err, context.Canceled)
 		})
 	})
 }

@@ -67,23 +67,23 @@ func (c concurrence) Run(ctx context.Context) error {
 		}(task)
 	}
 
-	cwg.Add(1)
-	go func() {
-		defer cwg.Done()
+	cwg.Go(func() {
 		for err := range errCh {
 			if err == nil { // shutdown with no error is OK
 				continue
 			}
 
+			var isShutdown = errors.Is(err, context.Canceled) && ctx.Err() != nil
+
 			cancelDueToError() // if one fails, all will shut down
 
-			if errors.Is(err, context.Canceled) { // we don't report back context cancellation error
+			if isShutdown {
 				continue
 			}
 
 			errs = append(errs, err)
 		}
-	}()
+	})
 
 	wwg.Wait()
 	close(errCh)
