@@ -48,6 +48,12 @@ type Runtime struct {
 	//
 	// Default: 30 seconds
 	WaitTime time.Duration
+	// ParticipantWarningInterval [optional] logs a warning every N scheduling
+	// failures caused by a missing participant or incompatible participant signature.
+	// These failures increment ExecutionRequest.FailureCount and requeue after
+	// WaitTime without a hard limit; suspensions do not increment the count.
+	// Zero and negative values use the default interval of 5 failures.
+	ParticipantWarningInterval int
 	// RetryStrategy [optional] is the retry strategy applied when a non-fatal error occurs during a task execution.
 	RetryStrategy resilience.RetryStrategy
 	// BindGracePeriod [optional] is how long a scheduled Process may wait for

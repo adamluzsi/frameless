@@ -15,10 +15,10 @@ rt := workflow.Runtime{
 ```
 
 ```go
-workflow.ExecuteParticipant{
-	ID:     "charge-card",
-	Input:  []workflow.VarName{"order_id"},
-	Output: []workflow.VarName{"receipt"},
+workflow.Execute{
+	ParticipantID: "charge-card",
+	Input:         []workflow.VarName{"order_id"},
+	Output:        []workflow.VarName{"receipt"},
 }
 ```
 
@@ -53,18 +53,27 @@ Output: []workflow.VarName{"receipt"}   //  ─┼─► func(ctx, orderID strin
 | `func(ctx, string) (string, error)`            | 1       | 1        |
 | `func(ctx, string, int) (string, bool, error)` | 2       | 2        |
 
+Variadic functions accept zero optional arguments, individual optional values,
+or one matching trailing slice. For
+`func(ctx context.Context, id string, labels ...string) error`, `Input` can name
+just `id`, `id` plus individual label
+variables, or `id` plus a `[]string` variable. A matching trailing slice takes
+precedence. An untyped `nil` is an individual argument, not an omitted slice;
+a typed nil slice can supply a nil variadic slice. Wrong arity, incompatible
+types, and nil passed to a non-nilable parameter return errors, not panics.
+
 ### When it goes wrong
 
 | Problem                                | Error                                   |
 | -------------------------------------- | --------------------------------------- |
-| No participant with that `ID` (or no `Participants` repository) | `ErrParticipantNotFound{ID: id}` — nonfatal availability error |
-| `Input`/`Output` count ≠ the signature | `ErrParticipantFuncMappingMismatch`     |
+| No participant with that `ParticipantID` (or no `Participants` repository) | `ErrParticipantNotFound{ID: id}` — nonfatal availability error |
+| Incompatible `Input` arity/type or `Output` count | `ErrParticipantSignatureMismatch{ID, Cause}` wrapping `ErrParticipantFuncMappingMismatch` |
 | An `Input` variable is not set         | `ErrFatal` naming the missing variable  |
-| The registered value is not a func     | `ErrInvalidParticipantFunc`             |
+| Invalid registered function (including a nil function) | `ErrParticipantSignatureMismatch{ID, Cause}` wrapping `ErrInvalidParticipantFunc` |
 
 All of them are explicit error values. A mapping mistake never panics.
 
-### Missing registration waits for availability
+### Missing or incompatible registration waits for availability
 
 `workflow.ErrParticipantNotFound{ID: id}` retains its type, name and missing `ID`.
 It is a **plain, nonfatal availability error**: it does not implement
@@ -72,11 +81,24 @@ It is a **plain, nonfatal availability error**: it does not implement
 Participant lookup returns it when an uncached step's ID is not registered,
 including when no `Participants` repository is configured.
 
-The runtime explicitly avoids immediate retry and returns the error from
-`Runtime.Execute`. The scheduler in `Runtime.Run` reschedules after `WaitTime`,
-preserving `FailureCount`. The idempotent executor preserves prior work and
-records neither a failed `EventParticipant` nor an `EventError` for missing
-availability. A later attempt reuses completed steps and tries lookup again.
+`workflow.ErrParticipantSignatureMismatch{ID: id, Cause: err}`, defined in
+`wferror.go`, likewise reports a **nonfatal availability error** when this node's
+registration cannot satisfy the invocation. `Cause` preserves the legacy
+invalid-function or mapping error for `errors.Is`/`errors.As`; `ErrIsFatal`
+recognises the wrapper as nonfatal even when its cause is `ErrInvalidParticipantFunc`.
+
+For both errors, the runtime skips tight local retries and returns the error
+from `Runtime.Execute`. The scheduler in `Runtime.Run` requeues after `WaitTime`
+and **increments `ExecutionRequest.FailureCount`**. The idempotent executor
+preserves earlier work, including nested follow-up successes, and records
+neither a failed `EventParticipant` nor an `EventError` for the unavailable
+invocation. A later attempt reuses completed steps and tries lookup again.
+
+`Runtime.ParticipantWarningInterval` logs a warning every N scheduling failures
+of this kind (default **5**; zero or negative values use that default). There is
+no hard failure-count drop limit and no capability-routing guarantee. A typo or
+incompatible deployment can therefore wait indefinitely; validate IDs and
+signatures independently. `Suspend`, unlike these errors, preserves `FailureCount`.
 
 Missing conditions remain fatal (`ErrConditionNotFound`). See
 [End Users][END_USER] for shared execution and independent ID validation.
@@ -98,7 +120,8 @@ _ = rt.Execute(ctx, pid) // charge-card runs
 _ = rt.Execute(ctx, pid) // charge-card does NOT run; its receipt is replayed
 ```
 
-That is what makes retries, crashes and double-delivery safe by default.
+This reuse depends on the event being durably committed. It is not an
+exactly-once guarantee for effects outside the event repository.
 
 A recorded call is only reused when the step is genuinely the same:
 
@@ -113,8 +136,13 @@ call — which is exactly what keeps a replay stable.
 
 ### The trap it does not save you from
 
-The cache protects the *workflow*. It does not protect a half-finished side
-effect inside a single participant.
+The cache protects recorded workflow results, not external effects. Even a
+participant that returns `nil` may run again if its remote effect succeeds but
+the event write or commit fails, the process crashes before persistence, or an
+enclosing event transaction rolls back. Make external operations idempotent and
+safe to retry with a **stable business idempotency key** (not a fresh ID on each
+attempt), or coordinate the effect and event record through a shared transaction
+or transactional outbox where applicable.
 
 ```go
 // ⚠️ Fragile
@@ -129,7 +157,7 @@ again — minting a **new** `id`. If you needed the same ID on the retry, split
 the work so each part is separately recorded:
 
 ```go
-// ✅ Each step is retried independently
+// Use these as separate top-level Sequence steps.
 "place-order": func(ctx context.Context) (string, error) {
 	return newOrderID(), nil
 },
@@ -138,9 +166,11 @@ the work so each part is separately recorded:
 },
 ```
 
-Now `place-order` is recorded before `submit-order` is attempted, so a retry
-reuses the ID it already minted. Returning a `Sequence` (below) achieves the
-same thing from inside a single participant.
+As separate top-level `Sequence` steps, `place-order` commits before
+`submit-order` is attempted, so a later retry reuses the recorded ID. The submit
+operation still needs to tolerate repetition if its own success event cannot
+be committed. Returning a `Sequence` from a participant does **not** provide
+the same independent commit boundaries.
 
 ---
 
@@ -156,8 +186,8 @@ follow-up stages":
 		return err
 	}
 	return workflow.Sequence{
-		workflow.ExecuteParticipant{ID: "pick", Input: []workflow.VarName{"order_id"}},
-		workflow.ExecuteParticipant{ID: "pack", Input: []workflow.VarName{"order_id"}},
+		workflow.Execute{ParticipantID: "pick", Input: []workflow.VarName{"order_id"}},
+		workflow.Execute{ParticipantID: "pack", Input: []workflow.VarName{"order_id"}},
 	}
 },
 ```
@@ -166,10 +196,18 @@ The runtime records the participant's execution **with the returned definition
 attached**, then executes it in place of the step. A `Sequence{A, B, C}` where
 `B` does this effectively becomes `Sequence{A, B, B', C}`.
 
-Because the swap is part of the recorded event, a replay is a no-op — the
-follow-up is dispatched exactly once, and each of its steps then gets its own
-retry and caching behaviour. This is the idiomatic way to make a multi-part
-operation individually retryable.
+On a cache hit, the runtime skips the producer function but **walks the recorded
+follow-up definition again**, under the original path. Recorded nested steps
+reuse their results, and unfinished or suspended steps resume; the outer
+sequence continues only when the follow-up succeeds. Dispatch is not exactly once.
+
+The follow-up still runs inside the producer's event transaction. `Suspend`
+and participant availability errors preserve earlier work when that transaction
+commits. An ordinary nested failure can instead roll back the producer's newly
+recorded event and earlier nested success events from that transaction. Those
+calls may run again, even though their external effects already happened.
+Use separate top-level steps when you need independent commit boundaries, and
+keep external effects safe to retry in either layout.
 
 ---
 
@@ -191,8 +229,8 @@ steer the runtime rather than report a result:
 },
 ```
 
-**A signal is never recorded.** The step stays uncached, so the next pass calls
-your function again and asks the question afresh. That is exactly what you want
+**`Suspend` and `Halt` are not recorded as successful calls.** The step stays
+uncached, so the next pass calls your function again and asks the question afresh. That is exactly what you want
 for waiting — a cached `Suspend` would replay forever — but it does mean the
 work before the signal runs again too. Keep the pre-signal part cheap and
 side-effect free.
@@ -200,16 +238,20 @@ side-effect free.
 | You return      | Recorded? | Called again next pass? |
 | --------------- | --------- | ----------------------- |
 | `nil`           | Yes       | No                      |
-| a `Definition`  | Yes       | No                      |
-| a `RuntimeSignal` | No      | Yes                     |
+| a `Definition`  | Yes       | Producer: no; follow-up: walked again |
+| `Suspend` / `Halt` | No    | Yes, if execution resumes |
+| `Replace`       | Yes, new definition | The replacement runs after its event commits |
 | a plain `error` | No        | Yes (retried)           |
+
+The cache rows assume a matching, durably committed event. `Replace` records
+a new definition; it does not make any preceding external effect exactly once.
 
 ---
 
 ## 5. Failing
 
-Ordinary operational errors go through `Runtime#RetryStrategy`. The missing
-registration error described above is handled separately, without immediate retry.
+Ordinary operational errors go through `Runtime#RetryStrategy`. Missing or
+incompatible participant registrations are handled separately, without immediate retry.
 
 When retrying cannot possibly help — a validation failure, a rejected payment,
 a malformed definition — say so, and the runtime stops immediately:
@@ -225,7 +267,11 @@ a malformed definition — say so, and the runtime stops immediately:
 ```
 
 `workflow.ErrIsFatal(err)` is the check the runtime performs; wrapping with
-`ErrFatal` is how you opt in.
+`ErrFatal` is how you opt in. `Runtime.Execute` returns the error without local
+retry. In scheduled execution, the worker logs a warning and ACKs/drops that
+queue entry rather than requeueing it or stopping the worker. This does **not**
+complete or terminate the process: it remains incomplete and nonterminated,
+and you can call `Schedule` again with the same ID after addressing the cause.
 
 ---
 
@@ -265,6 +311,10 @@ things follow from that:
 - **They are the trust boundary.** A definition can only *name* the
   participants you registered — it cannot express arbitrary code. That is what
   makes accepting end-user-authored definitions safe. See [End Users][END_USER].
+- **Not every side effect belongs in the vocabulary.** A step private to one
+  custom definition can run as that definition's own code through
+  `Execute#ExecuteWith`, cached like any participant call. See
+  [Custom Definitions][CUSTOM_DEFINITION] §4.
 
 ---
 
@@ -297,6 +347,7 @@ Test the *composition* separately, with `wftest`. See [Testing][TESTING].
 | "Why is it designed this way?"                    | [End Users][END_USER]     |
 
 [DEFINITION]: ./definition.md
+[CUSTOM_DEFINITION]: ./custom-definition.md
 [SIGNAL]: ./signal.md
 [VARIABLES]: ./vars.md
 [CODEC]: ./codec.md

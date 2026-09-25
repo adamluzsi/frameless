@@ -63,7 +63,7 @@ definition* — "I am done, now please also run these steps". The runtime persis
 the participant's result with that definition attached and continues with it.
 
 Built-ins: `Sequence`, `If`, `Sleep`, `SetVar`, `DeclareVar`, `DeleteVar`,
-`ExecuteParticipant`, `ExecuteCondition`, `Spawn`, `Join`. See
+`Execute`, `Spawn`, `Join`. See
 [Definitions][DEFINITION].
 
 ### Participant
@@ -80,7 +80,7 @@ Participants: workflow.Participants{
 ```
 
 The signature must be `func(context.Context, ...ins) (...outs, error)`. A
-definition invokes it with `ExecuteParticipant{ID, Input, Output}`, which maps
+definition invokes it with `Execute{ParticipantID, Input, Output}`, which maps
 process variables positionally onto the arguments and results.
 
 Every call is recorded as an `EventParticipant` and **replayed from the log** on
@@ -109,7 +109,7 @@ type Condition interface {
 
 Registered Go funcs (`workflow.Conditions`, signature
 `func(context.Context, ...ins) (bool, error)`) are reached from a definition via
-`ExecuteCondition{ID, Input}`. `wftemplate.Condition` is the shorthand that
+`Execute{ConditionID, Input}`. `wftemplate.Condition` is the shorthand that
 evaluates a Go template expression against the process variables instead.
 
 The answer is recorded as an `EventCondition`, so a replay re-uses the *same*
@@ -171,6 +171,7 @@ type Event interface {
 | `EventDeleteVar`     | `workflow::event::var::delete`    | A variable binding was removed.                                  |
 | `EventSpawn`         | `workflow::event::spawn`          | A sub-workflow was requested; links parent to `ChildID`.        |
 | `EventJoin`          | `workflow::event::join`           | A parent observed its children as complete.                      |
+| `EventSleepCompleted` | `workflow::event::sleep::completed` | A `Sleep` woke up; a replay passes it without asking its condition. |
 | `EventCompleted`     | `workflow::completed`             | The definition finished successfully.                            |
 | `EventTerminated`    | `workflow::terminated`            | The process was called off via `rt.Terminate`. The two terminal events are mutually exclusive on the log. |
 
@@ -195,6 +196,11 @@ and `Execute` reports `ErrNoProcessDefinition`.
 
 Bind is idempotent: a process that already carries a use-definition event is
 left untouched, so a retried `Bind` does not fork the process' history.
+
+A bound definition is immutable. It changes only when a new
+`EventUseDefinition` is appended, through `Replace` or a migration tool, and
+that new binding re-roots every [Path](#path). See
+[Definitions][DEFINITION] §5.
 
 ### Execute vs Schedule
 
@@ -355,7 +361,7 @@ Each composite definition contributes a segment (`Sequence` adds `sequence` plus
 `EventUseDefinition` that bound the definition.
 
 Its job is identity. A step's recorded event is matched by `(ID, Path)`, so two
-`ExecuteParticipant{ID: "notify"}` entries in the same `Sequence` are distinct
+`Execute{ParticipantID: "notify"}` entries in the same `Sequence` are distinct
 logical steps with independent caches — which is what makes idempotent replay
 work without any per-process bookkeeping on your side.
 

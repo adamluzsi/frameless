@@ -33,7 +33,7 @@ var _ Event = EventDeclareVar{}
 func (e EventDeclareVar) GetEventID() EventID     { return e.EventID }
 func (e EventDeclareVar) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventDeclareVar) GetTimestamp() time.Time { return e.Timestamp }
-func (e EventDeclareVar) EventType() EventType    { return "var::declare" }
+func (e EventDeclareVar) EventType() EventType    { return "workflow::var::declare" }
 
 // EventSetVar records that a variable got a value assigned.
 type EventSetVar struct {
@@ -51,7 +51,7 @@ var _ Event = EventSetVar{}
 func (e EventSetVar) GetEventID() EventID     { return e.EventID }
 func (e EventSetVar) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventSetVar) GetTimestamp() time.Time { return e.Timestamp }
-func (e EventSetVar) EventType() EventType    { return "var::set" }
+func (e EventSetVar) EventType() EventType    { return "workflow::var::set" }
 
 // EventDeleteVar records that a variable binding got removed.
 type EventDeleteVar struct {
@@ -68,7 +68,7 @@ var _ Event = EventDeleteVar{}
 func (e EventDeleteVar) GetEventID() EventID     { return e.EventID }
 func (e EventDeleteVar) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventDeleteVar) GetTimestamp() time.Time { return e.Timestamp }
-func (e EventDeleteVar) EventType() EventType    { return "var::delete" }
+func (e EventDeleteVar) EventType() EventType    { return "workflow::var::delete" }
 
 // GetVars can be used to retrieve the ProcessVars of the current workflow execution.
 func GetVars(ctx context.Context) (Vars, error) {

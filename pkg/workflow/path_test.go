@@ -165,7 +165,7 @@ func (r *pathRecorder) Snapshot() []workflow.Path {
 	return out
 }
 
-func TestExecuteParticipantAddsItsSegment(t *testing.T) {
+func TestExecute_participantPathSegment(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	c := wftest.LetC(s)
@@ -182,7 +182,7 @@ func TestExecuteParticipantAddsItsSegment(t *testing.T) {
 	})
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
-		return workflow.ExecuteParticipant{ID: pid.Get(t)}
+		return workflow.Execute{ParticipantID: pid.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
@@ -230,9 +230,9 @@ func TestSequenceAddsSegmentAndPerIterationIndex(t *testing.T) {
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: children[0].Get(t)},
-			workflow.ExecuteParticipant{ID: children[1].Get(t)},
-			workflow.ExecuteParticipant{ID: children[2].Get(t)},
+			workflow.Execute{ParticipantID: children[0].Get(t)},
+			workflow.Execute{ParticipantID: children[1].Get(t)},
+			workflow.Execute{ParticipantID: children[2].Get(t)},
 		}
 	})
 
@@ -284,8 +284,8 @@ func TestSequencePerIterationDoesNotLeakBetweenIterations(t *testing.T) {
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: children[0].Get(t)},
-			workflow.ExecuteParticipant{ID: children[1].Get(t)},
+			workflow.Execute{ParticipantID: children[0].Get(t)},
+			workflow.Execute{ParticipantID: children[1].Get(t)},
 		}
 	})
 
@@ -373,7 +373,7 @@ func TestIfTrueBranchPropagatesIfThenSegments(t *testing.T) {
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.If{
 			Cond: wftemplate.Condition("true"),
-			Then: workflow.ExecuteParticipant{ID: pid.Get(t)},
+			Then: workflow.Execute{ParticipantID: pid.Get(t)},
 		}
 	})
 
@@ -415,7 +415,7 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.If{
 			Cond: wftemplate.Condition("false"),
-			Else: workflow.ExecuteParticipant{ID: participantID.Get(t)},
+			Else: workflow.Execute{ParticipantID: participantID.Get(t)},
 		}
 	})
 

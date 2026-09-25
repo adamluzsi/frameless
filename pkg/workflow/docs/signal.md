@@ -165,7 +165,7 @@ end, which is how normal completion is recorded.
 
 ```go
 return workflow.Replace{Definition: workflow.Sequence{
-	workflow.ExecuteParticipant{ID: "manual-review"},
+	workflow.Execute{ParticipantID: "manual-review"},
 }}
 ```
 
@@ -281,9 +281,9 @@ var _ workflow.RuntimeSignal = Escalate{}
 func (Escalate) Error() string { return "acme::escalate" }
 
 func (sig Escalate) RuntimeSignalExecute(ctx context.Context, rt workflow.Runtime, id workflow.ProcessID) error {
-	return workflow.Replace{Definition: workflow.ExecuteParticipant{
-		ID:    "notify-oncall",
-		Input: []workflow.VarName{"incident_id"},
+	return workflow.Replace{Definition: workflow.Execute{
+		ParticipantID: "notify-oncall",
+		Input:         []workflow.VarName{"incident_id"},
 	}}.RuntimeSignalExecute(ctx, rt, id)
 }
 ```

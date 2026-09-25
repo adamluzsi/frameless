@@ -69,17 +69,17 @@ func TestReplace(t *testing.T) {
 		t.Log("replace occurs midway of a definition")
 		return workflow.Replace{
 			Definition: workflow.Sequence{
-				workflow.ExecuteParticipant{ID: fooPID.Get(t)},
-				workflow.ExecuteParticipant{ID: bazPID.Get(t)},
+				workflow.Execute{ParticipantID: fooPID.Get(t)},
+				workflow.Execute{ParticipantID: bazPID.Get(t)},
 			},
 		}
 	})
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: fooPID.Get(t)},
-			workflow.ExecuteParticipant{ID: replacePID.Get(t)},
-			workflow.ExecuteParticipant{ID: barPID.Get(t)},
+			workflow.Execute{ParticipantID: fooPID.Get(t)},
+			workflow.Execute{ParticipantID: replacePID.Get(t)},
+			workflow.Execute{ParticipantID: barPID.Get(t)},
 		}
 	})
 

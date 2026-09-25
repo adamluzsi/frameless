@@ -24,9 +24,9 @@ func ExampleFor() {
 		// to force the setup to use similar field ordering as the for loop has.
 		workflow.SetVar{Name: "i", Value: 0}, wftemplate.Condition("lt .i 5"), workflow.Increment{Name: "i"},
 		workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "foo"},
-			workflow.ExecuteParticipant{ID: "bar"},
-			workflow.ExecuteParticipant{ID: "baz"},
+			workflow.Execute{ParticipantID: "foo"},
+			workflow.Execute{ParticipantID: "bar"},
+			workflow.Execute{ParticipantID: "baz"},
 		},
 	}
 
@@ -519,7 +519,7 @@ func TestFor(t *testing.T) {
 				},
 				Cond: bounded(t, wftemplate.Condition(fmt.Sprintf("lt .%s %d", counter.Get(t), rounds.Get(t)))),
 				Post: workflow.Increment{Name: counter.Get(t)},
-				Do:   workflow.ExecuteParticipant{ID: participantID.Get(t)},
+				Do:   workflow.Execute{ParticipantID: participantID.Get(t)},
 			}
 		})
 
@@ -557,7 +557,7 @@ func TestFor(t *testing.T) {
 					},
 					Post: workflow.Increment{Name: counter.Get(t)},
 					Do: workflow.Sequence{
-						workflow.ExecuteParticipant{ID: participantID.Get(t)},
+						workflow.Execute{ParticipantID: participantID.Get(t)},
 						workflow.If{
 							Cond: wftemplate.Condition(fmt.Sprintf("le %d .%s", rounds.Get(t)-1, counter.Get(t))),
 							Then: workflow.Break{},
@@ -583,6 +583,54 @@ func TestFor(t *testing.T) {
 					"so the rounds it leaves behind stay recorded rather than being rolled back")
 			})
 		})
+
+		s.When("the body changes the variable its condition reads, and then suspends", func(s *testcase.Spec) {
+			suspendCalls := let.VarOf(s, 0)
+			wftest.LetParticipantWithID(s, let.VarOf(s, workflow.ParticipantID("suspend-once")), func(t *testcase.T) func(context.Context) error {
+				return func(context.Context) error {
+					suspendCalls.Set(t, suspendCalls.Get(t)+1)
+					if suspendCalls.Get(t) == 1 {
+						return workflow.Suspend{}
+					}
+					return nil
+				}
+			})
+			afterCalls := let.VarOf(s, 0)
+			wftest.LetParticipantWithID(s, let.VarOf(s, workflow.ParticipantID("after")), func(t *testcase.T) func(context.Context) error {
+				return func(context.Context) error {
+					afterCalls.Set(t, afterCalls.Get(t)+1)
+					return nil
+				}
+			})
+			definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.For{
+					Init: workflow.Sequence{
+						workflow.DeclareVar{Name: "done"},
+						workflow.SetVar{Name: "done", Value: false},
+					},
+					Cond: bounded(t, wftemplate.Condition("not .done")),
+					Do: workflow.Sequence{
+						workflow.Execute{ParticipantID: participantID.Get(t)},
+						workflow.SetVar{Name: "done", Value: true},
+						workflow.Execute{ParticipantID: "suspend-once"},
+						workflow.Execute{ParticipantID: "after"},
+					},
+				}
+			})
+
+			s.Then("the resumed round finishes its body, since the condition's answer for the round is replayed", func(t *testcase.T) {
+				rt := c.Runtime.Get(t)
+
+				assert.ErrorIs(t, rt.Execute(t.Context(), boundProcess.Get(t)), workflow.Suspend{})
+				assert.NoError(t, rt.Execute(t.Context(), boundProcess.Get(t)))
+
+				assert.Equal(t, participantCalls.Get(t), 1)
+				assert.Equal(t, suspendCalls.Get(t), 2)
+				assert.Equal(t, afterCalls.Get(t), 1,
+					"the round was already running when done changed,",
+					"so only the next round's condition may see it")
+			})
+		})
 	})
 }
 
@@ -592,7 +640,7 @@ func ExampleBreak() {
 	// workflow loop which polls until the job is done
 	_ = workflow.For{
 		Do: workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "poll-job", Output: []workflow.VarName{"done"}},
+			workflow.Execute{ParticipantID: "poll-job", Output: []workflow.VarName{"done"}},
 			workflow.If{
 				Cond: wftemplate.Condition(".done"),
 				Then: workflow.Break{},
@@ -691,8 +739,8 @@ func ExampleForEach() {
 	_ = workflow.ForEach{
 		Over: "orders", V: "order",
 		Do: workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "charge-order"},
-			workflow.ExecuteParticipant{ID: "ship-order"},
+			workflow.Execute{ParticipantID: "charge-order"},
+			workflow.Execute{ParticipantID: "ship-order"},
 		},
 	}
 }
@@ -1097,7 +1145,7 @@ func TestForEach(t *testing.T) {
 			)
 
 			do.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+				return workflow.Execute{ParticipantID: participantID.Get(t)}
 			})
 
 			s.Then("the participant is called once per element", func(t *testcase.T) {

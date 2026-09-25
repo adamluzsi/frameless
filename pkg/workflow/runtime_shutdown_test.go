@@ -203,7 +203,7 @@ func TestRuntime_Run_shutdown(t *testing.T) {
 			// the queue already has a well-defined entry to pick
 			// up.
 			assert.NoError(t, e.runtime.Get(t).Spawn(t.Context(), processID.Get(t),
-				workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				workflow.Execute{ParticipantID: participantID.Get(t)}))
 
 			_, cancelRun, waitForShutdown := startRun(t)
 
@@ -219,7 +219,7 @@ func TestRuntime_Run_shutdown(t *testing.T) {
 
 		s.Test("the process is observed as not yet completed while in flight", func(t *testcase.T) {
 			assert.NoError(t, e.runtime.Get(t).Spawn(t.Context(), processID.Get(t),
-				workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				workflow.Execute{ParticipantID: participantID.Get(t)}))
 
 			_, cancelRun, _ := startRun(t)
 			defer cancelRun()
@@ -246,7 +246,7 @@ func TestRuntime_Run_shutdown(t *testing.T) {
 			// Bind the definition before the runtime starts so the
 			// queue already has a well-defined entry to pick up.
 			assert.NoError(t, e.runtime.Get(t).Spawn(t.Context(), processID.Get(t),
-				workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				workflow.Execute{ParticipantID: participantID.Get(t)}))
 
 			_, cancelRun, waitForShutdown := startRun(t)
 
@@ -287,7 +287,7 @@ func TestRuntime_Run_shutdown(t *testing.T) {
 			// while the participant is parked, so the first runtime
 			// returns without the process having been completed.
 			assert.NoError(t, e.runtime.Get(t).Spawn(t.Context(), processID.Get(t),
-				workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				workflow.Execute{ParticipantID: participantID.Get(t)}))
 
 			_, firstCancel, waitForShutdown := startRun(t)
 			mustWaitForInFlight(t, hit)
@@ -381,7 +381,7 @@ func TestRuntime_Run_shutdown(t *testing.T) {
 			// look.
 			secondProcID := mustProcessID(t)
 			assert.NoError(t, e.runtime.Get(t).Spawn(t.Context(), secondProcID,
-				workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				workflow.Execute{ParticipantID: participantID.Get(t)}))
 
 			_, _, _ = startRun(t)
 

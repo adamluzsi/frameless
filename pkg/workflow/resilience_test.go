@@ -49,9 +49,9 @@ func Test_resilience(t *testing.T) {
 
 		s.Test("scheduled tasks are resilient", func(t *testcase.T) {
 			var def = workflow.Sequence{
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
 			}
 			t.Random.Repeat(3, 7, func() {
 				processID, err := workflow.MakeProcessID()
@@ -68,9 +68,9 @@ func Test_resilience(t *testing.T) {
 
 		s.Test("executed tasks are resilient", func(t *testcase.T) {
 			var def = workflow.Sequence{
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
 			}
 			t.Random.Repeat(3, 7, func() {
 				processID, err := workflow.MakeProcessID()
@@ -97,9 +97,9 @@ func Test_resilience(t *testing.T) {
 
 		s.Test("scheduled tasks are resilient", func(t *testcase.T) {
 			var def = workflow.Sequence{
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
 			}
 			t.Random.Repeat(3, 7, func() {
 				processID, err := workflow.MakeProcessID()
@@ -116,9 +116,9 @@ func Test_resilience(t *testing.T) {
 
 		s.Test("executed tasks are resilient", func(t *testcase.T) {
 			var def = workflow.Sequence{
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
-				workflow.ExecuteParticipant{ID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
+				workflow.Execute{ParticipantID: pid.Get(t)},
 			}
 			t.Random.Repeat(3, 7, func() {
 				processID, err := workflow.MakeProcessID()
@@ -173,7 +173,7 @@ func TestRuntime_Execute_runtimeSignalIsNotRetried(t *testing.T) {
 	})
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+		return workflow.Execute{ParticipantID: participantID.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {

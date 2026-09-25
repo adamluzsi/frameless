@@ -66,9 +66,9 @@ func TestRuntime_participantAvailability(t *testing.T) {
 	definition := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
 			workflow.SetVar{Name: "value", Value: value.Get(t)},
-			workflow.ExecuteParticipant{ID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
-			workflow.ExecuteParticipant{ID: secondID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
-			workflow.ExecuteParticipant{ID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{ParticipantID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{ParticipantID: secondID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{ParticipantID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
 		}
 	})
 	s.Before(func(t *testcase.T) {
@@ -184,9 +184,9 @@ func TestRuntime_participantAvailability(t *testing.T) {
 			t.Eventually(func(t *testcase.T) { assert.True(t, isCompleted(t)) })
 			assertCompleted(t)
 			requests := queue.Get(t).Requests()
-			for _, req := range requests {
+			for i, req := range requests {
 				assert.Equal(t, req.ProcessID, process.Get(t))
-				assert.Equal(t, req.FailureCount, failureCount.Get(t))
+				assert.Equal(t, req.FailureCount, failureCount.Get(t)+i)
 				assert.Equal(t, req.CreatedAt, requests[0].CreatedAt)
 			}
 			assert.True(t, requests[1].StartTime.After(requests[0].StartTime))

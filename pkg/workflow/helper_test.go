@@ -29,6 +29,18 @@ func getProcessEvents(tb testing.TB, repo workflow.EventRepository, pid workflow
 	return events
 }
 
+// conditionEvents returns the condition answers recorded in the Process event history.
+func conditionEvents(tb testing.TB, repo workflow.EventRepository, pid workflow.ProcessID) []workflow.EventCondition {
+	tb.Helper()
+	var out []workflow.EventCondition
+	for _, event := range getProcessEvents(tb, repo, pid) {
+		if ec, ok := event.(workflow.EventCondition); ok {
+			out = append(out, ec)
+		}
+	}
+	return out
+}
+
 func setVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, key workflow.VarName, val any) {
 	tb.Helper()
 	ctx := rt.Context(context.Background())

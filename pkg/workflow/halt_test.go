@@ -47,7 +47,7 @@ func TestHalt(t *testing.T) {
 		})
 
 		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-			return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+			return workflow.Execute{ParticipantID: participantID.Get(t)}
 		})
 
 		act := let.Act(func(t *testcase.T) error {
@@ -145,7 +145,7 @@ func TestHalt(t *testing.T) {
 		}
 
 		process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
-			return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+			return workflow.Execute{ParticipantID: participantID.Get(t)}
 		}))
 
 		// scheduleAct is the public-API surface: it asks the runtime to
@@ -285,5 +285,5 @@ func ExampleHalt() {
 	// A participant asks the runtime to stop processing this Process without
 	// marking it complete and without rescheduling it. Resuming the Process
 	// is the caller's responsibility, by re-Scheduling the same ProcessID.
-	_ = workflow.ExecuteParticipant{ID: "review-gate"}
+	_ = workflow.Execute{ParticipantID: "review-gate"}
 }

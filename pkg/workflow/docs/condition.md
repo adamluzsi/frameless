@@ -18,9 +18,9 @@ Anywhere a definition takes a condition — `If#Cond`, `Sleep#Until`,
 
 | Flavour                     | Where the logic lives            | Reads variables      | Answer recorded |
 | --------------------------- | -------------------------------- | -------------------- | --------------- |
-| `workflow.ExecuteCondition` | a Go func you register by name   | yes, via `Input`     | **yes**         |
-| `wftemplate.Condition`      | a template string in the definition | see [§5](#5-template-conditions) | no |
-| your own type               | your Go code                     | yes, however you like | no             |
+| `workflow.Execute` with a `ConditionID` | a Go func you register by name | yes, via `Input` | **yes**, wherever used |
+| `wftemplate.Condition`      | a template string in the definition | current scoped variables | **yes**, wherever used |
+| your own type               | your Go code                     | yes, however you like | only if it answers through `Execute#EvaluateWith` |
 
 The "answer recorded" column is the one that will surprise you. Read
 [§4](#4-answers-are-recorded-not-re-asked) before you pick.
@@ -44,16 +44,17 @@ rt := workflow.Runtime{
 }
 ```
 
-Refer to them from a definition by ID:
+Refer to them from a definition by ID, with a `workflow.Execute` that sets
+`ConditionID`:
 
 ```go
 workflow.If{
-	Cond: workflow.ExecuteCondition{
-		ID:    "stock-available",
-		Input: []workflow.VarName{"sku", "qty"},
+	Cond: workflow.Execute{
+		ConditionID: "stock-available",
+		Input:       []workflow.VarName{"sku", "qty"},
 	},
-	Then: workflow.ExecuteParticipant{ID: "reserve", Input: []workflow.VarName{"sku"}},
-	Else: workflow.ExecuteParticipant{ID: "backorder", Input: []workflow.VarName{"sku"}},
+	Then: workflow.Execute{ParticipantID: "reserve", Input: []workflow.VarName{"sku"}},
+	Else: workflow.Execute{ParticipantID: "backorder", Input: []workflow.VarName{"sku"}},
 }
 ```
 
@@ -69,6 +70,12 @@ func(context.Context, arg1 T1, ...OtherArgs) (bool, error)
 A `context.Context` first, your own argument types after it, a `bool` first out
 and an `error` last. Anything else is `workflow.ErrInvalidConditionFunc`. The
 argument types must be serialisable, because they are recorded.
+
+Variadic functions accept zero optional arguments, individual optional values,
+or a matching trailing slice (which takes precedence). Wrong arity, incompatible
+types, and nil for a non-nilable parameter produce explicit mapping errors, not
+reflection panics. An untyped nil is an individual argument; use a typed nil
+slice to explicitly pass a nil variadic slice.
 
 Validate the registry yourself at boot:
 
@@ -92,41 +99,41 @@ Input: []workflow.VarName{"sku", "qty"} // ─► func(ctx, sku string, qty int)
 
 | Problem                          | Result                            | Retried? |
 | -------------------------------- | --------------------------------- | -------- |
-| `ID` is not registered           | `ErrConditionNotFound`            | no       |
+| `ConditionID` is not registered  | `ErrConditionNotFound`            | no       |
 | An input variable is not set     | `ErrFatal` — "missing input argument" | no    |
-| The condition func returns an error | that error                     | yes      |
+| Incompatible input arity/type or invalid nil | `ErrFatal` wrapping `ErrConditionFuncMappingMismatch` | no |
+| Invalid or nil condition function | `ErrInvalidConditionFunc` | no |
+| `Output` is set, or `ParticipantID` is set too | `ErrInvalidDefinition` | no |
+| The condition func returns an error | that error                     | unless fatal |
 
-The first two are fatal on purpose: they are authoring mistakes, and retrying a
-typo forever helps nobody.
+Registration and mapping errors for conditions remain fatal authoring errors;
+they do not use the participant availability-requeue policy.
 
 ---
 
-## 3. Also a definition
+## 3. Not a step
 
-`ExecuteCondition` implements `Definition` too, so it can sit in a `Sequence`:
+`Execute` implements `Definition` too, but only with a `ParticipantID`. An
+`Execute` with a `ConditionID` executed as a step, e.g. in a `Sequence`, fails
+with a fatal `ErrInvalidDefinition`: its answer would be neither stored nor
+branched on, so asking the question would have no effect on the process. Ask it
+where the answer is used, in an `If`, `For` or `Sleep`.
 
-```go
-workflow.Sequence{
-	workflow.ExecuteCondition{ID: "is-vip", Input: []workflow.VarName{"customer_id"}},
-	// ...
-}
-```
-
-Executed as a step it evaluates the condition and records the answer — and
-nothing more. It assigns no variable, so the only reason to do this is to pin
-an answer into the history at a chosen moment. Reading it back is `If`'s job.
+Definitions recorded with the former `workflow::condition` wire tag decode into
+`deprecated.ExecuteCondition`, which still evaluates the condition as a step,
+under a `workflow::condition` path segment, and discards the answer.
 
 ---
 
 ## 4. Answers are recorded, not re-asked
 
-Every `ExecuteCondition` evaluation goes through the same idempotent executor
-that participants use, and lands in the event history as:
+Every evaluation of an `Execute` with a `ConditionID` goes through the same
+idempotent executor that participants use, and lands in the event history as:
 
 ```go
 workflow.EventCondition{
 	ConditionID: "is-vip",
-	Path:        workflow.Path{"…", "if", "condition", "is-vip"},
+	Path:        workflow.Path{"…", "if", "is-vip"},
 	Input:       []any{"cust-1"},
 	Answer:      true,
 }
@@ -137,10 +144,10 @@ independent questions, and every later attempt is a replay:
 
 ```go
 workflow.Sequence{
-	workflow.If{Cond: workflow.ExecuteCondition{ID: "flip"},
-		Then: workflow.ExecuteParticipant{ID: "first"}},
-	workflow.If{Cond: workflow.ExecuteCondition{ID: "flip"},
-		Then: workflow.ExecuteParticipant{ID: "second"}},
+	workflow.If{Cond: workflow.Execute{ConditionID: "flip"},
+		Then: workflow.Execute{ParticipantID: "first"}},
+	workflow.If{Cond: workflow.Execute{ConditionID: "flip"},
+		Then: workflow.Execute{ParticipantID: "second"}},
 }
 ```
 
@@ -149,6 +156,56 @@ attempt 1 → the func is called twice (two paths)
 attempt 2 → the func is called zero times, both answers replayed
 attempt 3 → zero times
 ```
+
+### Who records the answer
+
+Recording is the condition's job. `If`, `For` and `Sleep` only give the
+condition its path; whether a replay gets the same answer depends on the
+condition itself:
+
+| Condition                                     | Recorded as                                                  |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `Execute` with a `ConditionID`                | `ConditionID: <ID>` at `<path>/<ID>`                         |
+| `wftemplate.Condition`                        | `ConditionID: "workflow::template::condition"`, at `<path>/workflow::template::condition` |
+| your own type answering through `EvaluateWith` | the `ConditionID` you pass it, at `<path>/<ID>` (§6)         |
+| your own type that doesn't                    | nothing — it is asked again on every evaluation, replays included |
+
+A template records under a fixed ID, not its expression text. That is safe
+because a bound definition is never edited in place ([Definitions][DEFINITION]
+§5). A changed expression reaches a process only through a new binding, which
+re-roots the path, so it is asked anew there.
+
+Because the ID is fixed, two templates evaluated at the same path share one
+recorded answer, just as two `Execute`s with the same `ConditionID` would. The
+built-ins never do this, since `If`, `For` and `Sleep` each ask a single
+condition at their position. A custom condition that combines several templates
+must give each one its own segment with `workflow.WithName`.
+
+Errors and runtime signals are not answers, so they are never recorded.
+Reusing an answer requires a durable event. A failed event write/commit or an
+enclosing transaction rollback can cause re-evaluation, so conditions should be
+side-effect free.
+
+### Upgrading older histories
+
+Older versions evaluated `wftemplate.Condition` live on every attempt, so their
+histories hold no recorded template answer. After the upgrade, the first
+evaluation at each template position reads **current scoped state**, just as
+before, and from then on that answer is replayed. It cannot reconstruct a branch
+taken before the upgrade if the variables changed since. Where re-evaluating
+would be unsafe, migrate the affected processes explicitly before resuming them.
+
+A `Sleep` that got stuck on a recorded `false` from a registered condition in an
+older version is asked again, and wakes up once the condition allows it.
+
+Older versions recorded no `EventSleepCompleted`. A process that passed a
+`Sleep` before the upgrade asks that `Sleep`'s condition once more on its next
+replay, and if the answer has changed back since, it falls asleep again until
+the condition lets it wake up.
+
+General `Vars` reads, including template variable reads, see current scoped
+state. A path identifies a step, not a position in time. Only the executor's
+cache validation uses the historical inputs at an existing call event.
 
 ### Why it works this way
 
@@ -162,34 +219,50 @@ is what makes branching survivable.
 | Rule                                    | Because                                                  |
 | --------------------------------------- | -------------------------------------------------------- |
 | Deterministic given its inputs          | the recorded answer must stay the *right* answer          |
-| No side effects                         | it runs once, so effects would happen at most once, unpredictably |
-| Do not treat it as a live poll          | it is asked once per path, not once per attempt           |
+| No side effects                         | evaluation can repeat before the answer is durably committed |
+| A recorded answer is final at its path  | it is reused on replay, not refreshed; a `Sleep` asks at a new path in every attempt second |
 
-Changing an input variable *after* the answer was recorded does **not** re-open
-the question — the cache compares the input as it stood historically, at the
+For a registered condition, changing an input variable *after* the answer was
+recorded does **not** re-open the question — the cache compares the input as it stood historically, at the
 recorded position. What does invalidate it is a change to the *mapping*: a
 different number of `Input` names, or names whose historical values no longer
 match what was recorded.
 
-### The trap
+### Conditions in `Sleep`
+
+`Sleep` is where a condition is polled. Every attempt asks it anew, until its
+answer lets the `Sleep` wake up — `true` for `Until`, `false` for `While` — and
+the wake-up is recorded as an `EventSleepCompleted` at the `Sleep`'s position:
 
 ```go
-// WRONG — this suspends for ever.
-workflow.Sleep{Until: workflow.ExecuteCondition{ID: "is-approved"}}
+workflow.Sleep{Until: workflow.Execute{ConditionID: "is-approved", Input: []workflow.VarName{"order_id"}}}
 ```
 
-The first evaluation answers `false`, that `false` is recorded, and every
-subsequent attempt replays it. The process re-queues itself until the end of
-time without ever calling your function again.
-
-```go
-// RIGHT — an uncached condition is asked again on every attempt.
-workflow.Sleep{Until: ApprovalGranted{Order: "order_id"}}
+```
+attempt 1, second S   → the func answers false → recorded at sleep/S/is-approved, the process suspends
+attempt 2, second S+5 → the func answers false → recorded at sleep/S+5/is-approved, the process suspends
+attempt 3, second S+9 → the func answers true  → recorded, EventSleepCompleted, the process continues
+replay                → EventSleepCompleted found, the func is not called
 ```
 
-**`Sleep` needs a condition that re-evaluates.** That means your own type
-(§6) — see [Definitions][DEFINITION] for how `Sleep` and `Suspend{}` fit
-together.
+Each attempt asks its condition under the second it happens in, as unix
+seconds: `<path>/sleep/<seconds>`. A recording condition records its answers
+there as usual, and so do the recording conditions nested inside it, so an
+answer that kept the `Sleep` asleep is never replayed to a later attempt. What
+follows from that:
+
+- Attempts within the same second share their answers, so a `Sleep` wakes up
+  no sooner than the second after it last found its condition unmet.
+- Under a frozen clock a `Sleep` doesn't wake up. Time has to pass for a sleep
+  to end.
+- Every attempt in a new second adds the answers of its recording conditions to
+  the process history.
+
+The completion event is what keeps a woken `Sleep` awake: when the process
+replays after a later suspension, the `Sleep` is passed without asking its
+condition again, even if the variables it read have changed back since. That
+holds for every condition, including one that records nothing (§6). See
+[Definitions][DEFINITION] for how `Sleep` and `Suspend{}` fit together.
 
 ---
 
@@ -202,13 +275,15 @@ type the rule into a form — no Go code, no deployment.
 ```go
 workflow.If{
 	Cond: wftemplate.Condition(`eq .currency "EUR"`),
-	Then: workflow.ExecuteParticipant{ID: "free-shipping"},
+	Then: workflow.Execute{ParticipantID: "free-shipping"},
 }
 ```
 
-A reference like `.currency` resolves against the process variables, so the
-rule reads whatever the process has recorded so far. A variable that was never
-set is not an error — it resolves to the zero value, which makes the comparison
+A reference like `.currency` resolves against current scoped process variables
+when the template is evaluated. The answer is recorded like a registered
+condition's (§4), so a replay at the same position gets the same
+answer; in `Sleep`, every attempt second asks it anew.
+A variable that was never set is not an error — it resolves to the zero value, which makes the comparison
 simply `false`.
 
 ### How it is evaluated
@@ -289,14 +364,35 @@ func (c ApprovalGranted) Evaluate(ctx context.Context, pid workflow.ProcessID) (
 	if !ok {
 		return false, fmt.Errorf("%s is not a string but %T", c.Order, order)
 	}
-	return approvals.IsGranted(ctx, id) // a live read, on every attempt
+	return approvals.IsGranted(ctx, id) // a live read whenever Evaluate is called
 }
 ```
 
-Because it does not go through the recording executor, this one **is** a live
-poll — which is precisely what `Sleep` wants and what `If` usually does not.
+This type records nothing, so it is asked again on every evaluation, replays
+included: an `If` using it can take the other branch on a replay if the approval
+changed in between. To make its answers replay-stable, answer through
+`Execute#EvaluateWith`, which records the answer the same way as a
+registered condition's:
 
-It is also a Definition field, so the same serialisation rules apply: name the
+```go
+func (c ApprovalGranted) Evaluate(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+	return workflow.Execute{}.EvaluateWith(ctx, pid, "acme::approval-granted", c.evaluate)
+}
+
+// evaluate is the live read from above, only asked while no answer is recorded at the position.
+func (c ApprovalGranted) evaluate(ctx context.Context, pid workflow.ProcessID) (bool, error) { /* … */ }
+```
+
+The `ConditionID` you pass together with the path identifies the recorded
+answer, so keep it stable across deployments, namespaced, and distinct from
+other conditions that may be evaluated at the same position. Moving a
+registered condition's logic into your own type under the same `ConditionID`
+replays the answers it already gave. An empty ID is fatal, and so is setting
+`ConditionID` or `ParticipantID` on the `Execute` as well (a fatal
+`ErrInvalidDefinition`), since those fields belong to `Execute#Evaluate` and
+`Execute#Execute`.
+
+Your condition type is also a Definition field, so the same serialisation rules apply: name the
 thing you need (`workflow.VarName`), never hold it. Register the type with your
 [Codec][CODEC].
 
@@ -306,10 +402,11 @@ thing you need (`workflow.VarName`), never hold it. Register the type with your
 
 | You want to…                                        | Use                                  |
 | ---------------------------------------------------- | ------------------------------------ |
-| Branch on domain logic, decided once and for all     | `workflow.ExecuteCondition`          |
-| Let end users write a rule, no variables involved    | `wftemplate.Condition`               |
-| Poll something until it changes                      | your own `Condition`, inside `Sleep` |
-| Read process variables in a rule today               | `ExecuteCondition` or your own type  |
+| Branch on domain logic with a recorded answer        | `If` with an `Execute` condition, or a custom condition answering through `EvaluateWith` |
+| Let end users write a rule over variables            | `If` with `wftemplate.Condition`     |
+| Wait until something changes                         | `Sleep` with any of them             |
+| Re-check on every replay, deliberately               | a custom condition that records nothing |
+| Read process variables in a rule                     | `Execute` inputs, a template, or your own type |
 
 ---
 

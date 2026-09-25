@@ -29,8 +29,8 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 					timecop.Travel(t, replayTime.Get(t))
 					return nil
 				}},
-				workflow.ExecuteParticipant{ID: "first", Output: []workflow.VarName{"value"}},
-				workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
+				workflow.Execute{ParticipantID: "first", Output: []workflow.VarName{"value"}},
+				workflow.Execute{ParticipantID: "second", Input: []workflow.VarName{"value"}},
 			}
 		})
 	)
@@ -185,7 +185,7 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 			})
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
 				return workflow.If{
-					Cond: workflow.ExecuteCondition{ID: "choose"},
+					Cond: workflow.Execute{ConditionID: "choose"},
 					Then: workflow.SetVar{Name: "chosen", Value: true},
 				}
 			})
@@ -207,15 +207,15 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 					testcase.Append(t, calls, "first")
 					return workflow.Sequence{
 						workflow.SetVar{Name: "value", Value: value.Get(t)},
-						workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
-						workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
+						workflow.Execute{ParticipantID: "second", Input: []workflow.VarName{"value"}},
+						workflow.Execute{ParticipantID: "second", Input: []workflow.VarName{"value"}},
 					}
 				}
 				return rt
 			})
 			ttl.LetValue(s, time.Minute)
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: "first"}
+				return workflow.Execute{ParticipantID: "first"}
 			})
 
 			s.Then("finishes the follow-up before yielding so replay cannot skip unfinished work", func(t *testcase.T) {

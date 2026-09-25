@@ -6,7 +6,7 @@
 **The whole package in one sentence:** you write ordinary Go functions
 (**Participants**), your users compose them into a serialisable value
 (**Definition**), and the engine (**Runtime**) executes that value one step at a
-time, recording every step as an event so it can safely resume after a crash.
+time, recording results as events so it can resume from durable history.
 
 ---
 
@@ -60,14 +60,14 @@ func main() {
 	// 3. The workflow itself. An ordinary Go value.
 	def := workflow.Sequence{
 		workflow.SetVar{Name: "name", Value: "World"},
-		workflow.ExecuteParticipant{
-			ID:     "greet",
-			Input:  []workflow.VarName{"name"},
-			Output: []workflow.VarName{"greeting"},
+		workflow.Execute{
+			ParticipantID: "greet",
+			Input:         []workflow.VarName{"name"},
+			Output:        []workflow.VarName{"greeting"},
 		},
-		workflow.ExecuteParticipant{
-			ID:    "print",
-			Input: []workflow.VarName{"greeting"},
+		workflow.Execute{
+			ParticipantID: "print",
+			Input:         []workflow.VarName{"greeting"},
 		},
 	}
 
@@ -103,8 +103,8 @@ Read the `Sequence` top to bottom — that is the execution order:
 | Step                             | Effect                                                         |
 | -------------------------------- | -------------------------------------------------------------- |
 | `SetVar{Name: "name"}`           | Writes `name = "World"` into the process' variables.           |
-| `ExecuteParticipant{ID: "greet"}` | Reads `name`, calls your `greet` func, stores the result in `greeting`. |
-| `ExecuteParticipant{ID: "print"}` | Reads `greeting`, calls your `print` func. Returns no value, so no `Output`. |
+| `Execute{ParticipantID: "greet"}` | Reads `name`, calls your `greet` func, stores the result in `greeting`. |
+| `Execute{ParticipantID: "print"}` | Reads `greeting`, calls your `print` func. Returns no value, so no `Output`. |
 
 ### Where is the state?
 
@@ -117,10 +117,16 @@ vars := workflow.Vars{ProcessID: pid, EventsRepository: rt.Events}
 m, err := vars.ToMap(ctx) // map[name:World greeting:Hello, World!]
 ```
 
-This is why the engine can survive a crash: re-running `rt.Execute(ctx, pid)`
-replays the log, skips the steps that already have events, and resumes exactly
-where it stopped. Try adding a second `rt.Execute(ctx, pid)` to the example —
+Re-running `rt.Execute(ctx, pid)` replays the log and reuses durably recorded
+results. Try adding a second successful `rt.Execute(ctx, pid)` to the example —
 `Hello, World!` is **not** printed twice.
+
+That is not an exactly-once guarantee for external effects: printing or a remote
+request can succeed before the event write/commit fails or a crash occurs. An
+enclosing transaction rollback can also discard success events. Make production
+effects idempotent and safe to retry using stable business idempotency keys, or
+a shared transaction/outbox where applicable. The in-memory adapters here do
+not survive a process crash; production recovery needs durable events and scheduling.
 
 ### How `Input` and `Output` work
 
@@ -128,10 +134,10 @@ where it stopped. Try adding a second `rt.Execute(ctx, pid)` to the example —
 signature. The rule is positional, not by name:
 
 ```go
-ExecuteParticipant{
-    ID:     "greet",
-    Input:  []workflow.VarName{"name"},     //  → 1st arg after ctx
-    Output: []workflow.VarName{"greeting"}, //  ← 1st result before error
+Execute{
+    ParticipantID: "greet",
+    Input:         []workflow.VarName{"name"},     //  → 1st arg after ctx
+    Output:        []workflow.VarName{"greeting"}, //  ← 1st result before error
 }
 //   ↳ maps onto: func(ctx context.Context, name string) (greeting string, error)
 ```
@@ -139,7 +145,11 @@ ExecuteParticipant{
 `Input` is matched positionally to the parameters after `ctx`; `Output` to the
 results before the trailing `error`. A mismatch — say, two `Output` names for a
 function that returns only one value — is caught at execution time with an
-explicit error, not a panic.
+explicit error, not a panic. Variadic inputs accept zero optional arguments,
+individual optional values, or a matching trailing slice. Wrong types or nil
+for a non-nilable parameter also return errors. An incompatible participant
+registration is a nonfatal `ErrParticipantSignatureMismatch{ID, Cause}`; see
+[Participants][PARTICIPANT] for its availability-requeue policy.
 
 ---
 
@@ -193,14 +203,14 @@ positionally onto the Condition's parameters:
 def := workflow.Sequence{
 	workflow.SetVar{Name: "customer_id", Value: "cust-1"},
 	workflow.If{
-		Cond: workflow.ExecuteCondition{
-			ID:    "is-vip",
-			Input: []workflow.VarName{"customer_id"},
+		Cond: workflow.Execute{
+			ConditionID: "is-vip",
+			Input:       []workflow.VarName{"customer_id"},
 		},
-		Then: workflow.ExecuteParticipant{ID: "greet",
+		Then: workflow.Execute{ParticipantID: "greet",
 			Input:  []workflow.VarName{"customer_id"},
 			Output: []workflow.VarName{"greeting"}},
-		Else: workflow.ExecuteParticipant{ID: "print",
+		Else: workflow.Execute{ParticipantID: "print",
 			Input: []workflow.VarName{"customer_id"}},
 	},
 }
@@ -214,14 +224,22 @@ for an inline template expression against the process variables:
 ```go
 workflow.If{
 	Cond: wftemplate.Condition(`gt .order_total 100`),
-	Then: workflow.ExecuteParticipant{ID: "ask-for-approval",
+	Then: workflow.Execute{ParticipantID: "ask-for-approval",
 		Input: []workflow.VarName{"order_id"}},
 }
 ```
 
-`ExecuteCondition` for logic you own, `wftemplate.Condition` for rules the
-builder should be able to edit. [Conditions][CONDITION] covers the trade-off
-in full.
+`Execute` with a `ConditionID` for logic you own, `wftemplate.Condition` for rules the
+builder should be able to edit. Both record their answer, so a replay walks the
+same branch again, even if the variables have changed since; inside `Sleep`,
+every attempt asks them anew until the `Sleep` wakes up. General variable reads
+use current scoped state, not a historical snapshot inferred from the step's
+path.
+
+Template conditions used to be evaluated live, so older histories hold no
+recorded template answer: their first post-upgrade evaluation uses current state
+rather than reconstructing the old branch. Explicit migration is needed where
+that is unsafe. [Conditions][CONDITION] covers the details.
 
 ---
 
@@ -271,6 +289,19 @@ loop is running somewhere consuming the queue. The two roles can live in the
 same process or in different ones — `Schedule` is just a publisher, `Run` is
 just a consumer.
 
+### When a worker cannot execute a step
+
+Missing or incompatible participants skip tight local retries and requeue after
+`WaitTime`, incrementing `ExecutionRequest.FailureCount` without recording an
+`EventError` or discarding earlier work. `Runtime.ParticipantWarningInterval`
+warns every N such scheduling failures (default **5**; values ≤ 0 use the default),
+with no hard drop limit. Requeueing does not guarantee a capable worker will
+receive the next attempt; validate IDs and signatures independently.
+
+A fatal execution error instead logs a warning and ACKs/drops the queue entry.
+It does not stop the worker or mark the process complete or terminated. After
+fixing the cause, you can manually `Schedule` the same process ID again.
+
 ### The one rule to keep straight
 
 > **`ProcessID` is yours, not the runtime's.** The runtime refuses a zero
@@ -308,7 +339,11 @@ A `Suspend{}` is an `error`, but it is not a *failure*: the runtime recognises
 it and re-enqueues the process instead of counting it against the retry budget.
 The worker picks it up again after `Runtime#WaitTime` and walks the definition
 from the top, replaying the steps that already recorded until it reaches the
-suspending one.
+suspending one. If a cached participant returned a follow-up definition, the
+runtime walks that definition too, without recalling the producer. Nested steps
+still share the producer's event transaction: suspension preserves their work,
+but an ordinary failure can roll back earlier nested success events. Returning
+a `Sequence` does not create independent top-level commit boundaries.
 
 ### When you want to stop asking altogether
 

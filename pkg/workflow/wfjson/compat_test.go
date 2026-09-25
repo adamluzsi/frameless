@@ -47,6 +47,7 @@ import (
 	"go.llib.dev/frameless/pkg/uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/deprecated"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 )
@@ -245,7 +246,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 	s.Test("If", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.If{
-				Cond: workflow.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
+				Cond: deprecated.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
 				Then: workflow.SetVar{Name: "t", Value: "1"},
 				Else: workflow.SetVar{Name: "e", Value: "2"},
 			},
@@ -256,7 +257,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.Sleep{
 				While: wftemplate.Condition(".x == .y"),
-				Until: workflow.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
+				Until: deprecated.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
 			},
 			`{"@type":"workflow::sleep","while":{"@type":"workflow::template::condition","@value":".x == .y"},"until":{"@type":"workflow::condition","id":"ok","input":["a"]}}`)
 	})
@@ -322,7 +323,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 
 	s.Test("ExecuteParticipant", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.ExecuteParticipant{
+			deprecated.ExecuteParticipant{
 				ID:     "p1",
 				Input:  []workflow.VarName{"a", "b"},
 				Output: []workflow.VarName{"c"},
@@ -332,7 +333,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 
 	s.Test("ExecuteCondition", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.ExecuteCondition{
+			deprecated.ExecuteCondition{
 				ID:    "c1",
 				Input: []workflow.VarName{"a"},
 			},
@@ -444,6 +445,15 @@ func TestCompat_v1WireFormat(t *testing.T) {
 				Path:     workflow.Path{"sequence", "[0]"},
 			},
 			`{"@type":"workflow::event::join","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","children":["00000000-0000-4000-8000-000000000003"],"path":["sequence","[0]"]}`)
+	})
+
+	s.Test("EventSleepCompleted", func(t *testcase.T) {
+		assertMatchesV1Snapshot(t, codec.Get(t),
+			workflow.EventSleepCompleted{
+				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
+				Path: workflow.Path{"sequence", "[0]", "sleep"},
+			},
+			`{"@type":"workflow::event::sleep::completed","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","sleep"]}`)
 	})
 
 	// ---- Schedule-side ----

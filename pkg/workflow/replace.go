@@ -49,9 +49,7 @@ type childVarKey = VarName
 
 var _ Event = EventUseDefinition{}
 
-const typeSetDefinitionEvent EventType = "workflow::set-definition-event"
-
 func (s EventUseDefinition) GetEventID() EventID     { return s.EventID }
-func (s EventUseDefinition) EventType() EventType    { return typeSetDefinitionEvent }
+func (s EventUseDefinition) EventType() EventType    { return "workflow::definition" }
 func (s EventUseDefinition) GetProcessID() ProcessID { return s.ProcessID }
 func (s EventUseDefinition) GetTimestamp() time.Time { return s.Timestamp }

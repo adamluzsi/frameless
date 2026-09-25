@@ -30,6 +30,7 @@ import (
 	"go.llib.dev/frameless/pkg/uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/deprecated"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 )
@@ -55,13 +56,13 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"Sequence(empty)", workflow.Sequence{}},
 		{"Sequence(1 elem)", workflow.Sequence{workflow.SetVar{Name: "n", Value: "v"}}},
 		{"If", workflow.If{
-			Cond: workflow.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
+			Cond: deprecated.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
 			Then: workflow.SetVar{Name: "t", Value: "1"},
 			Else: workflow.SetVar{Name: "e", Value: "2"},
 		}},
 		{"Sleep", workflow.Sleep{
 			While: wftemplate.Condition(".x == .y"),
-			Until: workflow.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
+			Until: deprecated.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
 		}},
 		{"For", workflow.For{
 			Init: workflow.SetVar{Name: "i", Value: "0"},
@@ -84,12 +85,12 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Definition: workflow.SetVar{Name: "x", Value: "1"},
 			Vars:       workflow.VarMapping{"a": "b"},
 		}},
-		{"ExecuteParticipant", workflow.ExecuteParticipant{
+		{"ExecuteParticipant", deprecated.ExecuteParticipant{
 			ID:     "p1",
 			Input:  []workflow.VarName{"a", "b"},
 			Output: []workflow.VarName{"c"},
 		}},
-		{"ExecuteCondition", workflow.ExecuteCondition{
+		{"ExecuteCondition", deprecated.ExecuteCondition{
 			ID:    "c1",
 			Input: []workflow.VarName{"a"},
 		}},
@@ -144,6 +145,10 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			Children: []workflow.ProcessID{childPID},
 			Path:     workflow.Path{"sequence", "[0]"},
+		}},
+		{"EventSleepCompleted", workflow.EventSleepCompleted{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path: workflow.Path{"sequence", "[0]", "sleep"},
 		}},
 		// Schedule-side
 		{"ExecutionRequest", workflow.ExecutionRequest{

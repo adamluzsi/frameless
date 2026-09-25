@@ -5,12 +5,17 @@ import (
 	"errors"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
+	"go.llib.dev/frameless/port/pubsub"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -57,8 +62,8 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 					Name:  workflow.VarName("input"),
 					Value: inputVal,
 				},
-				workflow.ExecuteParticipant{
-					ID: pid.Get(t),
+				workflow.Execute{
+					ParticipantID: pid.Get(t),
 					Input: []workflow.VarName{
 						workflow.VarName("input"),
 					},
@@ -110,8 +115,8 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 					Name:  workflow.VarName("input"),
 					Value: inputVal,
 				},
-				workflow.ExecuteParticipant{
-					ID: pid.Get(t),
+				workflow.Execute{
+					ParticipantID: pid.Get(t),
 					Input: []workflow.VarName{
 						workflow.VarName("input"),
 					},
@@ -185,7 +190,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 		s.When("process's definition succeeds without an issue", func(s *testcase.Spec) {
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: pid.Get(t)}
+				return workflow.Execute{ParticipantID: pid.Get(t)}
 			}))
 
 			s.Then("then upon scheduling, eventually Schedule#Run will process the process task", func(t *testcase.T) {
@@ -247,7 +252,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 		s.When("process is scheduled multiple times", func(s *testcase.Spec) {
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: pid.Get(t)}
+				return workflow.Execute{ParticipantID: pid.Get(t)}
 			}))
 
 			s.Then("scheduling remains idempotent and the participant is called only once", func(t *testcase.T) {
@@ -298,7 +303,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
-					workflow.ExecuteParticipant{ID: pid.Get(t)},
+					workflow.Execute{ParticipantID: pid.Get(t)},
 					workflow.Sleep{While: wftest.Stub{StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
 						return shouldSuspend.Get(t), nil
 					}}},
@@ -454,7 +459,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 		t.Helper()
 		canary := mustProcessID(t)
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), canary,
-			workflow.ExecuteParticipant{ID: pid.Get(t)}))
+			workflow.Execute{ParticipantID: pid.Get(t)}))
 		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), canary))
 		c.ProcessCompletionIs(t, canary, true)
 	}
@@ -474,7 +479,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 		time.Sleep(waitTime)
 
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
-			workflow.ExecuteParticipant{ID: pid.Get(t)}))
+			workflow.Execute{ParticipantID: pid.Get(t)}))
 
 		// Dropping the entry is what keeps the worker alive, and this is its
 		// price: nothing in the queue points at the process anymore, so a late
@@ -498,7 +503,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 
 		s.Then("binding the definition later still gets the process executed", func(t *testcase.T) {
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
-				workflow.ExecuteParticipant{ID: pid.Get(t)}))
+				workflow.Execute{ParticipantID: pid.Get(t)}))
 
 			c.ProcessCompletionIs(t, orphan.Get(t), true)
 		})
@@ -577,7 +582,7 @@ func TestRuntime_Run_numQueueSubscriber(t *testing.T) {
 		for range numScheduledProcess.Get(t) {
 			processID := mustProcessID(t)
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID,
-				workflow.ExecuteParticipant{ID: pid.Get(t)}))
+				workflow.Execute{ParticipantID: pid.Get(t)}))
 			assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
 		}
 	})
@@ -685,10 +690,10 @@ func TestRuntime_Run_faultyDoesNotStarveHealthy(t *testing.T) {
 	s.Before(func(t *testcase.T) {
 		for _, pid := range faultyProcesses.Get(t) {
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), pid,
-				workflow.ExecuteParticipant{ID: faultyPID.Get(t)}))
+				workflow.Execute{ParticipantID: faultyPID.Get(t)}))
 		}
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), healthyProcess.Get(t),
-			workflow.ExecuteParticipant{ID: healthyPID.Get(t)}))
+			workflow.Execute{ParticipantID: healthyPID.Get(t)}))
 	})
 
 	s.Test("a healthy Process reaches completion while faulty Processes are retrying", func(t *testcase.T) {
@@ -702,6 +707,336 @@ func TestRuntime_Run_faultyDoesNotStarveHealthy(t *testing.T) {
 		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), healthyProcess.Get(t)))
 
 		c.ProcessCompletionIs(t, healthyProcess.Get(t), true)
+	})
+}
+
+func TestRuntime_Run_schedulePolicy(t *testing.T) {
+	s := testcase.NewSpec(t)
+	e := bindEnv(s)
+	var (
+		process = wftest.LetProcessID(s)
+		queue   = let.Var(s, func(t *testcase.T) *scheduleObservedQueue {
+			return &scheduleObservedQueue{
+				availabilityQueue: availabilityQueue{Queue: e.queue.Get(t)},
+				deliveries:        make(chan workflow.ExecutionRequest, 64),
+				settlements:       make(chan scheduleSettlement, 64),
+			}
+		})
+		calls           = let.Var(s, func(t *testcase.T) *atomic.Int64 { return new(atomic.Int64) })
+		outcome         = let.Var[error](s, func(t *testcase.T) error { return nil })
+		warningInterval = let.VarOf(s, 0)
+		warnings        = let.Var(s, func(t *testcase.T) chan logging.Fields {
+			ch := make(chan logging.Fields, 64)
+			logger.Stub(t, func(l *logging.Logger) {
+				l.Hijack = func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
+					if level == logging.LevelWarn {
+						ch <- fields
+					}
+				}
+			})
+			return ch
+		})
+	)
+	subject := e.runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+		rt := e.runtime.Super(t)
+		rt.Queue = queue.Get(t)
+		rt.NumQueueSubscriber = 1
+		rt.WaitTime = time.Hour
+		rt.ParticipantWarningInterval = warningInterval.Get(t)
+		rt.RetryStrategy = scheduleRetryAttempts(3)
+		return rt
+	})
+	s.Before(func(t *testcase.T) {
+		timecop.Travel(t, clock.Now(), timecop.Freeze)
+		warnings.Get(t)
+		count, err := calls.Get(t), outcome.Get(t)
+		assert.Must(t).NoError(subject.Get(t).Bind(t.Context(), process.Get(t), wftest.Stub{
+			StubExecute: func(context.Context, workflow.ProcessID) error {
+				count.Add(1)
+				return err
+			},
+		}))
+	})
+
+	s.Describe("#Run", func(s *testcase.Spec) {
+		act := func(t *testcase.T) { t.Go(subject.Get(t).Run) }
+
+		s.Test("executes a due entry and acknowledges it", func(t *testcase.T) {
+			assert.NoError(t, subject.Get(t).Schedule(t.Context(), process.Get(t)))
+			act(t)
+			settled := awaitScheduleValue(t, queue.Get(t).settlements)
+			assert.True(t, settled.acked)
+			assert.Equal(t, settled.request.ProcessID, process.Get(t))
+			assert.Equal(t, calls.Get(t).Load(), int64(1))
+		})
+
+		s.When("execution fails fatally", func(s *testcase.Spec) {
+			outcome.Let(s, func(t *testcase.T) error { return workflow.ErrFatal.F("permanent execution failure") })
+
+			checkFatal := func(t *testcase.T) {
+				rt := subject.Get(t)
+				assert.NoError(t, rt.Schedule(t.Context(), process.Get(t)))
+				act(t)
+				settled := awaitScheduleValue(t, queue.Get(t).settlements)
+				assert.True(t, settled.acked)
+				assert.Equal(t, len(queue.Get(t).Requests()), 1, "fatal errors must not publish a retry")
+				assert.Equal(t, calls.Get(t).Load(), int64(1))
+				warning := awaitScheduleValue(t, warnings.Get(t))
+				assert.Equal[any](t, warning["process_id"], process.Get(t).String())
+				assert.NotEmpty(t, warning["error"])
+				completed, err := workflow.IsCompleted(t.Context(), rt.Events, process.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, completed)
+				terminated, err := workflow.IsTerminated(t.Context(), rt.Events, process.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, terminated)
+
+				canary := mustProcessID(t)
+				assert.NoError(t, rt.Spawn(t.Context(), canary, workflow.Sequence{}))
+				assert.Equal(t, awaitScheduleValue(t, queue.Get(t).settlements).request.ProcessID, canary)
+				assert.NoError(t, rt.Schedule(t.Context(), process.Get(t)))
+				assert.Equal(t, awaitScheduleValue(t, queue.Get(t).settlements).request.ProcessID, process.Get(t))
+				assert.Equal(t, calls.Get(t).Load(), int64(2), "explicit scheduling can retry an inert process")
+			}
+			s.Then("warns and drops only the scheduling entry without completing the process or stopping the worker", checkFatal)
+			s.And("the fatal error is joined with a participant signature mismatch", func(s *testcase.Spec) {
+				outcome.Let(s, func(t *testcase.T) error {
+					return errors.Join(workflow.ErrFatal, workflow.ErrParticipantSignatureMismatch{
+						ID: workflow.ParticipantID(t.Random.UUID()), Cause: workflow.ErrInvalidParticipantFunc,
+					})
+				})
+				s.Then("drops the entry instead of requeueing for participant availability", checkFatal)
+			})
+			s.And("the error is classified as fatal without wrapping ErrFatal", func(s *testcase.Spec) {
+				outcome.Let(s, func(t *testcase.T) error {
+					return errors.Join(errors.New("invalid workflow"), workflow.ErrInvalidDefinition)
+				})
+				s.Then("also drops only the scheduling entry and keeps serving other processes", checkFatal)
+			})
+		})
+
+		for _, availability := range []struct {
+			name      string
+			makeError func(workflow.ParticipantID) error
+		}{
+			{"missing", func(id workflow.ParticipantID) error { return workflow.ErrParticipantNotFound{ID: id} }},
+			{"signature mismatch", func(id workflow.ParticipantID) error {
+				return workflow.ErrParticipantSignatureMismatch{ID: id, Cause: workflow.ErrParticipantFuncMappingMismatch}
+			}},
+			{"pointer signature mismatch", func(id workflow.ParticipantID) error {
+				return &workflow.ErrParticipantSignatureMismatch{ID: id, Cause: workflow.ErrParticipantFuncMappingMismatch}
+			}},
+			{"wrapped signature mismatch", func(id workflow.ParticipantID) error {
+				return errors.Join(errors.New("participant lookup"), workflow.ErrParticipantSignatureMismatch{ID: id, Cause: workflow.ErrInvalidParticipantFunc})
+			}},
+		} {
+			s.When("the participant is "+availability.name, func(s *testcase.Spec) {
+				outcome.Let(s, func(t *testcase.T) error { return availability.makeError(workflow.ParticipantID(t.Random.UUID())) })
+
+				checkRequeue := func(t *testcase.T) {
+					rt, q := subject.Get(t), queue.Get(t)
+					initialFailures := t.Random.IntBetween(1, 4)
+					assert.NoError(t, rt.Schedule(t.Context(), process.Get(t), func(req *workflow.ExecutionRequest) { req.FailureCount = initialFailures }))
+					initial := q.Requests()[0]
+					act(t)
+					assert.Equal(t, awaitScheduleValue(t, q.deliveries), initial)
+					interval := warningInterval.Get(t)
+					if interval <= 0 {
+						interval = 5
+					}
+					for attempt := 1; attempt <= 2*interval+1; attempt++ {
+						assert.True(t, awaitScheduleValue(t, q.settlements).acked)
+						retry := awaitScheduleValue(t, q.deliveries)
+						assert.Equal(t, retry.ProcessID, initial.ProcessID)
+						assert.Equal(t, retry.CreatedAt, initial.CreatedAt)
+						assert.Equal(t, retry.StartTime, clock.Now().Add(rt.WaitTime))
+						assert.Equal(t, retry.FailureCount, initialFailures+attempt)
+						assert.Equal(t, calls.Get(t).Load(), int64(attempt), "availability errors must not consume tight local retries")
+						if retry.FailureCount%interval == 0 {
+							warning := awaitScheduleValue(t, warnings.Get(t))
+							assert.Equal[any](t, warning["process_id"], initial.ProcessID.String())
+							assert.Equal[any](t, warning["failure_count"], retry.FailureCount)
+							assert.Equal[any](t, warning["error"], outcome.Get(t).Error())
+						}
+						assert.Empty(t, warnings.Get(t), "warn only on interval boundaries")
+						completed, err := workflow.IsCompleted(t.Context(), rt.Events, process.Get(t))
+						assert.NoError(t, err)
+						assert.False(t, completed)
+						awaitScheduleListener(t, rt)
+						if attempt <= 2*interval {
+							timecop.Travel(t, retry.StartTime, timecop.Freeze)
+						}
+					}
+					assert.Equal(t, len(q.Requests()), 2*interval+2, "keep requeueing beyond warning thresholds, without hard drop")
+				}
+
+				s.Then("counts delayed retries and warns every five failures without dropping the process", checkRequeue)
+				s.And("a custom warning interval is configured", func(s *testcase.Spec) {
+					warningInterval.LetValue(s, 3)
+					s.Then("warns only at the configured failure interval", checkRequeue)
+				})
+				s.And("a negative warning interval is configured", func(s *testcase.Spec) {
+					warningInterval.LetValue(s, -1)
+					s.Then("uses the default warning interval", checkRequeue)
+				})
+			})
+		}
+
+		s.When("execution suspends after earlier failures", func(s *testcase.Spec) {
+			outcome.LetValue(s, workflow.Suspend{})
+			warningInterval.LetValue(s, 1)
+
+			s.Then("delays the next attempt without increasing failures or warning", func(t *testcase.T) {
+				rt, q := subject.Get(t), queue.Get(t)
+				failures := t.Random.IntBetween(1, 20)
+				assert.NoError(t, rt.Schedule(t.Context(), process.Get(t), func(req *workflow.ExecutionRequest) { req.FailureCount = failures }))
+				act(t)
+				initial := awaitScheduleValue(t, q.deliveries)
+				assert.True(t, awaitScheduleValue(t, q.settlements).acked)
+				retry := awaitScheduleValue(t, q.deliveries)
+				assert.Equal(t, retry.FailureCount, failures)
+				assert.Equal(t, retry.CreatedAt, initial.CreatedAt)
+				assert.Equal(t, retry.StartTime, clock.Now().Add(rt.WaitTime))
+				assert.Equal(t, calls.Get(t).Load(), int64(1))
+				assert.Empty(t, warnings.Get(t))
+			})
+		})
+
+		s.When("a future entry has already been delivered", func(s *testcase.Spec) {
+			request := let.Var(s, func(t *testcase.T) workflow.ExecutionRequest {
+				return workflow.ExecutionRequest{ProcessID: process.Get(t), StartTime: clock.Now().Add(24 * time.Hour), CreatedAt: clock.Now(), FailureCount: t.Random.IntBetween(1, 20)}
+			})
+			s.Before(func(t *testcase.T) {
+				// Publish without a wake-up: readiness is established by the probe below.
+				assert.Must(t).NoError(subject.Get(t).Queue.Publish(t.Context(), request.Get(t)))
+			})
+
+			s.Then("reselects an immediate job on notification and retains the future entry until its deadline", func(t *testcase.T) {
+				act(t)
+				q, rt := queue.Get(t), subject.Get(t)
+				assert.Equal(t, awaitScheduleValue(t, q.deliveries), request.Get(t))
+				awaitScheduleListener(t, rt)
+
+				canary := mustProcessID(t)
+				assert.NoError(t, rt.Spawn(t.Context(), canary, workflow.Sequence{}))
+				deferred := awaitScheduleValue(t, q.settlements)
+				assert.False(t, deferred.acked, "release the future delivery, do not drop it")
+				assert.Equal(t, deferred.request, request.Get(t))
+				assert.Equal(t, awaitScheduleValue(t, q.deliveries).ProcessID, canary)
+				assert.True(t, awaitScheduleValue(t, q.settlements).acked)
+				assert.Equal(t, awaitScheduleValue(t, q.deliveries), request.Get(t))
+				awaitScheduleListener(t, rt)
+				assert.Equal(t, calls.Get(t).Load(), int64(0))
+				assert.Empty(t, q.deliveries, "reselection must wait rather than redeliver in a busy loop")
+				assert.Equal(t, len(q.Requests()), 2, "NACK must not publish a replacement or another wake-up")
+
+				timecop.Travel(t, request.Get(t).StartTime, timecop.Freeze)
+				settled := awaitScheduleValue(t, q.settlements)
+				assert.True(t, settled.acked)
+				assert.Equal(t, settled.request, request.Get(t))
+				assert.Equal(t, calls.Get(t).Load(), int64(1))
+			})
+		})
+	})
+}
+
+type scheduleRetryAttempts int
+
+func (n scheduleRetryAttempts) ShouldTry(ctx context.Context, attempt resilience.RetryAttempt) bool {
+	return ctx.Err() == nil && attempt.FailureCount < int(n)
+}
+
+type scheduleSettlement struct {
+	request workflow.ExecutionRequest
+	acked   bool
+}
+
+// Observe real queue delivery and settlement without changing ordering or durability.
+type scheduleObservedQueue struct {
+	availabilityQueue
+	deliveries  chan workflow.ExecutionRequest
+	settlements chan scheduleSettlement
+}
+
+func (q *scheduleObservedQueue) Subscribe(ctx context.Context) pubsub.Subscription[workflow.ExecutionRequest] {
+	return func(yield func(pubsub.Message[workflow.ExecutionRequest], error) bool) {
+		for msg, err := range q.Queue.Subscribe(ctx) {
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			req := msg.Data()
+			wrapped := scheduleObservedMessage{Message: msg, ctx: ctx, settlements: q.settlements}
+			select {
+			case q.deliveries <- req:
+			case <-ctx.Done():
+				return
+			}
+			if !yield(wrapped, nil) {
+				return
+			}
+		}
+	}
+}
+
+type scheduleObservedMessage struct {
+	pubsub.Message[workflow.ExecutionRequest]
+	ctx         context.Context
+	settlements chan<- scheduleSettlement
+}
+
+func (msg scheduleObservedMessage) ACK() error {
+	err := msg.Message.ACK()
+	msg.record(true)
+	return err
+}
+
+func (msg scheduleObservedMessage) NACK() error {
+	err := msg.Message.NACK()
+	msg.record(false)
+	return err
+}
+
+func (msg scheduleObservedMessage) record(acked bool) {
+	select {
+	case msg.settlements <- scheduleSettlement{request: msg.Data(), acked: acked}:
+	case <-msg.ctx.Done():
+	}
+}
+
+func awaitScheduleValue[T any](tb testing.TB, ch <-chan T) T {
+	tb.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(3 * time.Second):
+		tb.Fatal("scheduler did not reach the expected synchronization point")
+	}
+	return *new(T)
+}
+
+// The unrelated cancellation is a harmless barrier: NotificationType is called
+// by the worker, not the fan-out forwarders, once it is listening to notifications.
+type scheduleListenerProbe struct {
+	seen chan struct{}
+	once sync.Once
+}
+
+func (p *scheduleListenerProbe) GetProcessID() workflow.ProcessID { return workflow.ProcessID{} }
+func (p *scheduleListenerProbe) NotificationType() workflow.NotificationType {
+	p.once.Do(func() { close(p.seen) })
+	return (workflow.ProcessCancel{}).NotificationType()
+}
+func awaitScheduleListener(t *testcase.T, rt workflow.Runtime) {
+	t.Helper()
+	probe := &scheduleListenerProbe{seen: make(chan struct{})}
+	t.Eventually(func(t *testcase.T) {
+		assert.NoError(t, rt.Notifications.Publish(t.Context(), probe))
+		select {
+		case <-probe.seen:
+		default:
+			t.FailNow()
+		}
 	})
 }
 

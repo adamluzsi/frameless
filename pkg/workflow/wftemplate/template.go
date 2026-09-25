@@ -43,6 +43,13 @@ func (fm FuncMap) Validate(context.Context) error {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Condition is a text/template expression over the process variables of the current scope.
+//
+// Its answer is recorded and replayed through workflow.Execute#EvaluateWith,
+// so a replay at the same position gets the same answer, even if the variables it reads have changed since.
+// The recorded answer is identified by its path under a fixed ID, not by the expression text.
+// A bound definition is never edited in place; a changed expression arrives only through a new binding,
+// which re-roots the path, so it is evaluated anew there.
 type Condition string
 
 var _ workflow.Condition = (*Condition)(nil)
@@ -52,6 +59,13 @@ func (tmpl Condition) Evaluate(ctx context.Context, pid workflow.ProcessID) (boo
 	if err != nil {
 		return false, err
 	}
+	const id workflow.ConditionID = "workflow::template::condition"
+	return workflow.Execute{}.EvaluateWith(ctx, pid, id, func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+		return tmpl.evaluate(ctx, pid, tpl)
+	})
+}
+
+func (tmpl Condition) evaluate(ctx context.Context, pid workflow.ProcessID, tpl *template.Template) (bool, error) {
 	repo, err := workflow.LookupEventsRepository(ctx)
 	if err != nil {
 		return false, err

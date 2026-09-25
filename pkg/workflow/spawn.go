@@ -243,9 +243,7 @@ type EventSpawn struct {
 
 var _ Event = EventSpawn{}
 
-const typeSpawnEvent = "workflow::event::spawn"
-
-func (e EventSpawn) EventType() EventType    { return typeSpawnEvent }
+func (e EventSpawn) EventType() EventType    { return "workflow::spawn" }
 func (e EventSpawn) GetEventID() EventID     { return e.EventID }
 func (e EventSpawn) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
@@ -418,9 +416,7 @@ type EventJoin struct {
 
 var _ Event = EventSpawn{}
 
-const typeJoinEvent = "workflow::event::join"
-
-func (e EventJoin) EventType() EventType    { return typeJoinEvent }
+func (e EventJoin) EventType() EventType    { return "workflow::join" }
 func (e EventJoin) GetEventID() EventID     { return e.EventID }
 func (e EventJoin) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventJoin) GetTimestamp() time.Time { return e.Timestamp }

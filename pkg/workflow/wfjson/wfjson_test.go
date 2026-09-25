@@ -20,6 +20,50 @@ func TestCodec_implementsWorkflowCodec(t *testing.T) {
 	wfcontract.Codec(wfjson.NewCodec()).Test(t)
 }
 
+// TestWorkflowExecute pins the wire format of workflow.Execute.
+// Only the ID that selects its role is written, so a step and a condition are told apart by their field names.
+func TestWorkflowExecute(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	codec := let.Var(s, func(t *testcase.T) workflow.Codec { return wfjson.NewCodec() })
+
+	s.Describe("#Marshal", func(s *testcase.Spec) {
+		value := let.Var(s, func(t *testcase.T) workflow.Execute {
+			return workflow.Execute{
+				ParticipantID: "p1",
+				Input:         []workflow.VarName{"a", "b"},
+				Output:        []workflow.VarName{"c"},
+			}
+		})
+
+		act := func(t *testcase.T) (string, error) {
+			data, err := codec.Get(t).Marshal(value.Get(t))
+			return string(data), err
+		}
+
+		s.Then("a step is written with its participant ID under the workflow::execute type tag", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, got, `{"@type":"workflow::execute","participant_id":"p1","input":["a","b"],"output":["c"]}`)
+		})
+
+		s.When("it is a condition", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) workflow.Execute {
+				return workflow.Execute{
+					ConditionID: "c1",
+					Input:       []workflow.VarName{"a"},
+				}
+			})
+
+			s.Then("it is written with its condition ID under the same type tag", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, got, `{"@type":"workflow::execute","condition_id":"c1","input":["a"]}`)
+			})
+		})
+	})
+}
+
 // TestPathDTO covers how a workflow.Path is written to and read back from a
 // persisted event log.
 //
@@ -494,7 +538,7 @@ func TestEventParticipant_DefinitionRoundTrip(t *testing.T) {
 		// round-trip is unaffected by JSON's int→float64 quirk.
 		def := workflow.Sequence{
 			workflow.SetVar{Name: "v", Value: "ok"},
-			workflow.ExecuteParticipant{ID: "echo"},
+			workflow.Execute{ParticipantID: "echo"},
 		}
 
 		event := workflow.EventParticipant{
@@ -650,7 +694,7 @@ func MakeNestedFuzzLeaf(t *testcase.T) workflow.Definition {
 			return workflow.SetVar{Name: workflow.VarName(t.Random.String()), Value: t.Random.String()}
 		},
 		func() workflow.Definition {
-			return workflow.ExecuteParticipant{ID: workflow.ParticipantID(t.Random.String())}
+			return workflow.Execute{ParticipantID: workflow.ParticipantID(t.Random.String())}
 		},
 	)()
 }

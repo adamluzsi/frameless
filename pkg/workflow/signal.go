@@ -77,7 +77,7 @@ type EventCompleted struct {
 
 var _ Event = (*EventCompleted)(nil)
 
-func (EventCompleted) EventType() EventType      { return "completed" }
+func (EventCompleted) EventType() EventType      { return "workflow::completed" }
 func (e EventCompleted) GetEventID() EventID     { return e.EventID }
 func (e EventCompleted) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventCompleted) GetTimestamp() time.Time { return e.Timestamp }
@@ -213,7 +213,7 @@ type EventTerminated struct {
 
 var _ Event = (*EventTerminated)(nil)
 
-func (EventTerminated) EventType() EventType      { return "terminated" }
+func (EventTerminated) EventType() EventType      { return "workflow::terminated" }
 func (e EventTerminated) GetEventID() EventID     { return e.EventID }
 func (e EventTerminated) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventTerminated) GetTimestamp() time.Time { return e.Timestamp }

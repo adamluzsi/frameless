@@ -59,9 +59,9 @@ func TestOrderWorkflow(t *testing.T) {
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
 			workflow.SetVar{Name: "order_id", Value: "42"},
-			workflow.ExecuteParticipant{
-				ID:    chargeID.Get(t),
-				Input: []workflow.VarName{"order_id"},
+			workflow.Execute{
+				ParticipantID: chargeID.Get(t),
+				Input:         []workflow.VarName{"order_id"},
 			},
 		}
 	})

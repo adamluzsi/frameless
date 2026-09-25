@@ -21,7 +21,7 @@ import (
 // so callers do not need to maintain any per-process state themselves.
 type idempotentExecutor[E Event, ID ~string] struct {
 	ID        ID
-	Do        func(ctx context.Context, input []any) (output []any, _ error)
+	Do        nonIdempotentFunc
 	Input     []VarName
 	Output    []VarName
 	CastEvent func(e E) (executionEvent[ID], bool)
@@ -41,6 +41,8 @@ type idempotentExecutor[E Event, ID ~string] struct {
 	// When nil, no error event is recorded (the legacy behaviour).
 	MakeEventError func(id ID, path Path, err error) (EventError, error)
 }
+
+type nonIdempotentFunc func(ctx context.Context, input []any) (output []any, _ error)
 
 func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) {
 	// The commit decision cannot be made on "is rErr nil", because in this
@@ -62,8 +64,9 @@ func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo Event
 	// Those events describe work that genuinely happened — variables set earlier
 	// in the process, and the enclosing steps' own recorded executions.
 	// TestRuntime_Execute_participantFollowUpDefinition pins one such case.
-	// Missing participants likewise yield to another node; preserve prior work.
-	if *rErr != nil && !isRuntimeSignal(*rErr) && !isParticipantNotFound(*rErr) {
+	// Missing or incompatible participants likewise yield to another node;
+	// preserve prior work unless an independent fatal error is also present.
+	if *rErr != nil && !isRuntimeSignal(*rErr) && (ErrIsFatal(*rErr) || (!isParticipantNotFound(*rErr) && !isParticipantSignatureMismatch(*rErr))) {
 		*rErr = errorkitlite.Merge(*rErr, eventsRepo.RollbackTx(tx))
 		return
 	}
@@ -178,14 +181,21 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		}
 	}
 
-	if found && len(ie.Output) != len(matchingEE.Output) {
+	// Definition results intentionally discard outputs, regardless of mapping.
+	if found && matchingEE.Definition == nil && len(ie.Output) != len(matchingEE.Output) {
 		found = false
 	}
 
 	if found {
-		// since as part of normal execution,
-		// the event history is updated with variable mutation already
-		// we are good to just return with the result here
+		// The producer is complete, but its recorded follow-up may still be
+		// suspended. Resume it under the original path and transaction so its
+		// completed steps remain cached and unfinished work is not skipped.
+		if matchingEE.Definition != nil {
+			if err := matchingEE.Definition.Execute(ctx, pid); err != nil {
+				return nil, err
+			}
+		}
+		// Variable mutations are already recorded in the event history.
 		return slicekit.Clone(matchingEE.Result), nil
 	}
 
@@ -220,10 +230,11 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		// complete, halt) and is deliberately raised by a step that ran fine.
 		// It is not a failure to be audited, so it must not produce an EventError.
 		//
-		// A missing participant is a node availability issue, not a failed call.
-		// Everything else is a genuine failure: record it as an EventError so the
-		// process has a per-occurrence audit trail of what went wrong.
-		if !isRuntimeSignal(err) && !isParticipantNotFound(err) {
+		// A missing or incompatible participant alone is a node availability
+		// issue, not a failed call. Independently fatal errors still count as
+		// genuine failures. Record failures as
+		// an EventError so the process has a per-occurrence audit trail.
+		if !isRuntimeSignal(err) && (ErrIsFatal(err) || (!isParticipantNotFound(err) && !isParticipantSignatureMismatch(err))) {
 			ie.recordErrorEvent(baseContext, eventsRepo, pid, path, err)
 		}
 		return nil, err
@@ -288,13 +299,13 @@ func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, events
 // sub-workflow, SwitchDefinition mutates the active definition). It is
 // handled here so that:
 //
-//   - The event is persisted with the Definition attached, making a replay
-//     of the same logical step a no-op.
-//   - Dispatching the Definition happens once per logical step (the second
-//     pass is a cache hit and short-circuits before this branch).
+//   - The event is persisted with the Definition attached, so replay does not
+//     repeat the participant call that produced it.
+//   - The Definition is executed on both the initial call and cache hits, so
+//     suspended follow-up work can resume using its own steps' cached results.
 //
-// The cached event's Definition is replayed as nil output, so the surrounding
-// Definition can continue normally without surfacing the returned Definition.
+// The follow-up produces nil output and propagates its execution outcome, so
+// the surrounding Definition continues only after the follow-up succeeds.
 func (ie idempotentExecutor[E, ID]) handleResultDefinition(
 	ctx context.Context, eventsRepo EventRepository,
 	pid ProcessID, path Path, input []any, def Definition,

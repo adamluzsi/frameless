@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/deprecated"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 )
 
@@ -23,7 +24,7 @@ func NewCodec() *jsonkit.Codec {
 
 	// Conditions: wftemplate.Condition is a named primitive (string)
 	// whose @type envelope is handled by jsonkit's reflect-based path,
-	// so CodecRegisterTypeID is enough. ExecuteCondition has a custom
+	// so CodecRegisterTypeID is enough. workflow.Execute has a custom
 	// codec (DTO shape diverges from the workflow struct shape).
 	jsonkit.CodecRegisterTypeID[wftemplate.Condition](&c, "workflow::template::condition")
 
@@ -44,8 +45,11 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.DeleteVar](&c, "workflow::var::delete", WorkflowDeleteVar{})
 	jsonkit.CodecRegister[workflow.Increment](&c, "workflow::op::increment", WorkflowIncrement{})
 	jsonkit.CodecRegister[workflow.Spawn](&c, "workflow::spawn", WorkflowSpawn{})
-	jsonkit.CodecRegister[workflow.ExecuteParticipant](&c, "workflow::participant", WorkflowExecuteParticipant{})
-	jsonkit.CodecRegister[workflow.ExecuteCondition](&c, "workflow::condition", WorkflowExecuteCondition{})
+	jsonkit.CodecRegister[workflow.Execute](&c, "workflow::execute", WorkflowExecute{})
+	// The deprecated definitions keep their wire tags,
+	// so definitions recorded before workflow.Execute still decode and execute.
+	jsonkit.CodecRegister[deprecated.ExecuteParticipant](&c, "workflow::participant", WorkflowExecuteParticipant{})
+	jsonkit.CodecRegister[deprecated.ExecuteCondition](&c, "workflow::condition", WorkflowExecuteCondition{})
 	jsonkit.CodecRegister[workflow.Join](&c, "workflow::join", WorkflowJoin{})
 
 	// Events: same treatment — custom codecs own the wire format.
@@ -59,6 +63,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.EventUseDefinition](&c, "workflow::event::use-definition", WorkflowEventUseDefinition{})
 	jsonkit.CodecRegister[workflow.EventSpawn](&c, "workflow::event::spawn", WorkflowEventSpawn{})
 	jsonkit.CodecRegister[workflow.EventJoin](&c, "workflow::event::join", WorkflowEventJoin{})
+	jsonkit.CodecRegister[workflow.EventSleepCompleted](&c, "workflow::event::sleep::completed", WorkflowEventSleepCompleted{})
 
 	// Schedule-side types: not part of Definition/Condition/Event but
 	// still persisted across the runtime, so they need a stable wire format too.
@@ -592,11 +597,47 @@ func (WorkflowSpawn) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Spawn)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// ExecuteParticipant
+// Execute
+
+type WorkflowExecute struct{}
+
+var _ jsonkit.ITypeCodec[workflow.Execute] = WorkflowExecute{}
+
+type workflowExecuteDTO struct {
+	ParticipantID string   `json:"participant_id,omitempty"`
+	ConditionID   string   `json:"condition_id,omitempty"`
+	Input         []string `json:"input,omitempty"`
+	Output        []string `json:"output,omitempty"`
+}
+
+func (WorkflowExecute) Marshal(c *jsonkit.Codec, v workflow.Execute) ([]byte, error) {
+	return json.Marshal(workflowExecuteDTO{
+		ParticipantID: string(v.ParticipantID),
+		ConditionID:   string(v.ConditionID),
+		Input:         varNamesToStrings(v.Input),
+		Output:        varNamesToStrings(v.Output),
+	})
+}
+
+func (WorkflowExecute) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Execute) error {
+	var dto workflowExecuteDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.ParticipantID = workflow.ParticipantID(dto.ParticipantID)
+	p.ConditionID = workflow.ConditionID(dto.ConditionID)
+	p.Input = varNamesFromStrings(dto.Input)
+	p.Output = varNamesFromStrings(dto.Output)
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// ExecuteParticipant (deprecated)
 
 type WorkflowExecuteParticipant struct{}
 
-var _ jsonkit.ITypeCodec[workflow.ExecuteParticipant] = WorkflowExecuteParticipant{}
+var _ jsonkit.ITypeCodec[deprecated.ExecuteParticipant] = WorkflowExecuteParticipant{}
 
 type workflowExecuteParticipantDTO struct {
 	ID     string   `json:"id"`
@@ -626,7 +667,7 @@ func varNamesFromStrings(names []string) []workflow.VarName {
 	return out
 }
 
-func (WorkflowExecuteParticipant) Marshal(c *jsonkit.Codec, v workflow.ExecuteParticipant) ([]byte, error) {
+func (WorkflowExecuteParticipant) Marshal(c *jsonkit.Codec, v deprecated.ExecuteParticipant) ([]byte, error) {
 	return json.Marshal(workflowExecuteParticipantDTO{
 		ID:     string(v.ID),
 		Input:  varNamesToStrings(v.Input),
@@ -634,7 +675,7 @@ func (WorkflowExecuteParticipant) Marshal(c *jsonkit.Codec, v workflow.ExecutePa
 	})
 }
 
-func (WorkflowExecuteParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ExecuteParticipant) error {
+func (WorkflowExecuteParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *deprecated.ExecuteParticipant) error {
 	var dto workflowExecuteParticipantDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
@@ -647,25 +688,25 @@ func (WorkflowExecuteParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *wo
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// ExecuteCondition
+// ExecuteCondition (deprecated)
 
 type WorkflowExecuteCondition struct{}
 
-var _ jsonkit.ITypeCodec[workflow.ExecuteCondition] = WorkflowExecuteCondition{}
+var _ jsonkit.ITypeCodec[deprecated.ExecuteCondition] = WorkflowExecuteCondition{}
 
 type workflowExecuteConditionDTO struct {
 	ID    string   `json:"id"`
 	Input []string `json:"input,omitempty"`
 }
 
-func (WorkflowExecuteCondition) Marshal(c *jsonkit.Codec, v workflow.ExecuteCondition) ([]byte, error) {
+func (WorkflowExecuteCondition) Marshal(c *jsonkit.Codec, v deprecated.ExecuteCondition) ([]byte, error) {
 	return json.Marshal(workflowExecuteConditionDTO{
 		ID:    string(v.ID),
 		Input: varNamesToStrings(v.Input),
 	})
 }
 
-func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ExecuteCondition) error {
+func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *deprecated.ExecuteCondition) error {
 	var dto workflowExecuteConditionDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
@@ -1068,6 +1109,40 @@ func (WorkflowEventJoin) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Ev
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
 	p.Children = dto.Children
+	p.Path = ToPath(dto.Path)
+	return nil
+}
+
+// SleepCompletedEvent
+
+type WorkflowEventSleepCompleted struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventSleepCompleted] = WorkflowEventSleepCompleted{}
+
+type workflowSleepCompletedEventDTO struct {
+	EventID   workflow.EventID   `json:"event_id"`
+	ProcessID workflow.ProcessID `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Path      PathDTO            `json:"path,omitempty"`
+}
+
+func (WorkflowEventSleepCompleted) Marshal(c *jsonkit.Codec, v workflow.EventSleepCompleted) ([]byte, error) {
+	return json.Marshal(workflowSleepCompletedEventDTO{
+		EventID:   v.EventID,
+		ProcessID: v.ProcessID,
+		Timestamp: v.Timestamp,
+		Path:      ToPathDTO(v.Path),
+	})
+}
+
+func (WorkflowEventSleepCompleted) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventSleepCompleted) error {
+	var dto workflowSleepCompletedEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	return nil
 }

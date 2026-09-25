@@ -72,10 +72,10 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     // Delegate the actual side effect to a registered participant. Doing the
     // I/O in a participant keeps the domain work out of the definition tree
     // and gives you its event-cache boundary for free.
-    return workflow.ExecuteParticipant{
-        ID:     "charge-card",
-        Input:  []workflow.VarName{d.Amount},
-        Output: []workflow.VarName{"receipt"},
+    return workflow.Execute{
+        ParticipantID: "charge-card",
+        Input:         []workflow.VarName{d.Amount},
+        Output:        []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```
@@ -172,7 +172,7 @@ enough.
 
 ## 4. Replay safety: lean on event-backed operations
 
-The runtime may replay any `Execute` call — crash recovery, a retry after a
+The runtime may replay any `Definition#Execute` call — crash recovery, a retry after a
 transient failure, or a scheduler requeue after a `Suspend`. The side effects
 on the process must converge to the same final state.
 
@@ -182,14 +182,14 @@ Two rules fall out of that:
   pointer stashed in a package variable, or a connection held by the
   definition will diverge between attempts. Read and write through the event
   log via `vars.Lookup` / `vars.Set` / `vars.Delete`, or via the built-in
-  definition steps (`SetVar`, `DeleteVar`, `ExecuteParticipant`,
-  `ExecuteCondition`).
+  definition steps (`SetVar`, `DeleteVar`, `Execute`).
 - **Make external effects retry-safe.** A `vars.Set` is replay-safe because
   the event log short-circuits duplicate writes. A call to your payment
   provider is not — mint an idempotency key, persist it via `SetVar` first,
-  and pass the same key on the retry. Better still, expose the work as a
-  registered `Participant` so the participant's own event is the cache
-  boundary.
+  and pass the same key on the retry. Better still, run the work as a
+  participant call, so its own event is the cache boundary — through a
+  registered `Participant`, or through `Execute#ExecuteWith` when
+  the logic belongs to the definition itself (below).
 
 The same principle governs how you return. A `nil` or non-signal return is
 recorded; a `RuntimeSignal` is not. Returning `workflow.Suspend{}` means
@@ -198,6 +198,74 @@ attempt — the work before the signal runs again, so keep it cheap and
 side-effect free. Returning a `workflow.Definition` records the call with the
 new definition attached and runs it in place of the step; a follow-up stage
 is therefore "fire once" by design.
+
+### Your own logic as a participant call
+
+`Execute#ExecuteWith` takes a `ParticipantID` and a function with the signature
+of `Definition#Execute`, and runs the function in place of a registered
+participant. The call is cached the same way, so a definition can keep its side
+effect in its own code, and nothing has to be registered:
+
+```go
+func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error {
+    ctx = workflow.WithName(ctx, "charge-order")
+    return workflow.Execute{
+        Input: []workflow.VarName{d.Amount}, // resolved and recorded with the call
+    }.ExecuteWith(ctx, pid, "acme::charge-card", d.chargeCard)
+}
+
+// chargeCard is only called while no successful call is recorded at the position.
+func (d ChargeOrder) chargeCard(ctx context.Context, pid workflow.ProcessID) error {
+    repo, err := workflow.LookupEventsRepository(ctx)
+    if err != nil {
+        return err
+    }
+    vars := workflow.Vars{ProcessID: pid, EventsRepository: repo}
+
+    amount, _, err := vars.Lookup(ctx, d.Amount) // presence is checked through Input
+    if err != nil {
+        return err
+    }
+    receipt, err := payments.Charge(ctx, amount)
+    if err != nil {
+        return err
+    }
+    return vars.Set(ctx, "receipt", receipt)
+}
+```
+
+- **The ID argument identifies the call.** Together with the path, the
+  `ParticipantID` you pass identifies the call, so keep it stable across
+  deployments, namespaced, and distinct from other participant calls at the
+  same position. An empty ID is fatal, and so is setting `ParticipantID` or
+  `ConditionID` on the `Execute` as well (a fatal `ErrInvalidDefinition`),
+  since those fields belong to `#Execute` and `#Evaluate`.
+- **Recorded like `Execute#Execute`.** The call is recorded as an
+  `EventParticipant` under that `ParticipantID`, at
+  `<path>/participant/<ParticipantID>`, just like a registered participant's.
+  Moving a registered participant's logic into `#ExecuteWith` under the same
+  `ParticipantID` replays the calls already recorded instead of repeating them —
+  but only calls recorded without an `Output` mapping: `Output` is part of a
+  call's cache identity, so where the registered participant mapped results
+  onto `Output`, your function runs again.
+- **Variables instead of `Output`.** The function returns no values, so a
+  non-empty `Output` is a fatal `ErrInvalidDefinition`. Set results through
+  `workflow.Vars`; those writes are recorded as part of the call, and discarded
+  together with a failed attempt. `Input` works as with `#Execute`: a missing
+  variable is fatal, and the resolved values are recorded.
+- **Only success is recorded.** A failure is recorded as an `EventError` and
+  retried on the next execution; a `RuntimeSignal` such as `Suspend` records
+  nothing. Returning a `Definition` records it with the call and runs it in
+  place of the step. Replays walk that recorded definition without calling
+  your function again, which is how a routing definition extends the tree
+  once and keeps that extension stable.
+
+Prefer a registered participant when the capability should be part of the
+vocabulary that end users compose ([Participants][PARTICIPANT] §7).
+
+For a runnable version with a runtime and no registered participants, where a
+suspended process is executed again without charging twice, see
+`ExampleExecute_ExecuteWith` in [`example_executewith_test.go`][EXAMPLE_EXECUTE_WITH].
 
 ---
 
@@ -362,3 +430,4 @@ process).
 [END_USER]: ./end-user.md
 [TESTING]: ./testing.md
 [GLOSSARY]: ./glossary.md
+[EXAMPLE_EXECUTE_WITH]: ../example_executewith_test.go

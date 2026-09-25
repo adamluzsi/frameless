@@ -3,9 +3,11 @@ package workflow_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
@@ -13,6 +15,76 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 )
+
+func TestErrIsFatal(t *testing.T) {
+	s := testcase.NewSpec(t)
+	var input = let.Var[error](s, func(t *testcase.T) error { return nil })
+	act := func(t *testcase.T) bool { return workflow.ErrIsFatal(input.Get(t)) }
+
+	s.Test("nil is not fatal", func(t *testcase.T) { assert.False(t, act(t)) })
+
+	for _, fatal := range []error{
+		workflow.ErrFatal, workflow.ErrInvalidDefinition, workflow.ErrInvalidParticipantFunc,
+		workflow.ErrInvalidConditionFunc, workflow.ErrConditionNotFound{ID: "missing"},
+		workflow.ErrNoContextRuntime, workflow.ErrNoProcessDefinition,
+	} {
+		s.When("the error is "+fatal.Error(), func(s *testcase.Spec) {
+			input.Let(s, func(t *testcase.T) error { return fatal })
+			s.Then("it is fatal on its own", func(t *testcase.T) { assert.True(t, act(t)) })
+		})
+	}
+
+	for _, wrap := range []struct {
+		name string
+		fn   func(error) error
+	}{
+		{"bare", func(err error) error { return err }},
+		{"fmt wrapper", func(err error) error { return fmt.Errorf("invocation: %w", err) }},
+		{"custom wrapper", func(err error) error { return fatalClassificationWrapper{err} }},
+		{"nested join", func(err error) error {
+			return errors.Join(io.EOF, fmt.Errorf("invocation: %w", errors.Join(err, io.ErrClosedPipe)))
+		}},
+		{"legacy wrapper", func(err error) error { return errorkitlite.Error("invocation").F("%w", err) }},
+		{"legacy join", func(err error) error { return errorkitlite.Merge(io.EOF, err) }},
+	} {
+		for _, pointer := range []bool{false, true} {
+			s.When(fmt.Sprintf("a mismatch is %s (pointer=%t)", wrap.name, pointer), func(s *testcase.Spec) {
+				mismatch := let.Var[error](s, func(t *testcase.T) error {
+					err := workflow.ErrParticipantSignatureMismatch{
+						ID:    workflow.ParticipantID(t.Random.UUID()),
+						Cause: workflow.ErrInvalidParticipantFunc.F("incompatible signature"),
+					}
+					if pointer {
+						return &err
+					}
+					return err
+				})
+				input.Let(s, func(t *testcase.T) error { return wrap.fn(mismatch.Get(t)) })
+				s.Then("its legacy invalid-function cause is not fatal", func(t *testcase.T) { assert.False(t, act(t)) })
+
+				for _, fatal := range []error{workflow.ErrFatal, workflow.ErrInvalidDefinition, workflow.ErrInvalidParticipantFunc} {
+					for _, first := range []bool{false, true} {
+						s.And(fmt.Sprintf("joined with independent %s (first=%t)", fatal, first), func(s *testcase.Spec) {
+							input.Let(s, func(t *testcase.T) error {
+								independent := fmt.Errorf("independent: %w", fatal)
+								if first {
+									return wrap.fn(errors.Join(independent, mismatch.Get(t)))
+								}
+								return wrap.fn(errors.Join(mismatch.Get(t), independent))
+							})
+							s.Then("the independent error remains fatal", func(t *testcase.T) { assert.True(t, act(t)) })
+						})
+					}
+				}
+			})
+		}
+	}
+}
+
+type fatalClassificationWrapper struct{ cause error }
+
+func (err fatalClassificationWrapper) Error() string { return "invocation: " + err.cause.Error() }
+func (err fatalClassificationWrapper) Unwrap() error { return err.cause }
 
 // TestEventError_participant expresses the behavioural contract that
 // when a workflow participant fails with an error during execution,
@@ -83,11 +155,11 @@ func TestEventError_participant(t *testing.T) {
 		})
 	)
 
-	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
-		return &workflow.ExecuteParticipant{
-			ID:     pid.Get(t),
-			Input:  input.Get(t),
-			Output: output.Get(t),
+	subject := let.Var(s, func(t *testcase.T) *workflow.Execute {
+		return &workflow.Execute{
+			ParticipantID: pid.Get(t),
+			Input:         input.Get(t),
+			Output:        output.Get(t),
 		}
 	})
 
@@ -140,6 +212,40 @@ func TestEventError_participant(t *testing.T) {
 			assert.NotNil(t, first.Path)
 		})
 
+		for _, availability := range []error{
+			workflow.ErrParticipantSignatureMismatch{ID: "unavailable", Cause: workflow.ErrInvalidParticipantFunc},
+			workflow.ErrParticipantNotFound{ID: "unavailable"},
+		} {
+			s.When("a fatal error is joined with "+availability.Error(), func(s *testcase.Spec) {
+				expErr.Let(s, func(t *testcase.T) error {
+					return errors.Join(workflow.ErrFatal, availability)
+				})
+				participant.Let(s, func(t *testcase.T) func(context.Context, string) (string, error) {
+					return func(ctx context.Context, in string) (string, error) {
+						vars := workflow.Vars{ProcessID: processID.Get(t), EventsRepository: c.Runtime.Get(t).Events}
+						assert.NoError(t, vars.Set(ctx, outKey.Get(t), in))
+						return "", expErr.Get(t)
+					}
+				})
+
+				s.Then("the fatal failure is audited", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.ErrFatal)
+					events := errorsOf(t)
+					assert.Equal(t, len(events), 1)
+					assert.Equal(t, events[0].Error, expErr.Get(t).Error())
+					assert.Equal(t, events[0].ParticipantID, pid.Get(t))
+				})
+
+				s.Then("the failed invocation rolls back its variable writes", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.ErrFatal)
+					vars := workflow.Vars{ProcessID: processID.Get(t), EventsRepository: c.Runtime.Get(t).Events}
+					_, found, err := vars.Lookup(ctx.Get(t), outKey.Get(t))
+					assert.NoError(t, err)
+					assert.False(t, found)
+				})
+			})
+		}
+
 		// Failure-then-success: every failure is recorded as its own EventError,
 		// the eventual successful attempt produces no further EventError,
 		// and downstream values (output variable) arrive correctly.
@@ -150,7 +256,7 @@ func TestEventError_participant(t *testing.T) {
 
 			s.Before(func(t *testcase.T) {
 				// Drive the participant through all its failing attempts and the
-				// final successful one. Mirrors the TestExecuteParticipant_rollback
+				// final successful one. Mirrors the TestExecute rollback
 				// pattern: each call to act() is one execution attempt, and we
 				// keep going until the participant finally succeeds.
 				expectedAttempts := failUntil.Get(t) + 1

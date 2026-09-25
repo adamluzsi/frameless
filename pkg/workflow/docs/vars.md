@@ -7,10 +7,10 @@
 ```go
 workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
-	workflow.ExecuteParticipant{
-		ID:     "charge-card",
-		Input:  []workflow.VarName{"order_id"}, // read
-		Output: []workflow.VarName{"receipt"},  // write
+	workflow.Execute{
+		ParticipantID: "charge-card",
+		Input:         []workflow.VarName{"order_id"}, // read
+		Output:        []workflow.VarName{"receipt"},  // write
 	},
 }
 ```
@@ -179,7 +179,7 @@ merely duplicate an event — it would erase whatever the steps after it assigne
 ```go
 workflow.Spawn{
 	Name:       "fulfilment",
-	Definition: workflow.ExecuteParticipant{ID: "ship", Input: []workflow.VarName{"order"}},
+	Definition: workflow.Execute{ParticipantID: "ship", Input: []workflow.VarName{"order"}},
 	Vars:       workflow.VarMapping{"order_id": "order"},
 }
 ```

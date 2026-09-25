@@ -112,6 +112,70 @@ func TestVars(t *testing.T) {
 		assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &event))
 	}
 
+	s.Describe("latest-state queries at an earlier execution path", func(s *testcase.Spec) {
+		ctx := let.Var(s, func(t *testcase.T) context.Context {
+			return workflow.WithName(workflow.WithName(t.Context(), "sequence"), "[2]")
+		})
+		name := letVarName(s)
+		act := func(t *testcase.T) map[workflow.VarName]any {
+			vars := subject.Get(t)
+			values, err := vars.ToMap(ctx.Get(t))
+			assert.NoError(t, err)
+			value, found, err := vars.Lookup(ctx.Get(t), name.Get(t))
+			assert.NoError(t, err)
+			expected, exists := values[name.Get(t)]
+			assert.Equal(t, found, exists)
+			assert.Equal(t, value, expected)
+			value, err = vars.Get(ctx.Get(t), name.Get(t))
+			assert.NoError(t, err)
+			assert.Equal(t, value, expected)
+			bindings := map[workflow.VarName]any{}
+			for binding, err := range vars.All(ctx.Get(t)) {
+				assert.NoError(t, err)
+				bindings[binding.Name] = binding.Value
+			}
+			assert.Equal(t, bindings, values)
+			keys := map[workflow.VarName]bool{}
+			for key, err := range vars.Keys(ctx.Get(t)) {
+				assert.NoError(t, err)
+				keys[key] = true
+			}
+			assert.Equal(t, len(keys), len(values))
+			for key := range values {
+				assert.True(t, keys[key])
+			}
+			return values
+		}
+
+		s.Then("sees later assignments and deletions without treating paths as a timeline", func(t *testcase.T) {
+			vars := subject.Get(t)
+			assert.NoError(t, vars.Set(ctx.Get(t), name.Get(t), true))
+			assert.Equal[any](t, act(t)[name.Get(t)], true)
+
+			// [10] follows [2] in execution, but precedes it lexically.
+			later := workflow.WithName(workflow.WithName(t.Context(), "sequence"), "[10]")
+			assert.NoError(t, vars.Set(later, name.Get(t), false))
+			assert.Equal[any](t, act(t)[name.Get(t)], false)
+			assert.NoError(t, vars.Delete(later, name.Get(t)))
+			assert.Empty(t, act(t))
+		})
+
+		s.When("the reader is in a nested variable scope", func(s *testcase.Spec) {
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				return workflow.WithVarScope(ctx.Super(t), "nested")
+			})
+
+			s.Then("sees current visible bindings while excluding sibling bindings", func(t *testcase.T) {
+				vars := subject.Get(t)
+				assert.NoError(t, vars.Set(t.Context(), name.Get(t), true))
+				assert.Equal[any](t, act(t)[name.Get(t)], true)
+				assert.NoError(t, vars.Set(workflow.WithName(t.Context(), "later"), name.Get(t), false))
+				assert.NoError(t, vars.Set(workflow.WithVarScope(t.Context(), "sibling"), "hidden", true))
+				assert.Equal(t, act(t), map[workflow.VarName]any{name.Get(t): false})
+			})
+		})
+	})
+
 	s.Describe("#Set", func(s *testcase.Spec) {
 		var (
 			ctx   = let.Context(s)
@@ -692,7 +756,7 @@ func TestVars(t *testing.T) {
 		}
 
 		def := workflow.Sequence{
-			&workflow.ExecuteParticipant{ID: "set_var"},
+			&workflow.Execute{ParticipantID: "set_var"},
 		}
 
 		r := workflow.Runtime{

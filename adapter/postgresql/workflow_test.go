@@ -50,10 +50,10 @@ func Test_workflowE2E(t *testing.T) {
 
 	def := workflow.Sequence{
 		workflow.SetVar{Name: "name", Value: "World"},
-		workflow.ExecuteParticipant{
-			ID:     "greet",
-			Input:  []workflow.VarName{"name"},
-			Output: []workflow.VarName{"greeting"},
+		workflow.Execute{
+			ParticipantID: "greet",
+			Input:         []workflow.VarName{"name"},
+			Output:        []workflow.VarName{"greeting"},
 		},
 	}
 

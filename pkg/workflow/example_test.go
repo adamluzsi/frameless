@@ -30,14 +30,14 @@ func Example() {
 
 	// someone builds a workflow definition
 	definition := &workflow.Sequence{
-		workflow.ExecuteParticipant{ID: "foo",
+		workflow.Execute{ParticipantID: "foo",
 			Output: []workflow.VarName{"foo"}},
-		workflow.ExecuteParticipant{ID: "bar",
+		workflow.Execute{ParticipantID: "bar",
 			Output: []workflow.VarName{"bar"}},
 		workflow.If{
 			Cond: wftemplate.Condition(".foo <= .bar"),   // (42 < 24) == false
-			Then: workflow.ExecuteParticipant{ID: "baz"}, //
-			Else: workflow.ExecuteParticipant{ID: "qux"}, // will run
+			Then: workflow.Execute{ParticipantID: "baz"}, //
+			Else: workflow.Execute{ParticipantID: "qux"}, // will run
 		},
 	}
 
@@ -62,16 +62,16 @@ func Example() {
 func ExampleDefinition_sequence() {
 	_ = workflow.Sequence{
 		workflow.SetVar{Name: "topic", Value: "go.llib.dev/frameless"},
-		workflow.ExecuteParticipant{
-			ID:     "summarise",
-			Input:  []workflow.VarName{"topic"},
-			Output: []workflow.VarName{"summary", "found"},
+		workflow.Execute{
+			ParticipantID: "summarise",
+			Input:         []workflow.VarName{"topic"},
+			Output:        []workflow.VarName{"summary", "found"},
 		},
 		workflow.If{
 			Cond: wftemplate.Condition(`eq .found true`),
-			Then: workflow.ExecuteParticipant{
-				ID:    "publish",
-				Input: []workflow.VarName{"summary"},
+			Then: workflow.Execute{
+				ParticipantID: "publish",
+				Input:         []workflow.VarName{"summary"},
 			},
 		},
 	}

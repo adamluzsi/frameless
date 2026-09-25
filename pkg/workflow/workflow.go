@@ -150,10 +150,10 @@ func (p Participant) funcSignature() string {
 	for i := range fnType.NumIn() {
 		in := fnType.In(i)
 		val := in.String()
-		if in.IsVariadic() {
-			val = "..." + val
+		if fnType.IsVariadic() && i == fnType.NumIn()-1 {
+			val = "..." + in.Elem().String()
 		}
-		input = append(input, in.String())
+		input = append(input, val)
 	}
 	for i := range fnType.NumOut() {
 		output = append(output, fnType.Out(i).String())
@@ -180,7 +180,7 @@ var reflectErrorType = reflectkit.TypeOf[error]()
 
 func (p Participant) rFunc() (reflect.Value, error) {
 	rFunc := reflect.ValueOf(p.Func)
-	if rFunc.Kind() != reflect.Func {
+	if rFunc.Kind() != reflect.Func || rFunc.IsNil() {
 		return rFunc, ErrInvalidParticipantFunc.F("invalid value for participant func")
 	}
 	var (

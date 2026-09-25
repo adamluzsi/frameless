@@ -48,10 +48,10 @@ in Go and marshal it:
 ```go
 def := workflow.Sequence{
     workflow.SetVar{Name: "topic", Value: "go.llib.dev/frameless"},
-    workflow.ExecuteParticipant{
-        ID:     "summarise",
-        Input:  []workflow.VarName{"topic"},
-        Output: []workflow.VarName{"summary"},
+    workflow.Execute{
+        ParticipantID: "summarise",
+        Input:         []workflow.VarName{"topic"},
+        Output:        []workflow.VarName{"summary"},
     },
 }
 
@@ -59,7 +59,7 @@ c := wfjson.NewCodec()
 data, err := c.Marshal(def)
 // {"@type":"workflow::sequence","@value":[
 //   {"@type":"workflow::var::set","name":"topic","value":"go.llib.dev/frameless"},
-//   {"@type":"workflow::participant","id":"summarise","input":["topic"],"output":["summary"]}
+//   {"@type":"workflow::execute","participant_id":"summarise","input":["topic"],"output":["summary"]}
 // ]}
 ```
 
@@ -98,7 +98,7 @@ and a worked example.
   "@type": "workflow::sequence",
   "@value": [
     { "@type": "workflow::var::set", "name": "topic", "value": "go.llib.dev/frameless" },
-    { "@type": "workflow::participant", "id": "summarise", "input": ["topic"], "output": ["summary"] }
+    { "@type": "workflow::execute", "participant_id": "summarise", "input": ["topic"], "output": ["summary"] }
   ]
 }
 ```
@@ -114,9 +114,9 @@ An empty sequence is `{"@value": []}`. A nil element in the array becomes
 ```json
 {
   "@type": "workflow::if",
-  "cond": { "@type": "workflow::condition", "id": "is-vip", "input": ["customer_id"] },
-  "then": { "@type": "workflow::participant", "id": "apply-vip-discount", "input": ["order_id"] },
-  "else": { "@type": "workflow::participant", "id": "apply-list-price",  "input": ["order_id"] }
+  "cond": { "@type": "workflow::execute", "condition_id": "is-vip", "input": ["customer_id"] },
+  "then": { "@type": "workflow::execute", "participant_id": "apply-vip-discount", "input": ["order_id"] },
+  "else": { "@type": "workflow::execute", "participant_id": "apply-list-price",  "input": ["order_id"] }
 }
 ```
 
@@ -131,13 +131,15 @@ condition is a fatal authoring error.
 ```json
 {
   "@type": "workflow::sleep",
-  "until": { "@type": "workflow::condition", "id": "approval-granted", "input": ["order_id"] }
+  "until": { "@type": "workflow::execute", "condition_id": "approval-granted", "input": ["order_id"] }
 }
 ```
 
 `while` and `until` are mutually exclusive conditions on when to stop waiting.
-Both are optional; with neither set the workflow suspends forever. See
-[Conditions][CONDITION] for the trap about caching.
+Both are optional; with neither set the workflow suspends forever. Nothing about
+the wait itself is on the definition's wire: each attempt's condition answers,
+and the wake-up as a `workflow::event::sleep::completed` event, are recorded in
+the process history. See [Conditions][CONDITION].
 
 ### `workflow.For`
 
@@ -148,9 +150,9 @@ Both are optional; with neither set the workflow suspends forever. See
 {
   "@type": "workflow::for",
   "init": { "@type": "workflow::var::set", "name": "i", "value": 0 },
-  "cond": { "@type": "workflow::condition", "id": "lt", "input": ["i", "limit"] },
+  "cond": { "@type": "workflow::execute", "condition_id": "lt", "input": ["i", "limit"] },
   "post": { "@type": "workflow::op::increment", "name": "i" },
-  "do":   { "@type": "workflow::participant", "id": "process-batch-item" }
+  "do":   { "@type": "workflow::execute", "participant_id": "process-batch-item" }
 }
 ```
 
@@ -165,7 +167,7 @@ Both are optional; with neither set the workflow suspends forever. See
 {
   "@type": "workflow::foreach",
   "over":  "items",
-  "do":    { "@type": "workflow::participant", "id": "process-item" },
+  "do":    { "@type": "workflow::execute", "participant_id": "process-item" },
   "key":   "idx",
   "value": "item"
 }
@@ -232,39 +234,46 @@ There is no value on the wire — a deletion only carries the name.
 
 The increment amount is always one; there is no field to put on the wire.
 
-### `workflow.ExecuteParticipant`
+### `workflow.Execute`
 
-**Tag:** `workflow::participant`
-**Inner:** `{id, input?, output?}`
+**Tag:** `workflow::execute`
+**Inner:** `{participant_id?, condition_id?, input?, output?}`
+
+A step, calling a registered participant:
 
 ```json
 {
-  "@type": "workflow::participant",
-  "id":     "charge-card",
-  "input":  ["order_id"],
+  "@type": "workflow::execute",
+  "participant_id": "charge-card",
+  "input": ["order_id"],
   "output": ["receipt"]
 }
 ```
 
-`input` and `output` are positional lists of `VarName` strings — see
-[Codec][CODEC] §5 for the wiring rule. `input` and `output` are independently
-optional and omitted when empty.
-
-### `workflow.ExecuteCondition`
-
-**Tag:** `workflow::condition`
-**Inner:** `{id, input?}`
+A condition, asking a registered condition, in a `Condition` slot such as `cond` or `until`:
 
 ```json
 {
-  "@type": "workflow::condition",
-  "id":    "is-vip",
+  "@type": "workflow::execute",
+  "condition_id": "is-vip",
   "input": ["customer_id"]
 }
 ```
 
-Conditions are cached. Do not put an `ExecuteCondition` inside `Sleep` — its
-answer replays forever. See [Conditions][CONDITION].
+Set exactly one of `participant_id` and `condition_id`; the one that is set
+decides the role. Anything else, a `condition_id` used as a step, or `output` on
+a condition fails with a fatal `ErrInvalidDefinition` at execution.
+`input` and `output` are positional lists of `VarName` strings — see
+[Codec][CODEC] §5 for the wiring rule. All fields are omitted when empty.
+
+Calls and answers are recorded. Inside `Sleep`, every attempt asks the
+condition anew, under the second the attempt happens in. See
+[Conditions][CONDITION].
+
+Older definitions may carry the former tags, `workflow::participant`
+(`{id, input?, output?}`) and `workflow::condition` (`{id, input?}`). They still
+decode, into the adapters in `pkg/workflow/deprecated`; write new definitions
+with `workflow::execute`.
 
 ### `wftemplate.Condition`
 
@@ -277,8 +286,9 @@ answer replays forever. See [Conditions][CONDITION].
 
 This is a `text/template` expression evaluated against process variables. Use
 it when a workflow builder should be able to edit the rule without a
-deployment. See [Conditions][CONDITION] for the function map and the
-`ContextSetup` plumbing.
+deployment. Its answer is recorded like a registered condition's, identified by
+its path under the fixed ID `workflow::template::condition`. See
+[Conditions][CONDITION] for the function map and the `ContextSetup` plumbing.
 
 ### `workflow.Spawn`
 
@@ -289,7 +299,7 @@ deployment. See [Conditions][CONDITION] for the function map and the
 {
   "@type": "workflow::spawn",
   "name": "fulfilment",
-  "def":  { "@type": "workflow::participant", "id": "ship", "input": ["order"] },
+  "def":  { "@type": "workflow::execute", "participant_id": "ship", "input": ["order"] },
   "vars": { "order_id": "order" }
 }
 ```
@@ -325,15 +335,15 @@ whatever the inner type is, it appears with its own `@type`:
 {
   "@type": "workflow::if",
   "cond": {
-    "@type": "workflow::condition",
-    "id": "requires-receipt",
+    "@type": "workflow::execute",
+    "condition_id": "requires-receipt",
     "input": ["order_id"]
   },
   "then": {
     "@type": "workflow::sequence",
     "@value": [
       { "@type": "workflow::var::set",       "name": "notified", "value": true },
-      { "@type": "workflow::participant",    "id": "email-receipt", "input": ["receipt"] }
+      { "@type": "workflow::execute",    "participant_id": "email-receipt", "input": ["receipt"] }
     ]
   }
 }
@@ -535,21 +545,21 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
     {
       "@type": "workflow::if",
       "cond": {
-        "@type": "workflow::condition",
-        "id": "stock-available",
+        "@type": "workflow::execute",
+        "condition_id": "stock-available",
         "input": ["order_id"]
       },
       "then": {
         "@type": "workflow::sequence",
         "@value": [
-          { "@type": "workflow::participant", "id": "reserve-stock", "input": ["order_id"], "output": ["reservation_id"] },
+          { "@type": "workflow::execute", "participant_id": "reserve-stock", "input": ["order_id"], "output": ["reservation_id"] },
           {
             "@type": "workflow::spawn",
             "name": "fulfilment",
             "def": {
               "@type": "workflow::sequence",
               "@value": [
-                { "@type": "workflow::participant", "id": "ship", "input": ["reservation_id"], "output": ["tracking"] }
+                { "@type": "workflow::execute", "participant_id": "ship", "input": ["reservation_id"], "output": ["tracking"] }
               ]
             },
             "vars": { "order_id": "order" }
@@ -557,7 +567,7 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
         ]
       },
       "else": {
-        "@type": "workflow::participant", "id": "backorder", "input": ["order_id"]
+        "@type": "workflow::execute", "participant_id": "backorder", "input": ["order_id"]
       }
     },
 
@@ -565,8 +575,8 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
 
     {
       "@type": "workflow::if",
-      "cond": { "@type": "workflow::condition", "id": "requires-receipt", "input": ["order_id"] },
-      "then": { "@type": "workflow::participant", "id": "email-receipt", "input": ["order_id", "tracking"] }
+      "cond": { "@type": "workflow::execute", "condition_id": "requires-receipt", "input": ["order_id"] },
+      "then": { "@type": "workflow::execute", "participant_id": "email-receipt", "input": ["order_id", "tracking"] }
     }
   ]
 }
@@ -579,7 +589,7 @@ A few things to notice:
   a one-element sequence in disguise.
 - `Spawn` declares a child process; `Join` waits for it. The parent's
   `order_id` lands in the child as `order` through the `vars` mapping.
-- `input`/`output` lists on `ExecuteParticipant` are positional; the order of
+- `input`/`output` lists on `workflow::execute` are positional; the order of
   the names must match the registered participant's `func(ctx, …)` signature.
 - This JSON can be parsed by `wfjson.NewCodec()` and decoded into a
   `workflow.Definition` directly — no per-type registration is needed for the
@@ -598,9 +608,11 @@ A few things to notice:
 - **Forgetting positional `input`/`output`.** Two participant IDs swapped
   silently if their signatures match the wiring. The arity is checked, not the
   semantics.
-- **Putting `ExecuteCondition` inside `Sleep`.** The answer is cached, so the
-  first `false` replays forever. Use a non-`ExecuteCondition` value for
-  `Sleep#While` / `Sleep#Until`.
+- **Editing a template expression mid-flight.** A bound definition is never
+  edited in place. A changed expression reaches a running process only as a
+  new `EventUseDefinition` (`Replace` or a migration tool), which re-roots
+  every path, so the new expression is asked anew against the current
+  variables. Where re-asking is unsafe, keep the old definition bound.
 - **Renaming an `@type` after data has been persisted.** The codec has no
   upgrade path; old events stop decoding. Bump the tag to a new namespaced
   value and migrate via `Replace` or a one-shot rewrite.

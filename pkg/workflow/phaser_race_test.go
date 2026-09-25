@@ -70,7 +70,7 @@ func TestRuntime_phaserLazyInitRace(t *testing.T) {
 
 	// Override c's definition so it executes the blocking participant.
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.ExecuteParticipant{ID: participantID.Get(t)}
+		return workflow.Execute{ParticipantID: participantID.Get(t)}
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -87,7 +87,7 @@ func TestRuntime_phaserLazyInitRace(t *testing.T) {
 		// teardown.Finish(): if phaser.Get(t) has not yet been
 		// called, the phaser.Finish cleanup is not registered.
 		assert.NoError(t, c.Runtime.Get(t).Spawn(t.Context(), pid.Get(t),
-			workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+			workflow.Execute{ParticipantID: participantID.Get(t)}))
 	})
 
 	assert.Within(t, fastFailBudget, func(ctx context.Context) {

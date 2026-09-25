@@ -40,7 +40,7 @@ c := wfjson.NewCodec()
 
 var def workflow.Definition = workflow.Sequence{
 	workflow.SetVar{Name: "name", Value: "World"},
-	workflow.ExecuteParticipant{ID: "greet", Input: []workflow.VarName{"name"}},
+	workflow.Execute{ParticipantID: "greet", Input: []workflow.VarName{"name"}},
 }
 
 data, err := c.Marshal(def)
@@ -66,7 +66,7 @@ instance.
   "@type": "workflow::sequence",
   "@value": [
     { "@type": "workflow::var::set", "name": "name", "value": "World" },
-    { "@type": "workflow::participant", "id": "greet", "input": ["name"] }
+    { "@type": "workflow::execute", "participant_id": "greet", "input": ["name"] }
   ]
 }
 ```
@@ -103,8 +103,9 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.Increment`          | `workflow::op::increment`        |
 | `workflow.Spawn`              | `workflow::spawn`                |
 | `workflow.Join`               | `workflow::join`                 |
-| `workflow.ExecuteParticipant` | `workflow::participant`          |
-| `workflow.ExecuteCondition`   | `workflow::condition`            |
+| `workflow.Execute`            | `workflow::execute`              |
+| `deprecated.ExecuteParticipant` | `workflow::participant` (definitions recorded before `workflow.Execute`) |
+| `deprecated.ExecuteCondition` | `workflow::condition` (definitions recorded before `workflow.Execute`) |
 | `wftemplate.Condition`        | `workflow::template::condition`  |
 | `workflow.EventCompleted`     | `workflow::event::completed`     |
 | `workflow.EventTerminated`    | `workflow::event::terminated`    |
@@ -116,6 +117,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.EventUseDefinition` | `workflow::event::use-definition`|
 | `workflow.EventSpawn`         | `workflow::event::spawn`         |
 | `workflow.EventJoin`          | `workflow::event::join`          |
+| `workflow.EventSleepCompleted` | `workflow::event::sleep::completed` |
 | `workflow.ExecutionRequest`   | `workflow::execution`            |
 | `workflow.ProcessSchedule`    | `workflow::schedule`             |
 | `workflow.ProcessCancel`      | `workflow::cancel`               |

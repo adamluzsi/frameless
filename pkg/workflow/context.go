@@ -76,8 +76,8 @@ var ctxTimeToLiveH contextkit.ValueHandler[ctxKeyTTL, *ctxTTL]
 type ctxKeyTTL struct{}
 
 type ctxTTL struct {
-	// Active counts nested activities. A cached parent skips its follow-up on
-	// replay, so TTL must not interrupt that follow-up before the parent finishes.
+	// Active counts fresh nested activities. Defer budget suspension until the
+	// outermost fresh activity finishes so its nested progress commits together.
 	Active int
 	// StartedAt is when the current definition execution started at.
 	StartedAt time.Time
