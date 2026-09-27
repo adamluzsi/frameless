@@ -172,6 +172,85 @@ operation still needs to tolerate repetition if its own success event cannot
 be committed. Returning a `Sequence` from a participant does **not** provide
 the same independent commit boundaries.
 
+### Best-effort cleanup with `txkit.OnRollback`
+
+Your function runs inside a `txkit` transaction. That transaction is committed
+once the call is recorded in the event history. It is rolled back when the call
+is **not** recorded: the function failed, or its events could not be persisted.
+So a function can register an undo step for what it just did:
+
+```go
+"reserve-seat": func(ctx context.Context, bookingID string) error {
+	if err := seats.Reserve(ctx, bookingID); err != nil {
+		return err
+	}
+	return txkit.OnRollback(ctx, func(ctx context.Context) error {
+		return seats.Release(ctx, bookingID)
+	})
+},
+```
+
+| Outcome                                      | Undo steps run? |
+| -------------------------------------------- | --------------- |
+| the call is recorded                         | No              |
+| the function returns an error                | Yes             |
+| the event history fails to persist the call  | Yes             |
+| the function returns a signal (`Suspend`, …) | No              |
+| the call is replayed from the history        | No (the function isn't called) |
+
+This is a **courtesy, not a guarantee**. It is not a distributed transaction:
+a crash, a failing undo step, or a failure after the commit leaves the effect in
+place. Nested failures also roll back the whole enclosing chain, so the
+enclosing steps' undo steps run too. It narrows the window in which a retried
+call meets its own leftovers. It does **not** replace the rule above:
+**a participant must still be safe to execute repeatedly.**
+
+### Many failable steps: orchestrate, don't bundle
+
+One undo step can't make a multi-step function repeatable. Once a function does
+several things that can each fail, and later ones depend on earlier results,
+split it. Each part becomes a small participant that is repeatable on its own.
+The **identifier that ties them together is issued once and kept in a process
+variable**, so every retry works with the same one:
+
+```go
+// issue-transfer: mints the identifier. It is recorded, so it's minted once.
+"issue-transfer": func(ctx context.Context) (string, error) {
+	return newTransferID(), nil
+},
+// register-transfer: creates it only if it isn't registered yet.
+"register-transfer": func(ctx context.Context, transferID string) error {
+	return ledger.RegisterIfAbsent(ctx, transferID)
+},
+// settle-transfer: idempotent on the transfer ID.
+"settle-transfer": func(ctx context.Context, transferID string) error {
+	return ledger.Settle(ctx, transferID)
+},
+```
+
+A participant can do the orchestration by returning these steps as its
+follow-up (see [§3](#3-returning-more-work)), so callers only need to name one
+step:
+
+```go
+"transfer": func(ctx context.Context) error {
+	return workflow.Sequence{
+		workflow.Execute{Participant: "issue-transfer", Output: []workflow.VarName{"transfer_id"}},
+		workflow.Execute{Participant: "register-transfer", Input: []workflow.VarName{"transfer_id"}},
+		workflow.Execute{Participant: "settle-transfer", Input: []workflow.VarName{"transfer_id"}},
+	}
+},
+```
+
+Mind the commit boundary. A follow-up runs inside its producer's event
+transaction, so if `settle-transfer` fails with an **ordinary error**, the
+recorded `issue-transfer` is rolled back too, and the retry mints a new
+`transfer_id`. The follow-up still works when a step waits with `Suspend`,
+because that commits the work done so far. To keep the identifier across
+ordinary failures, place the steps as top-level `Sequence` steps in the bound
+definition, which gives each its own commit. Either way, every step must
+tolerate running again.
+
 ---
 
 ## 3. Returning more work

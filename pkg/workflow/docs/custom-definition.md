@@ -259,6 +259,11 @@ func (d ChargeOrder) chargeCard(ctx context.Context, pid workflow.ProcessID) err
   place of the step. Replays walk that recorded definition without calling
   your function again, which is how a routing definition extends the tree
   once and keeps that extension stable.
+- **Best-effort cleanup.** The function runs in a `txkit` transaction, so it
+  can register an undo step with `txkit.OnRollback`. That step runs when the
+  call ends up not recorded. It must still be safe to run repeatedly; see
+  [Participants][PARTICIPANT] §2 for the limits and for splitting multi-step
+  work into repeatable steps.
 
 Prefer a registered participant when the capability should be part of the
 vocabulary that end users compose ([Participants][PARTICIPANT] §7).
