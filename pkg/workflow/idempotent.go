@@ -2,12 +2,14 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/txkit"
 )
 
 // idempotentExecutor records each invocation in the process' event history and
@@ -44,7 +46,7 @@ type idempotentExecutor[E Event, ID ~string] struct {
 
 type nonIdempotentFunc func(ctx context.Context, input []any) (output []any, _ error)
 
-func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) {
+func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) (committed bool) {
 	// The commit decision cannot be made on "is rErr nil", because in this
 	// package a non-nil error is not necessarily a failure.
 	//
@@ -68,9 +70,31 @@ func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo Event
 	// preserve prior work unless an independent fatal error is also present.
 	if *rErr != nil && !isRuntimeSignal(*rErr) && (ErrIsFatal(*rErr) || (!isParticipantNotFound(*rErr) && !isParticipantSignatureMismatch(*rErr))) {
 		*rErr = errorkitlite.Merge(*rErr, eventsRepo.RollbackTx(tx))
-		return
+		return false
 	}
 	if err := eventsRepo.CommitTx(tx); err != nil {
+		*rErr = errorkitlite.Merge(*rErr, err)
+		return false
+	}
+	return true
+}
+
+// finishDoTx settles the txkit transaction the non-idempotent function ran in.
+//
+// It is a best-effort compensation, not a distributed transaction:
+// when the event log did not record the call (the function failed, or the
+// events could not be persisted), the rollback steps registered through
+// txkit.OnRollback are run, so the function gets a chance to undo its side
+// effects before it is repeated. Once the call is recorded, it is committed.
+func finishDoTx(rErr *error, doTx context.Context, committed bool) {
+	// doTx derives from the event log's transaction, which is already finished
+	// (and possibly canceled) by now; that must not turn a commit into a rollback.
+	doTx = context.WithoutCancel(doTx)
+	if committed {
+		_ = txkit.Commit(doTx)
+		return
+	}
+	if err := txkit.Rollback(doTx); err != nil && !errors.Is(err, txkit.ErrTxDone) {
 		*rErr = errorkitlite.Merge(*rErr, err)
 	}
 }
@@ -127,9 +151,15 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	// tx is finished instead of ctx on purpose: ctx is reassigned further down
 	// for the output variable transaction, and a closure would capture that
 	// later value rather than this transaction.
-	var ttl *ctxTTL
+	var (
+		ttl  *ctxTTL
+		doTx context.Context
+	)
 	defer func() {
-		ie.commitEventsTx(&rErr, eventsRepo, tx)
+		committed := ie.commitEventsTx(&rErr, eventsRepo, tx)
+		if doTx != nil {
+			finishDoTx(&rErr, doTx, committed)
+		}
 		ttl.Finish(&rErr, tx)
 	}()
 
@@ -221,7 +251,13 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		input[i] = value
 	}
 
-	output, err := ie.Do(ctx, slicekit.Clone(input))
+	doTx, err = txkit.Begin(ctx)
+	if err != nil {
+		doTx = nil
+		return nil, err
+	}
+
+	output, err := ie.Do(doTx, slicekit.Clone(input))
 	if err != nil {
 		if def, ok := err.(Definition); ok {
 			return ie.handleResultDefinition(ctx, eventsRepo, pid, path, input, def)

@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/testcase"
@@ -15,6 +16,21 @@ import (
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
+
+// failingCommitEventRepository simulates an event log which can't persist:
+// once Armed, every commit is rolled back and fails with Err.
+type failingCommitEventRepository struct {
+	*memory.WorkflowEventRepository
+	Err   error
+	Armed *bool
+}
+
+func (r failingCommitEventRepository) CommitTx(ctx context.Context) error {
+	if r.Armed == nil || !*r.Armed {
+		return r.WorkflowEventRepository.CommitTx(ctx)
+	}
+	return errors.Join(r.Err, r.WorkflowEventRepository.RollbackTx(ctx))
+}
 
 func TestExecute(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -791,6 +807,94 @@ func TestExecute(t *testing.T) {
 
 				assert.Equal(t, executions.Get(t), 0)
 				thenNothingIsExecuted(t)
+			})
+		})
+
+		// Best-effort, not a distributed transaction:
+		// the execute function is repeatable, but when its call can't be recorded,
+		// it gets a chance to clean up through txkit.OnRollback.
+		s.When("the execute function registers an undo step with txkit.OnRollback", func(s *testcase.Spec) {
+			var (
+				undos       = let.VarOf(s, 0)
+				registerErr = let.VarOf[error](s, nil)
+			)
+			executeFn.Let(s, func(t *testcase.T) func(context.Context, workflow.ProcessID) error {
+				return func(ctx context.Context, pid workflow.ProcessID) error {
+					executions.Set(t, executions.Get(t)+1)
+					registerErr.Set(t, txkit.OnRollback(ctx, func() {
+						undos.Set(t, undos.Get(t)+1)
+					}))
+					return executeErr.Get(t)
+				}
+			})
+
+			s.Then("the execute function runs within a txkit transaction, and the undo step is not run once the call is recorded", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.NoError(t, registerErr.Get(t))
+				assert.Equal(t, undos.Get(t), 0)
+				assert.Equal(t, len(participantEventsOf(t, c)), 1)
+			})
+
+			s.And("the execute function fails", func(s *testcase.Spec) {
+				executeErr.Let(s, func(t *testcase.T) error { return t.Random.Error() })
+
+				s.Then("the undo step is run, and the failure is propagated", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), executeErr.Get(t))
+
+					assert.Equal(t, undos.Get(t), 1)
+				})
+			})
+
+			s.And("the event log fails to persist the call", func(s *testcase.Spec) {
+				var (
+					commitErr = let.Error(s)
+					armed     = let.Var(s, func(t *testcase.T) *bool { return new(bool) })
+				)
+				c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+					rt := c.Runtime.Super(t)
+					rt.Events = failingCommitEventRepository{
+						WorkflowEventRepository: c.EventRepository.Get(t),
+						Err:                     commitErr.Get(t),
+						Armed:                   armed.Get(t),
+					}
+					return rt
+				})
+				s.Before(func(t *testcase.T) {
+					_ = processID.Get(t) // the process' input is arranged with a working event log
+					*armed.Get(t) = true
+				})
+
+				s.Then("the undo step is run as a best-effort cleanup, and the persistence error is propagated", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), commitErr.Get(t))
+
+					assert.Equal(t, executions.Get(t), 1)
+					assert.Equal(t, undos.Get(t), 1)
+					assert.Empty(t, participantEventsOf(t, c))
+				})
+			})
+
+			s.And("the execute function yields with a runtime signal", func(s *testcase.Spec) {
+				executeErr.LetValue(s, workflow.Suspend{})
+
+				s.Then("the undo step is not run, since a signal is control flow, not a failure", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+					assert.Equal(t, undos.Get(t), 0)
+				})
+			})
+
+			s.And("the call is replayed from the event log", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.Must(t).NoError(act(t))
+				})
+
+				s.Then("the recorded work is kept, and no undo step is run", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executions.Get(t), 1)
+					assert.Equal(t, undos.Get(t), 0)
+				})
 			})
 		})
 
