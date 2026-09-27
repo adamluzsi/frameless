@@ -21,8 +21,8 @@ import (
 func ExampleIf() {
 	var _ workflow.Definition = workflow.If{
 		Cond: wftemplate.Condition(".X == .Y"),
-		Then: workflow.Execute{ParticipantID: "run-on-true"},
-		Else: workflow.Execute{ParticipantID: "run-on-false"},
+		Then: workflow.Execute{Participant: "run-on-true"},
+		Else: workflow.Execute{Participant: "run-on-false"},
 	}
 }
 
@@ -92,7 +92,7 @@ func TestIf(t *testing.T) {
 					})
 				)
 				Then.Let(s, func(t *testcase.T) workflow.Definition {
-					return workflow.Execute{ParticipantID: pid.Get(t)}
+					return workflow.Execute{Participant: pid.Get(t)}
 				})
 
 				s.Then("If/Then is called", func(t *testcase.T) {
@@ -130,7 +130,7 @@ func TestIf(t *testing.T) {
 					})
 				)
 				Else.Let(s, func(t *testcase.T) workflow.Definition {
-					return workflow.Execute{ParticipantID: pid.Get(t)}
+					return workflow.Execute{Participant: pid.Get(t)}
 				})
 
 				s.Then("Else path is executed", func(t *testcase.T) {
@@ -155,8 +155,8 @@ func TestIf(t *testing.T) {
 
 			pdef := workflow.If{
 				Cond: wftemplate.Condition(strconv.FormatBool(t.Random.Bool())),
-				Then: workflow.Execute{ParticipantID: "then"},
-				Else: workflow.Execute{ParticipantID: "else"},
+				Then: workflow.Execute{Participant: "then"},
+				Else: workflow.Execute{Participant: "else"},
 			}
 
 			var count int
@@ -205,9 +205,9 @@ func TestIf(t *testing.T) {
 
 func ExampleSequence() {
 	_ = workflow.Sequence{
-		workflow.Execute{ParticipantID: "foo"},
-		workflow.Execute{ParticipantID: "bar"},
-		workflow.Execute{ParticipantID: "baz"},
+		workflow.Execute{Participant: "foo"},
+		workflow.Execute{Participant: "bar"},
+		workflow.Execute{Participant: "baz"},
 	}
 }
 
@@ -261,7 +261,7 @@ func TestSequence(t *testing.T) {
 
 			sequence.Let(s, func(t *testcase.T) workflow.Sequence {
 				return workflow.Sequence{
-					workflow.Execute{ParticipantID: pid.Get(t)},
+					workflow.Execute{Participant: pid.Get(t)},
 				}
 			})
 
@@ -318,9 +318,9 @@ func TestSequence(t *testing.T) {
 
 			sequence.Let(s, func(t *testcase.T) workflow.Sequence {
 				return workflow.Sequence{
-					&workflow.Execute{ParticipantID: fooPid.Get(t)},
-					&workflow.Execute{ParticipantID: barPid.Get(t)},
-					&workflow.Execute{ParticipantID: bazPid.Get(t)},
+					&workflow.Execute{Participant: fooPid.Get(t)},
+					&workflow.Execute{Participant: barPid.Get(t)},
+					&workflow.Execute{Participant: bazPid.Get(t)},
 				}
 			})
 
@@ -361,7 +361,7 @@ func TestSequence(t *testing.T) {
 
 func ExampleSleep() {
 	_ = workflow.Sleep{
-		While: workflow.Execute{ConditionID: "wait-while-something"},
+		While: workflow.Execute{Condition: "wait-while-something"},
 	}
 }
 
@@ -505,7 +505,7 @@ func TestSleep(t *testing.T) {
 				}}
 			})
 			condition.Let(s, func(t *testcase.T) workflow.Condition {
-				return workflow.Execute{ConditionID: cid.Get(t), Input: []workflow.VarName{"ready"}}
+				return workflow.Execute{Condition: cid.Get(t), Input: []workflow.VarName{"ready"}}
 			})
 
 			s.Then("the registry is asked on every attempt until the Sleep wakes up, and no more after", func(t *testcase.T) {
@@ -643,8 +643,8 @@ func TestSleep(t *testing.T) {
 				*subject.Get(t),
 				// the variable the Sleep waited for changes back before the process suspends
 				workflow.SetVar{Name: "ready", Value: false},
-				workflow.Execute{ParticipantID: "suspend-once"},
-				workflow.Execute{ParticipantID: "after"},
+				workflow.Execute{Participant: "suspend-once"},
+				workflow.Execute{Participant: "after"},
 			}
 			assert.Must(t).NoError(wftest.Runtime.Get(t).Bind(t.Context(), process.Get(t), definition))
 		})

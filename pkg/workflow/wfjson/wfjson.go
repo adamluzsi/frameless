@@ -46,10 +46,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.Increment](&c, "workflow::op::increment", WorkflowIncrement{})
 	jsonkit.CodecRegister[workflow.Spawn](&c, "workflow::spawn", WorkflowSpawn{})
 	jsonkit.CodecRegister[workflow.Execute](&c, "workflow::execute", WorkflowExecute{})
-	// The deprecated definitions keep their wire tags,
-	// so definitions recorded before workflow.Execute still decode and execute.
-	jsonkit.CodecRegister[deprecated.ExecuteParticipant](&c, "workflow::participant", WorkflowExecuteParticipant{})
-	jsonkit.CodecRegister[deprecated.ExecuteCondition](&c, "workflow::condition", WorkflowExecuteCondition{})
+
 	jsonkit.CodecRegister[workflow.Join](&c, "workflow::join", WorkflowJoin{})
 
 	// Events: same treatment — custom codecs own the wire format.
@@ -71,6 +68,10 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow::schedule", WorkflowProcessSchedule{})
 	jsonkit.CodecRegister[workflow.ProcessCancel](&c, "workflow::cancel", WorkflowEventProcessCancel{})
 
+	// Legacy wire tags decode into workflow.Execute, so stored definitions migrate to it on read
+	// and are written back as workflow::execute.
+	jsonkit.CodecRegisterMigration(&c, "workflow::participant", unmarshalLegacyExecuteParticipant)
+	jsonkit.CodecRegisterMigration(&c, "workflow::condition", unmarshalLegacyExecuteCondition)
 	return &c
 }
 
@@ -604,16 +605,16 @@ type WorkflowExecute struct{}
 var _ jsonkit.ITypeCodec[workflow.Execute] = WorkflowExecute{}
 
 type workflowExecuteDTO struct {
-	ParticipantID string   `json:"participant_id,omitempty"`
-	ConditionID   string   `json:"condition_id,omitempty"`
+	ParticipantID string   `json:"participant,omitempty"`
+	ConditionID   string   `json:"condition,omitempty"`
 	Input         []string `json:"input,omitempty"`
 	Output        []string `json:"output,omitempty"`
 }
 
 func (WorkflowExecute) Marshal(c *jsonkit.Codec, v workflow.Execute) ([]byte, error) {
 	return json.Marshal(workflowExecuteDTO{
-		ParticipantID: string(v.ParticipantID),
-		ConditionID:   string(v.ConditionID),
+		ParticipantID: string(v.Participant),
+		ConditionID:   string(v.Condition),
 		Input:         varNamesToStrings(v.Input),
 		Output:        varNamesToStrings(v.Output),
 	})
@@ -624,8 +625,8 @@ func (WorkflowExecute) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Exec
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	p.ParticipantID = workflow.ParticipantID(dto.ParticipantID)
-	p.ConditionID = workflow.ConditionID(dto.ConditionID)
+	p.Participant = workflow.ParticipantID(dto.ParticipantID)
+	p.Condition = workflow.ConditionID(dto.ConditionID)
 	p.Input = varNamesFromStrings(dto.Input)
 	p.Output = varNamesFromStrings(dto.Output)
 	return nil
@@ -713,6 +714,28 @@ func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *depr
 	}
 	p.ID = workflow.ConditionID(dto.ID)
 	p.Input = varNamesFromStrings(dto.Input)
+	return nil
+}
+
+// unmarshalLegacyExecuteParticipant migrates a workflow::participant payload into workflow.Execute.
+// Both record at <path>/participant/<ID>, so recorded history replays unchanged.
+func unmarshalLegacyExecuteParticipant(c *jsonkit.Codec, data []byte, p *workflow.Execute) error {
+	var legacy deprecated.ExecuteParticipant
+	if err := (WorkflowExecuteParticipant{}).Unmarshal(c, data, &legacy); err != nil {
+		return err
+	}
+	*p = workflow.Execute{Participant: legacy.ID, Input: legacy.Input, Output: legacy.Output}
+	return nil
+}
+
+// unmarshalLegacyExecuteCondition migrates a workflow::condition payload into workflow.Execute.
+// In a condition position both record at <path>/<ID>, so recorded history replays unchanged.
+func unmarshalLegacyExecuteCondition(c *jsonkit.Codec, data []byte, p *workflow.Execute) error {
+	var legacy deprecated.ExecuteCondition
+	if err := (WorkflowExecuteCondition{}).Unmarshal(c, data, &legacy); err != nil {
+		return err
+	}
+	*p = workflow.Execute{Condition: legacy.ID, Input: legacy.Input}
 	return nil
 }
 

@@ -32,7 +32,7 @@ func TestExecuteParticipant(t *testing.T) {
 	})
 	// replacement is the workflow.Execute that took over the deprecated definition.
 	replacement := let.Var(s, func(t *testcase.T) workflow.Execute {
-		return workflow.Execute{ParticipantID: pid.Get(t)}
+		return workflow.Execute{Participant: pid.Get(t)}
 	})
 	ctx := let.Var(s, func(t *testcase.T) context.Context {
 		return c.Runtime.Get(t).Context(t.Context())
@@ -120,7 +120,7 @@ func TestExecuteCondition(t *testing.T) {
 	})
 	// replacement is the workflow.Execute that took over the deprecated definition.
 	replacement := let.Var(s, func(t *testcase.T) workflow.Execute {
-		return workflow.Execute{ConditionID: cid.Get(t)}
+		return workflow.Execute{Condition: cid.Get(t)}
 	})
 	ctx := let.Var(s, func(t *testcase.T) context.Context {
 		return c.Runtime.Get(t).Context(t.Context())

@@ -30,9 +30,9 @@ func TestWorkflowExecute(t *testing.T) {
 	s.Describe("#Marshal", func(s *testcase.Spec) {
 		value := let.Var(s, func(t *testcase.T) workflow.Execute {
 			return workflow.Execute{
-				ParticipantID: "p1",
-				Input:         []workflow.VarName{"a", "b"},
-				Output:        []workflow.VarName{"c"},
+				Participant: "p1",
+				Input:       []workflow.VarName{"a", "b"},
+				Output:      []workflow.VarName{"c"},
 			}
 		})
 
@@ -44,21 +44,84 @@ func TestWorkflowExecute(t *testing.T) {
 		s.Then("a step is written with its participant ID under the workflow::execute type tag", func(t *testcase.T) {
 			got, err := act(t)
 			assert.NoError(t, err)
-			assert.Equal(t, got, `{"@type":"workflow::execute","participant_id":"p1","input":["a","b"],"output":["c"]}`)
+			assert.Equal(t, got, `{"@type":"workflow::execute","participant":"p1","input":["a","b"],"output":["c"]}`)
 		})
 
 		s.When("it is a condition", func(s *testcase.Spec) {
 			value.Let(s, func(t *testcase.T) workflow.Execute {
 				return workflow.Execute{
-					ConditionID: "c1",
-					Input:       []workflow.VarName{"a"},
+					Condition: "c1",
+					Input:     []workflow.VarName{"a"},
 				}
 			})
 
 			s.Then("it is written with its condition ID under the same type tag", func(t *testcase.T) {
 				got, err := act(t)
 				assert.NoError(t, err)
-				assert.Equal(t, got, `{"@type":"workflow::execute","condition_id":"c1","input":["a"]}`)
+				assert.Equal(t, got, `{"@type":"workflow::execute","condition":"c1","input":["a"]}`)
+			})
+		})
+	})
+
+	s.Describe("#Unmarshal", func(s *testcase.Spec) {
+		data := let.Var(s, func(t *testcase.T) string {
+			return `{"@type":"workflow::execute","participant":"p1","input":["a","b"],"output":["c"]}`
+		})
+
+		act := func(t *testcase.T) (workflow.Definition, error) {
+			var got workflow.Definition
+			err := codec.Get(t).Unmarshal([]byte(data.Get(t)), &got)
+			return got, err
+		}
+
+		expParticipant := workflow.Execute{
+			Participant: "p1",
+			Input:       []workflow.VarName{"a", "b"},
+			Output:      []workflow.VarName{"c"},
+		}
+
+		s.Then("it is read back as a workflow.Execute", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal[workflow.Definition](t, got, expParticipant)
+		})
+
+		s.When("the data was written with the legacy workflow::participant tag", func(s *testcase.Spec) {
+			data.LetValue(s, `{"@type":"workflow::participant","id":"p1","input":["a","b"],"output":["c"]}`)
+
+			s.Then("it is migrated into a participant workflow.Execute", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[workflow.Definition](t, got, expParticipant)
+			})
+
+			s.Then("writing it again uses the workflow::execute format", func(t *testcase.T) {
+				got, err := act(t)
+				assert.Must(t).NoError(err)
+				out, err := codec.Get(t).Marshal(got)
+				assert.NoError(t, err)
+				assert.Equal(t, string(out), `{"@type":"workflow::execute","participant":"p1","input":["a","b"],"output":["c"]}`)
+			})
+		})
+
+		s.When("legacy tags are nested inside other definitions", func(s *testcase.Spec) {
+			data.LetValue(s, `{"@type":"workflow::sequence","@value":[`+
+				`{"@type":"workflow::participant","id":"p1","input":["a","b"],"output":["c"]},`+
+				`{"@type":"workflow::if","cond":{"@type":"workflow::condition","id":"c1","input":["a"]},"then":{"@type":"workflow::participant","id":"p2"}},`+
+				`{"@type":"workflow::sleep","until":{"@type":"workflow::condition","id":"c2"}}`+
+				`]}`)
+
+			s.Then("every legacy participant and condition is migrated into workflow.Execute", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[workflow.Definition](t, got, workflow.Sequence{
+					expParticipant,
+					workflow.If{
+						Cond: workflow.Execute{Condition: "c1", Input: []workflow.VarName{"a"}},
+						Then: workflow.Execute{Participant: "p2"},
+					},
+					workflow.Sleep{Until: workflow.Execute{Condition: "c2"}},
+				})
 			})
 		})
 	})
@@ -538,7 +601,7 @@ func TestEventParticipant_DefinitionRoundTrip(t *testing.T) {
 		// round-trip is unaffected by JSON's int→float64 quirk.
 		def := workflow.Sequence{
 			workflow.SetVar{Name: "v", Value: "ok"},
-			workflow.Execute{ParticipantID: "echo"},
+			workflow.Execute{Participant: "echo"},
 		}
 
 		event := workflow.EventParticipant{
@@ -694,7 +757,7 @@ func MakeNestedFuzzLeaf(t *testcase.T) workflow.Definition {
 			return workflow.SetVar{Name: workflow.VarName(t.Random.String()), Value: t.Random.String()}
 		},
 		func() workflow.Definition {
-			return workflow.Execute{ParticipantID: workflow.ParticipantID(t.Random.String())}
+			return workflow.Execute{Participant: workflow.ParticipantID(t.Random.String())}
 		},
 	)()
 }

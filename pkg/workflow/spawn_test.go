@@ -50,7 +50,7 @@ func TestSpawn(t *testing.T) {
 		return workflow.Spawn{
 			Name: workflow.SpawnName(t.Random.UUID()),
 			Definition: workflow.Sequence{
-				workflow.Execute{ParticipantID: blockingParticipantID.Get(t)},
+				workflow.Execute{Participant: blockingParticipantID.Get(t)},
 				workflow.SetVar{Name: "sub-wf-key-in-def", Value: expVal1.Get(t)},
 				workflow.SetVar{Name: "sub-wf-key-in-spawn", Value: expVal2.Get(t)},
 			},
@@ -66,7 +66,7 @@ func TestSpawn(t *testing.T) {
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 		if t.Random.Bool() {
 			t.Log("spawn can be used as an participant signal result value too")
-			return workflow.Execute{ParticipantID: spawnerParticipantID.Get(t)}
+			return workflow.Execute{Participant: spawnerParticipantID.Get(t)}
 		}
 		return subject.Get(t)
 	})
@@ -154,7 +154,7 @@ func TestSpawn(t *testing.T) {
 			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
 					c.Definition.Super(t), // og spawn
-					workflow.Execute{ParticipantID: parentPAID.Get(t)},
+					workflow.Execute{Participant: parentPAID.Get(t)},
 				}
 			})
 
@@ -355,9 +355,9 @@ func ExampleJoin() {
 			Definition: workflow.Sequence{
 				workflow.SetVar{Name: "topic", Value: v},
 				workflow.Execute{
-					ParticipantID: "deep-research",
-					Input:         []workflow.VarName{"topic"},
-					Output:        []workflow.VarName{"results"},
+					Participant: "deep-research",
+					Input:       []workflow.VarName{"topic"},
+					Output:      []workflow.VarName{"results"},
 				},
 			},
 		},
@@ -366,9 +366,9 @@ func ExampleJoin() {
 			Definition: workflow.Sequence{
 				workflow.SetVar{Name: "topic", Value: v},
 				workflow.Execute{
-					ParticipantID: "fetch-news",
-					Input:         []workflow.VarName{"topic"},
-					Output:        []workflow.VarName{"output"},
+					Participant: "fetch-news",
+					Input:       []workflow.VarName{"topic"},
+					Output:      []workflow.VarName{"output"},
 				},
 			},
 		},
@@ -426,14 +426,14 @@ func TestJoin(t *testing.T) {
 						Name: "foo",
 						Definition: workflow.Sequence{
 							workflow.SetVar{Name: "from-foo", Value: "foo-value"},
-							workflow.Execute{ParticipantID: fooParticipant.Get(t)},
+							workflow.Execute{Participant: fooParticipant.Get(t)},
 						},
 					},
 					workflow.Spawn{
 						Name: "bar",
 						Definition: workflow.Sequence{
 							workflow.SetVar{Name: "from-bar", Value: "bar-value"},
-							workflow.Execute{ParticipantID: barParticipant.Get(t)},
+							workflow.Execute{Participant: barParticipant.Get(t)},
 						},
 					},
 					subject.Get(t),
@@ -696,7 +696,7 @@ func TestTerminate_cascadeSpawn(t *testing.T) {
 			workflow.Spawn{
 				Name: workflow.SpawnName(t.Random.UUID()),
 				Definition: workflow.Sequence{
-					workflow.Execute{ParticipantID: blockingParticipantID.Get(t)},
+					workflow.Execute{Participant: blockingParticipantID.Get(t)},
 				},
 			},
 			workflow.Join{},

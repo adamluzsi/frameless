@@ -76,10 +76,10 @@ func TestExecute(t *testing.T) {
 	)
 	subject := let.Var(s, func(t *testcase.T) *workflow.Execute {
 		return &workflow.Execute{
-			ParticipantID: participantID.Get(t),
-			ConditionID:   conditionID.Get(t),
-			Input:         input.Get(t),
-			Output:        output.Get(t),
+			Participant: participantID.Get(t),
+			Condition:   conditionID.Get(t),
+			Input:       input.Get(t),
+			Output:      output.Get(t),
 		}
 	})
 
@@ -631,7 +631,7 @@ func TestExecute(t *testing.T) {
 			// recorded is the step as it was executed through the registered participant.
 			recorded := let.Var(s, func(t *testcase.T) workflow.Execute {
 				r := *subject.Get(t)
-				r.ParticipantID = id.Get(t)
+				r.Participant = id.Get(t)
 				return r
 			})
 
@@ -1164,7 +1164,7 @@ func TestExecute(t *testing.T) {
 			// recorded is the condition as it was evaluated through the registered condition.
 			recorded := let.Var(s, func(t *testcase.T) workflow.Execute {
 				r := *subject.Get(t)
-				r.ConditionID = id.Get(t)
+				r.Condition = id.Get(t)
 				return r
 			})
 
@@ -1344,10 +1344,10 @@ func TestExecute(t *testing.T) {
 		})
 		definition := let.Var(s, func(t *testcase.T) workflow.Definition {
 			return workflow.Sequence{
-				workflow.Execute{ParticipantID: pid.Get(t), Input: input.Get(t), Output: []workflow.VarName{outKey.Get(t)}},
-				workflow.Execute{ParticipantID: pid.Get(t), Input: []workflow.VarName{outKey.Get(t)}, Output: []workflow.VarName{out2Key.Get(t)}},
-				workflow.If{Cond: workflow.Execute{ConditionID: cid.Get(t), Input: []workflow.VarName{out2Key.Get(t)}}},
-				workflow.Execute{ParticipantID: flakyID.Get(t)},
+				workflow.Execute{Participant: pid.Get(t), Input: input.Get(t), Output: []workflow.VarName{outKey.Get(t)}},
+				workflow.Execute{Participant: pid.Get(t), Input: []workflow.VarName{outKey.Get(t)}, Output: []workflow.VarName{out2Key.Get(t)}},
+				workflow.If{Cond: workflow.Execute{Condition: cid.Get(t), Input: []workflow.VarName{out2Key.Get(t)}}},
+				workflow.Execute{Participant: flakyID.Get(t)},
 			}
 		})
 
@@ -1420,9 +1420,9 @@ func TestExecute_reflection(t *testing.T) {
 	})
 	subject := let.Var(s, func(t *testcase.T) workflow.Execute {
 		d := workflow.Execute{
-			ParticipantID: participantID.Get(t),
-			ConditionID:   conditionID.Get(t),
-			Output:        output.Get(t),
+			Participant: participantID.Get(t),
+			Condition:   conditionID.Get(t),
+			Output:      output.Get(t),
 		}
 		for i, v := range input.Get(t) {
 			name := workflow.VarName(fmt.Sprintf("input-%d", i))

@@ -76,9 +76,9 @@ func MakeDefinition(tb testing.TB) workflow.Definition {
 	return random.Pick[func() workflow.Definition](tc.Random,
 		func() workflow.Definition {
 			return workflow.Execute{
-				ParticipantID: workflow.ParticipantID(tc.Random.String()),
-				Input:         randomVarNames(tc),
-				Output:        randomVarNames(tc),
+				Participant: workflow.ParticipantID(tc.Random.String()),
+				Input:       randomVarNames(tc),
+				Output:      randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
@@ -173,9 +173,9 @@ func MakeLeafDefinition(tb testing.TB) workflow.Definition {
 	return random.Pick[func() workflow.Definition](tc.Random,
 		func() workflow.Definition {
 			return workflow.Execute{
-				ParticipantID: workflow.ParticipantID(tc.Random.String()),
-				Input:         randomVarNames(tc),
-				Output:        randomVarNames(tc),
+				Participant: workflow.ParticipantID(tc.Random.String()),
+				Input:       randomVarNames(tc),
+				Output:      randomVarNames(tc),
 			}
 		},
 		func() workflow.Definition {
@@ -216,8 +216,8 @@ func MakeCondition(tb testing.TB) workflow.Condition {
 	var tc = testcase.ToT(&tb)
 	if tc.Random.Bool() {
 		return workflow.Execute{
-			ConditionID: workflow.ConditionID(tc.Random.String()),
-			Input:       randomVarNames(tc),
+			Condition: workflow.ConditionID(tc.Random.String()),
+			Input:     randomVarNames(tc),
 		}
 	}
 	return randomTemplateCondition(tc)
@@ -416,17 +416,17 @@ func Codec(codec workflow.Codec) contract.Contract {
 
 	s.Test("Execute with ParticipantID round-trips as a Definition", func(t *testcase.T) {
 		def := workflow.Execute{
-			ParticipantID: workflow.ParticipantID(t.Random.String()),
-			Input:         randomVarNames(t),
-			Output:        randomVarNames(t),
+			Participant: workflow.ParticipantID(t.Random.String()),
+			Input:       randomVarNames(t),
+			Output:      randomVarNames(t),
 		}
 		assertRoundTripDefinition(t, codec, def)
 	})
 
 	s.Test("Execute with ConditionID round-trips as a Condition", func(t *testcase.T) {
 		cond := workflow.Execute{
-			ConditionID: workflow.ConditionID(t.Random.String()),
-			Input:       randomVarNames(t),
+			Condition: workflow.ConditionID(t.Random.String()),
+			Input:     randomVarNames(t),
 		}
 		assertRoundTripCondition(t, codec, cond)
 	})
@@ -548,9 +548,9 @@ func Codec(codec workflow.Codec) contract.Contract {
 				Name: workflow.VarName(t.Random.String()),
 			},
 			workflow.Execute{
-				ParticipantID: workflow.ParticipantID(t.Random.String()),
-				Input:         randomVarNames(t),
-				Output:        randomVarNames(t),
+				Participant: workflow.ParticipantID(t.Random.String()),
+				Input:       randomVarNames(t),
+				Output:      randomVarNames(t),
 			},
 		}
 		def := defs[t.Random.IntN(len(defs))]
@@ -671,14 +671,14 @@ func Codec(codec workflow.Codec) contract.Contract {
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.Execute {
 		if t.Random.Bool() {
 			return workflow.Execute{
-				ParticipantID: workflow.ParticipantID(t.Random.String()),
-				Input:         randomVarNames(t),
-				Output:        randomVarNames(t),
+				Participant: workflow.ParticipantID(t.Random.String()),
+				Input:       randomVarNames(t),
+				Output:      randomVarNames(t),
 			}
 		}
 		return workflow.Execute{
-			ConditionID: workflow.ConditionID(t.Random.String()),
-			Input:       randomVarNames(t),
+			Condition: workflow.ConditionID(t.Random.String()),
+			Input:     randomVarNames(t),
 		}
 	})
 

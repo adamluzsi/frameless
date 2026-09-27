@@ -47,7 +47,6 @@ import (
 	"go.llib.dev/frameless/pkg/uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
-	"go.llib.dev/frameless/pkg/workflow/deprecated"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 )
@@ -123,6 +122,14 @@ func assertMatchesV1Snapshot(t *testcase.T, c workflow.Codec, v any, expected st
 		assert.MessageF("v1 wire format is not idempotent for %T: round-trip drifts", v))
 
 	assertHasTypeEnvelope(t, expected, string(reEmitted))
+}
+
+// assertMigratesFromV1Snapshot asserts that bytes written in a replaced v1 format
+// still decode, through v's interface type, into the current value v.
+func assertMigratesFromV1Snapshot(t *testcase.T, c workflow.Codec, v any, legacy string) {
+	t.Helper()
+	got, _ := roundTripViaInterface(t, c, []byte(legacy), v)
+	assert.Equal(t, v, got, assert.MessageF("v1 bytes no longer migrate into %T:\n%s", v, legacy))
 }
 
 // roundTripViaInterface decodes actual back into v's interface type and
@@ -244,21 +251,25 @@ func TestCompat_v1WireFormat(t *testing.T) {
 	})
 
 	s.Test("If", func(t *testcase.T) {
-		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.If{
-				Cond: deprecated.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
-				Then: workflow.SetVar{Name: "t", Value: "1"},
-				Else: workflow.SetVar{Name: "e", Value: "2"},
-			},
+		v := workflow.If{
+			Cond: workflow.Execute{Condition: "is-x", Input: []workflow.VarName{"a"}},
+			Then: workflow.SetVar{Name: "t", Value: "1"},
+			Else: workflow.SetVar{Name: "e", Value: "2"},
+		}
+		assertMatchesV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::if","cond":{"@type":"workflow::execute","condition":"is-x","input":["a"]},"then":{"@type":"workflow::var::set","name":"t","value":"1"},"else":{"@type":"workflow::var::set","name":"e","value":"2"}}`)
+		assertMigratesFromV1Snapshot(t, codec.Get(t), v,
 			`{"@type":"workflow::if","cond":{"@type":"workflow::condition","id":"is-x","input":["a"]},"then":{"@type":"workflow::var::set","name":"t","value":"1"},"else":{"@type":"workflow::var::set","name":"e","value":"2"}}`)
 	})
 
 	s.Test("Sleep", func(t *testcase.T) {
-		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.Sleep{
-				While: wftemplate.Condition(".x == .y"),
-				Until: deprecated.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
-			},
+		v := workflow.Sleep{
+			While: wftemplate.Condition(".x == .y"),
+			Until: workflow.Execute{Condition: "ok", Input: []workflow.VarName{"a"}},
+		}
+		assertMatchesV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::sleep","while":{"@type":"workflow::template::condition","@value":".x == .y"},"until":{"@type":"workflow::execute","condition":"ok","input":["a"]}}`)
+		assertMigratesFromV1Snapshot(t, codec.Get(t), v,
 			`{"@type":"workflow::sleep","while":{"@type":"workflow::template::condition","@value":".x == .y"},"until":{"@type":"workflow::condition","id":"ok","input":["a"]}}`)
 	})
 
@@ -321,22 +332,28 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			`{"@type":"workflow::spawn","name":"child1","def":{"@type":"workflow::var::set","name":"x","value":"1"},"vars":{"a":"b"}}`)
 	})
 
-	s.Test("ExecuteParticipant", func(t *testcase.T) {
-		assertMatchesV1Snapshot(t, codec.Get(t),
-			deprecated.ExecuteParticipant{
-				ID:     "p1",
-				Input:  []workflow.VarName{"a", "b"},
-				Output: []workflow.VarName{"c"},
-			},
+	// The v1 workflow::participant and workflow::condition tags were replaced by workflow::execute.
+	// Their v1 bytes stay pinned as migration inputs.
+	s.Test("Execute as a participant", func(t *testcase.T) {
+		v := workflow.Execute{
+			Participant: "p1",
+			Input:       []workflow.VarName{"a", "b"},
+			Output:      []workflow.VarName{"c"},
+		}
+		assertMatchesV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::execute","participant":"p1","input":["a","b"],"output":["c"]}`)
+		assertMigratesFromV1Snapshot(t, codec.Get(t), v,
 			`{"@type":"workflow::participant","id":"p1","input":["a","b"],"output":["c"]}`)
 	})
 
-	s.Test("ExecuteCondition", func(t *testcase.T) {
-		assertMatchesV1Snapshot(t, codec.Get(t),
-			deprecated.ExecuteCondition{
-				ID:    "c1",
-				Input: []workflow.VarName{"a"},
-			},
+	s.Test("Execute as a condition", func(t *testcase.T) {
+		v := workflow.Execute{
+			Condition: "c1",
+			Input:     []workflow.VarName{"a"},
+		}
+		assertMatchesV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::execute","condition":"c1","input":["a"]}`)
+		assertMigratesFromV1Snapshot(t, codec.Get(t), v,
 			`{"@type":"workflow::condition","id":"c1","input":["a"]}`)
 	})
 

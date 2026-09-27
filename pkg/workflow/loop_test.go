@@ -24,9 +24,9 @@ func ExampleFor() {
 		// to force the setup to use similar field ordering as the for loop has.
 		workflow.SetVar{Name: "i", Value: 0}, wftemplate.Condition("lt .i 5"), workflow.Increment{Name: "i"},
 		workflow.Sequence{
-			workflow.Execute{ParticipantID: "foo"},
-			workflow.Execute{ParticipantID: "bar"},
-			workflow.Execute{ParticipantID: "baz"},
+			workflow.Execute{Participant: "foo"},
+			workflow.Execute{Participant: "bar"},
+			workflow.Execute{Participant: "baz"},
 		},
 	}
 
@@ -519,7 +519,7 @@ func TestFor(t *testing.T) {
 				},
 				Cond: bounded(t, wftemplate.Condition(fmt.Sprintf("lt .%s %d", counter.Get(t), rounds.Get(t)))),
 				Post: workflow.Increment{Name: counter.Get(t)},
-				Do:   workflow.Execute{ParticipantID: participantID.Get(t)},
+				Do:   workflow.Execute{Participant: participantID.Get(t)},
 			}
 		})
 
@@ -557,7 +557,7 @@ func TestFor(t *testing.T) {
 					},
 					Post: workflow.Increment{Name: counter.Get(t)},
 					Do: workflow.Sequence{
-						workflow.Execute{ParticipantID: participantID.Get(t)},
+						workflow.Execute{Participant: participantID.Get(t)},
 						workflow.If{
 							Cond: wftemplate.Condition(fmt.Sprintf("le %d .%s", rounds.Get(t)-1, counter.Get(t))),
 							Then: workflow.Break{},
@@ -610,10 +610,10 @@ func TestFor(t *testing.T) {
 					},
 					Cond: bounded(t, wftemplate.Condition("not .done")),
 					Do: workflow.Sequence{
-						workflow.Execute{ParticipantID: participantID.Get(t)},
+						workflow.Execute{Participant: participantID.Get(t)},
 						workflow.SetVar{Name: "done", Value: true},
-						workflow.Execute{ParticipantID: "suspend-once"},
-						workflow.Execute{ParticipantID: "after"},
+						workflow.Execute{Participant: "suspend-once"},
+						workflow.Execute{Participant: "after"},
 					},
 				}
 			})
@@ -640,7 +640,7 @@ func ExampleBreak() {
 	// workflow loop which polls until the job is done
 	_ = workflow.For{
 		Do: workflow.Sequence{
-			workflow.Execute{ParticipantID: "poll-job", Output: []workflow.VarName{"done"}},
+			workflow.Execute{Participant: "poll-job", Output: []workflow.VarName{"done"}},
 			workflow.If{
 				Cond: wftemplate.Condition(".done"),
 				Then: workflow.Break{},
@@ -739,8 +739,8 @@ func ExampleForEach() {
 	_ = workflow.ForEach{
 		Over: "orders", V: "order",
 		Do: workflow.Sequence{
-			workflow.Execute{ParticipantID: "charge-order"},
-			workflow.Execute{ParticipantID: "ship-order"},
+			workflow.Execute{Participant: "charge-order"},
+			workflow.Execute{Participant: "ship-order"},
 		},
 	}
 }
@@ -1145,7 +1145,7 @@ func TestForEach(t *testing.T) {
 			)
 
 			do.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.Execute{ParticipantID: participantID.Get(t)}
+				return workflow.Execute{Participant: participantID.Get(t)}
 			})
 
 			s.Then("the participant is called once per element", func(t *testcase.T) {

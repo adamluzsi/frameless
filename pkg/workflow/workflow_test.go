@@ -41,17 +41,17 @@ func Test_e2e(tt *testing.T) {
 
 		var pdef workflow.Definition = &workflow.Sequence{
 			&workflow.Execute{
-				ParticipantID: "foo",
-				Output:        []workflow.VarName{"foo-val"},
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
 			&workflow.Execute{
-				ParticipantID: "bar",
-				Input:         []workflow.VarName{"foo-val"},
-				Output:        []workflow.VarName{"bar-val"},
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
 			&workflow.Execute{
-				ParticipantID: "baz",
-				Input:         []workflow.VarName{"foo-val", "bar-val"},
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
 		}
 
@@ -110,20 +110,20 @@ func Test_e2e(tt *testing.T) {
 
 		var def workflow.Definition = &workflow.Sequence{
 			workflow.Execute{
-				ParticipantID: "foo",
-				Output:        []workflow.VarName{"foo-val"},
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "bar",
-				Input:         []workflow.VarName{"foo-val"},
-				Output:        []workflow.VarName{"bar-val"},
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "baz",
-				Input:         []workflow.VarName{"foo-val", "bar-val"},
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "flaky",
+				Participant: "flaky",
 				//TODO: retry integration maybe?
 			},
 		}
@@ -188,20 +188,20 @@ func Test_e2e(tt *testing.T) {
 
 		var def workflow.Definition = &workflow.Sequence{
 			workflow.Execute{
-				ParticipantID: "foo",
-				Output:        []workflow.VarName{"foo-val"},
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "bar",
-				Input:         []workflow.VarName{"foo-val"},
-				Output:        []workflow.VarName{"bar-val"},
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "baz",
-				Input:         []workflow.VarName{"foo-val", "bar-val"},
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
 			workflow.Execute{
-				ParticipantID: "flaky",
+				Participant: "flaky",
 				//TODO: retry integration maybe?
 			},
 		}
@@ -229,8 +229,8 @@ func Test_e2e(tt *testing.T) {
 func TestContextWithParticipants(t *testing.T) {
 	rt := workflow.Runtime{Events: &memory.WorkflowEventRepository{}}
 
-	execFoo := workflow.Execute{ParticipantID: "foo"}
-	execBar := workflow.Execute{ParticipantID: "bar"}
+	execFoo := workflow.Execute{Participant: "foo"}
+	execBar := workflow.Execute{Participant: "bar"}
 
 	procID, err := workflow.MakeProcessID()
 	assert.NoError(t, err)
@@ -296,9 +296,9 @@ func Test_pauseAndContinue(t *testing.T) {
 
 	def := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.Execute{ParticipantID: "foo"},
-			workflow.Execute{ParticipantID: "bar"},
-			workflow.Execute{ParticipantID: "baz"},
+			workflow.Execute{Participant: "foo"},
+			workflow.Execute{Participant: "bar"},
+			workflow.Execute{Participant: "baz"},
 		}
 	})
 

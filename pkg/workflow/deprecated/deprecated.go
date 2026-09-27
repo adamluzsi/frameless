@@ -37,7 +37,7 @@ func (d ExecuteParticipant) ExecuteWith(ctx context.Context, pid workflow.Proces
 }
 
 func (d ExecuteParticipant) execute() workflow.Execute {
-	return workflow.Execute{ParticipantID: d.ID, Input: d.Input, Output: d.Output}
+	return workflow.Execute{Participant: d.ID, Input: d.Input, Output: d.Output}
 }
 
 // ExecuteCondition asks the condition registered under ID.
@@ -78,5 +78,5 @@ func (d ExecuteCondition) Execute(ctx context.Context, pid workflow.ProcessID) e
 }
 
 func (d ExecuteCondition) execute() workflow.Execute {
-	return workflow.Execute{ConditionID: d.ID, Input: d.Input}
+	return workflow.Execute{Condition: d.ID, Input: d.Input}
 }

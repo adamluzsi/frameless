@@ -127,6 +127,37 @@ func CodecRegister[T any](codec *Codec, id TypeID, tc ITypeCodec[T]) func() {
 	return codec.typeIDRegistry.SetCustomCodec(baseT, entry)
 }
 
+// CodecRegisterMigration migrates data stored under a retired @type into T when it is read.
+// Values tagged with fromID are decoded by migrate, which receives the payload with the @type envelope stripped,
+// and maps the legacy shape onto T.
+// Marshalling keeps emitting T's own type ID, so migrated data is written back in the current format.
+//
+// Unlike the aliases of CodecRegisterTypeID, which are alternative names for the same wire shape,
+// a migration owns its own decoding, so the retired shape may differ from T's.
+//
+// T must be a concrete (non-pointer) type. The returned function removes the migration.
+func CodecRegisterMigration[T any](codec *Codec, fromID TypeID, migrate func(c *Codec, data []byte, p *T) error) func() {
+	if codec == nil {
+		panic("CodecRegisterMigration: codec must not be nil")
+	}
+	if migrate == nil {
+		panic("CodecRegisterMigration: migrate must not be nil")
+	}
+	if codec.typeIDRegistry == nil {
+		codec.typeIDRegistry = &_TypeRegistry{}
+	}
+	rType := reflect.TypeOf((*T)(nil)).Elem()
+	if rType.Kind() == reflect.Pointer {
+		panic("CodecRegisterMigration: T must not be a pointer type")
+	}
+	return codec.typeIDRegistry.SetMigration(fromID, &migrationEntry{
+		Type: rType,
+		Unmarshal: func(c *Codec, data []byte, p any) error {
+			return migrate(c, data, p.(*T))
+		},
+	})
+}
+
 type ITypeCodec[T any] interface {
 	Marshal(c *Codec, v T) ([]byte, error)
 	Unmarshal(c *Codec, data []byte, p *T) error
@@ -930,7 +961,7 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 	}
 	switch rType.Kind() {
 	case reflect.Struct:
-		return copyTypedStructWithReg(inner, rType, target, reg, codec)
+		return copyTypedStructWithReg(inner, rType, target, reg, codec, TypeID(envTypeID))
 	case reflect.Slice, reflect.Array, reflect.Map:
 		return copyTypedContainerWithReg(inner, rType, target, reg, codec)
 	}
@@ -939,18 +970,18 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 
 // copyTypedStruct dispatches a struct polymorphic value through the DTO path.
 func copyTypedStruct(inner []byte, rType reflect.Type, target reflect.Value) error {
-	return copyTypedStructWithReg(inner, rType, target, nil, nil)
+	return copyTypedStructWithReg(inner, rType, target, nil, nil, "")
 }
 
-func copyTypedStructWithReg(inner []byte, rType reflect.Type, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+func copyTypedStructWithReg(inner []byte, rType reflect.Type, target reflect.Value, reg *_TypeRegistry, codec *Codec, envTypeID TypeID) error {
 	value := reflect.New(rType)
 	// If the registered type has a user-supplied Unmarshal closure, prefer
 	// it over the DTO path. The closure expects the inner JSON bytes (with
 	// the @type envelope stripped), and is responsible for populating the
 	// concrete type however the user wired it (often via a DTO shape that
 	// does not match the concrete type's own fields).
-	if entry := reg.LookupCustomCodec(rType); entry != nil {
-		if err := entry.Unmarshal(codec, inner, value.Interface()); err != nil {
+	if decode := reg.lookupDecoder(rType, envTypeID); decode != nil {
+		if err := decode(codec, inner, value.Interface()); err != nil {
 			return err
 		}
 	} else if err := unmarshalStructWithReg(inner, value.Elem(), reg, codec); err != nil {
@@ -1295,14 +1326,16 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 			raw := dto.Bytes()
 			inner := raw
-			if _, stripped, ok := splitTypedEnvelope(raw); ok {
+			var envTypeID TypeID
+			if id, stripped, ok := splitTypedEnvelope(raw); ok {
 				inner = stripped
+				envTypeID = TypeID(id)
 			}
-			entry := reg.LookupCustomCodec(target.Type())
-			if entry == nil {
-				entry = typeIDRegistry.LookupCustomCodec(target.Type())
+			decode := reg.lookupDecoder(target.Type(), envTypeID)
+			if decode == nil {
+				decode = typeIDRegistry.lookupDecoder(target.Type(), envTypeID)
 			}
-			if entry == nil {
+			if decode == nil {
 				return fmt.Errorf("missing custom codec entry for %s during unmarshal", target.Type())
 			}
 			// Allocate a fresh pointer of the field's concrete type so the
@@ -1310,7 +1343,7 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 			// a pointer (e.g. *Foo), reflect.New yields the pointer the user
 			// expects.
 			dest := reflect.New(target.Type())
-			if err := entry.Unmarshal(codec, inner, dest.Interface()); err != nil {
+			if err := decode(codec, inner, dest.Interface()); err != nil {
 				return err
 			}
 			target.Set(dest.Elem())
@@ -1500,13 +1533,16 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 	// fields. Stripping the @type envelope (if present) and handing the
 	// inner JSON to the user's Unmarshal closure is what makes the
 	// round-trip work.
-	if entry := reg.LookupCustomCodec(dst.Type()); entry != nil {
+	if reg.hasDecoder(dst.Type()) {
 		raw := data
-		if _, stripped, ok := splitTypedEnvelope(raw); ok {
+		var envTypeID TypeID
+		if id, stripped, ok := splitTypedEnvelope(raw); ok {
 			raw = stripped
+			envTypeID = TypeID(id)
 		}
+		decode := reg.lookupDecoder(dst.Type(), envTypeID)
 		dest := reflect.New(dst.Type())
-		if err := entry.Unmarshal(codec, raw, dest.Interface()); err != nil {
+		if err := decode(codec, raw, dest.Interface()); err != nil {
 			return err
 		}
 		dst.Set(dest.Elem())

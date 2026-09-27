@@ -157,9 +157,9 @@ func TestEventError_participant(t *testing.T) {
 
 	subject := let.Var(s, func(t *testcase.T) *workflow.Execute {
 		return &workflow.Execute{
-			ParticipantID: pid.Get(t),
-			Input:         input.Get(t),
-			Output:        output.Get(t),
+			Participant: pid.Get(t),
+			Input:       input.Get(t),
+			Output:      output.Get(t),
 		}
 	})
 

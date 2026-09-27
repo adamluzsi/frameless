@@ -48,7 +48,7 @@ func TestRuntime_Execute_participantFollowUpDefinition(t *testing.T) {
 	})
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.Execute{ParticipantID: participantID.Get(t)}
+		return workflow.Execute{Participant: participantID.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
@@ -127,13 +127,13 @@ func TestRuntime_Execute_participantFollowUpDefinition(t *testing.T) {
 							return ready.Get(t), nil
 						},
 					}},
-					workflow.Execute{ParticipantID: requiredID.Get(t)},
+					workflow.Execute{Participant: requiredID.Get(t)},
 				}
 			})
 			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
-					workflow.Execute{ParticipantID: participantID.Get(t)},
-					workflow.Execute{ParticipantID: afterID.Get(t)},
+					workflow.Execute{Participant: participantID.Get(t)},
+					workflow.Execute{Participant: afterID.Get(t)},
 				}
 			})
 
@@ -172,8 +172,8 @@ func TestRuntime_Execute_participantFollowUpDefinition(t *testing.T) {
 				})
 				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 					return workflow.Sequence{
-						workflow.Execute{ParticipantID: producerID.Get(t), Output: []workflow.VarName{outputKey.Get(t)}},
-						workflow.Execute{ParticipantID: afterID.Get(t)},
+						workflow.Execute{Participant: producerID.Get(t), Output: []workflow.VarName{outputKey.Get(t)}},
+						workflow.Execute{Participant: afterID.Get(t)},
 					}
 				})
 
@@ -265,8 +265,8 @@ func TestRuntime_Execute_participantSignatureMismatch(t *testing.T) {
 		value          = let.String(s)
 		followUp       = let.Var(s, func(t *testcase.T) workflow.Definition {
 			return workflow.Sequence{
-				workflow.Execute{ParticipantID: completedID.Get(t), Output: []workflow.VarName{"result"}},
-				workflow.Execute{ParticipantID: requiredID.Get(t), Input: []workflow.VarName{"result"}},
+				workflow.Execute{Participant: completedID.Get(t), Output: []workflow.VarName{"result"}},
+				workflow.Execute{Participant: requiredID.Get(t), Input: []workflow.VarName{"result"}},
 			}
 		})
 	)
@@ -289,7 +289,7 @@ func TestRuntime_Execute_participantSignatureMismatch(t *testing.T) {
 		return rt
 	})
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.Execute{ParticipantID: parentID.Get(t)}
+		return workflow.Execute{Participant: parentID.Get(t)}
 	})
 	s.Before(func(t *testcase.T) {
 		assert.Must(t).NoError(subject.Get(t).Bind(t.Context(), c.ProcessID.Get(t), c.Definition.Get(t)))
@@ -383,13 +383,13 @@ func TestRuntime_Execute_nestedStepSignal(t *testing.T) {
 	_, outerID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 		return func(ctx context.Context) error {
 			return workflow.Sequence{
-				workflow.Execute{ParticipantID: innerID.Get(t)},
+				workflow.Execute{Participant: innerID.Get(t)},
 			}
 		}
 	})
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.Execute{ParticipantID: outerID.Get(t)}
+		return workflow.Execute{Participant: outerID.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
@@ -464,7 +464,7 @@ func TestRuntime_Execute_participantRuntimeSignal(t *testing.T) {
 	})
 
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-		return workflow.Execute{ParticipantID: participantID.Get(t)}
+		return workflow.Execute{Participant: participantID.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {

@@ -756,7 +756,7 @@ func TestVars(t *testing.T) {
 		}
 
 		def := workflow.Sequence{
-			&workflow.Execute{ParticipantID: "set_var"},
+			&workflow.Execute{Participant: "set_var"},
 		}
 
 		r := workflow.Runtime{

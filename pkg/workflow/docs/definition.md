@@ -334,9 +334,10 @@ step, since an answer that is neither stored nor branched on has no effect, and
 `Output` on a condition, since an answer is not stored in variables.
 
 > Definitions recorded with the former `workflow::participant` and
-> `workflow::condition` wire tags still decode, into the adapters in
-> `pkg/workflow/deprecated`, which delegate to `Execute`, so a call or answer
-> recorded by one is replayed by the other at the same position.
+> `workflow::condition` wire tags decode straight into `Execute`, with the
+> recorded ID as its `Participant` or `Condition`. A call or answer recorded
+> before the migration is replayed at the same position, and the definition is
+> written back as `workflow::execute`.
 
 ### Spawn — launch a sub-workflow
 

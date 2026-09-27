@@ -30,7 +30,6 @@ import (
 	"go.llib.dev/frameless/pkg/uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
-	"go.llib.dev/frameless/pkg/workflow/deprecated"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 )
@@ -56,13 +55,13 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"Sequence(empty)", workflow.Sequence{}},
 		{"Sequence(1 elem)", workflow.Sequence{workflow.SetVar{Name: "n", Value: "v"}}},
 		{"If", workflow.If{
-			Cond: deprecated.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
+			Cond: workflow.Execute{Condition: "is-x", Input: []workflow.VarName{"a"}},
 			Then: workflow.SetVar{Name: "t", Value: "1"},
 			Else: workflow.SetVar{Name: "e", Value: "2"},
 		}},
 		{"Sleep", workflow.Sleep{
 			While: wftemplate.Condition(".x == .y"),
-			Until: deprecated.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
+			Until: workflow.Execute{Condition: "ok", Input: []workflow.VarName{"a"}},
 		}},
 		{"For", workflow.For{
 			Init: workflow.SetVar{Name: "i", Value: "0"},
@@ -85,14 +84,14 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Definition: workflow.SetVar{Name: "x", Value: "1"},
 			Vars:       workflow.VarMapping{"a": "b"},
 		}},
-		{"ExecuteParticipant", deprecated.ExecuteParticipant{
-			ID:     "p1",
-			Input:  []workflow.VarName{"a", "b"},
-			Output: []workflow.VarName{"c"},
+		{"Execute as a participant", workflow.Execute{
+			Participant: "p1",
+			Input:       []workflow.VarName{"a", "b"},
+			Output:      []workflow.VarName{"c"},
 		}},
-		{"ExecuteCondition", deprecated.ExecuteCondition{
-			ID:    "c1",
-			Input: []workflow.VarName{"a"},
+		{"Execute as a condition", workflow.Execute{
+			Condition: "c1",
+			Input:     []workflow.VarName{"a"},
 		}},
 		{"Join", workflow.Join{SpawnName: "child1", Collect: workflow.VarMapping{"x": "y"}}},
 		// Conditions

@@ -1267,6 +1267,133 @@ func (TestEntFooTypeCodec) Unmarshal(c *jsonkit.Codec, data []byte, p *testent.F
 	return nil
 }
 
+// TestCodecRegisterMigration covers type migrations.
+// Data written under a retired @type (with a legacy shape) decodes into the current type,
+// while marshalling keeps emitting the current type's own @type.
+func TestCodecRegisterMigration(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type legacyFooDTO struct {
+		LegacyID string `json:"legacy_id"`
+		Name     string `json:"name"`
+	}
+
+	codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister(&c, "foo", TestEntFooTypeCodec{}))
+		t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-foo", func(c *jsonkit.Codec, data []byte, p *testent.Foo) error {
+			var dto legacyFooDTO
+			if err := json.Unmarshal(data, &dto); err != nil {
+				return err
+			}
+			p.ID = testent.FooID(dto.LegacyID)
+			p.Foo = dto.Name
+			return nil
+		}))
+		return &c
+	})
+
+	legacyID := let.Var(s, func(t *testcase.T) string { return t.Random.UUID() })
+	legacyName := let.Var(s, func(t *testcase.T) string { return t.Random.String() })
+	legacyData := let.Var(s, func(t *testcase.T) []byte {
+		data, err := json.Marshal(map[string]string{
+			"@type":     "legacy-foo",
+			"legacy_id": legacyID.Get(t),
+			"name":      legacyName.Get(t),
+		})
+		assert.Must(t).NoError(err)
+		return data
+	})
+	expected := let.Var(s, func(t *testcase.T) testent.Foo {
+		return testent.Foo{ID: testent.FooID(legacyID.Get(t)), Foo: legacyName.Get(t)}
+	})
+
+	s.Describe("#Unmarshal", func(s *testcase.Spec) {
+		type Box struct {
+			Fooer  testent.Fooer
+			Fooers []testent.Fooer
+			Foo    testent.Foo
+		}
+
+		data := let.Var(s, func(t *testcase.T) []byte {
+			l := string(legacyData.Get(t))
+			return []byte(`{"Fooer":` + l + `,"Fooers":[` + l + `],"Foo":` + l + `}`)
+		})
+
+		act := func(t *testcase.T) (Box, error) {
+			var got Box
+			err := codec.Get(t).Unmarshal(data.Get(t), &got)
+			return got, err
+		}
+
+		s.Then("legacy data is migrated into the current type, whatever the destination", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal[testent.Fooer](t, got.Fooer, expected.Get(t))
+			assert.Equal(t, got.Fooers, []testent.Fooer{expected.Get(t)})
+			assert.Equal(t, got.Foo, expected.Get(t))
+		})
+
+		s.When("the data is a top-level legacy value", func(s *testcase.Spec) {
+			data.Let(s, func(t *testcase.T) []byte { return legacyData.Get(t) })
+
+			s.Then("it decodes into a concrete destination", func(t *testcase.T) {
+				var got testent.Foo
+				assert.NoError(t, codec.Get(t).Unmarshal(data.Get(t), &got))
+				assert.Equal(t, got, expected.Get(t))
+			})
+		})
+
+		s.When("the data uses the canonical type ID", func(s *testcase.Spec) {
+			data.Let(s, func(t *testcase.T) []byte {
+				foo, err := codec.Get(t).Marshal(expected.Get(t))
+				assert.Must(t).NoError(err)
+				return []byte(`{"Fooer":` + string(foo) + `,"Fooers":[` + string(foo) + `],"Foo":` + string(foo) + `}`)
+			})
+
+			s.Then("the canonical codec is still used", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[testent.Fooer](t, got.Fooer, expected.Get(t))
+				assert.Equal(t, got.Fooers, []testent.Fooer{expected.Get(t)})
+				assert.Equal(t, got.Foo, expected.Get(t))
+			})
+		})
+	})
+
+	s.Describe("#Marshal", func(s *testcase.Spec) {
+		act := func(t *testcase.T) (string, error) {
+			var got testent.Fooer
+			assert.Must(t).NoError(codec.Get(t).Unmarshal(legacyData.Get(t), &got))
+			data, err := codec.Get(t).Marshal(got)
+			return string(data), err
+		}
+
+		s.Then("a value decoded from legacy data is written under the canonical type ID", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Contains(t, got, `"@type":"foo"`)
+			assert.NotContains(t, got, `legacy-foo`)
+		})
+	})
+
+	s.Test("a migration from an ID that is already a registered type ID is rejected", func(t *testcase.T) {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister(&c, "foo", TestEntFooTypeCodec{}))
+		assert.Panic(t, func() {
+			jsonkit.CodecRegisterMigration(&c, "foo", func(c *jsonkit.Codec, data []byte, p *testent.Foo) error { return nil })
+		})
+	})
+
+	s.Test("the returned function removes the migration", func(t *testcase.T) {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister(&c, "foo", TestEntFooTypeCodec{}))
+		jsonkit.CodecRegisterMigration(&c, "legacy-foo", func(c *jsonkit.Codec, data []byte, p *testent.Foo) error { return nil })()
+		var got testent.Fooer
+		assert.Error(t, c.Unmarshal(legacyData.Get(t), &got))
+	})
+}
+
 func TestCodecRegister(t *testing.T) {
 	s := testcase.NewSpec(t)
 

@@ -57,8 +57,8 @@ func TestIf_replay(t *testing.T) {
 	subject := let.Var(s, func(t *testcase.T) workflow.If {
 		return workflow.If{
 			Cond: condition.Get(t),
-			Then: workflow.Execute{ParticipantID: "then"},
-			Else: workflow.Execute{ParticipantID: "else"},
+			Then: workflow.Execute{Participant: "then"},
+			Else: workflow.Execute{Participant: "else"},
 		}
 	})
 
@@ -154,7 +154,7 @@ func TestIf_replay(t *testing.T) {
 		for _, form := range []string{"value", "pointer"} {
 			s.When("the condition is an Execute with a registered ConditionID as a "+form, func(s *testcase.Spec) {
 				condition.Let(s, func(t *testcase.T) workflow.Condition {
-					registered := workflow.Execute{ConditionID: cid.Get(t), Input: []workflow.VarName{"flag"}}
+					registered := workflow.Execute{Condition: cid.Get(t), Input: []workflow.VarName{"flag"}}
 					if form == "pointer" {
 						return &registered
 					}
@@ -247,7 +247,7 @@ func TestIf_replay(t *testing.T) {
 			definition := workflow.Sequence{
 				workflow.SetVar{Name: "flag", Value: true},
 				branch,
-				workflow.Execute{ParticipantID: "suspend-once"},
+				workflow.Execute{Participant: "suspend-once"},
 			}
 			assert.Must(t).NoError(wftest.Runtime.Get(t).Bind(t.Context(), process.Get(t), definition))
 		})
@@ -268,7 +268,7 @@ func TestIf_replay(t *testing.T) {
 		loop := let.Var(s, func(t *testcase.T) workflow.For {
 			return workflow.For{
 				Init: workflow.SetVar{Name: "i", Value: 0},
-				Cond: workflow.Execute{ConditionID: "continue", Input: []workflow.VarName{"i"}},
+				Cond: workflow.Execute{Condition: "continue", Input: []workflow.VarName{"i"}},
 				Post: workflow.Increment{Name: "i"},
 				Do:   subject.Get(t),
 			}

@@ -66,9 +66,9 @@ func TestRuntime_participantAvailability(t *testing.T) {
 	definition := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
 			workflow.SetVar{Name: "value", Value: value.Get(t)},
-			workflow.Execute{ParticipantID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
-			workflow.Execute{ParticipantID: secondID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
-			workflow.Execute{ParticipantID: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{Participant: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{Participant: secondID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
+			workflow.Execute{Participant: firstID.Get(t), Input: []workflow.VarName{"value"}, Output: []workflow.VarName{"value"}},
 		}
 	})
 	s.Before(func(t *testcase.T) {

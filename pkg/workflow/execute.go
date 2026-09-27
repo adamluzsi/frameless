@@ -27,8 +27,8 @@ import (
 // A step is recorded as an EventParticipant at the participant/<ParticipantID> path,
 // and an answer as an EventCondition at the <ConditionID> path, relative to the current path.
 type Execute struct {
-	ParticipantID ParticipantID
-	ConditionID   ConditionID
+	Participant ParticipantID
+	Condition   ConditionID
 	// Input names the process variables whose values are passed to the participant or condition, in order.
 	Input []VarName
 	// Output names the process variables that store the results of a participant, in order.
@@ -52,7 +52,7 @@ func (d Execute) Execute(ctx context.Context, pid ProcessID) error {
 	if err := d.checkStep(); err != nil {
 		return err
 	}
-	return d.executeStep(ctx, pid, d.ParticipantID, d.callParticipant)
+	return d.executeStep(ctx, pid, d.Participant, d.callParticipant)
 }
 
 // ExecuteWith runs executeFn in place of a registered participant,
@@ -104,7 +104,7 @@ func (d Execute) Evaluate(ctx context.Context, pid ProcessID) (bool, error) {
 	if err := d.checkCondition(); err != nil {
 		return false, err
 	}
-	return d.evaluate(ctx, pid, d.ConditionID, d.callCondition)
+	return d.evaluate(ctx, pid, d.Condition, d.callCondition)
 }
 
 // EvaluateWith answers with evaluateFn in place of a registered condition,
@@ -147,13 +147,13 @@ func (d Execute) EvaluateWith(ctx context.Context, pid ProcessID, id ConditionID
 
 func (d Execute) checkStep() error {
 	switch {
-	case d.ParticipantID != "" && d.ConditionID != "":
+	case d.Participant != "" && d.Condition != "":
 		return d.errBothIDs()
-	case d.ParticipantID != "":
+	case d.Participant != "":
 		return nil
-	case d.ConditionID != "":
+	case d.Condition != "":
 		return ErrInvalidDefinition.F("%s: condition %s answers with a bool, so it can't be executed as a step; use it as a workflow.Condition (e.g. If#Cond), or set ParticipantID instead",
-			d.Error(), d.ConditionID)
+			d.Error(), d.Condition)
 	default:
 		return ErrInvalidDefinition.F("%s: missing ParticipantID", d.Error())
 	}
@@ -161,23 +161,23 @@ func (d Execute) checkStep() error {
 
 func (d Execute) checkCondition() error {
 	switch {
-	case d.ParticipantID != "" && d.ConditionID != "":
+	case d.Participant != "" && d.Condition != "":
 		return d.errBothIDs()
-	case d.ParticipantID != "":
+	case d.Participant != "":
 		return ErrInvalidDefinition.F("%s: participant %s is executed as a step, so it can't answer as a workflow.Condition; set ConditionID instead",
-			d.Error(), d.ParticipantID)
-	case d.ConditionID == "":
+			d.Error(), d.Participant)
+	case d.Condition == "":
 		return ErrInvalidDefinition.F("%s: missing ConditionID", d.Error())
 	case len(d.Output) != 0:
 		return ErrInvalidDefinition.F("%s: condition %s maps %d Output variables, but a condition's answer is not stored in variables",
-			d.Error(), d.ConditionID, len(d.Output))
+			d.Error(), d.Condition, len(d.Output))
 	}
 	return nil
 }
 
 func (d Execute) errBothIDs() error {
 	return ErrInvalidDefinition.F("%s: both ParticipantID (%s) and ConditionID (%s) are set, but only one of them can be executed",
-		d.Error(), d.ParticipantID, d.ConditionID)
+		d.Error(), d.Participant, d.Condition)
 }
 
 // checkWithID validates an Execute for ExecuteWith and EvaluateWith,
@@ -186,9 +186,9 @@ func (d Execute) checkWithID(method, id string) error {
 	if id == "" {
 		return ErrFatal.F("%s: %s is missing the ID that identifies the execution", d.Error(), method)
 	}
-	if d.ParticipantID != "" || d.ConditionID != "" {
+	if d.Participant != "" || d.Condition != "" {
 		return ErrInvalidDefinition.F("%s: %s identifies the execution by its id argument (%s), but ParticipantID (%s) or ConditionID (%s) is set; remove them, or call Execute/Evaluate to use the registered participant or condition",
-			d.Error(), method, id, d.ParticipantID, d.ConditionID)
+			d.Error(), method, id, d.Participant, d.Condition)
 	}
 	return nil
 }
@@ -250,31 +250,31 @@ func (d Execute) executeStep(ctx context.Context, pid ProcessID, id ParticipantI
 func (d Execute) callParticipant(ctx context.Context, input []any) (_output []any, _ error) {
 	pr, ok := ctxParticipantsH.Lookup(ctx)
 	if !ok {
-		return nil, ErrParticipantNotFound{ID: d.ParticipantID}
+		return nil, ErrParticipantNotFound{ID: d.Participant}
 	}
-	participant, found, err := pr.FindByID(ctx, d.ParticipantID)
+	participant, found, err := pr.FindByID(ctx, d.Participant)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, ErrParticipantNotFound{ID: d.ParticipantID}
+		return nil, ErrParticipantNotFound{ID: d.Participant}
 	}
 
 	fn, err := participant.rFunc()
 	if err != nil {
-		return nil, ErrParticipantSignatureMismatch{ID: d.ParticipantID, Cause: err}
+		return nil, ErrParticipantSignatureMismatch{ID: d.Participant, Cause: err}
 	}
 
 	args, err := invocationArgs(fn.Type(), ctx, input)
 	if err != nil {
-		return nil, ErrParticipantSignatureMismatch{ID: d.ParticipantID, Cause: ErrParticipantFuncMappingMismatch.F(
+		return nil, ErrParticipantSignatureMismatch{ID: d.Participant, Cause: ErrParticipantFuncMappingMismatch.F(
 			"%v\nsignature: %s", err, participant.funcSignature())}
 	}
 
 	// rFunc validates the trailing error; it has no output variable mapping.
 	var expectedOutputMappingLen = fn.Type().NumOut() - 1
 	if len(d.Output) != expectedOutputMappingLen {
-		return nil, ErrParticipantSignatureMismatch{ID: d.ParticipantID, Cause: ErrParticipantFuncMappingMismatch.F(
+		return nil, ErrParticipantSignatureMismatch{ID: d.Participant, Cause: ErrParticipantFuncMappingMismatch.F(
 			"output count mismatch: got %d, want %d\nsignature: %s", len(d.Output), expectedOutputMappingLen, participant.funcSignature())}
 	}
 
@@ -351,16 +351,16 @@ func (d Execute) callCondition(ctx context.Context, input []any) ([]any, error) 
 	if !ok {
 		return nil, ErrFatal.F("missing condition mapping from workflow runtime")
 	}
-	condition, found, err := pr.FindByID(ctx, d.ConditionID)
+	condition, found, err := pr.FindByID(ctx, d.Condition)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, ErrConditionNotFound{ID: d.ConditionID}
+		return nil, ErrConditionNotFound{ID: d.Condition}
 	}
 	cw, ok := condition.(*conditionWrapper)
 	if !ok || cw == nil {
-		return nil, ErrInvalidConditionFunc.F("condition %s must be a registered condition function, got %T", d.ConditionID, condition)
+		return nil, ErrInvalidConditionFunc.F("condition %s must be a registered condition function, got %T", d.Condition, condition)
 	}
 	answer, err := cw.evaluate(ctx, input)
 	if err != nil {

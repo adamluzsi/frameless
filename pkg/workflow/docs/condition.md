@@ -120,8 +120,10 @@ branched on, so asking the question would have no effect on the process. Ask it
 where the answer is used, in an `If`, `For` or `Sleep`.
 
 Definitions recorded with the former `workflow::condition` wire tag decode into
-`deprecated.ExecuteCondition`, which still evaluates the condition as a step,
-under a `workflow::condition` path segment, and discards the answer.
+an `Execute` with that `Condition`. In an `If`, `For` or `Sleep` that replays
+unchanged. A former condition recorded as a step, e.g. in a `Sequence`, now
+fails with `ErrInvalidDefinition` too; rewrite such definitions before loading
+them.
 
 ---
 

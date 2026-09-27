@@ -63,7 +63,7 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 					Value: inputVal,
 				},
 				workflow.Execute{
-					ParticipantID: pid.Get(t),
+					Participant: pid.Get(t),
 					Input: []workflow.VarName{
 						workflow.VarName("input"),
 					},
@@ -116,7 +116,7 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 					Value: inputVal,
 				},
 				workflow.Execute{
-					ParticipantID: pid.Get(t),
+					Participant: pid.Get(t),
 					Input: []workflow.VarName{
 						workflow.VarName("input"),
 					},
@@ -190,7 +190,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 		s.When("process's definition succeeds without an issue", func(s *testcase.Spec) {
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
-				return workflow.Execute{ParticipantID: pid.Get(t)}
+				return workflow.Execute{Participant: pid.Get(t)}
 			}))
 
 			s.Then("then upon scheduling, eventually Schedule#Run will process the process task", func(t *testcase.T) {
@@ -252,7 +252,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 		s.When("process is scheduled multiple times", func(s *testcase.Spec) {
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
-				return workflow.Execute{ParticipantID: pid.Get(t)}
+				return workflow.Execute{Participant: pid.Get(t)}
 			}))
 
 			s.Then("scheduling remains idempotent and the participant is called only once", func(t *testcase.T) {
@@ -303,7 +303,7 @@ func TestRuntime_scheduling(t *testing.T) {
 
 			process.Let(s, processWithDefinition(func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
-					workflow.Execute{ParticipantID: pid.Get(t)},
+					workflow.Execute{Participant: pid.Get(t)},
 					workflow.Sleep{While: wftest.Stub{StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
 						return shouldSuspend.Get(t), nil
 					}}},
@@ -459,7 +459,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 		t.Helper()
 		canary := mustProcessID(t)
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), canary,
-			workflow.Execute{ParticipantID: pid.Get(t)}))
+			workflow.Execute{Participant: pid.Get(t)}))
 		assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), canary))
 		c.ProcessCompletionIs(t, canary, true)
 	}
@@ -479,7 +479,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 		time.Sleep(waitTime)
 
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
-			workflow.Execute{ParticipantID: pid.Get(t)}))
+			workflow.Execute{Participant: pid.Get(t)}))
 
 		// Dropping the entry is what keeps the worker alive, and this is its
 		// price: nothing in the queue points at the process anymore, so a late
@@ -503,7 +503,7 @@ func TestRuntime_Run_scheduledWithoutDefinition(t *testing.T) {
 
 		s.Then("binding the definition later still gets the process executed", func(t *testcase.T) {
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), orphan.Get(t),
-				workflow.Execute{ParticipantID: pid.Get(t)}))
+				workflow.Execute{Participant: pid.Get(t)}))
 
 			c.ProcessCompletionIs(t, orphan.Get(t), true)
 		})
@@ -582,7 +582,7 @@ func TestRuntime_Run_numQueueSubscriber(t *testing.T) {
 		for range numScheduledProcess.Get(t) {
 			processID := mustProcessID(t)
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID,
-				workflow.Execute{ParticipantID: pid.Get(t)}))
+				workflow.Execute{Participant: pid.Get(t)}))
 			assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
 		}
 	})
@@ -690,10 +690,10 @@ func TestRuntime_Run_faultyDoesNotStarveHealthy(t *testing.T) {
 	s.Before(func(t *testcase.T) {
 		for _, pid := range faultyProcesses.Get(t) {
 			assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), pid,
-				workflow.Execute{ParticipantID: faultyPID.Get(t)}))
+				workflow.Execute{Participant: faultyPID.Get(t)}))
 		}
 		assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), healthyProcess.Get(t),
-			workflow.Execute{ParticipantID: healthyPID.Get(t)}))
+			workflow.Execute{Participant: healthyPID.Get(t)}))
 	})
 
 	s.Test("a healthy Process reaches completion while faulty Processes are retrying", func(t *testcase.T) {

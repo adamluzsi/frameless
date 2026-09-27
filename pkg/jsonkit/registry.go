@@ -59,6 +59,14 @@ type _TypeRegistry struct {
 	byTypeID    map[TypeID]reflect.Type
 	byAlias     map[TypeID]TypeID
 	customCodec map[reflect.Type]*customCodecEntry
+	// migration holds the retired type IDs registered with CodecRegisterMigration.
+	// They resolve to a type during unmarshal, but never take part in marshal.
+	migration map[TypeID]*migrationEntry
+}
+
+type migrationEntry struct {
+	Type      reflect.Type
+	Unmarshal func(c *Codec, data []byte, p any) error
 }
 
 func (r *_TypeRegistry) Init() {
@@ -73,7 +81,71 @@ func (r *_TypeRegistry) Init() {
 		r.byTypeID = make(map[TypeID]reflect.Type)
 		r.byAlias = make(map[TypeID]TypeID)
 		r.customCodec = make(map[reflect.Type]*customCodecEntry)
+		r.migration = make(map[TypeID]*migrationEntry)
 	})
+}
+
+// SetMigration registers a retired type ID whose data is migrated into entry.Type on unmarshal.
+// It panics if the ID is already in use as a type ID, alias or migration in this registry.
+func (r *_TypeRegistry) SetMigration(id TypeID, entry *migrationEntry) func() {
+	r.Init()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	entry.Type = base(entry.Type)
+	_, isTypeID := r.byTypeID[id]
+	_, isAlias := r.byAlias[id]
+	_, isMigration := r.migration[id]
+	if isTypeID || isAlias || isMigration {
+		panic(fmt.Sprintf("Unable to register %q @type migration for %s, because the @type id is already registered", id, entry.Type.String()))
+	}
+	r.migration[id] = entry
+	addCustomCodecMarker(entry.Type)
+	return func() {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+		delete(r.migration, id)
+	}
+}
+
+// hasDecoder reports whether t has a custom codec or any migration in this registry.
+func (r *_TypeRegistry) hasDecoder(t reflect.Type) bool {
+	if r == nil {
+		return false
+	}
+	r.Init()
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	t = base(t)
+	if r.customCodec[t] != nil {
+		return true
+	}
+	for _, entry := range r.migration {
+		if entry.Type == t {
+			return true
+		}
+	}
+	return false
+}
+
+// lookupDecoder returns the unmarshal closure for a value of type t that arrived under the envTypeID @type.
+// A migration registered for envTypeID and t wins over the type's custom codec.
+// Nil-safe; returns nil when neither is registered.
+func (r *_TypeRegistry) lookupDecoder(t reflect.Type, envTypeID TypeID) func(c *Codec, data []byte, p any) error {
+	if r == nil {
+		return nil
+	}
+	r.Init()
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	if envTypeID != "" {
+		if entry, ok := r.migration[envTypeID]; ok && entry.Type == base(t) {
+			return entry.Unmarshal
+		}
+	}
+	if entry := r.customCodec[base(t)]; entry != nil {
+		return entry.Unmarshal
+	}
+	return nil
 }
 
 // SetCustomCodec stores a per-registry custom Marshal/Unmarshal pair for the
@@ -206,6 +278,10 @@ func (r *_TypeRegistry) TypeByID(id TypeID) (reflect.Type, bool) {
 	}
 	if ogID, knownAlias := r.byAlias[id]; knownAlias {
 		rType, ok = r.byTypeID[ogID]
+		return rType, ok
+	}
+	if entry, knownMigration := r.migration[id]; knownMigration {
+		return entry.Type, true
 	}
 	return rType, ok
 }
