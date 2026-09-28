@@ -97,3 +97,16 @@ func withName[K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pat
 	}
 	return h.ContextWith(ctx, next)
 }
+
+// withPath replaces the chain held under h with the given names, from the root.
+// An empty path clears the chain.
+func withPath[S ~[]string, K ~struct{}](ctx context.Context, h contextkit.ValueHandler[K, pathNode], names S) context.Context {
+	var node *pathNode
+	for _, name := range names {
+		node = &pathNode{Parent: node, Name: name}
+	}
+	if node == nil {
+		return h.ContextWithout(ctx)
+	}
+	return h.ContextWith(ctx, *node)
+}
