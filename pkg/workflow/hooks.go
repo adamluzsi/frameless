@@ -33,7 +33,7 @@ func Defer(ctx context.Context, def Definition) error {
 		return err
 	}
 	if def == nil {
-		return ErrFatal.F("workflow.Hooks#Defer: nil Definition")
+		return ErrFatal.F("workflow.Defer: nil Definition")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -47,7 +47,7 @@ func Defer(ctx context.Context, def Definition) error {
 		scope = CurrentVarScope(ctx)
 	)
 	for _, e := range events {
-		if hook, ok := e.(EventDeferHook); ok &&
+		if hook, ok := e.(EventDefer); ok &&
 			slicekit.Equal(hook.Path, path) &&
 			slicekit.Equal(hook.VarScope, scope) {
 			return nil
@@ -57,7 +57,7 @@ func Defer(ctx context.Context, def Definition) error {
 	if err != nil {
 		return err
 	}
-	var event Event = EventDeferHook{
+	var event Event = EventDefer{
 		EventID:    eventID,
 		ProcessID:  pid,
 		Timestamp:  timeNow(),
@@ -69,12 +69,12 @@ func Defer(ctx context.Context, def Definition) error {
 }
 
 // A hook needs no completion event of its own. It runs as an extension of the
-// normal workflow, on a path unique to the hook (see EventDeferHook#Context), so its
+// normal workflow, on a path unique to the hook (see EventDefer#Context), so its
 // steps are recorded and replayed by the same idempotent execution as any other
 // step: once its last step is on record, a re-run skips through the whole hook.
 //
-// EventDeferHook marks a hook registered to a specific Process.
-type EventDeferHook struct {
+// EventDefer marks a hook registered to a specific Process.
+type EventDefer struct {
 	EventID   EventID `ext:"id"`
 	ProcessID ProcessID
 	Timestamp time.Time
@@ -82,15 +82,15 @@ type EventDeferHook struct {
 	// Path is the registration's location.
 	Path Path
 	// VarScope is the variable scope the registration was made in.
-	// The hook's Definition runs in a scope nested under it (see EventHook#Context).
+	// The hook's Definition runs in a scope nested under it (see EventDeferHook#Context).
 	VarScope   VarScope
 	Definition Definition
 }
 
-func (e EventDeferHook) GetEventID() EventID     { return e.EventID }
-func (e EventDeferHook) GetProcessID() ProcessID { return e.ProcessID }
-func (e EventDeferHook) GetTimestamp() time.Time { return e.Timestamp }
-func (e EventDeferHook) EventType() EventType    { return "workflow::hook" }
+func (e EventDefer) GetEventID() EventID     { return e.EventID }
+func (e EventDefer) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventDefer) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventDefer) EventType() EventType    { return "workflow::defer" }
 
 // Context returns the context in which the hooked Definition is meant to run.
 //
@@ -99,7 +99,7 @@ func (e EventDeferHook) EventType() EventType    { return "workflow::hook" }
 // the Path becomes <hook Path>/<EventID>,
 // and the VarScope becomes <hook VarScope>/<EventID>.
 // Every other value of ctx, such as the runtime, is kept.
-func (e EventDeferHook) Context(ctx context.Context) context.Context {
+func (e EventDefer) Context(ctx context.Context) context.Context {
 	var segment = e.EventID.String()
 	ctx = withPath(ctx, ctxCurrentPath, append(slicekit.Clone(e.Path), segment))
 	return withPath(ctx, ctxVarScope, append(slicekit.Clone(e.VarScope), segment))

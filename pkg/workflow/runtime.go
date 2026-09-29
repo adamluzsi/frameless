@@ -237,7 +237,7 @@ func (rt Runtime) execute(ctx context.Context, pid ProcessID) (rErr error) {
 		return ErrZeroProcessID.F("workflow.Runtime#Execute")
 	}
 
-	ctx = ctxHProcessID.ContextWith(ctx, pid)
+	ctx = internal.ContextProcessID.ContextWith(ctx, pid)
 
 	ctx, acquired, unlock, err := rt.tryLock(ctx, pid)
 	if err != nil {

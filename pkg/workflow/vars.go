@@ -72,7 +72,7 @@ func (e EventDeleteVar) EventType() EventType    { return "workflow::var::delete
 
 // GetVars can be used to retrieve the ProcessVars of the current workflow execution.
 func GetVars(ctx context.Context) (Vars, error) {
-	pid, ok := ctxHProcessID.Lookup(ctx)
+	pid, ok := ProcessIDFromContext(ctx)
 	if !ok {
 		return Vars{}, ErrFatal.F("missing Pid in workflow context")
 	}
