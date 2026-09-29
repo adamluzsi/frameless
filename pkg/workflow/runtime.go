@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/workflow/internal"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/guard"
@@ -386,10 +387,6 @@ func RuntimeFromContext(ctx context.Context) (Runtime, bool) {
 	return ctxHRuntime.Lookup(ctx)
 }
 
-type ctxKeyProcessID struct{}
-
-var ctxHProcessID contextkit.ValueHandler[ctxKeyProcessID, ProcessID]
-
 func ProcessIDFromContext(ctx context.Context) (ProcessID, bool) {
-	return ctxHProcessID.Lookup(ctx)
+	return internal.ContextProcessID.Lookup(ctx)
 }

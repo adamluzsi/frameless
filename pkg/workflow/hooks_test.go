@@ -30,13 +30,13 @@ func TestHooks(t *testing.T) {
 		})
 	)
 
-	hooksOf := func(t *testcase.T, pid workflow.ProcessID) []workflow.EventHook {
+	hooksOf := func(t *testcase.T, pid workflow.ProcessID) []workflow.EventDeferHook {
 		t.Helper()
 		events, err := iterkit.CollectE(eventRepository.Get(t).FindByProcessID(t.Context(), pid))
 		assert.Must(t).NoError(err)
-		var hooks []workflow.EventHook
+		var hooks []workflow.EventDeferHook
 		for _, e := range events {
-			if h, ok := e.(workflow.EventHook); ok {
+			if h, ok := e.(workflow.EventDeferHook); ok {
 				hooks = append(hooks, h)
 			}
 		}
@@ -46,6 +46,7 @@ func TestHooks(t *testing.T) {
 	s.Describe("#Defer", func(s *testcase.Spec) {
 		var (
 			ctx = let.Var(s, func(t *testcase.T) context.Context {
+				workflow.ProcessIDFromContext()
 				c := workflow.WithName(t.Context(), t.Random.UUID())
 				return workflow.WithVarScope(c, t.Random.UUID())
 			})
@@ -156,10 +157,10 @@ func TestHooks(t *testing.T) {
 			declaredScope = let.Var(s, func(t *testcase.T) workflow.VarScope {
 				return workflow.VarScope{t.Random.UUID(), t.Random.UUID()}
 			})
-			hook = let.Var(s, func(t *testcase.T) workflow.EventHook {
+			hook = let.Var(s, func(t *testcase.T) workflow.EventDeferHook {
 				id, err := workflow.MakeEventID()
 				assert.Must(t).NoError(err)
-				return workflow.EventHook{
+				return workflow.EventDeferHook{
 					EventID:   id,
 					ProcessID: processID.Get(t),
 					Path:      declaredPath.Get(t),
@@ -193,7 +194,7 @@ func TestHooks(t *testing.T) {
 		})
 
 		s.When("multiple hooks are declared at the same location", func(s *testcase.Spec) {
-			othHook := let.Var(s, func(t *testcase.T) workflow.EventHook {
+			othHook := let.Var(s, func(t *testcase.T) workflow.EventDeferHook {
 				id, err := workflow.MakeEventID()
 				assert.Must(t).NoError(err)
 				h := hook.Get(t)
