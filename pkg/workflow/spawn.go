@@ -251,9 +251,10 @@ func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
 // ---
 
 type Join struct {
-	// Spawn [optional]
+	// Spawn [optional] will configure Join to Join a specific Spawn back by its name.
 	Spawn SpawnName
 	// Collect [optional] will collect the results from the child process variables
+	//
 	// Mapping happens from child VariableKey -> parent VariableKey (From -> To)
 	//
 	// - If it is nil, it means collect all

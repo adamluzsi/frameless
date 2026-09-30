@@ -41,7 +41,9 @@ type EventUseDefinition struct {
 
 // VarMapping is a mapping between a parent and child process variables.
 //
-// It goes [FROM] parent [TO] child.
+// Depending on the context of its usage , the direction of data flow is [FROM] -> [TO].
+// In case of Spawn [FROM] parent -> [TO] child.
+// In case of Join [FROM] child -> [TO] parent
 type VarMapping map[parentVarKey]childVarKey
 
 type parentVarKey = VarName

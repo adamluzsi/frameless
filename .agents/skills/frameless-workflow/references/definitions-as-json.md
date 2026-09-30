@@ -336,7 +336,7 @@ its path under the fixed ID `workflow::template::condition`. See
     "@type": "workflow::execute",
     "participant": "ship",
     "input": ["order"]
-  },
+  }, 
   "vars": { "order_id": "order" }
 }
 ```

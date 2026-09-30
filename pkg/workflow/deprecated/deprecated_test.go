@@ -187,13 +187,13 @@ func TestExecuteCondition(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), c.ProcessID.Get(t))
 		}
 
-		s.Then("the condition is asked as a step, and its answer is recorded under a workflow::condition path segment", func(t *testcase.T) {
+		s.Then("the condition is asked as a step, and its answer is recorded under a condition path segment, as released versions did", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			assert.Equal(t, calls.Get(t), 1)
 			events := conditionEvents(t, c)
 			assert.Must(t).Equal(len(events), 1)
-			assert.Equal(t, events[0].Path, workflow.Path{"workflow::condition", string(cid.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{"condition", string(cid.Get(t))})
 		})
 
 		s.Then("a later execution at the same position replays the answer", func(t *testcase.T) {
