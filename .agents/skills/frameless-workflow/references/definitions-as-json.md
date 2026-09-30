@@ -323,6 +323,24 @@ which child variables to fold back into the parent; it is declared and
 serialised today, but **`Join#Execute` does not yet copy anything back** — see
 [Definitions][DEFINITION] §6 for the current workaround.
 
+### `workflow.Defer`
+
+**Tag:** `workflow::defer`
+**Inner:** `{def?}`
+
+```json
+{
+  "@type": "workflow::defer",
+  "def": { "@type": "workflow::execute", "participant": "release-unpaid-seat", "input": ["booking_id"] }
+}
+```
+
+`def` is the nested definition that runs when the process ends (completes or
+is terminated), last-in, first-out, before the outcome is recorded. It is
+omitted when nil, and a `Defer` without `def` registers nothing. Place it in a
+`Sequence` **ahead of** the step it cleans up after, so its registration is
+committed even if that step's events fail to persist.
+
 ---
 
 ## 3. Composing the inner values

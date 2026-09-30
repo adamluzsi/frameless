@@ -332,6 +332,18 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			`{"@type":"workflow::spawn","name":"child1","def":{"@type":"workflow::var::set","name":"x","value":"1"},"vars":{"a":"b"}}`)
 	})
 
+	s.Test("Defer", func(t *testcase.T) {
+		assertMatchesV1Snapshot(t, codec.Get(t),
+			workflow.Defer{Definition: workflow.SetVar{Name: "x", Value: "1"}},
+			`{"@type":"workflow::defer","def":{"@type":"workflow::var::set","name":"x","value":"1"}}`)
+	})
+
+	s.Test("Defer without a definition", func(t *testcase.T) {
+		assertMatchesV1Snapshot(t, codec.Get(t),
+			workflow.Defer{},
+			`{"@type":"workflow::defer"}`)
+	})
+
 	// The v1 workflow::participant and workflow::condition tags were replaced by workflow::execute.
 	// Their v1 bytes stay pinned as migration inputs.
 	s.Test("Execute as a participant", func(t *testcase.T) {

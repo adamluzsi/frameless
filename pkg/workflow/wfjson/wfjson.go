@@ -45,6 +45,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.DeleteVar](&c, "workflow::var::delete", WorkflowDeleteVar{})
 	jsonkit.CodecRegister[workflow.Increment](&c, "workflow::op::increment", WorkflowIncrement{})
 	jsonkit.CodecRegister[workflow.Spawn](&c, "workflow::spawn", WorkflowSpawn{})
+	jsonkit.CodecRegister[workflow.Defer](&c, "workflow::defer", WorkflowDefer{})
 	jsonkit.CodecRegister[workflow.Execute](&c, "workflow::execute", WorkflowExecute{})
 
 	jsonkit.CodecRegister[workflow.Join](&c, "workflow::join", WorkflowJoin{})
@@ -594,6 +595,46 @@ func (WorkflowSpawn) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Spawn)
 	p.Name = workflow.SpawnName(dto.Name)
 	p.Definition = def
 	p.Vars = dto.Vars
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Defer
+
+type WorkflowDefer struct{}
+
+var _ jsonkit.ITypeCodec[workflow.Defer] = WorkflowDefer{}
+
+type workflowDeferDTO struct {
+	Definition json.RawMessage `json:"def,omitempty"`
+}
+
+func (WorkflowDefer) Marshal(c *jsonkit.Codec, v workflow.Defer) ([]byte, error) {
+	var dto workflowDeferDTO
+	if v.Definition != nil {
+		b, err := c.Marshal(v.Definition)
+		if err != nil {
+			return nil, err
+		}
+		dto.Definition = b
+	}
+	return json.Marshal(dto)
+}
+
+func (WorkflowDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Defer) error {
+	var dto workflowDeferDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.Definition = nil
+	if len(dto.Definition) > 0 && string(dto.Definition) != "null" {
+		var def workflow.Definition
+		if err := c.Unmarshal(dto.Definition, &def); err != nil {
+			return err
+		}
+		p.Definition = def
+	}
 	return nil
 }
 

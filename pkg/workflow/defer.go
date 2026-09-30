@@ -4,12 +4,11 @@ import (
 	"context"
 	"time"
 
-	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow/internal"
 )
 
-// Defer registers def to run when the Process ends, much like Go's defer does for a function.
+// Defer is a step that registers its Definition to run when the Process ends, much like Go's defer does for a function.
 //
 // The deferred Definitions run when the Process completes, whether it reaches the end of its Definition or a step raises Complete,
 // and when it is terminated, whether a step raises Terminate or Runtime#Terminate is called.
@@ -18,6 +17,20 @@ import (
 // A Definition deferred while the deferred Definitions are running
 // runs right after the one which registered it, like a nested defer in Go.
 // A Process that suspends or halts hasn't ended, so its deferred Definitions wait.
+//
+// Defer is a step of its own, and it records its registration on its own, apart from the steps that follow it.
+// Place it ahead of the step whose effect it cleans up after,
+// so the cleanup is on record even if that step's events fail to persist after its effect already took place:
+//
+//	workflow.Sequence{
+//		workflow.Defer{Definition: workflow.Execute{Participant: "release-seat"}},
+//		workflow.Execute{Participant: "reserve-seat"},
+//	}
+//
+// The deferred Definition runs at every ending of the Process,
+// so it has to tolerate that the effect it cleans up after never happened, or was already undone.
+// A participant may also return a Defer as its follow-up Definition;
+// that registration is recorded together with the participant's call, and it is lost along with it.
 //
 // A deferred Definition runs like any other part of the workflow, with no completion event of its own.
 // Its steps are recorded and replayed idempotently, so the Definition should be made of idempotent steps.
@@ -28,46 +41,54 @@ import (
 // while other signals, like Suspend, stop the unwinding just like an error does.
 //
 // Defer is not a rollback hook: a deferred Definition needs a working EventRepository to run.
-// To undo a participant's effect when its call fails to be recorded, use txkit.OnRollback.
+// To undo a participant's effect right when its call fails to be recorded, use txkit.OnRollback.
 //
-// The hooked Definition shares the location of its declaration.
-// Both the Path and the VarScope of the context Defer was called with
-// are extended with a segment of the hook's own, named after its EventID.
-// Hooks registered at foo/bar/baz therefore run at foo/bar/baz/<hook event id>,
-// and likewise in the <declaration scope>/<hook event id> variable scope.
-// So hooks declared at the same place never collide on their idempotent steps
-// or on their local variables, while they still see every variable visible to their declaration.
+// The hooked Definition shares the location of the Defer step.
+// The registration is made at the step's own path, under a "workflow::defer" segment,
+// and in the variable scope the step runs in.
+// Both are extended with a segment of the hook's own, named after its EventID,
+// so a Defer at foo/bar/baz runs its Definition at foo/bar/baz/workflow::defer/<hook event id>,
+// and in the <step scope>/<hook event id> variable scope.
+// So hooks never collide on their idempotent steps or on their local variables,
+// while they still see every variable visible to the Defer step.
 //
-// A registration is identified by the Path and VarScope of the context it is made in,
+// A registration is identified by its Path and VarScope,
 // so replaying the same step doesn't register the hook twice,
 // while the same step re-entered under a new variable scope (e.g. a loop iteration) registers its own.
-func Defer(ctx context.Context, def Definition) error {
-	pid, ok := ProcessIDFromContext(ctx)
-	if !ok {
-		return ErrFatal.F("missing Pid in workflow context")
-	}
+// A Defer without a Definition has nothing to defer, so it registers nothing.
+type Defer struct {
+	Definition Definition
+}
+
+var _ Definition = Defer{}
+
+func (d Defer) Error() string { return "workflow::defer" }
+
+func (d Defer) Execute(ctx context.Context, pid ProcessID) error {
+	ctx = WithName(ctx, "defer")
 	repo, err := LookupEventsRepository(ctx)
 	if err != nil {
 		return err
 	}
-	if def == nil {
-		return ErrFatal.F("workflow.Defer: nil Definition")
+	if d.Definition == nil {
+		return nil // no definition, nothing to defer
 	}
 	if err := ctx.Err(); err != nil {
-		return err
-	}
-	events, err := iterkit.CollectE(repo.FindByProcessID(ctx, pid))
-	if err != nil {
 		return err
 	}
 	var (
 		path  = CurrentPath(ctx)
 		scope = CurrentVarScope(ctx)
 	)
-	for _, e := range events {
-		if hook, ok := e.(EventDefer); ok &&
-			slicekit.Equal(hook.Path, path) &&
-			slicekit.Equal(hook.VarScope, scope) {
+	for event, err := range repo.FindByProcessID(ctx, pid) {
+		if err != nil {
+			return err
+		}
+		ed, ok := event.(EventDefer)
+		if !ok {
+			continue
+		}
+		if slicekit.Equal(ed.Path, path) && slicekit.Equal(ed.VarScope, scope) {
 			return nil
 		}
 	}
@@ -81,7 +102,7 @@ func Defer(ctx context.Context, def Definition) error {
 		Timestamp:  timeNow(),
 		Path:       path,
 		VarScope:   scope,
-		Definition: def,
+		Definition: d.Definition,
 	}
 	return repo.Create(ctx, &event)
 }

@@ -62,6 +62,7 @@ It is an ordinary Go value that the runtime may walk repeatedly, reusing durable
 | Variables | `SetVar`, `DeclareVar`, `DeleteVar`, `Increment` |
 | Application capabilities | `Execute` (a step with `ParticipantID`, a condition with `ConditionID`) |
 | Child processes | `Spawn`, `Join` |
+| Process lifecycle | `Defer` (runs a definition when the process ends, LIFO; place it ahead of the step it cleans up after) |
 
 A normal composition wires variable names to capability inputs and results:
 

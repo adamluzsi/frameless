@@ -23,153 +23,136 @@ func TestDefer(t *testing.T) {
 		processID = let.Var(s, func(t *testcase.T) workflow.ProcessID {
 			return mustProcessID(t)
 		})
-		// workflowContext is the context a participant or a definition receives
-		// during the execution of the process: it carries the runtime and the process id.
-		workflowContext = func(t *testcase.T, ctx context.Context) context.Context {
-			ctx = workflow.Runtime{Events: eventRepository.Get(t)}.Context(ctx)
-			return wftest.ContextWithProcessID(t, ctx, processID.Get(t))
-		}
-		ctx = let.Var(s, func(t *testcase.T) context.Context {
-			c := workflowContext(t, t.Context())
-			c = workflow.WithName(c, t.Random.UUID())
-			return workflow.WithVarScope(c, t.Random.UUID())
-		})
 		def = let.Var(s, func(t *testcase.T) workflow.Definition {
 			return workflow.Execute{Participant: workflow.ParticipantID(t.Random.UUID())}
 		})
+		subject = let.Var(s, func(t *testcase.T) workflow.Defer {
+			return workflow.Defer{Definition: def.Get(t)}
+		})
 	)
-	act := func(t *testcase.T) error {
-		return workflow.Defer(ctx.Get(t), def.Get(t))
-	}
 
-	hooksOf := func(t *testcase.T, pid workflow.ProcessID) []workflow.EventDefer {
-		t.Helper()
-		return deferHooksOf(t, eventRepository.Get(t), pid)
-	}
+	s.Describe("#Execute", func(s *testcase.Spec) {
+		var (
+			// stepContext makes the context a step receives during the execution of the process.
+			stepContext = func(t *testcase.T) context.Context {
+				return workflow.Runtime{Events: eventRepository.Get(t)}.Context(t.Context())
+			}
+			ctx = let.Var(s, func(t *testcase.T) context.Context {
+				c := workflow.WithName(stepContext(t), t.Random.UUID())
+				return workflow.WithVarScope(c, t.Random.UUID())
+			})
+		)
+		act := func(t *testcase.T) error {
+			return subject.Get(t).Execute(ctx.Get(t), processID.Get(t))
+		}
 
-	s.Then("the hook is registered in the process's event log", func(t *testcase.T) {
-		assert.NoError(t, act(t))
+		hooksOf := func(t *testcase.T, pid workflow.ProcessID) []workflow.EventDefer {
+			t.Helper()
+			return deferHooksOf(t, eventRepository.Get(t), pid)
+		}
 
-		hooks := hooksOf(t, processID.Get(t))
-		assert.Equal(t, len(hooks), 1)
-		hook := hooks[0]
-		assert.NotEmpty(t, hook.EventID)
-		assert.Equal(t, hook.ProcessID, processID.Get(t))
-		assert.NotEmpty(t, hook.Timestamp)
-		assert.Equal(t, hook.Definition, def.Get(t))
-	})
-
-	s.Then("the hook records where it was registered", func(t *testcase.T) {
-		assert.NoError(t, act(t))
-
-		hooks := hooksOf(t, processID.Get(t))
-		assert.Equal(t, len(hooks), 1)
-		assert.Equal(t, hooks[0].Path, workflow.CurrentPath(ctx.Get(t)))
-		assert.Equal(t, hooks[0].VarScope, workflow.CurrentVarScope(ctx.Get(t)))
-	})
-
-	s.Then("the hook is not registered to other processes", func(t *testcase.T) {
-		assert.NoError(t, act(t))
-
-		assert.Empty(t, hooksOf(t, mustProcessID(t)))
-	})
-
-	s.Then("repeating the registration at the same step is idempotent, so a replay doesn't register it twice", func(t *testcase.T) {
-		assert.NoError(t, act(t))
-		assert.NoError(t, act(t))
-
-		assert.Equal(t, len(hooksOf(t, processID.Get(t))), 1)
-	})
-
-	s.When("a hook is already registered at another step", func(s *testcase.Spec) {
-		othDef := let.Var(s, func(t *testcase.T) workflow.Definition {
-			return workflow.Execute{Participant: workflow.ParticipantID(t.Random.UUID())}
-		})
-		s.Before(func(t *testcase.T) {
-			othCtx := workflow.WithName(workflowContext(t, t.Context()), t.Random.UUID())
-			assert.Must(t).NoError(workflow.Defer(othCtx, othDef.Get(t)))
-		})
-
-		s.Then("both hooks are kept, in the order of their registration", func(t *testcase.T) {
+		s.Then("the definition is registered as a deferred hook in the process's event log", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			hooks := hooksOf(t, processID.Get(t))
-			assert.Equal(t, len(hooks), 2)
-			assert.Equal(t, hooks[0].Definition, othDef.Get(t))
-			assert.Equal(t, hooks[1].Definition, def.Get(t))
-		})
-	})
-
-	s.When("the same step is re-entered under a different variable scope, like a loop iteration", func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			sibling := workflow.WithVarScope(ctx.Get(t), t.Random.UUID())
-			assert.Must(t).NoError(workflow.Defer(sibling, def.Get(t)))
+			assert.Equal(t, len(hooks), 1)
+			hook := hooks[0]
+			assert.NotEmpty(t, hook.EventID)
+			assert.Equal(t, hook.ProcessID, processID.Get(t))
+			assert.NotEmpty(t, hook.Timestamp)
+			assert.Equal(t, hook.Definition, def.Get(t))
 		})
 
-		s.Then("each scope registers its own hook", func(t *testcase.T) {
+		s.Then("the hook records the location of the Defer step: its own path segment, and the variable scope it runs in", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
-			assert.Equal(t, len(hooksOf(t, processID.Get(t))), 2)
-		})
-	})
-
-	s.When("the definition is nil", func(s *testcase.Spec) {
-		def.LetValue(s, nil)
-
-		s.Then("it fails with a fatal error, as there is nothing to defer", func(t *testcase.T) {
-			assert.ErrorIs(t, act(t), workflow.ErrFatal)
-
-			assert.Empty(t, hooksOf(t, processID.Get(t)))
-		})
-	})
-
-	s.When("the context is canceled", func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) context.Context {
-			c, cancel := context.WithCancel(ctx.Super(t))
-			cancel()
-			return c
+			hooks := hooksOf(t, processID.Get(t))
+			assert.Equal(t, len(hooks), 1)
+			expPath := append(workflow.Path{}, workflow.CurrentPath(ctx.Get(t))...)
+			expPath = append(expPath, "defer")
+			assert.Equal(t, hooks[0].Path, expPath)
+			assert.Equal(t, hooks[0].VarScope, workflow.CurrentVarScope(ctx.Get(t)))
 		})
 
-		s.Then("it returns the context error and registers nothing", func(t *testcase.T) {
-			assert.ErrorIs(t, act(t), context.Canceled)
+		s.Then("the hook is not registered to other processes", func(t *testcase.T) {
+			assert.NoError(t, act(t))
 
-			assert.Empty(t, hooksOf(t, processID.Get(t)))
-		})
-	})
-
-	s.When("the context is not a workflow execution context", func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) context.Context {
-			return workflow.WithName(t.Context(), t.Random.UUID())
+			assert.Empty(t, hooksOf(t, mustProcessID(t)))
 		})
 
-		s.Then("it fails, as there is no process to register the hook to", func(t *testcase.T) {
-			assert.Error(t, act(t))
+		s.Then("repeating the step is idempotent, so a replay doesn't register the hook twice", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.NoError(t, act(t))
 
-			assert.Empty(t, hooksOf(t, processID.Get(t)))
-		})
-	})
-
-	s.When("the context has no process id", func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) context.Context {
-			return workflow.Runtime{Events: eventRepository.Get(t)}.Context(t.Context())
+			assert.Equal(t, len(hooksOf(t, processID.Get(t))), 1)
 		})
 
-		s.Then("it fails with a fatal error", func(t *testcase.T) {
-			assert.ErrorIs(t, act(t), workflow.ErrFatal)
+		s.When("a hook is already registered by another step", func(s *testcase.Spec) {
+			othDef := let.Var(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Execute{Participant: workflow.ParticipantID(t.Random.UUID())}
+			})
+			s.Before(func(t *testcase.T) {
+				othCtx := workflow.WithName(stepContext(t), t.Random.UUID())
+				assert.Must(t).NoError(workflow.Defer{Definition: othDef.Get(t)}.Execute(othCtx, processID.Get(t)))
+			})
 
-			assert.Empty(t, hooksOf(t, processID.Get(t)))
+			s.Then("both hooks are kept, in the order of their registration", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				hooks := hooksOf(t, processID.Get(t))
+				assert.Equal(t, len(hooks), 2)
+				assert.Equal(t, hooks[0].Definition, othDef.Get(t))
+				assert.Equal(t, hooks[1].Definition, def.Get(t))
+			})
 		})
-	})
 
-	s.When("the context has no runtime", func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) context.Context {
-			return wftest.ContextWithProcessID(t, t.Context(), processID.Get(t))
+		s.When("the same step is re-entered under a different variable scope, like a loop iteration", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				sibling := workflow.WithVarScope(ctx.Get(t), t.Random.UUID())
+				assert.Must(t).NoError(subject.Get(t).Execute(sibling, processID.Get(t)))
+			})
+
+			s.Then("each scope registers its own hook", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, len(hooksOf(t, processID.Get(t))), 2)
+			})
 		})
 
-		s.Then("it fails with the missing runtime error", func(t *testcase.T) {
-			assert.ErrorIs(t, act(t), workflow.ErrNoContextRuntime)
+		s.When("the definition is nil", func(s *testcase.Spec) {
+			def.LetValue(s, nil)
 
-			assert.Empty(t, hooksOf(t, processID.Get(t)))
+			s.Then("there is nothing to defer, so nothing is registered", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Empty(t, hooksOf(t, processID.Get(t)))
+			})
+		})
+
+		s.When("the context is canceled", func(s *testcase.Spec) {
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				c, cancel := context.WithCancel(ctx.Super(t))
+				cancel()
+				return c
+			})
+
+			s.Then("it returns the context error and registers nothing", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), context.Canceled)
+
+				assert.Empty(t, hooksOf(t, processID.Get(t)))
+			})
+		})
+
+		s.When("the context has no runtime", func(s *testcase.Spec) {
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				return workflow.WithName(t.Context(), t.Random.UUID())
+			})
+
+			s.Then("it fails with the missing runtime error, as there is no event log to register the hook to", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.ErrNoContextRuntime)
+
+				assert.Empty(t, hooksOf(t, processID.Get(t)))
+			})
 		})
 	})
 
@@ -243,16 +226,6 @@ func TestDefer(t *testing.T) {
 			// ending is what the last step of the process returns.
 			ending = let.VarOf[error](s, nil)
 		)
-		_, deferFirst := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
-			return func(ctx context.Context) error {
-				return workflow.Defer(ctx, firstDeferred.Get(t))
-			}
-		})
-		_, deferSecond := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
-			return func(ctx context.Context) error {
-				return workflow.Defer(ctx, secondDeferred.Get(t))
-			}
-		})
 		_, last := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
 			return func(ctx context.Context) error {
 				return ending.Get(t)
@@ -260,8 +233,8 @@ func TestDefer(t *testing.T) {
 		})
 		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 			return workflow.Sequence{
-				workflow.Execute{Participant: deferFirst.Get(t)},
-				workflow.Execute{Participant: deferSecond.Get(t)},
+				workflow.Defer{Definition: firstDeferred.Get(t)},
+				workflow.Defer{Definition: secondDeferred.Get(t)},
 				workflow.Execute{Participant: last.Get(t)},
 			}
 		})
@@ -339,14 +312,34 @@ func TestDefer(t *testing.T) {
 				})
 			})
 
+			s.When("a participant defers a cleanup by returning a Defer as its follow-up", func(s *testcase.Spec) {
+				_, reserve := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+					return func(ctx context.Context) error {
+						return workflow.Defer{Definition: firstDeferred.Get(t)}
+					}
+				})
+				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.Execute{Participant: reserve.Get(t)},
+						workflow.Defer{Definition: secondDeferred.Get(t)},
+						workflow.Execute{Participant: last.Get(t)},
+					}
+				})
+
+				s.Then("the cleanup is registered along with the participant's call, and unwinds with the rest, in LIFO order", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+				})
+			})
+
 			s.When("a deferred definition registers a deferred definition of its own", func(s *testcase.Spec) {
 				secondDeferred.Let(s, func(t *testcase.T) workflow.Definition {
-					return wftest.Stub{StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
-						if err := record(t, ctx, "second"); err != nil {
-							return err
-						}
-						return workflow.Defer(ctx, deferred(t, "third"))
-					}}
+					return workflow.Sequence{
+						deferred(t, "second"),
+						workflow.Defer{Definition: deferred(t, "third")},
+					}
 				})
 
 				s.Then("it runs right after the one that registered it, like a nested defer in Go", func(t *testcase.T) {
@@ -492,6 +485,79 @@ func TestDefer(t *testing.T) {
 				})
 			})
 		})
+
+		s.Context("a Defer placed ahead of a step whose events then fail to persist", func(s *testcase.Spec) {
+			var (
+				commitErr = let.Error(s)
+				// outage makes every commit of the event log fail while it is set.
+				outage = let.Var(s, func(t *testcase.T) *bool { return new(bool) })
+				// outages is how many more times the event log goes down right after the reservation.
+				outages = let.VarOf(s, 1)
+			)
+			c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+				rt := c.Runtime.Super(t)
+				rt.Events = failingCommitEventRepository{
+					WorkflowEventRepository: c.EventRepository.Get(t),
+					Err:                     commitErr.Get(t),
+					Armed:                   outage.Get(t),
+				}
+				return rt
+			})
+			// reserve takes effect, but the event log goes down right after,
+			// so the call itself is never recorded.
+			_, reserve := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					if err := record(t, ctx, "reserve"); err != nil {
+						return err
+					}
+					if 0 < outages.Get(t) {
+						outages.Set(t, outages.Get(t)-1)
+						*outage.Get(t) = true
+					}
+					return nil
+				}
+			})
+			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.Defer{Definition: firstDeferred.Get(t)},
+					workflow.Execute{Participant: reserve.Get(t)},
+				}
+			})
+			s.Before(func(t *testcase.T) {
+				assert.Must(t).ErrorIs(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)), commitErr.Get(t))
+				assert.Must(t).Equal(len(deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t))), 1,
+					assert.MessageF("the Defer step is expected to record its hook on its own, apart from the failed step"))
+				*outage.Get(t) = false // the event log recovers
+			})
+
+			s.Describe("Runtime#Terminate", func(s *testcase.Spec) {
+				act := func(t *testcase.T) error {
+					return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
+				}
+
+				s.Then("the cleanup still runs, even though the step it cleans up after was never recorded", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"reserve", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+					assert.True(t, isTerminated(t))
+				})
+			})
+
+			s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+				act := func(t *testcase.T) error {
+					return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+				}
+
+				s.Then("the unrecorded step is retried, and the cleanup runs once the process completes", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"reserve", "reserve", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+			})
+		})
 	})
 }
 
@@ -589,23 +655,22 @@ func TestEventDefer(t *testing.T) {
 			})
 		})
 
-		s.Test("a hook registered through workflow.Defer runs where it was declared", func(t *testcase.T) {
+		s.Test("a hook registered by a workflow.Defer step runs within the location of that step", func(t *testcase.T) {
 			declCtx := workflow.Runtime{Events: eventRepository.Get(t)}.Context(t.Context())
-			declCtx = wftest.ContextWithProcessID(t, declCtx, processID.Get(t))
 			for _, name := range declaredPath.Get(t) {
 				declCtx = workflow.WithName(declCtx, name)
 			}
 			for _, name := range declaredScope.Get(t) {
 				declCtx = workflow.WithVarScope(declCtx, name)
 			}
-			assert.NoError(t, workflow.Defer(declCtx, workflow.Sequence{}))
+			assert.NoError(t, workflow.Defer{Definition: workflow.Sequence{}}.Execute(declCtx, processID.Get(t)))
 
 			hooks := deferHooksOf(t, eventRepository.Get(t), processID.Get(t))
 			assert.Equal(t, len(hooks), 1)
 			runCtx := hooks[0].Context(t.Context())
 
 			exp := append(workflow.Path{}, declaredPath.Get(t)...)
-			exp = append(exp, hooks[0].EventID.String())
+			exp = append(exp, "defer", hooks[0].EventID.String())
 			assert.Equal(t, workflow.CurrentPath(runCtx), exp)
 
 			expScope := append(workflow.VarScope{}, declaredScope.Get(t)...)

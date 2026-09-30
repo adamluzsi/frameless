@@ -254,20 +254,33 @@ tolerate running again.
 ### Process-level cleanup with `workflow.Defer`
 
 `txkit.OnRollback` undoes one call. `workflow.Defer` covers the whole process.
-It works like Go's `defer`: a participant registers a definition, and that
+It works like Go's `defer`: a `Defer` step registers a definition, and that
 definition runs when the process ends.
 
 ```go
-"reserve-seat": func(ctx context.Context, bookingID string) error {
-	if err := seats.Reserve(ctx, bookingID); err != nil {
-		return err
-	}
-	return workflow.Defer(ctx, workflow.Execute{
+workflow.Sequence{
+	workflow.Defer{Definition: workflow.Execute{
 		Participant: "release-unpaid-seat",
 		Input:       []workflow.VarName{"booking_id"},
-	})
-},
+	}},
+	workflow.Execute{Participant: "reserve-seat", Input: []workflow.VarName{"booking_id"}},
+	workflow.Execute{Participant: "take-payment", Input: []workflow.VarName{"booking_id"}},
+}
 ```
+
+**Place the `Defer` ahead of the step it cleans up after.** `Defer` is a step
+of its own, so its registration is committed on its own. If `reserve-seat`
+reserves the seat but its call then fails to be recorded, the cleanup is
+already on record. It still runs when the process is later completed or
+terminated. The cost is that the cleanup runs at every ending, including when
+the effect never happened. So write it to check what is there to undo, as
+`release-unpaid-seat` does, and to tolerate finding nothing.
+
+A participant can also defer by returning a `Defer` as its follow-up (see
+[§3](#3-returning-more-work)). That registration is recorded together with the
+participant's call, so if the call fails to be recorded, the registration is
+lost with it. Use this form only for cleanups that are fine to lose along with
+the call.
 
 - **When they run.** Deferred definitions run when the process completes,
   whether it reached the end of its definition or raised `Complete`. They also
@@ -278,10 +291,11 @@ definition runs when the process ends.
 - **Order.** They run last-in, first-out. A definition deferred from inside a
   deferred definition runs right after the one that registered it, like a
   nested `defer` in Go.
-- **Location.** A deferred definition runs at the path and variable scope where
-  it was registered, under a segment named after its registration event:
-  `foo/bar/baz` becomes `foo/bar/baz/<event id>`. It sees the variables visible
-  at registration, and the variables it sets stay local to it.
+- **Location.** A deferred definition runs at the location of its `Defer` step,
+  under a segment named after its registration event. A `Defer` at
+  `foo/bar/baz` runs its definition at `foo/bar/baz/workflow::defer/<event id>`.
+  It sees the variables visible to the `Defer` step, and the variables it sets
+  stay local to it.
 - **Registration is idempotent.** A step that is replayed doesn't register its
   definition twice. A step that runs again under a new variable scope, such as
   a loop iteration, registers its own.
@@ -295,8 +309,10 @@ definition runs when the process ends.
   the unwinding the same way an error does, and a later attempt resumes it.
 
 `Defer` is **not** a rollback hook. A deferred definition needs a working event
-history to run, so it can't react to the event history failing. For that case,
-use `txkit.OnRollback`, as shown above.
+history to run, so it runs only once the event history works again. To undo an
+effect right when its call fails to be recorded, use `txkit.OnRollback`, as
+shown above. The two combine well: `txkit.OnRollback` gives a fast undo, and a
+`Defer` placed ahead of the step catches whatever that undo couldn't reach.
 
 ---
 

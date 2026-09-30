@@ -103,6 +103,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.Increment`          | `workflow::op::increment`        |
 | `workflow.Spawn`              | `workflow::spawn`                |
 | `workflow.Join`               | `workflow::join`                 |
+| `workflow.Defer`              | `workflow::defer`                |
 | `workflow.Execute`            | `workflow::execute`; also decodes the former `workflow::participant` and `workflow::condition` tags |
 | `wftemplate.Condition`        | `workflow::template::condition`  |
 | `workflow.EventCompleted`     | `workflow::event::completed`     |
@@ -116,6 +117,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.EventSpawn`         | `workflow::event::spawn`         |
 | `workflow.EventJoin`          | `workflow::event::join`          |
 | `workflow.EventSleepCompleted` | `workflow::event::sleep::completed` |
+| `workflow.EventDefer`         | `workflow::event::defer`         |
 | `workflow.ExecutionRequest`   | `workflow::execution`            |
 | `workflow.ProcessSchedule`    | `workflow::schedule`             |
 | `workflow.ProcessCancel`      | `workflow::cancel`               |

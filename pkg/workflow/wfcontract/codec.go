@@ -148,6 +148,9 @@ func MakeDefinition(tb testing.TB) workflow.Definition {
 				Collect:   makeVarMapping(tc),
 			}
 		},
+		func() workflow.Definition {
+			return workflow.Defer{Definition: MakeLeafDefinition(tc)}
+		},
 	)()
 }
 
@@ -552,6 +555,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 				Input:       randomVarNames(t),
 				Output:      randomVarNames(t),
 			},
+			workflow.Defer{Definition: MakeDefinition(t)},
 		}
 		def := defs[t.Random.IntN(len(defs))]
 		assertRoundTripDefinition(t, codec, def)
@@ -690,6 +694,15 @@ func Codec(codec workflow.Codec) contract.Contract {
 				func() workflow.Definition { return MakeDefinition(t) },
 			)(),
 			Vars: makeVarMapping(t),
+		}
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.Defer {
+		return workflow.Defer{
+			Definition: random.Pick(t.Random,
+				func() workflow.Definition { return nil },
+				func() workflow.Definition { return MakeDefinition(t) },
+			)(),
 		}
 	})
 

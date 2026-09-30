@@ -210,6 +210,7 @@ call and replayed from there, so the tree grows by appending, not by editing.
 | `workflow.Execute`            | Calls a registered Go function: a participant as a step (`ParticipantID`), or a condition (`ConditionID`). Implements *both* interfaces. |
 | `workflow.Spawn`              | Launches a sub-workflow as an independent process.                       |
 | `workflow.Join`               | Waits for one, or all, spawned children to complete.                     |
+| `workflow.Defer`              | Registers a definition to run when the process ends, like Go's `defer`.  |
 
 ### Sequence — run steps in order
 
@@ -381,6 +382,29 @@ An unknown `SpawnName` is an error, not a silent pass.
 > serialised, but `Join#Execute` does not copy anything — child variables do
 > not reach the parent today. Have the child write to a shared store, or read
 > the child's variables yourself via its `EventSpawn#ChildID`.
+
+### Defer — clean up when the process ends
+
+```go
+workflow.Sequence{
+	workflow.Defer{Definition: workflow.Execute{Participant: "release-unpaid-seat",
+		Input: []workflow.VarName{"booking_id"}}},
+	workflow.Execute{Participant: "reserve-seat",
+		Input: []workflow.VarName{"booking_id"}},
+}
+```
+
+`Defer` records an `EventDefer`, and the process runs the deferred definition
+when it ends, whether it completes or is terminated. Deferred definitions run
+last-in, first-out, before the outcome is recorded. A process that only
+suspends hasn't ended, so they wait.
+
+Put the `Defer` **ahead of** the step it cleans up after. It commits its
+registration on its own, so the cleanup stays on record even if that step's
+effect took place but its events failed to persist. The cleanup then runs at
+every ending, so it must tolerate having nothing to undo. A nil `Definition`
+registers nothing. The details, including where the deferred definition runs
+and how failures resume, are in [Participants][PARTICIPANT].
 
 ---
 

@@ -84,6 +84,8 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Definition: workflow.SetVar{Name: "x", Value: "1"},
 			Vars:       workflow.VarMapping{"a": "b"},
 		}},
+		{"Defer", workflow.Defer{Definition: workflow.SetVar{Name: "x", Value: "1"}}},
+		{"Defer without a definition", workflow.Defer{}},
 		{"Execute as a participant", workflow.Execute{
 			Participant: "p1",
 			Input:       []workflow.VarName{"a", "b"},
