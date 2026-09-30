@@ -89,38 +89,38 @@ wire format can evolve without touching the domain types.
 
 Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 
-| Go type                       | `@type`                          |
-| ----------------------------- | -------------------------------- |
-| `workflow.Sequence`           | `workflow::sequence`             |
-| `workflow.If`                 | `workflow::if`                   |
-| `workflow.Sleep`              | `workflow::sleep`                |
-| `workflow.For`                | `workflow::for`                  |
-| `workflow.ForEach`            | `workflow::foreach`              |
-| `workflow.Break`              | `workflow::break`                |
-| `workflow.SetVar`             | `workflow::var::set`             |
-| `workflow.DeclareVar`         | `workflow::var::declare`         |
-| `workflow.DeleteVar`          | `workflow::var::delete`          |
-| `workflow.Increment`          | `workflow::op::increment`        |
-| `workflow.Spawn`              | `workflow::spawn`                |
-| `workflow.Join`               | `workflow::join`; also reads the former `spawn_name` key as `spawn` |
-| `workflow.Defer`              | `workflow::defer`                |
-| `workflow.Execute`            | `workflow::execute`; also decodes the former `workflow::participant` and `workflow::condition` tags |
-| `wftemplate.Condition`        | `workflow::template::condition`  |
-| `workflow.EventCompleted`     | `workflow::event::completed`     |
-| `workflow.EventTerminated`    | `workflow::event::terminated`    |
-| `workflow.EventDeclareVar`    | `workflow::event::var::declare`  |
-| `workflow.EventSetVar`        | `workflow::event::var::set`      |
-| `workflow.EventDeleteVar`     | `workflow::event::var::delete`   |
-| `workflow.EventParticipant`   | `workflow::event::participant`   |
-| `workflow.EventCondition`     | `workflow::event::condition`     |
-| `workflow.EventUseDefinition` | `workflow::event::use-definition`|
-| `workflow.EventSpawn`         | `workflow::event::spawn`         |
-| `workflow.EventJoin`          | `workflow::event::join`          |
-| `workflow.EventSleepCompleted` | `workflow::event::sleep::completed` |
-| `workflow.EventDefer`         | `workflow::event::defer`         |
-| `workflow.ExecutionRequest`   | `workflow::execution`            |
-| `workflow.ProcessSchedule`    | `workflow::schedule`             |
-| `workflow.ProcessCancel`      | `workflow::cancel`               |
+| Go type                        | `@type`                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `workflow.Sequence`            | `workflow::sequence`                                                                                |
+| `workflow.If`                  | `workflow::if`                                                                                      |
+| `workflow.Sleep`               | `workflow::sleep`                                                                                   |
+| `workflow.For`                 | `workflow::for`                                                                                     |
+| `workflow.ForEach`             | `workflow::foreach`                                                                                 |
+| `workflow.Break`               | `workflow::break`                                                                                   |
+| `workflow.SetVar`              | `workflow::var::set`                                                                                |
+| `workflow.DeclareVar`          | `workflow::var::declare`                                                                            |
+| `workflow.DeleteVar`           | `workflow::var::delete`                                                                             |
+| `workflow.Increment`           | `workflow::op::increment`                                                                           |
+| `workflow.Spawn`               | `workflow::spawn`                                                                                   |
+| `workflow.Join`                | `workflow::join`                                                                                    |
+| `workflow.Defer`               | `workflow::defer`                                                                                   |
+| `workflow.Execute`             | `workflow::execute`; also decodes the former `workflow::participant` and `workflow::condition` tags |
+| `wftemplate.Condition`         | `workflow::template::condition`                                                                     |
+| `workflow.EventCompleted`      | `workflow::event::completed`                                                                        |
+| `workflow.EventTerminated`     | `workflow::event::terminated`                                                                       |
+| `workflow.EventDeclareVar`     | `workflow::event::var::declare`                                                                     |
+| `workflow.EventSetVar`         | `workflow::event::var::set`                                                                         |
+| `workflow.EventDeleteVar`      | `workflow::event::var::delete`                                                                      |
+| `workflow.EventParticipant`    | `workflow::event::participant`                                                                      |
+| `workflow.EventCondition`      | `workflow::event::condition`                                                                        |
+| `workflow.EventUseDefinition`  | `workflow::event::use-definition`                                                                   |
+| `workflow.EventSpawn`          | `workflow::event::spawn`                                                                            |
+| `workflow.EventJoin`           | `workflow::event::join`                                                                             |
+| `workflow.EventSleepCompleted` | `workflow::event::sleep::completed`                                                                 |
+| `workflow.EventDefer`          | `workflow::event::defer`                                                                            |
+| `workflow.ExecutionRequest`    | `workflow::execution`                                                                               |
+| `workflow.ProcessSchedule`     | `workflow::schedule`                                                                                |
+| `workflow.ProcessCancel`       | `workflow::cancel`                                                                                  |
 
 > Tags are part of your persisted data, so they are far harder to change than a
 > Go identifier. Pick namespaced tags (`myapp::send-invoice`) for your own
@@ -298,10 +298,10 @@ Failures are reproducible: fix `TESTCASE_SEED` and rerun.
 
 `wfjson.NewCodec()` produces a wire format that is persisted to a database,
 and stored event logs and definitions outlive any one version of the code. We
-*try* to keep that format stable across releases, but **we do not promise
+_try_ to keep that format stable across releases, but **we do not promise
 it**: the JSON shape may change as the package evolves, and any byte you store
 today should be treated as readable only by the codec that wrote it. The
-section is here because we want the intent to be visible — *we are trying*
+section is here because we want the intent to be visible — _we are trying_
 — and because accidental drift (a field rename, an `@type` discriminator
 typo, a struct reorder that shifts the JSON keys) is the shape of breakage we
 most want to avoid.
@@ -347,15 +347,15 @@ the change with a note that calls out the format change.
   `id` without thinking breaks the build before the change merges. That is
   the test's job.
 
-- **It is *not* a backwards-compatibility contract.** A deliberate change
+- **It is _not_ a backwards-compatibility contract.** A deliberate change
   to the wire format is allowed: update the snapshot, ship the change. If
   you store events with one version of the codec and read them back with
   another, both versions must include the same `wfjson` package version.
-  There is no on-disk version stamp in the envelope; *that* is the contract.
+  There is no on-disk version stamp in the envelope; _that_ is the contract.
 
 - **If your data needs to outlive `wfjson`, pin it yourself.** Snapshot a
   representative payload of each type your system actually uses into a
-  contract test in your own repository, and treat *that* as the contract for
+  contract test in your own repository, and treat _that_ as the contract for
   your data. The `wfjson` snapshots are a backstop against careless
   refactors, not a publication of a stable schema.
 
@@ -363,12 +363,12 @@ the change with a note that calls out the format change.
 
 ## 10. Where to go next
 
-| Your question                            | Read                      |
-| ---------------------------------------- | ------------------------- |
-| "What can I actually compose?"           | [Definitions][DEFINITION] |
-| "How do I test my adapter and my codec?" | [Testing][TESTING]        |
-| "Why must definitions be data at all?"   | [End Users][END_USER]     |
-| "What is that word again?"               | [Glossary][GLOSSARY]      |
+| Your question                            | Read                            |
+| ---------------------------------------- | ------------------------------- |
+| "What can I actually compose?"           | [Definitions][DEFINITION]       |
+| "How do I test my adapter and my codec?" | [Testing][TESTING]              |
+| "Why must definitions be data at all?"   | [End Users][END_USER]           |
+| "What is that word again?"               | [Glossary][GLOSSARY]            |
 | "I want to author a definition as JSON." | [Definitions as JSON][JSON_REF] |
 
 [DEFINITION]: ./definition.md

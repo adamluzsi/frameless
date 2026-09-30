@@ -31,9 +31,9 @@ specifically to **write or edit JSON that decodes into a `workflow.Definition`**
 
 Two shapes exist, picked automatically by the codec:
 
-| Encoded value is… | Shape                               | Example               |
-| ----------------- | ----------------------------------- | --------------------- |
-| a JSON object     | `@type` inlined as an extra field   | `SetVar`, `If`, `Sleep`, `Spawn` |
+| Encoded value is… | Shape                               | Example                                                  |
+| ----------------- | ----------------------------------- | -------------------------------------------------------- |
+| a JSON object     | `@type` inlined as an extra field   | `SetVar`, `If`, `Sleep`, `Spawn`                         |
 | anything else     | `{"@type": …, "@value": …}` wrapper | `Sequence` (an array), `wftemplate.Condition` (a string) |
 
 You should not hand-write the envelope — write the inner value, then let the
@@ -97,8 +97,17 @@ and a worked example.
 {
   "@type": "workflow::sequence",
   "@value": [
-    { "@type": "workflow::var::set", "name": "topic", "value": "go.llib.dev/frameless" },
-    { "@type": "workflow::execute", "participant": "summarise", "input": ["topic"], "output": ["summary"] }
+    {
+      "@type": "workflow::var::set",
+      "name": "topic",
+      "value": "go.llib.dev/frameless"
+    },
+    {
+      "@type": "workflow::execute",
+      "participant": "summarise",
+      "input": ["topic"],
+      "output": ["summary"]
+    }
   ]
 }
 ```
@@ -114,9 +123,21 @@ An empty sequence is `{"@value": []}`. A nil element in the array becomes
 ```json
 {
   "@type": "workflow::if",
-  "cond": { "@type": "workflow::execute", "condition": "is-vip", "input": ["customer_id"] },
-  "then": { "@type": "workflow::execute", "participant": "apply-vip-discount", "input": ["order_id"] },
-  "else": { "@type": "workflow::execute", "participant": "apply-list-price",  "input": ["order_id"] }
+  "cond": {
+    "@type": "workflow::execute",
+    "condition": "is-vip",
+    "input": ["customer_id"]
+  },
+  "then": {
+    "@type": "workflow::execute",
+    "participant": "apply-vip-discount",
+    "input": ["order_id"]
+  },
+  "else": {
+    "@type": "workflow::execute",
+    "participant": "apply-list-price",
+    "input": ["order_id"]
+  }
 }
 ```
 
@@ -131,7 +152,11 @@ condition is a fatal authoring error.
 ```json
 {
   "@type": "workflow::sleep",
-  "until": { "@type": "workflow::execute", "condition": "approval-granted", "input": ["order_id"] }
+  "until": {
+    "@type": "workflow::execute",
+    "condition": "approval-granted",
+    "input": ["order_id"]
+  }
 }
 ```
 
@@ -150,9 +175,13 @@ the process history. See [Conditions][CONDITION].
 {
   "@type": "workflow::for",
   "init": { "@type": "workflow::var::set", "name": "i", "value": 0 },
-  "cond": { "@type": "workflow::execute", "condition": "lt", "input": ["i", "limit"] },
+  "cond": {
+    "@type": "workflow::execute",
+    "condition": "lt",
+    "input": ["i", "limit"]
+  },
   "post": { "@type": "workflow::op::increment", "name": "i" },
-  "do":   { "@type": "workflow::execute", "participant": "process-batch-item" }
+  "do": { "@type": "workflow::execute", "participant": "process-batch-item" }
 }
 ```
 
@@ -166,9 +195,9 @@ the process history. See [Conditions][CONDITION].
 ```json
 {
   "@type": "workflow::foreach",
-  "over":  "items",
-  "do":    { "@type": "workflow::execute", "participant": "process-item" },
-  "key":   "idx",
+  "over": "items",
+  "do": { "@type": "workflow::execute", "participant": "process-item" },
+  "key": "idx",
   "value": "item"
 }
 ```
@@ -193,7 +222,11 @@ Terminates the innermost `For` or `ForEach`.
 **Inner:** `{name, value}`
 
 ```json
-{ "@type": "workflow::var::set", "name": "topic", "value": "go.llib.dev/frameless" }
+{
+  "@type": "workflow::var::set",
+  "name": "topic",
+  "value": "go.llib.dev/frameless"
+}
 ```
 
 `value` is typed `any` — the codec preserves the JSON shape, so a number stays
@@ -299,7 +332,11 @@ its path under the fixed ID `workflow::template::condition`. See
 {
   "@type": "workflow::spawn",
   "name": "fulfilment",
-  "def":  { "@type": "workflow::execute", "participant": "ship", "input": ["order"] },
+  "def": {
+    "@type": "workflow::execute",
+    "participant": "ship",
+    "input": ["order"]
+  },
   "vars": { "order_id": "order" }
 }
 ```
@@ -320,9 +357,9 @@ a `VarMapping` (`parent → child`) and is omitted when empty.
 `spawn` is the `name` of the `workflow::spawn` to wait for. Without `spawn`,
 the join waits for every child spawned so far. The codec ignores keys it does
 not know, so a misspelt `spawn` silently turns into that wait-for-all join.
-`collect` is a `VarMapping` describing which child variables 
+`collect` is a `VarMapping` describing which child variables
 to fold back into the parent; it is declared
-and serialised today, but **`Join#Execute` does not yet copy anything back** 
+and serialised today, but **`Join#Execute` does not yet copy anything back**
 see [Definitions][DEFINITION] §6 for the current workaround.
 
 ### `workflow.Defer`
@@ -334,10 +371,18 @@ see [Definitions][DEFINITION] §6 for the current workaround.
 {
   "@type": "workflow::sequence",
   "@value": [
-    { "@type": "workflow::execute", "participant": "reserve-seat", "input": ["booking_id"] },
+    {
+      "@type": "workflow::execute",
+      "participant": "reserve-seat",
+      "input": ["booking_id"]
+    },
     {
       "@type": "workflow::defer",
-      "def": { "@type": "workflow::execute", "participant": "release-unpaid-seat", "input": ["booking_id"] }
+      "def": {
+        "@type": "workflow::execute",
+        "participant": "release-unpaid-seat",
+        "input": ["booking_id"]
+      }
     }
   ]
 }
@@ -369,8 +414,12 @@ whatever the inner type is, it appears with its own `@type`:
   "then": {
     "@type": "workflow::sequence",
     "@value": [
-      { "@type": "workflow::var::set",       "name": "notified", "value": true },
-      { "@type": "workflow::execute",    "participant": "email-receipt", "input": ["receipt"] }
+      { "@type": "workflow::var::set", "name": "notified", "value": true },
+      {
+        "@type": "workflow::execute",
+        "participant": "email-receipt",
+        "input": ["receipt"]
+      }
     ]
   }
 }
@@ -518,7 +567,7 @@ Pin a snapshot if your data must outlive a `wfjson` upgrade — see
 ## 6. Validation
 
 The codec catches structural mistakes at decode time (unknown `@type`, wrong
-arity, malformed JSON). It does not catch *semantic* mistakes:
+arity, malformed JSON). It does not catch _semantic_ mistakes:
 
 - An `id` that is not registered on the runtime → `ErrParticipantNotFound` /
   `ErrConditionNotFound`, raised at execution time.
@@ -551,7 +600,7 @@ Run it on every template condition embedded in the decoded tree (recursively,
 because the condition is buried under `If`/`Sleep`).
 
 > **Trust boundary.** Treat end-user-authored definitions as untrusted input.
-> A definition can only *name* participants and conditions by ID; it cannot
+> A definition can only _name_ participants and conditions by ID; it cannot
 > express arbitrary Go. An ID you never registered resolves to a fatal
 > authoring error, and an unknown `@type` fails to decode at the boundary.
 > See the [End Users][END_USER] package doc for the full rationale.
@@ -579,14 +628,24 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
       "then": {
         "@type": "workflow::sequence",
         "@value": [
-          { "@type": "workflow::execute", "participant": "reserve-stock", "input": ["order_id"], "output": ["reservation_id"] },
+          {
+            "@type": "workflow::execute",
+            "participant": "reserve-stock",
+            "input": ["order_id"],
+            "output": ["reservation_id"]
+          },
           {
             "@type": "workflow::spawn",
             "name": "fulfilment",
             "def": {
               "@type": "workflow::sequence",
               "@value": [
-                { "@type": "workflow::execute", "participant": "ship", "input": ["reservation_id"], "output": ["tracking"] }
+                {
+                  "@type": "workflow::execute",
+                  "participant": "ship",
+                  "input": ["reservation_id"],
+                  "output": ["tracking"]
+                }
               ]
             },
             "vars": { "order_id": "order" }
@@ -594,7 +653,9 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
         ]
       },
       "else": {
-        "@type": "workflow::execute", "participant": "backorder", "input": ["order_id"]
+        "@type": "workflow::execute",
+        "participant": "backorder",
+        "input": ["order_id"]
       }
     },
 
@@ -602,8 +663,16 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
 
     {
       "@type": "workflow::if",
-      "cond": { "@type": "workflow::execute", "condition": "requires-receipt", "input": ["order_id"] },
-      "then": { "@type": "workflow::execute", "participant": "email-receipt", "input": ["order_id", "tracking"] }
+      "cond": {
+        "@type": "workflow::execute",
+        "condition": "requires-receipt",
+        "input": ["order_id"]
+      },
+      "then": {
+        "@type": "workflow::execute",
+        "participant": "email-receipt",
+        "input": ["order_id", "tracking"]
+      }
     }
   ]
 }
@@ -654,15 +723,15 @@ A few things to notice:
 
 ## 9. Where to go next
 
-| Your question                                  | Read                          |
-| ---------------------------------------------- | ----------------------------- |
-| "Why are definitions data at all?"             | [End Users][END_USER]        |
-| "What can I compose, in Go?"                   | [Definitions][DEFINITION]     |
-| "How do variables and scoping actually work?"  | [Variables][VARS]             |
-| "How do conditions evaluate?"                  | [Conditions][CONDITION]       |
-| "What can I pause, stop, or swap?"             | [Signals][SIGNAL]             |
-| "Codec round-trip contract tests"              | [Codec][CODEC] §8             |
-| "Authoring a custom `Definition` type"         | [Custom Definition][CUSTOM_DEFINITION] |
+| Your question                                 | Read                                   |
+| --------------------------------------------- | -------------------------------------- |
+| "Why are definitions data at all?"            | [End Users][END_USER]                  |
+| "What can I compose, in Go?"                  | [Definitions][DEFINITION]              |
+| "How do variables and scoping actually work?" | [Variables][VARS]                      |
+| "How do conditions evaluate?"                 | [Conditions][CONDITION]                |
+| "What can I pause, stop, or swap?"            | [Signals][SIGNAL]                      |
+| "Codec round-trip contract tests"             | [Codec][CODEC] §8                      |
+| "Authoring a custom `Definition` type"        | [Custom Definition][CUSTOM_DEFINITION] |
 
 [CUSTOM_DEFINITION]: ../../../pkg/workflow/docs/custom-definition.md
 [END_USER]: ../../../pkg/workflow/docs/end-user.md
