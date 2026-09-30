@@ -194,12 +194,12 @@ func TestExecute_participantPathSegment(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		s.Then("the participant sees its own path segment", func(t *testcase.T) {
+		s.Then("the participant sees its ID as its own path segment", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("participant", pid.Get(t).String()), paths[0])
+			assert.Equal(t, pathOf(pid.Get(t).String()), paths[0])
 		})
 	})
 }
@@ -251,7 +251,7 @@ func TestSequenceAddsSegmentAndPerIterationIndex(t *testing.T) {
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 3, len(paths))
 			for i, p := range paths {
-				expected := pathOf("sequence", "["+strconv.Itoa(i)+"]", "participant", children[i].Get(t).String())
+				expected := pathOf("sequence", "["+strconv.Itoa(i)+"]", children[i].Get(t).String())
 				assert.Equal(t, expected, p,
 					assert.MessageF("iteration %d should see only its own segment", i))
 			}
@@ -304,8 +304,8 @@ func TestSequencePerIterationDoesNotLeakBetweenIterations(t *testing.T) {
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 2, len(paths))
 
-			assert.Equal(t, pathOf("sequence", "[0]", "participant", children[0].Get(t).String()), paths[0])
-			assert.Equal(t, pathOf("sequence", "[1]", "participant", children[1].Get(t).String()), paths[1])
+			assert.Equal(t, pathOf("sequence", "[0]", children[0].Get(t).String()), paths[0])
+			assert.Equal(t, pathOf("sequence", "[1]", children[1].Get(t).String()), paths[1])
 			assert.NotContains(t, paths[1], "[0]",
 				assert.MessageF("iteration [1] must not inherit the [0] segment from iteration [0]"),
 			)
@@ -391,7 +391,7 @@ func TestIfTrueBranchPropagatesIfThenSegments(t *testing.T) {
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "then", "participant", pid.Get(t).String()), paths[0])
+			assert.Equal(t, pathOf("if", "then", pid.Get(t).String()), paths[0])
 		})
 	})
 }
@@ -433,7 +433,7 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "else", "participant", participantID.Get(t).String()), paths[0])
+			assert.Equal(t, pathOf("if", "else", participantID.Get(t).String()), paths[0])
 		})
 	})
 }

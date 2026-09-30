@@ -73,7 +73,7 @@ func TestIf_replay(t *testing.T) {
 			assert.NoError(t, act(t))
 			assert.Equal(t, calls.Get(t), []string{"then"})
 			assert.Equal(t, evaluations.Get(t), 1)
-			assert.Equal(t, paths.Get(t), []workflow.Path{{"if", "then", "participant", "then"}})
+			assert.Equal(t, paths.Get(t), []workflow.Path{{"if", "then", "then"}})
 		})
 
 		s.Then("the answer is recorded by the condition itself, at the if/<condition ID> path", func(t *testcase.T) {
@@ -98,7 +98,7 @@ func TestIf_replay(t *testing.T) {
 					branch := map[bool]string{true: "then", false: "else"}[initial]
 					assert.Equal(t, calls.Get(t), []string{branch, branch})
 					assert.Equal(t, evaluations.Get(t), 1)
-					assert.Equal(t, paths.Get(t), []workflow.Path{{"if", branch, "participant", branch}, {"if", branch, "participant", branch}})
+					assert.Equal(t, paths.Get(t), []workflow.Path{{"if", branch, branch}, {"if", branch, branch}})
 				})
 			})
 		}

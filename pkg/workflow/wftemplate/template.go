@@ -59,7 +59,7 @@ func (tmpl Condition) Evaluate(ctx context.Context, pid workflow.ProcessID) (boo
 	if err != nil {
 		return false, err
 	}
-	const id workflow.ConditionID = "workflow::template::condition"
+	const id workflow.ConditionID = "template-condition"
 	return workflow.Execute{}.EvaluateWith(ctx, pid, id, func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
 		return tmpl.evaluate(ctx, pid, tpl)
 	})

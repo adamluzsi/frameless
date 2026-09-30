@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
@@ -218,17 +219,37 @@ func TestExecute(t *testing.T) {
 			assert.Equal[any](t, getVar(t, c.Runtime.Get(t), processID.Get(t), outKey.Get(t)), participantOut.Get(t))
 		})
 
-		s.Then("the call is recorded at the participant/<ParticipantID> path, with its input, output and timestamp", func(t *testcase.T) {
+		s.Then("the call is recorded at the <ParticipantID> path, with its input, output and timestamp", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			events := participantEventsOf(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ParticipantID, pid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{"participant", string(pid.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{string(pid.Get(t))})
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Equal(t, events[0].Output, []any{participantOut.Get(t)})
 			assert.False(t, events[0].Timestamp.IsZero())
 			assert.Nil(t, events[0].Definition)
+		})
+
+		s.When("a condition answer is recorded under the same ID at the same position", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				var answer workflow.Event = workflow.EventCondition{
+					EventID: mustEventID(t), ProcessID: processID.Get(t), Timestamp: clock.Now(),
+					ConditionID: workflow.ConditionID(pid.Get(t)),
+					Path:        workflow.Path{string(pid.Get(t))},
+					Input:       []any{inVal.Get(t)},
+					Answer:      true,
+				}
+				assert.Must(t).NoError(c.EventRepository.Get(t).Create(t.Context(), &answer))
+			})
+
+			s.Then("the answer is not mistaken for a recorded call, since calls and answers are recorded as different events", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, participantCalls.Get(t), 1)
+				assert.Equal(t, len(participantEventsOf(t, c)), 1)
+			})
 		})
 
 		s.When("the participant is not registered on this node", func(s *testcase.Spec) {
@@ -267,7 +288,7 @@ func TestExecute(t *testing.T) {
 				failures := failuresOf(t)
 				assert.Must(t).Equal(len(failures), 1)
 				assert.Equal(t, failures[0].ParticipantID, pid.Get(t))
-				assert.Equal(t, failures[0].Path, workflow.Path{"participant", string(pid.Get(t))})
+				assert.Equal(t, failures[0].Path, workflow.Path{string(pid.Get(t))})
 				assert.Equal(t, failures[0].Error, failure.Get(t).Error())
 			})
 
@@ -539,7 +560,7 @@ func TestExecute(t *testing.T) {
 			events := participantEventsOf(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ParticipantID, id.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{"participant", string(id.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{string(id.Get(t))})
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Empty(t, events[0].Output)
 			assert.Nil(t, events[0].Definition)
@@ -702,7 +723,7 @@ func TestExecute(t *testing.T) {
 				failures := failuresOf(t)
 				assert.Must(t).Equal(len(failures), 1)
 				assert.Equal(t, failures[0].ParticipantID, id.Get(t))
-				assert.Equal(t, failures[0].Path, workflow.Path{"participant", string(id.Get(t))})
+				assert.Equal(t, failures[0].Path, workflow.Path{string(id.Get(t))})
 				assert.Equal(t, failures[0].Error, executeErr.Get(t).Error())
 			})
 
@@ -940,6 +961,27 @@ func TestExecute(t *testing.T) {
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Equal(t, events[0].Answer, got)
 			assert.False(t, events[0].Timestamp.IsZero())
+		})
+
+		s.When("a participant call is recorded under the same ID at the same position", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				var call workflow.Event = workflow.EventParticipant{
+					EventID: mustEventID(t), ProcessID: processID.Get(t), Timestamp: clock.Now(),
+					ParticipantID: workflow.ParticipantID(cid.Get(t)),
+					Path:          workflow.Path{string(cid.Get(t))},
+					Input:         []any{inVal.Get(t)},
+				}
+				assert.Must(t).NoError(c.EventRepository.Get(t).Create(t.Context(), &call))
+			})
+
+			s.Then("the call is not mistaken for a recorded answer, since calls and answers are recorded as different events", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, got, conditionAnswer.Get(t))
+
+				assert.Equal(t, conditionCalls.Get(t), 1)
+				assert.Equal(t, len(answersOf(t)), 1)
+			})
 		})
 
 		s.When("the condition is not registered", func(s *testcase.Spec) {

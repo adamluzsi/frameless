@@ -168,7 +168,7 @@ condition itself:
 | Condition                                     | Recorded as                                                  |
 | --------------------------------------------- | ------------------------------------------------------------ |
 | `Execute` with a `Condition`                  | `ConditionID: <ID>` at `<path>/<ID>`                         |
-| `wftemplate.Condition`                        | `ConditionID: "workflow::template::condition"`, at `<path>/workflow::template::condition` |
+| `wftemplate.Condition`                        | `ConditionID: "template-condition"`, at `<path>/template-condition` |
 | your own type answering through `EvaluateWith` | the `ConditionID` you pass it, at `<path>/<ID>` (§6)         |
 | your own type that doesn't                    | nothing — it is asked again on every evaluation, replays included |
 

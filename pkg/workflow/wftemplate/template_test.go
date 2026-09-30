@@ -99,13 +99,13 @@ func TestCondition(t *testing.T) {
 			assert.True(t, got, assert.MessageF("expected .%s to resolve to %q", varName, storedValue.Get(t)))
 		})
 
-		s.Then("the answer is recorded under an ID made of the expression, at the position of the evaluation", func(t *testcase.T) {
+		s.Then("the answer is recorded under the fixed template-condition ID, at the position of the evaluation", func(t *testcase.T) {
 			got, err := act(t)
 			assert.NoError(t, err)
 
 			events := conditionEvents(t, c.EventRepository.Get(t), processID.Get(t))
 			assert.Must(t).Equal(len(events), 1)
-			id := "workflow::template::condition"
+			id := "template-condition"
 			assert.OneOf(t, events, func(t testing.TB, e workflow.EventCondition) {
 				assert.Equal(t, e.ConditionID, workflow.ConditionID(id))
 				assert.Equal(t, e.Path, workflow.Path{id})

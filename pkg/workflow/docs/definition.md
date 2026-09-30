@@ -139,7 +139,7 @@ Every step executes under a **Path**, assembled from the context as the
 definition tree is walked. A recorded participant step looks like this:
 
 ```
-[01a042a6-b503-7e30-a540-796c969d63cd  sequence  [0]  participant  charge-card]
+[01a042a6-b503-7e30-a540-796c969d63cd  sequence  [0]  charge-card]
 ```
 
 | Segment       | Contributed by                                          |
@@ -147,13 +147,14 @@ definition tree is walked. A recorded participant step looks like this:
 | `01a042a6-…`  | the `EventID` of the current `EventUseDefinition`        |
 | `sequence`    | the enclosing `Sequence`                                |
 | `[0]`         | its index inside that `Sequence`                        |
-| `participant` | `Execute` with a `Participant`                          |
-| `charge-card` | the `ParticipantID` it calls                            |
+| `charge-card` | the `Execute`, by the `ParticipantID` it calls          |
 
 `If` contributes `if` plus `then`/`else`, `Spawn` contributes `spawn` plus its
-`Name`, and so on. The identity of a step is therefore *(which definition) +
-(what it is) + (where it sits in the tree)* — no per-process bookkeeping is
-needed from you.
+`Name`, and so on. An `Execute` contributes only its ID: a participant call and
+a condition answer are recorded as different events, so they can't be mistaken
+for each other even under the same ID. The identity of a step is therefore
+*(which definition) + (what it is) + (where it sits in the tree)* — no
+per-process bookkeeping is needed from you.
 
 Paths identify steps, not positions on a variable timeline. General `Vars`
 reads see the current state visible in their variable scope, including later

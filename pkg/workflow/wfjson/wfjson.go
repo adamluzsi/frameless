@@ -760,7 +760,7 @@ func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *depr
 }
 
 // unmarshalLegacyExecuteParticipant migrates a workflow::participant payload into workflow.Execute.
-// Both record at <path>/participant/<ID>, so recorded history replays unchanged.
+// Both record at <path>/<ID>, so recorded history replays unchanged.
 func unmarshalLegacyExecuteParticipant(c *jsonkit.Codec, data []byte, p *workflow.Execute) error {
 	var legacy deprecated.ExecuteParticipant
 	if err := (WorkflowExecuteParticipant{}).Unmarshal(c, data, &legacy); err != nil {

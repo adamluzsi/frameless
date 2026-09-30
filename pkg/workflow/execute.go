@@ -24,8 +24,10 @@ import (
 // Errors and runtime signals (e.g. workflow.Suspend) are not recorded as an execution,
 // so the next execution tries again.
 //
-// A step is recorded as an EventParticipant at the participant/<ParticipantID> path,
-// and an answer as an EventCondition at the <ConditionID> path, relative to the current path.
+// A step is recorded as an EventParticipant, and an answer as an EventCondition,
+// at the <ID> path relative to the current path.
+// Calls and answers are told apart by their event type,
+// so a participant and a condition sharing an ID at the same position don't replay each other.
 type Execute struct {
 	Participant ParticipantID
 	Condition   ConditionID
@@ -196,7 +198,6 @@ func (d Execute) checkWithID(method, id string) error {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (d Execute) executeStep(ctx context.Context, pid ProcessID, id ParticipantID, do nonIdempotentFunc) error {
-	ctx = WithName(ctx, "participant")
 	exec := idempotentExecutor[EventParticipant, ParticipantID]{
 		ID:     id,
 		Do:     do,

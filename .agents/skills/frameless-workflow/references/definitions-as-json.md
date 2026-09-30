@@ -320,7 +320,7 @@ with `workflow::execute`.
 This is a `text/template` expression evaluated against process variables. Use
 it when a workflow builder should be able to edit the rule without a
 deployment. Its answer is recorded like a registered condition's, identified by
-its path under the fixed ID `workflow::template::condition`. See
+its path under the fixed ID `template-condition` (not the `@type` tag). See
 [Conditions][CONDITION] for the function map and the `ContextSetup` plumbing.
 
 ### `workflow.Spawn`

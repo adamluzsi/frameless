@@ -68,14 +68,13 @@ func (d ExecuteCondition) EvaluateWith(ctx context.Context, pid workflow.Process
 	return workflow.Execute{Input: d.Input}.EvaluateWith(ctx, pid, d.ID, evaluateFn)
 }
 
-// Execute asks the condition as a step, under a condition path segment, and discards its answer.
+// Execute asks the condition as a step, and discards its answer.
+// The answer is recorded the same way as by Evaluate.
 //
 // workflow.Execute doesn't support a condition as a step,
 // since an answer that is neither stored nor branched on has no effect on the process.
 func (d ExecuteCondition) Execute(ctx context.Context, pid workflow.ProcessID) error {
-	// The segment is the one released versions recorded under, not the workflow::condition type tag,
-	// so the answers they recorded are replayed.
-	_, err := d.execute().Evaluate(workflow.WithName(ctx, "condition"), pid)
+	_, err := d.execute().Evaluate(ctx, pid)
 	return err
 }
 

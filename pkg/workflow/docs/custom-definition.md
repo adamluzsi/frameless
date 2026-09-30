@@ -242,7 +242,7 @@ func (d ChargeOrder) chargeCard(ctx context.Context, pid workflow.ProcessID) err
   since those fields belong to `#Execute` and `#Evaluate`.
 - **Recorded like `Execute#Execute`.** The call is recorded as an
   `EventParticipant` under that `ParticipantID`, at
-  `<path>/participant/<ParticipantID>`, just like a registered participant's.
+  `<path>/<ParticipantID>`, just like a registered participant's.
   Moving a registered participant's logic into `#ExecuteWith` under the same
   `ParticipantID` replays the calls already recorded instead of repeating them —
   but only calls recorded without an `Output` mapping: `Output` is part of a
