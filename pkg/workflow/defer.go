@@ -44,10 +44,10 @@ import (
 // To undo a participant's effect right when its call fails to be recorded, use txkit.OnRollback.
 //
 // The hooked Definition shares the location of the Defer step.
-// The registration is made at the step's own path, under a "workflow::defer" segment,
+// The registration is made at the step's own path, under a "defer" segment,
 // and in the variable scope the step runs in.
 // Both are extended with a segment of the hook's own, named after its EventID,
-// so a Defer at foo/bar/baz runs its Definition at foo/bar/baz/workflow::defer/<hook event id>,
+// so a Defer at foo/bar/baz runs its Definition at foo/bar/baz/defer/<hook event id>,
 // and in the <step scope>/<hook event id> variable scope.
 // So hooks never collide on their idempotent steps or on their local variables,
 // while they still see every variable visible to the Defer step.

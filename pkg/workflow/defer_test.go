@@ -156,6 +156,66 @@ func TestDefer(t *testing.T) {
 		})
 	})
 
+	// Sequence{A, Defer{B}, C} runs as A, C, B:
+	// the sequence runs its elements, and B, deferred on the way, runs once the process ends.
+	s.Context("smoke: a Defer between the steps of a sequence", func(s *testcase.Spec) {
+		c := wftest.LetC(s)
+
+		// calls records the order in which the participants run.
+		calls := let.Var(s, func(t *testcase.T) []string {
+			return nil
+		})
+		recording := func(name string) func(t *testcase.T) func(context.Context) error {
+			return func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					calls.Set(t, append(calls.Get(t), name))
+					return nil
+				}
+			}
+		}
+		_, participantA := wftest.LetParticipant(s, recording("A"))
+		_, participantB := wftest.LetParticipant(s, recording("B"))
+		_, participantC := wftest.LetParticipant(s, recording("C"))
+
+		sequence := let.Var(s, func(t *testcase.T) workflow.Sequence {
+			return workflow.Sequence{
+				workflow.Execute{Participant: participantA.Get(t)},
+				workflow.Defer{Definition: workflow.Execute{Participant: participantB.Get(t)}},
+				workflow.Execute{Participant: participantC.Get(t)},
+			}
+		})
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return sequence.Get(t)
+		})
+
+		s.Describe("Sequence#Execute", func(s *testcase.Spec) {
+			act := func(t *testcase.T) error {
+				ctx := c.Runtime.Get(t).Context(t.Context())
+				return sequence.Get(t).Execute(ctx, c.ProcessID.Get(t))
+			}
+
+			s.Then("the elements of the sequence run, while the deferred definition is only registered, as it is deferred to the end of the process, not of the sequence", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, calls.Get(t), []string{"A", "C"})
+				assert.Equal(t, len(deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t))), 1)
+			})
+		})
+
+		s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+			act := func(t *testcase.T) error {
+				return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+			}
+
+			s.Then("the elements of the sequence run first, then the deferred definition runs after them, as the process completes", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, calls.Get(t), []string{"A", "C", "B"})
+				assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+			})
+		})
+	})
+
 	s.Context("unwinding, as the process ends", func(s *testcase.Spec) {
 		c := wftest.LetC(s)
 

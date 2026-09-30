@@ -293,7 +293,7 @@ the call.
   nested `defer` in Go.
 - **Location.** A deferred definition runs at the location of its `Defer` step,
   under a segment named after its registration event. A `Defer` at
-  `foo/bar/baz` runs its definition at `foo/bar/baz/workflow::defer/<event id>`.
+  `foo/bar/baz` runs its definition at `foo/bar/baz/defer/<event id>`.
   It sees the variables visible to the `Defer` step, and the variables it sets
   stay local to it.
 - **Registration is idempotent.** A step that is replayed doesn't register its
