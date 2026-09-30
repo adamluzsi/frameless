@@ -222,8 +222,29 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 		ptr = ptrPtr
 	}
 
-	const format = "unable to find implementation for %s with %s"
-	return reflect.Value{}, fmt.Errorf(format, targetType.String(), identifiedType.String())
+	return reflect.Value{}, errNoImplementation(targetType, identifiedType)
+}
+
+func errNoImplementation(targetType, identifiedType reflect.Type) error {
+	return fmt.Errorf("unable to find implementation for %s with %s", targetType.String(), identifiedType.String())
+}
+
+// setDecoded stores a decoded value into dst.
+// An invalid value, such as a decoded JSON null, sets dst to its zero value.
+//
+// A value that dst can't hold is reported as an error instead of a reflect.Value#Set panic.
+// For example, an untyped JSON array decodes into []any, which a non-empty interface can't hold.
+// The same goes for a registered @type that doesn't implement the destination interface.
+func setDecoded(dst, value reflect.Value) error {
+	if !value.IsValid() {
+		dst.SetZero()
+		return nil
+	}
+	if !value.Type().AssignableTo(dst.Type()) {
+		return errNoImplementation(dst.Type(), value.Type())
+	}
+	dst.Set(value)
+	return nil
 }
 
 // var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()

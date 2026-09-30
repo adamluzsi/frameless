@@ -993,8 +993,7 @@ func copyTypedStructWithReg(inner []byte, rType reflect.Type, target reflect.Val
 		pv.Elem().Set(concrete)
 		concrete = pv
 	}
-	target.Set(concrete)
-	return nil
+	return setDecoded(target, concrete)
 }
 
 // copyTypedContainer dispatches a slice/array/map polymorphic value element
@@ -1009,8 +1008,7 @@ func copyTypedContainerWithReg(inner []byte, rType reflect.Type, target reflect.
 	if len(trimmed) == 0 || bytes.Equal(trimmed, null) {
 		// Preserve the typed-nil of the registered type so a nil polymorphic
 		// value stays distinguishable from a plain nil interface.
-		target.Set(reflect.Zero(rType))
-		return nil
+		return setDecoded(target, reflect.Zero(rType))
 	}
 	// Strip the leading "@type" field if the inner still carries it
 	// (splitTypedEnvelope returns the whole raw for flat envelopes).
@@ -1027,8 +1025,7 @@ func copyTypedContainerWithReg(inner []byte, rType reflect.Type, target reflect.
 		pv.Elem().Set(concrete)
 		concrete = pv
 	}
-	target.Set(concrete)
-	return nil
+	return setDecoded(target, concrete)
 }
 
 // decodeContainerElements populates the registered container type's elements
@@ -1112,12 +1109,7 @@ func applyTypedValueWithReg(raw []byte, target reflect.Value, reg *_TypeRegistry
 	if err := t.UnmarshalJSON(raw); err != nil {
 		return err
 	}
-	if t.Value == nil {
-		target.SetZero()
-		return nil
-	}
-	target.Set(reflect.ValueOf(t.Value))
-	return nil
+	return setDecoded(target, reflect.ValueOf(t.Value))
 }
 
 // stripTypeField removes the "@type" field from a JSON object so that the
@@ -1665,17 +1657,16 @@ func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry,
 		// either gets @type-dispatched to the registered concrete type,
 		// or stays as a map[string]any / []any / primitive when no
 		// @type is present.
-		if isNestedObjectWithoutType(data) {
+		//
+		// Only an empty interface (e.g. any) can hold such a generic value.
+		// A non-empty interface goes through the typed dispatch below,
+		// which reports the missing @type.
+		if dst.NumMethod() == 0 && isNestedObjectWithoutType(data) {
 			value, err := unmarshalGenericJSON(data, reg, codec)
 			if err != nil {
 				return err
 			}
-			if value == nil {
-				dst.SetZero()
-			} else {
-				dst.Set(reflect.ValueOf(value))
-			}
-			return nil
+			return setDecoded(dst, reflect.ValueOf(value))
 		}
 		var value typed
 		value.Type = dst.Type()
@@ -1685,12 +1676,7 @@ func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry,
 		if err := value.UnmarshalJSON(data); err != nil {
 			return err
 		}
-		if value.Value == nil {
-			dst.SetZero()
-		} else {
-			dst.Set(reflect.ValueOf(value.Value))
-		}
-		return nil
+		return setDecoded(dst, reflect.ValueOf(value.Value))
 	}
 	if dst.Kind() == reflect.Pointer {
 		if bytes.Equal(bytes.TrimSpace(data), null) {

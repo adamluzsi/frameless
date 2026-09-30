@@ -41,21 +41,11 @@ type EventSetVar struct {
 	EventID   EventID `ext:"id"`
 	ProcessID ProcessID
 	Timestamp time.Time
-	// Path is where the assignment was made.
-	Path Path
 
-	Name VarName
-	// Scope is the variable scope of the variable the value is assigned to.
-	//
-	// The Name alone doesn't tell which variable is meant, as the same name can
-	// be declared in several variable scopes, and the one an assignment reaches
-	// is decided by where the assignment is made. So the assignment records the
-	// variable it reached, instead of leaving it to be guessed afterwards.
-	//
-	// A variable scope holds at most one variable of a name at a time, as a
-	// re-declaration in the same scope replaces the variable, so the Name and
-	// the Scope together tell exactly which variable the value is assigned to.
+	Path  Path
 	Scope VarScope
+
+	Name  VarName
 	Value any
 }
 

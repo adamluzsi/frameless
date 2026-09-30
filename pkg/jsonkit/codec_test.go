@@ -283,6 +283,144 @@ func TestCodec(t *testing.T) {
 			assert.Equal(t, exp.Get(t), got)
 		})
 	})
+
+	s.Describe("#Unmarshal", func(s *testcase.Spec) {
+		var (
+			// value is the JSON value under test.
+			// Each destination context decides where it sits within data.
+			value = let.Var(s, func(t *testcase.T) string {
+				return makeUntypedJSONValue(t)
+			})
+			data = let.Var(s, func(t *testcase.T) []byte {
+				return []byte(value.Get(t))
+			})
+			ptr = let.Var(s, func(t *testcase.T) any {
+				return new(any)
+			})
+		)
+		act := func(t *testcase.T) error {
+			return subject.Get(t).Unmarshal(data.Get(t), ptr.Get(t))
+		}
+
+		s.Then("JSON without @type is decoded into `any` the same way as encoding/json does", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			var exp any
+			assert.NoError(t, json.Unmarshal(data.Get(t), &exp))
+			assert.Equal(t, exp, *ptr.Get(t).(*any))
+		})
+
+		// A non-empty interface can only hold a value that implements it.
+		// When the JSON describes anything else, Unmarshal must report it as an error,
+		// and must not let the reflect based assignment panic.
+		itRejectsValuesTheInterfaceCannotHold := func(s *testcase.Spec) {
+			thenItFails := func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.Error(t, err)
+			}
+
+			s.Then("JSON without @type is rejected with an error", thenItFails)
+
+			s.And("the JSON value is a bare array", func(s *testcase.Spec) {
+				value.Let(s, makeUntypedJSONArray)
+
+				s.Then("it is rejected with an error", thenItFails)
+			})
+
+			s.And("the @type names a registered struct type which does not implement the interface", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
+					c := subject.Super(t)
+					t.Defer(jsonkit.CodecRegisterTypeID[testent.Foo](c, "foo"))
+					return c
+				})
+				value.LetValue(s, `{"@type":"foo","@value":{}}`)
+
+				s.Then("it is rejected with an error", thenItFails)
+			})
+
+			s.And("the @type names a registered slice type which does not implement the interface", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
+					c := subject.Super(t)
+					t.Defer(jsonkit.CodecRegisterTypeID[MT_Fooers](c, "fooers"))
+					return c
+				})
+				value.LetValue(s, `{"@type":"fooers","@value":[]}`)
+
+				s.Then("it is rejected with an error", thenItFails)
+			})
+		}
+
+		s.When("the destination is a non-empty interface", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(MT_X_Interface)
+			})
+
+			itRejectsValuesTheInterfaceCannotHold(s)
+		})
+
+		s.When("the destination is a non-empty interface struct field", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(struct{ V MT_X_Interface })
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"V":` + value.Get(t) + `}`)
+			})
+
+			itRejectsValuesTheInterfaceCannotHold(s)
+		})
+
+		s.When("the destination is a slice of non-empty interfaces", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new([]MT_X_Interface)
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`[` + value.Get(t) + `]`)
+			})
+
+			itRejectsValuesTheInterfaceCannotHold(s)
+		})
+
+		s.When("the destination is a map of non-empty interfaces", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(map[string]MT_X_Interface)
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"k":` + value.Get(t) + `}`)
+			})
+
+			itRejectsValuesTheInterfaceCannotHold(s)
+		})
+	})
+}
+
+// makeUntypedJSONValue makes a random JSON value without a @type discriminator:
+// an array, an object or a primitive.
+func makeUntypedJSONValue(t *testcase.T) string {
+	return random.Pick(t.Random,
+		makeUntypedJSONArray,
+		func(t *testcase.T) string {
+			return mustMarshalJSON(t, random.Map(t.Random.IntBetween(0, 3), func() (string, int) {
+				return t.Random.HexN(4), t.Random.Int()
+			}))
+		},
+		func(t *testcase.T) string { return mustMarshalJSON(t, t.Random.String()) },
+		func(t *testcase.T) string { return mustMarshalJSON(t, t.Random.Int()) },
+		func(t *testcase.T) string { return mustMarshalJSON(t, t.Random.Bool()) },
+	)(t)
+}
+
+// makeUntypedJSONArray makes a random, possibly empty, JSON array.
+func makeUntypedJSONArray(t *testcase.T) string {
+	// start from a non-nil slice, so an empty array encodes as [] instead of null.
+	vs := append([]string{}, random.Slice(t.Random.IntBetween(0, 3), func() string { return t.Random.String() })...)
+	return mustMarshalJSON(t, vs)
+}
+
+func mustMarshalJSON(t *testcase.T, v any) string {
+	data, err := json.Marshal(v)
+	assert.Must(t).NoError(err)
+	return string(data)
 }
 
 func TestLinesCodec_smoke(tt *testing.T) {

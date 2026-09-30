@@ -364,7 +364,9 @@ func (v *typed) unmarshalObject(data []byte) error {
 	}
 
 	vT := reflect.New(v.Type)
-	vT.Elem().Set(value)
+	if err := setDecoded(vT.Elem(), value); err != nil {
+		return err
+	}
 	v.Value = vT.Elem().Interface()
 	return nil
 }
