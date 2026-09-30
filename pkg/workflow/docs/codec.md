@@ -102,7 +102,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.DeleteVar`          | `workflow::var::delete`          |
 | `workflow.Increment`          | `workflow::op::increment`        |
 | `workflow.Spawn`              | `workflow::spawn`                |
-| `workflow.Join`               | `workflow::join`                 |
+| `workflow.Join`               | `workflow::join`; also reads the former `spawn_name` key as `spawn` |
 | `workflow.Defer`              | `workflow::defer`                |
 | `workflow.Execute`            | `workflow::execute`; also decodes the former `workflow::participant` and `workflow::condition` tags |
 | `wftemplate.Condition`        | `workflow::template::condition`  |

@@ -83,14 +83,14 @@ func NewCodec() *jsonkit.Codec {
 type WorkflowJoin struct{}
 
 type workflowJoinDTO struct {
-	SpawnName string              `json:"spawn_name,omitzero"`
-	Collect   workflow.VarMapping `json:"collect,omitzero"`
+	Spawn   string              `json:"spawn,omitzero"`
+	Collect workflow.VarMapping `json:"collect,omitzero"`
 }
 
 func (WorkflowJoin) Marshal(c *jsonkit.Codec, v workflow.Join) ([]byte, error) {
 	return json.Marshal(workflowJoinDTO{
-		SpawnName: string(v.SpawnName),
-		Collect:   v.Collect,
+		Spawn:   string(v.Spawn),
+		Collect: v.Collect,
 	})
 }
 
@@ -99,7 +99,7 @@ func (WorkflowJoin) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Join) e
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	p.SpawnName = workflow.SpawnName(dto.SpawnName)
+	p.Spawn = workflow.SpawnName(dto.Spawn)
 	p.Collect = dto.Collect
 	return nil
 }

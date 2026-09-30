@@ -373,13 +373,13 @@ func ExampleJoin() {
 			},
 		},
 		workflow.Join{
-			SpawnName: "deep-research",
+			Spawn: "deep-research",
 			Collect: workflow.VarMapping{
 				"results": "deep-research-result",
 			},
 		},
 		workflow.Join{
-			SpawnName: "recent-news",
+			Spawn: "recent-news",
 			Collect: workflow.VarMapping{
 				"output": "recent-news-result",
 			},
@@ -462,7 +462,7 @@ func TestJoin(t *testing.T) {
 				name := let.Var[workflow.SpawnName](s, nil)
 
 				subject.Let(s, func(t *testcase.T) workflow.Join {
-					return workflow.Join{SpawnName: name.Get(t)}
+					return workflow.Join{Spawn: name.Get(t)}
 				})
 
 				s.And("name is referencing an unknown spawn name", func(s *testcase.Spec) {
@@ -571,8 +571,8 @@ func TestJoin(t *testing.T) {
 						})
 					}
 					return workflow.Join{
-						SpawnName: "name",
-						Collect:   collect,
+						Spawn:   "name",
+						Collect: collect,
 					}
 				})
 

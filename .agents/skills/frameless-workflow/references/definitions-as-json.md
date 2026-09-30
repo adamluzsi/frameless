@@ -317,11 +317,13 @@ a `VarMapping` (`parent → child`) and is omitted when empty.
 { "@type": "workflow::join", "spawn": "fulfilment" }
 ```
 
-With `spawn` set, the join waits for the named child. Without `spawn`, it
-waits for every child spawned so far. `collect` is a `VarMapping` describing
-which child variables to fold back into the parent; it is declared and
-serialised today, but **`Join#Execute` does not yet copy anything back** — see
-[Definitions][DEFINITION] §6 for the current workaround.
+`spawn` is the `name` of the `workflow::spawn` to wait for. Without `spawn`,
+the join waits for every child spawned so far. The codec ignores keys it does
+not know, so a misspelt `spawn` silently turns into that wait-for-all join.
+`collect` is a `VarMapping` describing which child variables 
+to fold back into the parent; it is declared
+and serialised today, but **`Join#Execute` does not yet copy anything back** 
+see [Definitions][DEFINITION] §6 for the current workaround.
 
 ### `workflow.Defer`
 

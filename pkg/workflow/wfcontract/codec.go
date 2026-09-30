@@ -144,8 +144,8 @@ func MakeDefinition(tb testing.TB) workflow.Definition {
 		},
 		func() workflow.Definition {
 			return workflow.Join{
-				SpawnName: workflow.SpawnName(tc.Random.String()),
-				Collect:   makeVarMapping(tc),
+				Spawn:   workflow.SpawnName(tc.Random.String()),
+				Collect: makeVarMapping(tc),
 			}
 		},
 		func() workflow.Definition {
@@ -708,7 +708,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.Join {
 		var v workflow.Join
-		v.SpawnName = random.Pick(t.Random,
+		v.Spawn = random.Pick(t.Random,
 			func() workflow.SpawnName { return workflow.SpawnName(t.Random.String()) },
 			func() workflow.SpawnName { return "" },
 		)()

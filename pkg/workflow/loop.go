@@ -105,7 +105,7 @@ func (loop For) Error() string { return "workflow::for" }
 //
 //	workflow.For{ // for { ... }
 //		Do: workflow.Sequence{
-//			workflow.Execute{ParticipantID: "poll-job", Output: []workflow.VarName{"done"}},
+//			workflow.Execute{Participant: "poll-job", Output: []workflow.VarName{"done"}},
 //			workflow.If{
 //				Cond: wftemplate.Condition(".done"),
 //				Then: workflow.Break{},

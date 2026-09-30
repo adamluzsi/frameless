@@ -369,10 +369,14 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			`{"@type":"workflow::condition","id":"c1","input":["a"]}`)
 	})
 
+	// The v1 spawn_name key of workflow::join was renamed to spawn.
+	// Its v1 bytes stay pinned as a migration input.
 	s.Test("Join", func(t *testcase.T) {
-		assertMatchesV1Snapshot(t, codec.Get(t),
-			workflow.Join{SpawnName: "child1", Collect: workflow.VarMapping{"x": "y"}},
-			`{"@type":"workflow::join","spawn_name":"child1","collect":{"x":"y"}}`)
+		v := workflow.Join{Spawn: "child1", Collect: workflow.VarMapping{"x": "y"}}
+		assertMatchesV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`)
+		assertMigratesFromV1Snapshot(t, codec.Get(t), v,
+			`{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`)
 	})
 
 	// ---- Conditions ----

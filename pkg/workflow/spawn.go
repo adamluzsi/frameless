@@ -251,8 +251,8 @@ func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
 // ---
 
 type Join struct {
-	// SpawnName [optional]
-	SpawnName SpawnName
+	// Spawn [optional]
+	Spawn SpawnName
 	// Collect [optional] will collect the results from the child process variables
 	// Mapping happens from child VariableKey -> parent VariableKey (From -> To)
 	//
@@ -271,19 +271,19 @@ func (d Join) Execute(ctx context.Context, processID ProcessID) error {
 	if err := d.Validate(ctx); err != nil {
 		return err
 	}
-	if len(d.SpawnName) == 0 {
+	if len(d.Spawn) == 0 {
 		return d.joinAll(ctx, processID) // join
 	}
 	return d.joinChild(ctx, processID) // join .SpawnName
 }
 
 func (d Join) joinChild(ctx context.Context, parentID ProcessID) error {
-	if len(d.SpawnName) == 0 {
+	if len(d.Spawn) == 0 {
 		return fmt.Errorf("missing %T#SpawnName", d)
 	}
 
-	ctx = WithName(ctx, string(d.SpawnName))
-	ctx = logging.ContextWith(ctx, logging.Field("name", d.SpawnName))
+	ctx = WithName(ctx, string(d.Spawn))
+	ctx = logging.ContextWith(ctx, logging.Field("name", d.Spawn))
 
 	repo, err := LookupEventsRepository(ctx)
 	if err != nil {
@@ -304,7 +304,7 @@ scan:
 		}
 		switch event := event.(type) {
 		case EventSpawn:
-			if event.Name == d.SpawnName {
+			if event.Name == d.Spawn {
 				child = event
 				found = true
 			}
@@ -320,7 +320,7 @@ scan:
 		return nil
 	}
 	if !found {
-		return fmt.Errorf("missing spawn child for the given Join.SpawnName %q in process %s", d.SpawnName, parentID.String())
+		return fmt.Errorf("missing spawn child for the given Join.SpawnName %q in process %s", d.Spawn, parentID.String())
 	}
 
 	done, err = IsCompleted(ctx, repo, child.ChildID)
@@ -399,7 +399,7 @@ scan:
 var _ validate.Validatable = Join{}
 
 func (d Join) Validate(ctx context.Context) error {
-	if 0 < len(d.Collect) && len(d.SpawnName) == 0 {
+	if 0 < len(d.Collect) && len(d.Spawn) == 0 {
 		return fmt.Errorf("workflow.Join#Collect only works if the SpawnName is provided")
 	}
 	return nil

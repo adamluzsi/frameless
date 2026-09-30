@@ -127,6 +127,90 @@ func TestWorkflowExecute(t *testing.T) {
 	})
 }
 
+// TestWorkflowJoin pins the wire format of workflow.Join.
+// The join names the spawn it waits for under the "spawn" key; the v1 "spawn_name" key is still read,
+// so stored definitions keep waiting for the same child.
+func TestWorkflowJoin(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	codec := let.Var(s, func(t *testcase.T) workflow.Codec { return wfjson.NewCodec() })
+
+	s.Describe("#Marshal", func(s *testcase.Spec) {
+		value := let.Var(s, func(t *testcase.T) workflow.Join {
+			return workflow.Join{Spawn: "child1", Collect: workflow.VarMapping{"x": "y"}}
+		})
+
+		act := func(t *testcase.T) (string, error) {
+			data, err := codec.Get(t).Marshal(value.Get(t))
+			return string(data), err
+		}
+
+		s.Then("the awaited spawn is written under the spawn key", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, got, `{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`)
+		})
+
+		s.When("it joins every child", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) workflow.Join { return workflow.Join{} })
+
+			s.Then("no spawn is written", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, got, `{"@type":"workflow::join"}`)
+			})
+		})
+	})
+
+	s.Describe("#Unmarshal", func(s *testcase.Spec) {
+		data := let.Var(s, func(t *testcase.T) string {
+			return `{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`
+		})
+
+		act := func(t *testcase.T) (workflow.Definition, error) {
+			var got workflow.Definition
+			err := codec.Get(t).Unmarshal([]byte(data.Get(t)), &got)
+			return got, err
+		}
+
+		exp := workflow.Join{Spawn: "child1", Collect: workflow.VarMapping{"x": "y"}}
+
+		s.Then("it is read back as a join on the named spawn", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal[workflow.Definition](t, got, exp)
+		})
+
+		s.When("the data was written", func(s *testcase.Spec) {
+			data.LetValue(s, `{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`)
+
+			s.Then("it still joins the named spawn", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[workflow.Definition](t, got, exp)
+			})
+
+			s.Then("writing it again uses the spawn key", func(t *testcase.T) {
+				got, err := act(t)
+				assert.Must(t).NoError(err)
+				out, err := codec.Get(t).Marshal(got)
+				assert.NoError(t, err)
+				assert.Equal(t, string(out), `{"@type":"workflow::join","spawn":"child1","collect":{"x":"y"}}`)
+			})
+		})
+
+		s.When("no spawn is named", func(s *testcase.Spec) {
+			data.LetValue(s, `{"@type":"workflow::join"}`)
+
+			s.Then("it is read back as a join on every child", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[workflow.Definition](t, got, workflow.Join{})
+			})
+		})
+	})
+}
+
 // TestPathDTO covers how a workflow.Path is written to and read back from a
 // persisted event log.
 //
