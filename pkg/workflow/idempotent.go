@@ -200,8 +200,11 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 				// mEvents holds the history up to and including the matching
 				// execution event, so the variable value is evaluated as of that
 				// historical position rather than the current one.
-				_, historicalValue, _ := lookupVariable(ctx, mEvents, key)
-				if !reflectkit.Equal(historicalValue, matchingEE.Input[i]) {
+				// It is resolved like the Input of a new call, iteration variables included.
+				// A value that can't be resolved counts as a mismatch,
+				// so the new call reports the failure.
+				historicalValue, _, err := lookupVar(ctx, mEvents, key)
+				if err != nil || !reflectkit.Equal(historicalValue, matchingEE.Input[i]) {
 					found = false
 					break
 				}

@@ -110,6 +110,10 @@ func (vs Vars) Lookup(ctx context.Context, name VarName) (any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	return lookupVar(ctx, events, name)
+}
+
+func lookupVar(ctx context.Context, events []Event, name VarName) (any, bool, error) {
 	if _, value, ok := lookupVariable(ctx, events, name); ok {
 		return value, true, nil
 	}

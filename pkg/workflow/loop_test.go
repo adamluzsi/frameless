@@ -1200,6 +1200,31 @@ func TestForEach(t *testing.T) {
 						"so a replay must not run them again")
 				})
 			})
+
+			s.And("the participant takes the iteration variables as its Input", func(s *testcase.Spec) {
+				_ = wftest.LetParticipantWithID(s, participantID, func(t *testcase.T) func(ctx context.Context, index int, element string) error {
+					return func(ctx context.Context, index int, element string) error {
+						callCount.Set(t, callCount.Get(t)+1)
+						return nil
+					}
+				})
+
+				do.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Execute{
+						Participant: participantID.Get(t),
+						Input:       []workflow.VarName{keyName.Get(t), valueName.Get(t)},
+					}
+				})
+
+				s.Then("repeating the execution doesn't repeat the iterations", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, len(elements.Get(t)), callCount.Get(t),
+						"a recorded call is replayed while its Input is unchanged,",
+						"and the iteration variables are part of that Input")
+				})
+			})
 		})
 
 		s.When("the loop body fails", func(s *testcase.Spec) {
