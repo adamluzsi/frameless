@@ -121,20 +121,71 @@ Workflow variables behave the same way. A `VarScope` is a path of scope names,
 and a binding is visible from anywhere whose scope has the declaring scope as a
 prefix. So:
 
-- A **declaration** decides which scope a name lives in.
+- A **declaration** decides which scope a name lives in. Every declaration is a
+  variable of its own.
 - A **set** finds the nearest visible declaration and writes through to it —
   which may well be an outer scope.
-- A **delete** removes that same binding.
+- A **delete** removes that same binding. A deleted binding keeps shadowing the
+  outer ones, so the name is simply gone from that scope.
 
-Once a name has been re-declared in a scope you cannot see, later assignments
-belong to *that* hidden binding and are invisible from here, until the name is
-declared again somewhere you can see.
+A set or a delete records the variable scope of the variable it reached
+(`Scope`), next to the `Path` of the step that made it. A scope holds at most
+one variable of a name, as re-declaring in the same scope replaces it, so the
+name and the scope tell exactly which variable was meant, and a re-declaration
+elsewhere never steals it:
+
+```go
+x := 1
+{
+	x := 2 // a new variable in the nested scope
+	_ = x
+}
+x = 3 // still the outer x; the nested x keeps 2
+```
+
+The assignments are recorded with the scope of the variable they reached. The
+nested `x := 2` names the nested scope:
+
+```json
+{"@type": "workflow::event::var::set", "name": "x", "scope": ["block"], "value": 2}
+```
+
+while the outer `x = 3` names the root scope, which is an omitted `scope`, so it
+reaches the outer `x` only:
+
+```json
+{"@type": "workflow::event::var::set", "name": "x", "value": 3}
+```
 
 > **Declaring is a step of its own.** `workflow.DeclareVar{Name: "x"}` brings a
 > name into existence in the current scope and assigns nothing. That is what
 > makes shadowing deliberate: a plain `SetVar` writes *through* to the nearest
 > visible binding, even one an enclosing scope owns, whereas declaring first
 > creates a fresh binding here, so the assignments that follow stay local.
+
+### Loop variables
+
+`ForEach`'s `K` and `V` work like the variables of Go's `for range` loop: every
+iteration has its own, in the iteration's scope.
+
+```go
+item := "outer"
+for _, item := range items { // shadows the outer item
+	item = "changed"          // stays within this iteration
+}
+_ = item // "outer"
+```
+
+- They **shadow** an outer variable of the same name inside the loop body.
+- An **assignment** to them declares them in the iteration's scope first, so
+  it never writes through to the outer variable, and the next iteration starts
+  fresh. That holds on every round of an enclosing `For` too.
+- A **nested loop** still sees the iteration variables of the loops around it.
+- `V` is looked up from the collection on every read, so a body that assigns to
+  the collection variable sees the new element.
+
+The iteration variables themselves are not recorded; only an assignment or a
+deletion made to them adds events.
 
 ### The `Global` escape hatch
 

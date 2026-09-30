@@ -897,6 +897,7 @@ type workflowEventSetVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
+	Scope     VarScopeDTO        `json:"scope,omitempty"`
 	Value     any                `json:"value,omitempty"`
 }
 
@@ -907,6 +908,7 @@ func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
+		Scope:     ToVarScopeDTO(v.Scope),
 		Value:     v.Value,
 	})
 }
@@ -921,6 +923,7 @@ func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
+	p.Scope = ToVarScope(dto.Scope)
 	p.Value = dto.Value
 	return nil
 }
@@ -935,6 +938,7 @@ type workflowEventDeleteVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
+	Scope     VarScopeDTO        `json:"scope,omitempty"`
 }
 
 func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVar) ([]byte, error) {
@@ -944,6 +948,7 @@ func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVa
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
+		Scope:     ToVarScopeDTO(v.Scope),
 	})
 }
 
@@ -957,6 +962,7 @@ func (WorkflowEventDeleteVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workfl
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
+	p.Scope = ToVarScope(dto.Scope)
 	return nil
 }
 

@@ -755,6 +755,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp: randomEventTimestamp(t),
 			Path:      randomPath(t),
 			Name:      workflow.VarName(t.Random.String()),
+			Scope:     randomVarScope(t),
 			Value: random.Pick(t.Random,
 				func() any { return nil },
 				func() any { return randomSetVarValue(t) },
@@ -769,6 +770,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp: randomEventTimestamp(t),
 			Path:      randomPath(t),
 			Name:      workflow.VarName(t.Random.String()),
+			Scope:     randomVarScope(t),
 		}
 	})
 

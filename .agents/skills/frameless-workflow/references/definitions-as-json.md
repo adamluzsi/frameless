@@ -203,7 +203,9 @@ the process history. See [Conditions][CONDITION].
 ```
 
 `over` is the input collection (a `VarName`). `key` and `value` are the loop
-variables written into the iteration scope; both default to nothing.
+variables of the iteration scope, like Go's `for key, value := range over`;
+both default to nothing. They shadow outer variables of the same name within
+`do`, and an assignment to them stays within the iteration.
 
 ### `workflow.Break`
 

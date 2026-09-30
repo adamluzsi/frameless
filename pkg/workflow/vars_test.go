@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -109,6 +110,13 @@ func TestVars(t *testing.T) {
 			Name:      name,
 			Scope:     scope,
 		}
+		assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &event))
+	}
+
+	// recordEvent appends an event straight into the Process event history, the
+	// way an earlier execution of the Process left it behind.
+	var recordEvent = func(t *testcase.T, event workflow.Event) {
+		t.Helper()
 		assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &event))
 	}
 
@@ -261,6 +269,19 @@ func TestVars(t *testing.T) {
 				})
 			})
 
+			s.Then("the EventSetVar names the variable scope of the variable it assigned", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+				assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+					ve, ok := e.(workflow.EventSetVar)
+					assert.True(tb, ok)
+					assert.Equal(tb, ve.Name, name.Get(t))
+					assert.Equal(tb, ve.Scope, varScope.Get(t))
+				})
+			})
+
 			s.And("if the variable was already assigned in a previous outer-scope", func(s *testcase.Spec) {
 				outerScope := let.Var(s, func(t *testcase.T) workflow.VarScope {
 					scope := varScope.Get(t)[0 : len(varScope.Get(t))-1]
@@ -290,6 +311,22 @@ func TestVars(t *testing.T) {
 						assert.Equal(tb, ve.Name, name.Get(t))
 						assert.Equal(tb, ve.Scope, varScope.Get(t),
 							assert.MessageF("the variable was already declared in the enclosing scope, so no inner re-declaration is expected"))
+					})
+				})
+
+				s.Then("the EventSetVar names the outer variable scope, where the assigned variable lives", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+					assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+						ve, ok := e.(workflow.EventSetVar)
+						assert.True(tb, ok)
+						assert.Equal(tb, ve.Name, name.Get(t))
+						assert.Equal[any](tb, ve.Value, value.Get(t))
+						// the outer scope is the root scope when the nested one is a single level deep
+						assert.True(tb, slices.Equal(ve.Scope, outerScope.Get(t)),
+							assert.MessageF("expected scope %v, got %v", outerScope.Get(t), ve.Scope))
 					})
 				})
 			})
@@ -502,6 +539,38 @@ func TestVars(t *testing.T) {
 				})
 			})
 
+			s.And("the variable lives in a variable scope enclosing the one the deletion is made from", func(s *testcase.Spec) {
+				varScope := letVarScope(s)
+
+				setContext.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(setContext.Super(t), varScope.Get(t))
+				})
+				ctx.Let(s, func(t *testcase.T) context.Context {
+					return withVarScope(ctx.Super(t), slicekit.Merge(varScope.Get(t), workflow.VarScope{t.Random.UUID()}))
+				})
+
+				s.Then("the EventDeleteVar names the variable scope of the deleted variable", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					events := getProcessEvents(t, eventRepository.Get(t), processID.Get(t))
+
+					assert.OneOf(t, events, func(tb testing.TB, e workflow.Event) {
+						ve, ok := e.(workflow.EventDeleteVar)
+						assert.True(tb, ok)
+						assert.Equal(tb, ve.Name, name.Get(t))
+						assert.Equal(tb, ve.Scope, varScope.Get(t))
+					})
+				})
+
+				s.Then("the variable is deleted from its own variable scope", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					_, ok, err := subject.Get(t).Lookup(setContext.Get(t), name.Get(t))
+					assert.NoError(t, err)
+					assert.False(t, ok)
+				})
+			})
+
 			s.Context("but the deletion is issued from a variable scope which doesn't have access to the created variable", func(s *testcase.Spec) {
 				setContext.Let(s, func(t *testcase.T) context.Context {
 					return withVarScope(setContext.PreviousValue(t), workflow.VarScope{"foo", "bar", "baz"})
@@ -596,6 +665,7 @@ func TestVars(t *testing.T) {
 					ProcessID: processID.Get(t),
 					Timestamp: base.Add(time.Nanosecond),
 					Name:      name.Get(t),
+					Scope:     declareScope.Get(t),
 					Value:     value.Get(t),
 				})
 				assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &setEvent))
@@ -607,6 +677,7 @@ func TestVars(t *testing.T) {
 					ProcessID: processID.Get(t),
 					Timestamp: base.Add(time.Second),
 					Name:      name.Get(t),
+					Scope:     declareScope.Get(t),
 				})
 				assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &deleteEvent))
 			})
@@ -720,6 +791,110 @@ func TestVars(t *testing.T) {
 					got, ok := read(t, outerScope.Get(t))
 					assert.True(t, ok)
 					assert.Equal[any](t, got, outerValue.Get(t))
+				})
+			})
+
+			// x := outerValue
+			// { x := innerValue }
+			// x = laterValue
+			//
+			// The nested re-declaration is a variable of its own, so it must not
+			// take the name over from the outer scope: an assignment made from the
+			// outer scope afterwards still belongs to the outer variable.
+			s.And("the outer scope assigns to the variable after the nested scope re-declared it", func(s *testcase.Spec) {
+				laterValue := letValue(s)
+
+				s.Before(func(t *testcase.T) {
+					assert.NoError(t, subject.Get(t).Set(withVarScope(t.Context(), outerScope.Get(t)), name.Get(t), laterValue.Get(t)))
+				})
+
+				s.Then("the outer scope sees the assigned value", func(t *testcase.T) {
+					got, ok := read(t, outerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, laterValue.Get(t),
+						assert.MessageF("the assignment is made to the outer variable, the one visible from the outer scope"))
+				})
+
+				s.Then("the nested scope still sees its own shadowing value", func(t *testcase.T) {
+					got, ok := read(t, innerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, innerValue.Get(t),
+						assert.MessageF("the shadowing variable is a different variable, which the outer assignment doesn't reach"))
+				})
+			})
+
+			s.And("the variable is deleted from the outer scope after the nested scope re-declared it", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.NoError(t, subject.Get(t).Delete(withVarScope(t.Context(), outerScope.Get(t)), name.Get(t)))
+				})
+
+				s.Then("the outer scope no longer sees the variable", func(t *testcase.T) {
+					got, ok := read(t, outerScope.Get(t))
+					assert.False(t, ok,
+						assert.MessageF("the delete removes the outer variable, the one visible from the outer scope"))
+					assert.Nil(t, got)
+				})
+
+				s.Then("the nested scope still sees its own shadowing value", func(t *testcase.T) {
+					got, ok := read(t, innerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, innerValue.Get(t),
+						assert.MessageF("the shadowing variable is a different variable, which the outer delete doesn't reach"))
+				})
+			})
+
+			// A recorded assignment changes the variable of its Name that lives in
+			// its Scope. It's the event history alone that decides this, so a
+			// Process resumed from its history sees the very same variables.
+			s.And("the history holds an assignment to the variable of the outer scope, recorded after the re-declaration", func(s *testcase.Spec) {
+				recordedValue := letValue(s)
+
+				s.Before(func(t *testcase.T) {
+					recordEvent(t, workflow.EventSetVar{
+						EventID:   mustEventID(t),
+						ProcessID: processID.Get(t),
+						Timestamp: clock.Now().UTC(),
+						Name:      name.Get(t),
+						Scope:     outerScope.Get(t),
+						Value:     recordedValue.Get(t),
+					})
+				})
+
+				s.Then("the outer scope sees the recorded value", func(t *testcase.T) {
+					got, ok := read(t, outerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, recordedValue.Get(t))
+				})
+
+				s.Then("the nested scope still sees its own shadowing value", func(t *testcase.T) {
+					got, ok := read(t, innerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, innerValue.Get(t),
+						assert.MessageF("the assignment names the outer scope, so it can't reach the variable of the nested one"))
+				})
+			})
+
+			s.And("the history holds a deletion of the variable of the outer scope, recorded after the re-declaration", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					recordEvent(t, workflow.EventDeleteVar{
+						EventID:   mustEventID(t),
+						ProcessID: processID.Get(t),
+						Timestamp: clock.Now().UTC(),
+						Name:      name.Get(t),
+						Scope:     outerScope.Get(t),
+					})
+				})
+
+				s.Then("the outer scope no longer sees the variable", func(t *testcase.T) {
+					_, ok := read(t, outerScope.Get(t))
+					assert.False(t, ok)
+				})
+
+				s.Then("the nested scope still sees its own shadowing value", func(t *testcase.T) {
+					got, ok := read(t, innerScope.Get(t))
+					assert.True(t, ok)
+					assert.Equal[any](t, got, innerValue.Get(t),
+						assert.MessageF("the deletion names the outer scope, so it can't reach the variable of the nested one"))
 				})
 			})
 		})
@@ -1110,6 +1285,7 @@ func TestDeleteVar(t *testing.T) {
 				Timestamp: at.Add(time.Nanosecond),
 				Path:      path,
 				Name:      name.Get(t),
+				Scope:     scope,
 				Value:     value,
 			}
 			assert.NoError(t, c.EventRepository.Get(t).Create(t.Context(), &setEvent))

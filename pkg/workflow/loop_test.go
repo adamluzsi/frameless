@@ -861,6 +861,21 @@ func TestForEach(t *testing.T) {
 			}
 		}
 
+		// thenARepeatedExecutionSeesTheSame asserts that repeating the execution,
+		// which is how a Process gets replayed, gives the loop body the very same
+		// iteration variables as the first execution did.
+		var thenARepeatedExecutionSeesTheSame = func(s *testcase.Spec) {
+			s.Then("a repeated execution sees the same iteration variables", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				first := iterations.Get(t)
+				iterations.Set(t, nil)
+
+				assert.NoError(t, act(t))
+				assert.Equal(t, first, iterations.Get(t),
+					"what the first execution recorded must not make the loop body see different values on a replay")
+			})
+		}
+
 		s.Before(func(t *testcase.T) {
 			if !hasCollection.Get(t) {
 				return
@@ -880,6 +895,8 @@ func TestForEach(t *testing.T) {
 				"the body must run once per element,",
 				"seeing the index as the Key and the element as the Value")
 		})
+
+		thenARepeatedExecutionSeesTheSame(s)
 
 		s.Then("the iteration variables don't outlive the loop", func(t *testcase.T) {
 			assert.NoError(t, act(t))
@@ -1198,6 +1215,18 @@ func TestForEach(t *testing.T) {
 				assert.NoError(t, vars(t).Set(ctx.Get(t), valueName.Get(t), outerValue.Get(t)))
 			})
 
+			s.Then("the loop body sees the iteration variable instead of the outer one", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				var expected []forEachIteration
+				for index, element := range elements.Get(t) {
+					expected = append(expected, forEachIteration{Key: index, Value: element})
+				}
+				assert.Equal(t, expected, iterations.Get(t),
+					"the iteration variable is declared in the loop body's variable scope,",
+					"so within the loop body it shadows the outer variable of the same name")
+			})
+
 			s.Then("the iteration variable shadows it instead of overwriting it", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
@@ -1208,6 +1237,126 @@ func TestForEach(t *testing.T) {
 					"the iteration variable belongs to the loop,",
 					"so iterating must not overwrite an outer variable sharing its name")
 			})
+
+			thenARepeatedExecutionSeesTheSame(s)
+
+			s.And("the loop body assigns to the Value variable", func(s *testcase.Spec) {
+				var assignedValue = let.Var[any](s, func(t *testcase.T) any { return t.Random.UUID() })
+
+				do.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.SetVar{Name: valueName.Get(t), Value: assignedValue.Get(t)},
+						do.Super(t),
+					}
+				})
+
+				s.Then("the loop body sees the assigned value", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					var expected []forEachIteration
+					for index := range elements.Get(t) {
+						expected = append(expected, forEachIteration{Key: index, Value: assignedValue.Get(t)})
+					}
+					assert.Equal(t, expected, iterations.Get(t))
+				})
+
+				s.Then("the assignment stays within the loop body, and the outer variable keeps its value", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					got, ok, err := vars(t).Lookup(ctx.Get(t), valueName.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, ok)
+					assert.Equal[any](t, outerValue.Get(t), got,
+						"within the loop body, the Value name refers to the iteration variable,",
+						"so an assignment to it must not write through to the shadowed outer variable")
+				})
+
+				thenARepeatedExecutionSeesTheSame(s)
+
+				s.Then("a repeated execution leaves the outer variable as it was too", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.NoError(t, act(t))
+
+					got, ok, err := vars(t).Lookup(ctx.Get(t), valueName.Get(t))
+					assert.NoError(t, err)
+					assert.True(t, ok)
+					assert.Equal[any](t, outerValue.Get(t), got)
+				})
+			})
+		})
+
+		s.When("the loop body deletes the Value variable", func(s *testcase.Spec) {
+			do.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.DeleteVar{Name: valueName.Get(t)},
+					do.Super(t),
+				}
+			})
+
+			s.Then("the loop body no longer sees it", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				var expected []forEachIteration
+				for index := range elements.Get(t) {
+					expected = append(expected, forEachIteration{Key: index, Value: nil})
+				}
+				assert.Equal(t, expected, iterations.Get(t),
+					"the iteration variable is deleted the same way as a declared one is")
+			})
+
+			s.Then("the collection is left as it was", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				got, ok, err := vars(t).Lookup(ctx.Get(t), collectionName.Get(t))
+				assert.NoError(t, err)
+				assert.True(t, ok)
+				assert.Equal[any](t, collection.Get(t), got,
+					"deleting the iteration variable doesn't delete the element it was taken from")
+			})
+
+			thenARepeatedExecutionSeesTheSame(s)
+		})
+
+		s.When("the loop body is a nested ForEach", func(s *testcase.Spec) {
+			var (
+				innerCollectionName = let.Var(s, func(t *testcase.T) workflow.VarName {
+					return workflow.VarName(t.Random.UUID())
+				})
+				innerElements = let.Var(s, func(t *testcase.T) []string {
+					return random.Slice(t.Random.IntBetween(1, 3), t.Random.UUID)
+				})
+			)
+
+			s.Before(func(t *testcase.T) {
+				assert.NoError(t, vars(t).Set(ctx.Get(t), innerCollectionName.Get(t), innerElements.Get(t)))
+			})
+
+			// The recording loop body moves into the inner loop, where it keeps
+			// looking up the Key and Value of the outer loop.
+			do.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.ForEach{
+					Over: innerCollectionName.Get(t),
+					K:    workflow.VarName(t.Random.UUID()),
+					V:    workflow.VarName(t.Random.UUID()),
+					Do:   do.Super(t),
+				}
+			})
+
+			s.Then("the inner loop body still sees the iteration variables of the outer loop", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				var expected []forEachIteration
+				for index, element := range elements.Get(t) {
+					for range innerElements.Get(t) {
+						expected = append(expected, forEachIteration{Key: index, Value: element})
+					}
+				}
+				assert.Equal(t, expected, iterations.Get(t),
+					"the inner loop body is nested in the outer one's variable scope,",
+					"so the outer iteration variables stay visible within it")
+			})
+
+			thenARepeatedExecutionSeesTheSame(s)
 		})
 
 		s.When("the loop body executes a participant", func(s *testcase.Spec) {
@@ -1533,6 +1682,288 @@ func TestForEach(t *testing.T) {
 			pid := wftest.MakeProcessID(t)
 			assert.NoError(t, wftest.Runtime.Get(t).Bind(t.Context(), pid, def))
 			assert.NoError(t, wftest.Runtime.Get(t).Execute(t.Context(), pid))
+		})
+
+		s.Test("a nested loop body sees the iteration variables of both loops", func(t *testcase.T) {
+			// rows := []string{"r1", "r2"}
+			// cols := []string{"c1"}
+			// for _, row := range rows {
+			// 	for _, col := range cols {
+			// 		seen = append(seen, row+":"+col)
+			// 	}
+			// }
+			var seen []string
+			def := workflow.Sequence{
+				workflow.DeclareVar{Name: "rows"},
+				workflow.SetVar{Name: "rows", Value: []string{"r1", "r2"}},
+				workflow.DeclareVar{Name: "cols"},
+				workflow.SetVar{Name: "cols", Value: []string{"c1"}},
+				workflow.ForEach{
+					Over: "rows", V: "row",
+					Do: workflow.ForEach{
+						Over: "cols", V: "col",
+						Do: wftest.Stub{
+							StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+								vars, err := workflow.GetVars(ctx)
+								if err != nil {
+									return err
+								}
+								row, _, err := vars.Lookup(ctx, "row")
+								if err != nil {
+									return err
+								}
+								col, _, err := vars.Lookup(ctx, "col")
+								if err != nil {
+									return err
+								}
+								seen = append(seen, fmt.Sprintf("%v:%v", row, col))
+								return nil
+							},
+						},
+					},
+				},
+			}
+
+			pid := wftest.MakeProcessID(t)
+			assert.NoError(t, wftest.Runtime.Get(t).Bind(t.Context(), pid, def))
+			assert.NoError(t, wftest.Runtime.Get(t).Execute(t.Context(), pid))
+
+			assert.Equal(t, []string{"r1:c1", "r2:c1"}, seen,
+				"the inner loop must not hide the outer loop's `row`")
+		})
+
+		s.Test("the iteration variable shadows an outer variable of the same name", func(t *testcase.T) {
+			// item := "outer"
+			// items := []string{"a", "b"}
+			// for _, item := range items {
+			// 	seen = append(seen, item)
+			// }
+			// // item == "outer"
+			var seen []any
+			def := workflow.Sequence{
+				workflow.DeclareVar{Name: "item"},
+				workflow.SetVar{Name: "item", Value: "outer"},
+				workflow.DeclareVar{Name: "items"},
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.ForEach{
+					Over: "items", V: "item",
+					Do: wftest.Stub{
+						StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+							vars, err := workflow.GetVars(ctx)
+							if err != nil {
+								return err
+							}
+							item, _, err := vars.Lookup(ctx, "item")
+							if err != nil {
+								return err
+							}
+							seen = append(seen, item)
+							return nil
+						},
+					},
+				},
+			}
+
+			pid := wftest.MakeProcessID(t)
+			assert.NoError(t, wftest.Runtime.Get(t).Bind(t.Context(), pid, def))
+			assert.NoError(t, wftest.Runtime.Get(t).Execute(t.Context(), pid))
+
+			assert.Equal(t, []any{"a", "b"}, seen,
+				"within the loop body, `item` is the iteration variable")
+
+			vars := workflow.Vars{ProcessID: pid, EventsRepository: wftest.EventRepository.Get(t)}
+			item, err := vars.Get(t.Context(), "item")
+			assert.NoError(t, err)
+			assert.Equal[any](t, "outer", item,
+				"after the loop, `item` is the outer variable again")
+		})
+
+		s.Test("an assignment to a shadowing iteration variable stays within the loop body", func(t *testcase.T) {
+			// item := "outer"
+			// items := []string{"a", "b"}
+			// for _, item := range items {
+			// 	item = "changed-in-loop"
+			// 	seen = append(seen, item)
+			// }
+			// // item == "outer"
+			var seen []any
+			def := workflow.Sequence{
+				workflow.DeclareVar{Name: "item"},
+				workflow.SetVar{Name: "item", Value: "outer"},
+				workflow.DeclareVar{Name: "items"},
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.ForEach{
+					Over: "items", V: "item",
+					Do: workflow.Sequence{
+						workflow.SetVar{Name: "item", Value: "changed-in-loop"},
+						wftest.Stub{
+							StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+								vars, err := workflow.GetVars(ctx)
+								if err != nil {
+									return err
+								}
+								item, _, err := vars.Lookup(ctx, "item")
+								if err != nil {
+									return err
+								}
+								seen = append(seen, item)
+								return nil
+							},
+						},
+					},
+				},
+			}
+
+			pid := wftest.MakeProcessID(t)
+			assert.NoError(t, wftest.Runtime.Get(t).Bind(t.Context(), pid, def))
+			assert.NoError(t, wftest.Runtime.Get(t).Execute(t.Context(), pid))
+
+			assert.Equal(t, []any{"changed-in-loop", "changed-in-loop"}, seen,
+				"within the loop body, the assignment is visible")
+
+			vars := workflow.Vars{ProcessID: pid, EventsRepository: wftest.EventRepository.Get(t)}
+			item, err := vars.Get(t.Context(), "item")
+			assert.NoError(t, err)
+			assert.Equal[any](t, "outer", item,
+				"the assignment targeted the iteration variable,",
+				"so it must not write through to the shadowed outer `item`")
+		})
+	})
+
+	// A Process which suspends is executed again later, and that execution
+	// replays every step the earlier ones already did. A replayed participant
+	// call is only skipped while the variables it takes as its Input resolve to
+	// the same values they did when the call was recorded. So if a variable
+	// drifted between the executions, the participant would be called again,
+	// and it would show up in `seen` a second time.
+	s.Context("a resumed Process replays the loop with the same variables", func(s *testcase.Spec) {
+		var (
+			seen      = let.VarOf[[]string](s, nil)
+			suspended = let.VarOf(s, false)
+		)
+		wftest.Participants.Let(s, func(t *testcase.T) workflow.Participants {
+			return workflow.Participants{
+				"see": func(ctx context.Context, v string) error {
+					testcase.Append(t, seen, v)
+					return nil
+				},
+				"see-pair": func(ctx context.Context, a, b string) error {
+					testcase.Append(t, seen, a+":"+b)
+					return nil
+				},
+				"suspend-once": func(ctx context.Context) error {
+					if suspended.Get(t) {
+						return nil
+					}
+					suspended.Set(t, true)
+					return workflow.Suspend{}
+				},
+			}
+		})
+
+		// run executes the definition as a Process, which suspends once, and then
+		// resumes it, replaying everything the first execution did.
+		var run = func(t *testcase.T, def workflow.Definition) workflow.ProcessID {
+			pid := wftest.MakeProcessID(t)
+			assert.Must(t).NoError(wftest.Runtime.Get(t).Bind(t.Context(), pid, def))
+			assert.Must(t).ErrorIs(wftest.Runtime.Get(t).Execute(t.Context(), pid), workflow.Suspend{})
+			assert.Must(t).NoError(wftest.Runtime.Get(t).Execute(t.Context(), pid))
+			return pid
+		}
+
+		s.Test("the iteration variables of nested loops", func(t *testcase.T) {
+			// rows := []string{"r1", "r2"}
+			// cols := []string{"c1", "c2"}
+			// for _, row := range rows {
+			// 	for _, col := range cols {
+			// 		see(row, col)
+			// 	}
+			// }
+			// suspend()
+			run(t, workflow.Sequence{
+				workflow.SetVar{Name: "rows", Value: []string{"r1", "r2"}},
+				workflow.SetVar{Name: "cols", Value: []string{"c1", "c2"}},
+				workflow.ForEach{
+					Over: "rows", V: "row",
+					Do: workflow.ForEach{
+						Over: "cols", V: "col",
+						Do: workflow.Execute{Participant: "see-pair", Input: []workflow.VarName{"row", "col"}},
+					},
+				},
+				workflow.Execute{Participant: "suspend-once"},
+			})
+
+			assert.Equal(t, []string{"r1:c1", "r1:c2", "r2:c1", "r2:c2"}, seen.Get(t),
+				"every pair is seen exactly once, and the resumed execution replays each of them")
+		})
+
+		s.Test("a shadowing iteration variable, and the outer variable it shadows", func(t *testcase.T) {
+			// item := "outer"
+			// items := []string{"a", "b"}
+			// for _, item := range items {
+			// 	see(item)
+			// 	item = "changed-in-loop"
+			// 	see(item)
+			// }
+			// see(item)
+			// item = "after"
+			// suspend()
+			pid := run(t, workflow.Sequence{
+				workflow.SetVar{Name: "item", Value: "outer"},
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.ForEach{
+					Over: "items", V: "item",
+					Do: workflow.Sequence{
+						workflow.Execute{Participant: "see", Input: []workflow.VarName{"item"}},
+						workflow.SetVar{Name: "item", Value: "changed-in-loop"},
+						workflow.Execute{Participant: "see", Input: []workflow.VarName{"item"}},
+					},
+				},
+				workflow.Execute{Participant: "see", Input: []workflow.VarName{"item"}},
+				workflow.SetVar{Name: "item", Value: "after"},
+				workflow.Execute{Participant: "suspend-once"},
+			})
+
+			assert.Equal(t, []string{"a", "changed-in-loop", "b", "changed-in-loop", "outer"}, seen.Get(t),
+				"every value is seen exactly once, and the resumed execution replays each of them")
+
+			vars := workflow.Vars{ProcessID: pid, EventsRepository: wftest.EventRepository.Get(t)}
+			item, err := vars.Get(t.Context(), "item")
+			assert.NoError(t, err)
+			assert.Equal[any](t, "after", item,
+				"the assignment after the loop is made to the outer `item`")
+		})
+
+		s.Test("the iteration variables on every round of an enclosing For", func(t *testcase.T) {
+			// items := []string{"a", "b"}
+			// for i := 0; i < 2; i++ {
+			// 	for _, item := range items {
+			// 		see(item)
+			// 		item = "changed-in-loop"
+			// 	}
+			// }
+			// suspend()
+			run(t, workflow.Sequence{
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.For{
+					Init: workflow.SetVar{Name: "i", Value: 0},
+					Cond: wftemplate.Condition("lt .i 2"),
+					Post: workflow.Increment{Name: "i"},
+					Do: workflow.ForEach{
+						Over: "items", V: "item",
+						Do: workflow.Sequence{
+							workflow.Execute{Participant: "see", Input: []workflow.VarName{"item"}},
+							workflow.SetVar{Name: "item", Value: "changed-in-loop"},
+						},
+					},
+				},
+				workflow.Execute{Participant: "suspend-once"},
+			})
+
+			assert.Equal(t, []string{"a", "b", "a", "b"}, seen.Get(t),
+				"the loop body runs in the same variable scope on every round of the For,",
+				"but every round starts the loop over with fresh iteration variables,",
+				"not with what an earlier round assigned to them")
 		})
 	})
 }

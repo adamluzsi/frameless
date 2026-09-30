@@ -167,6 +167,9 @@
 				"compat::greet"
 			],
 			"name": "greeting",
+			"scope": [
+				"[0]"
+			],
 			"value": "hello alice"
 		}
 	]

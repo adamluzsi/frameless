@@ -414,18 +414,18 @@ func TestCompat_v1WireFormat(t *testing.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventSetVar{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), Name: "x", Value: "v",
+				Path: path.Get(t), Name: "x", Scope: scope.Get(t), Value: "v",
 			},
-			`{"@type":"workflow::event::var::set","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","value":"v"}`)
+			`{"@type":"workflow::event::var::set","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","scope":["[0]"],"value":"v"}`)
 	})
 
 	s.Test("EventDeleteVar", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventDeleteVar{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), Name: "x",
+				Path: path.Get(t), Name: "x", Scope: scope.Get(t),
 			},
-			`{"@type":"workflow::event::var::delete","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x"}`)
+			`{"@type":"workflow::event::var::delete","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","scope":["[0]"]}`)
 	})
 
 	s.Test("EventParticipant", func(t *testcase.T) {

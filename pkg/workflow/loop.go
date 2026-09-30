@@ -133,15 +133,24 @@ func (Break) Execute(context.Context, ProcessID) error { return Break{} }
 
 //---
 
+// ForEach is the workflow equivalent of Go's for range loop:
+//
+//	for K, V := range Over { Do }
+//
+// K and V are the loop variables. Just like in Go, every iteration has its own:
+// they belong to the variable scope of the iteration, so they shadow the
+// variables of the same name from outside of the loop, stay visible to the
+// loops nested in the body, and an assignment to them stays within the
+// iteration instead of writing through to an outer variable.
 type ForEach struct {
 	// Over is the VarName that ForEach uses to find the iterable collection
 	Over VarName
 	// Do is the ForEach loop body, which is executed on each iteration, but with the currently relevant iteration scoped variable.
 	// The body ends the loop before the collection runs out by raising a Break.
 	Do Definition
-	// K [optional] will be used to store either the index value of a slice, or the key of a map of the iterated collection variable.
+	// K [optional] is the loop variable that holds either the index of the element in a slice, or the key of the entry in a map.
 	K VarName
-	// V [optional] is where the value of the currently iterated element will be placed.
+	// V [optional] is the loop variable that holds the currently iterated element of the collection.
 	V VarName
 }
 
@@ -202,6 +211,11 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 // reference on what to look up from that record, not a change of its own.
 // Caching the value at iteration-start would silently disagree with the
 // collection once the body reassigns it.
+//
+// The iteration variables behave like the loop variables of Go's for range
+// loop: each iteration has its own, declared in the iteration's variable
+// scope. So they shadow the variables of the same name from outside of the
+// loop, and an assignment to them stays within the iteration.
 func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodyScope string, index *int, key reflect.Value) error {
 	ctx = WithName(ctx, bodyScope)
 	ctx = WithVarScope(ctx, bodyScope)
@@ -209,6 +223,7 @@ func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodySco
 		KeyName:   foreach.K,
 		ValueName: foreach.V,
 		Scope:     CurrentVarScope(ctx),
+		Path:      CurrentPath(ctx),
 
 		Source: foreach.Over,
 		Index:  index,
@@ -226,8 +241,8 @@ func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodySco
 // collection variable, and the position within that collection.
 //
 // ForEach#Execute sets Index for slice iterations and Key for map iterations
-// (exactly one of them), and iterationVars#lookup uses this instruction to
-// re-resolve the value against the current state of the collection on every
+// (exactly one of them), and visibleVars#iterationValue uses this instruction
+// to re-resolve the value against the current state of the collection on every
 // read, so a body that reassigns the collection variable sees the new value
 // without the proxy holding a stale snapshot.
 type iterationVars struct {
@@ -236,18 +251,29 @@ type iterationVars struct {
 	// Scope is the variable scope of the loop body iteration, which the
 	// iteration variables are bound to.
 	Scope VarScope
+	// Path is the definition path of the loop body iteration, which tells this
+	// iteration apart from the ones that ran in the same variable scope before,
+	// on an earlier round of an enclosing For loop.
+	Path Path
 
 	Source VarName
 	Index  *int
 	Key    reflect.Value
+
+	// parent is the iteration of the enclosing loop, when the loop is nested
+	// in the body of another one, whose iteration variables stay visible.
+	parent *iterationVars
 }
 
 var ctxIterationVars = contextkit.ValueHandler[ctxKeyIterationVars, iterationVars]{}
 
 type ctxKeyIterationVars struct{}
 
-func withIterationVars(ctx context.Context, v iterationVars) context.Context {
-	return ctxIterationVars.ContextWith(ctx, v)
+func withIterationVars(ctx context.Context, iv iterationVars) context.Context {
+	if parent, ok := ctxIterationVars.Lookup(ctx); ok {
+		iv.parent = &parent
+	}
+	return ctxIterationVars.ContextWith(ctx, iv)
 }
 
 // names are the variable names the iteration exposes to the loop body.
@@ -261,40 +287,30 @@ func (iv iterationVars) names() []VarName {
 	return names
 }
 
-// lookup resolves an iteration variable by its name.
-//
-// declared holds the variable bindings declared in the event history, as they
-// are seen from the loop body, which is where the Value is re-resolved from,
-// against the current value of the collection variable.
-func (iv iterationVars) lookup(name VarName, declared map[VarName]VarBinding) (VarBinding, bool, error) {
-	if name == "" {
-		return VarBinding{}, false, nil
-	}
-	var value any
-	switch name {
-	case iv.KeyName:
-		switch {
-		case iv.Index != nil:
-			value = *iv.Index
-		case iv.Key.IsValid():
-			value = iv.Key.Interface()
-		default:
-			return VarBinding{}, false, nil
-		}
-	case iv.ValueName:
-		source, ok := declared[iv.Source]
-		if !ok {
-			return VarBinding{}, false, nil
-		}
-		element, ok, err := indexCollection(source.Value, iv)
-		if err != nil || !ok {
-			return VarBinding{}, false, err
-		}
-		value = element
+// exposes tells whether the iteration has a variable by the given name.
+func (iv iterationVars) exposes(name VarName) bool {
+	return name != "" && (name == iv.KeyName || name == iv.ValueName)
+}
+
+// key is the value of the Key iteration variable: the index of the element in
+// a slice, or the key of the entry in a map.
+func (iv iterationVars) key() (any, bool, error) {
+	switch {
+	case iv.Index != nil:
+		return *iv.Index, true, nil
+	case iv.Key.IsValid():
+		return iv.Key.Interface(), true, nil
 	default:
-		return VarBinding{}, false, nil
+		return nil, false, nil
 	}
-	return VarBinding{Name: name, Value: value, Scope: iv.Scope}, true, nil
+}
+
+// enclosingScope is the variable scope the loop itself runs in.
+func (iv iterationVars) enclosingScope() VarScope {
+	if len(iv.Scope) == 0 {
+		return nil
+	}
+	return iv.Scope[:len(iv.Scope)-1]
 }
 
 func indexCollection(coll any, iv iterationVars) (any, bool, error) {

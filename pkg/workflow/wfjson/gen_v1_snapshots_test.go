@@ -109,13 +109,16 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		}},
 		{"EventSetVar", workflow.EventSetVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path: workflow.Path{"sequence", "[0]", "participant"},
-			Name: "x", Value: "v",
+			Path:  workflow.Path{"sequence", "[0]", "participant"},
+			Name:  "x",
+			Scope: workflow.VarScope{"[0]"},
+			Value: "v",
 		}},
 		{"EventDeleteVar", workflow.EventDeleteVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path: workflow.Path{"sequence", "[0]", "participant"},
-			Name: "x",
+			Path:  workflow.Path{"sequence", "[0]", "participant"},
+			Name:  "x",
+			Scope: workflow.VarScope{"[0]"},
 		}},
 		{"EventParticipant", workflow.EventParticipant{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
