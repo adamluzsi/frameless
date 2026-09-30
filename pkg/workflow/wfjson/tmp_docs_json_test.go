@@ -11,6 +11,10 @@ import (
 )
 
 func TestTMPDocsJSONExamples(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
 	var files []string
 	for _, pattern := range []string{
 		"../*.md",

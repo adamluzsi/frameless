@@ -2,9 +2,11 @@ package jsonkit_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/testcase"
@@ -187,6 +189,15 @@ func TestInterface(t *testing.T) {
 		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with a registered type that does not implement T fails fast", func(t *testing.T) {
+		data, err := json.Marshal(jsonkit.Interface[any]{V: withTypeStruct{Name: rnd.String()}})
+		assert.NoError(t, err)
+
+		assert.Within(t, time.Second, func(context.Context) {
+			var got jsonkit.Interface[Greeter]
+			assert.Error(t, json.Unmarshal(data, &got))
+		})
 	})
 }
 

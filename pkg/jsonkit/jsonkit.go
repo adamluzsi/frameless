@@ -2,15 +2,12 @@ package jsonkit
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
@@ -198,10 +195,9 @@ func (id TypeID) IsZero() bool {
 	return id == zero
 }
 
-var ptrNestingLoop = resilience.FixedDelay{
-	Delay:   time.Nanosecond,
-	Timeout: time.Second,
-}
+// maxPtrNesting caps how many pointer levels newImpl wraps around the
+// identified type while it looks for one that satisfies the target type.
+const maxPtrNesting = 42
 
 func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	var check func(reflect.Type) bool
@@ -217,9 +213,7 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	}
 
 	ptr := reflect.New(identifiedType)
-	ctx := context.Background()
-	// max pointer to pointer nesting level is limited to 42 levels
-	for range resilience.Retries(ctx, ptrNestingLoop) {
+	for range maxPtrNesting {
 		if check(ptr.Type().Elem()) {
 			return ptr, nil
 		}
