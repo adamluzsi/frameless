@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/testcase"
@@ -546,13 +547,21 @@ func TestDefer(t *testing.T) {
 			})
 		})
 
-		s.Context("a Defer placed ahead of a step whose events then fail to persist", func(s *testcase.Spec) {
+		// The idiom of Defer, like Go's `defer f.Close()` right after a successful os.Open:
+		// act first, then defer the cleanup of the act.
+		s.Context("a cleanup deferred right after the step whose effect it cleans up", func(s *testcase.Spec) {
 			var (
 				commitErr = let.Error(s)
 				// outage makes every commit of the event log fail while it is set.
 				outage = let.Var(s, func(t *testcase.T) *bool { return new(bool) })
-				// outages is how many more times the event log goes down right after the reservation.
-				outages = let.VarOf(s, 1)
+				// outages is how many more times the event log goes down right after the reservation took effect.
+				outages = let.VarOf(s, 0)
+				// followUp makes the step defer its cleanup itself, by returning the Defer as its follow-up,
+				// instead of having a Defer step right after it.
+				followUp = let.VarOf(s, false)
+				release  = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return deferred(t, "release")
+				})
 			)
 			c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 				rt := c.Runtime.Super(t)
@@ -563,31 +572,63 @@ func TestDefer(t *testing.T) {
 				}
 				return rt
 			})
-			// reserve takes effect, but the event log goes down right after,
-			// so the call itself is never recorded.
+			// reserve is the step that acts: its reservation takes effect every time it is called.
 			_, reserve := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
 				return func(ctx context.Context) error {
 					if err := record(t, ctx, "reserve"); err != nil {
+						return err
+					}
+					// the immediate undo, in case this call fails to be recorded
+					if err := txkit.OnRollback(ctx, func() {
+						executions.Set(t, append(executions.Get(t), deferredExecution{Name: "undo reserve"}))
+					}); err != nil {
 						return err
 					}
 					if 0 < outages.Get(t) {
 						outages.Set(t, outages.Get(t)-1)
 						*outage.Get(t) = true
 					}
+					if followUp.Get(t) {
+						return workflow.Defer{Definition: release.Get(t)}
+					}
 					return nil
 				}
 			})
 			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+				if followUp.Get(t) {
+					return workflow.Sequence{
+						workflow.Execute{Participant: reserve.Get(t)},
+						workflow.Execute{Participant: last.Get(t)},
+					}
+				}
 				return workflow.Sequence{
-					workflow.Defer{Definition: firstDeferred.Get(t)},
 					workflow.Execute{Participant: reserve.Get(t)},
+					workflow.Defer{Definition: release.Get(t)},
+					workflow.Execute{Participant: last.Get(t)},
 				}
 			})
-			s.Before(func(t *testcase.T) {
-				assert.Must(t).ErrorIs(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)), commitErr.Get(t))
-				assert.Must(t).Equal(len(deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t))), 1,
-					assert.MessageF("the Defer step is expected to record its hook on its own, apart from the failed step"))
-				*outage.Get(t) = false // the event log recovers
+			// theCallFailsToBeRecorded arranges a first attempt in which the reservation takes effect,
+			// but the event log goes down right after, so the call is never recorded.
+			theCallFailsToBeRecorded := func(s *testcase.Spec) {
+				outages.LetValue(s, 1)
+				s.Before(func(t *testcase.T) {
+					assert.Must(t).ErrorIs(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)), commitErr.Get(t))
+					*outage.Get(t) = false // the event log recovers
+				})
+			}
+
+			s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+				act := func(t *testcase.T) error {
+					return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+				}
+
+				s.Then("the cleanup is registered once the reservation took effect, and it runs when the process completes", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"reserve", "release"})
+					thenTheyRanBeforeTheOutcome(t)
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
 			})
 
 			s.Describe("Runtime#Terminate", func(s *testcase.Spec) {
@@ -595,26 +636,85 @@ func TestDefer(t *testing.T) {
 					return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
 				}
 
-				s.Then("the cleanup still runs, even though the step it cleans up after was never recorded", func(t *testcase.T) {
+				// the process makes the reservation, defers its cleanup, then waits at its last step
+				ending.Let(s, func(t *testcase.T) error {
+					return workflow.Suspend{}
+				})
+				s.Before(func(t *testcase.T) {
+					assert.Must(t).ErrorIs(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)), workflow.Suspend{})
+				})
+
+				s.Then("the reservation is cleaned up", func(t *testcase.T) {
 					assert.NoError(t, act(t))
 
-					assert.Equal(t, executed(t), []string{"reserve", "first"})
+					assert.Equal(t, executed(t), []string{"reserve", "release"})
 					thenTheyRanBeforeTheOutcome(t)
 					assert.True(t, isTerminated(t))
 				})
 			})
 
-			s.Describe("Runtime#Execute", func(s *testcase.Spec) {
-				act := func(t *testcase.T) error {
-					return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
-				}
+			s.When("the reservation takes effect, but its call fails to be recorded", func(s *testcase.Spec) {
+				theCallFailsToBeRecorded(s)
 
-				s.Then("the unrecorded step is retried, and the cleanup runs once the process completes", func(t *testcase.T) {
-					assert.NoError(t, act(t))
+				s.Describe("Runtime#Terminate", func(s *testcase.Spec) {
+					act := func(t *testcase.T) error {
+						return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
+					}
 
-					assert.Equal(t, executed(t), []string{"reserve", "reserve", "first"})
-					thenTheyRanBeforeTheOutcome(t)
-					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+					s.Then("no cleanup runs, as the process never got past the unrecorded step; txkit.OnRollback undid the reservation instead", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+
+						assert.Equal(t, executed(t), []string{"reserve", "undo reserve"})
+						assert.Empty(t, deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t)))
+						assert.True(t, isTerminated(t))
+					})
+				})
+
+				s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+					act := func(t *testcase.T) error {
+						return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+					}
+
+					s.Then("the step is retried, and once its call is on record, its cleanup is registered and runs when the process completes", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+
+						assert.Equal(t, executed(t), []string{"reserve", "undo reserve", "reserve", "release"})
+						thenTheyRanBeforeTheOutcome(t)
+						assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+					})
+				})
+			})
+
+			s.When("the step defers the cleanup itself, as its follow-up, but its call fails to be recorded", func(s *testcase.Spec) {
+				followUp.LetValue(s, true)
+				theCallFailsToBeRecorded(s)
+
+				s.Describe("Runtime#Terminate", func(s *testcase.Spec) {
+					act := func(t *testcase.T) error {
+						return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
+					}
+
+					s.Then("the registration is lost along with the call it was committed with, so no cleanup runs; txkit.OnRollback undid the reservation instead", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+
+						assert.Equal(t, executed(t), []string{"reserve", "undo reserve"})
+						assert.Empty(t, deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t)))
+						assert.True(t, isTerminated(t))
+					})
+				})
+
+				s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+					act := func(t *testcase.T) error {
+						return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+					}
+
+					s.Then("the step is retried, and its recorded call registers the cleanup, which runs when the process completes", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+
+						assert.Equal(t, executed(t), []string{"reserve", "undo reserve", "reserve", "release"})
+						thenTheyRanBeforeTheOutcome(t)
+						assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+					})
 				})
 			})
 		})

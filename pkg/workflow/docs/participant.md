@@ -16,9 +16,9 @@ rt := workflow.Runtime{
 
 ```go
 workflow.Execute{
-	ParticipantID: "charge-card",
-	Input:         []workflow.VarName{"order_id"},
-	Output:        []workflow.VarName{"receipt"},
+	Participant: "charge-card",
+	Input:       []workflow.VarName{"order_id"},
+	Output:      []workflow.VarName{"receipt"},
 }
 ```
 
@@ -259,28 +259,48 @@ definition runs when the process ends.
 
 ```go
 workflow.Sequence{
+	workflow.Execute{Participant: "reserve-seat", Input: []workflow.VarName{"booking_id"}},
 	workflow.Defer{Definition: workflow.Execute{
 		Participant: "release-unpaid-seat",
 		Input:       []workflow.VarName{"booking_id"},
 	}},
-	workflow.Execute{Participant: "reserve-seat", Input: []workflow.VarName{"booking_id"}},
 	workflow.Execute{Participant: "take-payment", Input: []workflow.VarName{"booking_id"}},
 }
 ```
 
-**Place the `Defer` ahead of the step it cleans up after.** `Defer` is a step
-of its own, so its registration is committed on its own. If `reserve-seat`
-reserves the seat but its call then fails to be recorded, the cleanup is
-already on record. It still runs when the process is later completed or
-terminated. The cost is that the cleanup runs at every ending, including when
-the effect never happened. So write it to check what is there to undo, as
-`release-unpaid-seat` does, and to tolerate finding nothing.
+**Act first, then defer the cleanup.** Place the `Defer` right after the step
+whose effect it cleans up, the way `defer f.Close()` follows a successful
+`os.Open` in Go. The cleanup is then registered only once `reserve-seat` has
+reserved the seat and its call is on record:
+
+- If `reserve-seat` fails, or reserves the seat but its call then fails to be
+  recorded, the process doesn't get past it, so no cleanup is registered for
+  it. The call is retried instead, so it must stay repeatable, and
+  `txkit.OnRollback` lets it undo the reservation right away (see above).
+- Once registered, the cleanup runs at every ending, including a successful
+  completion. So write it to undo only what the process no longer needs, as
+  `release-unpaid-seat` does by keeping the seats that were paid for.
 
 A participant can also defer by returning a `Defer` as its follow-up (see
-[§3](#3-returning-more-work)). That registration is recorded together with the
-participant's call, so if the call fails to be recorded, the registration is
-lost with it. Use this form only for cleanups that are fine to lose along with
-the call.
+[§3](#3-returning-more-work)) once its act has succeeded:
+
+```go
+"reserve-seat": func(ctx context.Context, bookingID string) error {
+	if err := seats.Reserve(ctx, bookingID); err != nil {
+		return err
+	}
+	return workflow.Defer{Definition: workflow.Execute{
+		Participant: "release-unpaid-seat",
+		Input:       []workflow.VarName{"booking_id"},
+	}}
+},
+```
+
+That registration is recorded in the same commit as the participant's call. A
+separate `Defer` step commits after the call, so a process that is terminated
+between the two commits, for example after a crash, ends without the cleanup.
+The follow-up form leaves no such gap, but the cleanup is no longer visible in
+the definition.
 
 - **When they run.** Deferred definitions run when the process completes,
   whether it reached the end of its definition or raised `Complete`. They also
@@ -311,8 +331,9 @@ the call.
 `Defer` is **not** a rollback hook. A deferred definition needs a working event
 history to run, so it runs only once the event history works again. To undo an
 effect right when its call fails to be recorded, use `txkit.OnRollback`, as
-shown above. The two combine well: `txkit.OnRollback` gives a fast undo, and a
-`Defer` placed ahead of the step catches whatever that undo couldn't reach.
+shown above. The two cover different windows: `txkit.OnRollback` undoes an act
+whose call failed to be recorded, and `Defer` cleans up after an act that is on
+record, once the process ends.
 
 ---
 
@@ -328,8 +349,8 @@ follow-up stages":
 		return err
 	}
 	return workflow.Sequence{
-		workflow.Execute{ParticipantID: "pick", Input: []workflow.VarName{"order_id"}},
-		workflow.Execute{ParticipantID: "pack", Input: []workflow.VarName{"order_id"}},
+		workflow.Execute{Participant: "pick", Input: []workflow.VarName{"order_id"}},
+		workflow.Execute{Participant: "pack", Input: []workflow.VarName{"order_id"}},
 	}
 },
 ```

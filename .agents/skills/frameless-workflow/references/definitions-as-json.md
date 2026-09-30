@@ -49,9 +49,9 @@ in Go and marshal it:
 def := workflow.Sequence{
     workflow.SetVar{Name: "topic", Value: "go.llib.dev/frameless"},
     workflow.Execute{
-        ParticipantID: "summarise",
-        Input:         []workflow.VarName{"topic"},
-        Output:        []workflow.VarName{"summary"},
+        Participant: "summarise",
+        Input:       []workflow.VarName{"topic"},
+        Output:      []workflow.VarName{"summary"},
     },
 }
 
@@ -59,7 +59,7 @@ c := wfjson.NewCodec()
 data, err := c.Marshal(def)
 // {"@type":"workflow::sequence","@value":[
 //   {"@type":"workflow::var::set","name":"topic","value":"go.llib.dev/frameless"},
-//   {"@type":"workflow::execute","participant_id":"summarise","input":["topic"],"output":["summary"]}
+//   {"@type":"workflow::execute","participant":"summarise","input":["topic"],"output":["summary"]}
 // ]}
 ```
 
@@ -98,7 +98,7 @@ and a worked example.
   "@type": "workflow::sequence",
   "@value": [
     { "@type": "workflow::var::set", "name": "topic", "value": "go.llib.dev/frameless" },
-    { "@type": "workflow::execute", "participant_id": "summarise", "input": ["topic"], "output": ["summary"] }
+    { "@type": "workflow::execute", "participant": "summarise", "input": ["topic"], "output": ["summary"] }
   ]
 }
 ```
@@ -114,9 +114,9 @@ An empty sequence is `{"@value": []}`. A nil element in the array becomes
 ```json
 {
   "@type": "workflow::if",
-  "cond": { "@type": "workflow::execute", "condition_id": "is-vip", "input": ["customer_id"] },
-  "then": { "@type": "workflow::execute", "participant_id": "apply-vip-discount", "input": ["order_id"] },
-  "else": { "@type": "workflow::execute", "participant_id": "apply-list-price",  "input": ["order_id"] }
+  "cond": { "@type": "workflow::execute", "condition": "is-vip", "input": ["customer_id"] },
+  "then": { "@type": "workflow::execute", "participant": "apply-vip-discount", "input": ["order_id"] },
+  "else": { "@type": "workflow::execute", "participant": "apply-list-price",  "input": ["order_id"] }
 }
 ```
 
@@ -131,7 +131,7 @@ condition is a fatal authoring error.
 ```json
 {
   "@type": "workflow::sleep",
-  "until": { "@type": "workflow::execute", "condition_id": "approval-granted", "input": ["order_id"] }
+  "until": { "@type": "workflow::execute", "condition": "approval-granted", "input": ["order_id"] }
 }
 ```
 
@@ -150,9 +150,9 @@ the process history. See [Conditions][CONDITION].
 {
   "@type": "workflow::for",
   "init": { "@type": "workflow::var::set", "name": "i", "value": 0 },
-  "cond": { "@type": "workflow::execute", "condition_id": "lt", "input": ["i", "limit"] },
+  "cond": { "@type": "workflow::execute", "condition": "lt", "input": ["i", "limit"] },
   "post": { "@type": "workflow::op::increment", "name": "i" },
-  "do":   { "@type": "workflow::execute", "participant_id": "process-batch-item" }
+  "do":   { "@type": "workflow::execute", "participant": "process-batch-item" }
 }
 ```
 
@@ -167,7 +167,7 @@ the process history. See [Conditions][CONDITION].
 {
   "@type": "workflow::foreach",
   "over":  "items",
-  "do":    { "@type": "workflow::execute", "participant_id": "process-item" },
+  "do":    { "@type": "workflow::execute", "participant": "process-item" },
   "key":   "idx",
   "value": "item"
 }
@@ -237,14 +237,14 @@ The increment amount is always one; there is no field to put on the wire.
 ### `workflow.Execute`
 
 **Tag:** `workflow::execute`
-**Inner:** `{participant_id?, condition_id?, input?, output?}`
+**Inner:** `{participant?, condition?, input?, output?}`
 
 A step, calling a registered participant:
 
 ```json
 {
   "@type": "workflow::execute",
-  "participant_id": "charge-card",
+  "participant": "charge-card",
   "input": ["order_id"],
   "output": ["receipt"]
 }
@@ -255,13 +255,13 @@ A condition, asking a registered condition, in a `Condition` slot such as `cond`
 ```json
 {
   "@type": "workflow::execute",
-  "condition_id": "is-vip",
+  "condition": "is-vip",
   "input": ["customer_id"]
 }
 ```
 
-Set exactly one of `participant_id` and `condition_id`; the one that is set
-decides the role. Anything else, a `condition_id` used as a step, or `output` on
+Set exactly one of `participant` and `condition`; the one that is set
+decides the role. Anything else, a `condition` used as a step, or `output` on
 a condition fails with a fatal `ErrInvalidDefinition` at execution.
 `input` and `output` are positional lists of `VarName` strings — see
 [Codec][CODEC] §5 for the wiring rule. All fields are omitted when empty.
@@ -299,7 +299,7 @@ its path under the fixed ID `workflow::template::condition`. See
 {
   "@type": "workflow::spawn",
   "name": "fulfilment",
-  "def":  { "@type": "workflow::execute", "participant_id": "ship", "input": ["order"] },
+  "def":  { "@type": "workflow::execute", "participant": "ship", "input": ["order"] },
   "vars": { "order_id": "order" }
 }
 ```
@@ -330,16 +330,23 @@ serialised today, but **`Join#Execute` does not yet copy anything back** — see
 
 ```json
 {
-  "@type": "workflow::defer",
-  "def": { "@type": "workflow::execute", "participant": "release-unpaid-seat", "input": ["booking_id"] }
+  "@type": "workflow::sequence",
+  "@value": [
+    { "@type": "workflow::execute", "participant": "reserve-seat", "input": ["booking_id"] },
+    {
+      "@type": "workflow::defer",
+      "def": { "@type": "workflow::execute", "participant": "release-unpaid-seat", "input": ["booking_id"] }
+    }
+  ]
 }
 ```
 
 `def` is the nested definition that runs when the process ends (completes or
 is terminated), last-in, first-out, before the outcome is recorded. It is
 omitted when nil, and a `Defer` without `def` registers nothing. Place it in a
-`Sequence` **ahead of** the step it cleans up after, so its registration is
-committed even if that step's events fail to persist.
+`Sequence` **right after** the step whose effect it cleans up, like Go's
+`defer f.Close()` after a successful `os.Open`, so the cleanup is registered
+only once that step took effect and is on record.
 
 ---
 
@@ -354,14 +361,14 @@ whatever the inner type is, it appears with its own `@type`:
   "@type": "workflow::if",
   "cond": {
     "@type": "workflow::execute",
-    "condition_id": "requires-receipt",
+    "condition": "requires-receipt",
     "input": ["order_id"]
   },
   "then": {
     "@type": "workflow::sequence",
     "@value": [
       { "@type": "workflow::var::set",       "name": "notified", "value": true },
-      { "@type": "workflow::execute",    "participant_id": "email-receipt", "input": ["receipt"] }
+      { "@type": "workflow::execute",    "participant": "email-receipt", "input": ["receipt"] }
     ]
   }
 }
@@ -564,20 +571,20 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
       "@type": "workflow::if",
       "cond": {
         "@type": "workflow::execute",
-        "condition_id": "stock-available",
+        "condition": "stock-available",
         "input": ["order_id"]
       },
       "then": {
         "@type": "workflow::sequence",
         "@value": [
-          { "@type": "workflow::execute", "participant_id": "reserve-stock", "input": ["order_id"], "output": ["reservation_id"] },
+          { "@type": "workflow::execute", "participant": "reserve-stock", "input": ["order_id"], "output": ["reservation_id"] },
           {
             "@type": "workflow::spawn",
             "name": "fulfilment",
             "def": {
               "@type": "workflow::sequence",
               "@value": [
-                { "@type": "workflow::execute", "participant_id": "ship", "input": ["reservation_id"], "output": ["tracking"] }
+                { "@type": "workflow::execute", "participant": "ship", "input": ["reservation_id"], "output": ["tracking"] }
               ]
             },
             "vars": { "order_id": "order" }
@@ -585,7 +592,7 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
         ]
       },
       "else": {
-        "@type": "workflow::execute", "participant_id": "backorder", "input": ["order_id"]
+        "@type": "workflow::execute", "participant": "backorder", "input": ["order_id"]
       }
     },
 
@@ -593,8 +600,8 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
 
     {
       "@type": "workflow::if",
-      "cond": { "@type": "workflow::execute", "condition_id": "requires-receipt", "input": ["order_id"] },
-      "then": { "@type": "workflow::execute", "participant_id": "email-receipt", "input": ["order_id", "tracking"] }
+      "cond": { "@type": "workflow::execute", "condition": "requires-receipt", "input": ["order_id"] },
+      "then": { "@type": "workflow::execute", "participant": "email-receipt", "input": ["order_id", "tracking"] }
     }
   ]
 }

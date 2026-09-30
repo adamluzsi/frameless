@@ -40,7 +40,7 @@ c := wfjson.NewCodec()
 
 var def workflow.Definition = workflow.Sequence{
 	workflow.SetVar{Name: "name", Value: "World"},
-	workflow.Execute{ParticipantID: "greet", Input: []workflow.VarName{"name"}},
+	workflow.Execute{Participant: "greet", Input: []workflow.VarName{"name"}},
 }
 
 data, err := c.Marshal(def)
@@ -66,7 +66,7 @@ instance.
   "@type": "workflow::sequence",
   "@value": [
     { "@type": "workflow::var::set", "name": "name", "value": "World" },
-    { "@type": "workflow::execute", "participant_id": "greet", "input": ["name"] }
+    { "@type": "workflow::execute", "participant": "greet", "input": ["name"] }
   ]
 }
 ```

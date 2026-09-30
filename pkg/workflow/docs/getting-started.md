@@ -61,13 +61,13 @@ func main() {
 	def := workflow.Sequence{
 		workflow.SetVar{Name: "name", Value: "World"},
 		workflow.Execute{
-			ParticipantID: "greet",
-			Input:         []workflow.VarName{"name"},
-			Output:        []workflow.VarName{"greeting"},
+			Participant: "greet",
+			Input:       []workflow.VarName{"name"},
+			Output:      []workflow.VarName{"greeting"},
 		},
 		workflow.Execute{
-			ParticipantID: "print",
-			Input:         []workflow.VarName{"greeting"},
+			Participant: "print",
+			Input:       []workflow.VarName{"greeting"},
 		},
 	}
 
@@ -103,8 +103,8 @@ Read the `Sequence` top to bottom — that is the execution order:
 | Step                             | Effect                                                         |
 | -------------------------------- | -------------------------------------------------------------- |
 | `SetVar{Name: "name"}`           | Writes `name = "World"` into the process' variables.           |
-| `Execute{ParticipantID: "greet"}` | Reads `name`, calls your `greet` func, stores the result in `greeting`. |
-| `Execute{ParticipantID: "print"}` | Reads `greeting`, calls your `print` func. Returns no value, so no `Output`. |
+| `Execute{Participant: "greet"}`  | Reads `name`, calls your `greet` func, stores the result in `greeting`. |
+| `Execute{Participant: "print"}`  | Reads `greeting`, calls your `print` func. Returns no value, so no `Output`. |
 
 ### Where is the state?
 
@@ -135,9 +135,9 @@ signature. The rule is positional, not by name:
 
 ```go
 Execute{
-    ParticipantID: "greet",
-    Input:         []workflow.VarName{"name"},     //  → 1st arg after ctx
-    Output:        []workflow.VarName{"greeting"}, //  ← 1st result before error
+    Participant: "greet",
+    Input:       []workflow.VarName{"name"},     //  → 1st arg after ctx
+    Output:      []workflow.VarName{"greeting"}, //  ← 1st result before error
 }
 //   ↳ maps onto: func(ctx context.Context, name string) (greeting string, error)
 ```
@@ -204,13 +204,13 @@ def := workflow.Sequence{
 	workflow.SetVar{Name: "customer_id", Value: "cust-1"},
 	workflow.If{
 		Cond: workflow.Execute{
-			ConditionID: "is-vip",
-			Input:       []workflow.VarName{"customer_id"},
+			Condition: "is-vip",
+			Input:     []workflow.VarName{"customer_id"},
 		},
-		Then: workflow.Execute{ParticipantID: "greet",
+		Then: workflow.Execute{Participant: "greet",
 			Input:  []workflow.VarName{"customer_id"},
 			Output: []workflow.VarName{"greeting"}},
-		Else: workflow.Execute{ParticipantID: "print",
+		Else: workflow.Execute{Participant: "print",
 			Input: []workflow.VarName{"customer_id"}},
 	},
 }
@@ -224,12 +224,12 @@ for an inline template expression against the process variables:
 ```go
 workflow.If{
 	Cond: wftemplate.Condition(`gt .order_total 100`),
-	Then: workflow.Execute{ParticipantID: "ask-for-approval",
+	Then: workflow.Execute{Participant: "ask-for-approval",
 		Input: []workflow.VarName{"order_id"}},
 }
 ```
 
-`Execute` with a `ConditionID` for logic you own, `wftemplate.Condition` for rules the
+`Execute` with a `Condition` for logic you own, `wftemplate.Condition` for rules the
 builder should be able to edit. Both record their answer, so a replay walks the
 same branch again, even if the variables have changed since; inside `Sleep`,
 every attempt asks them anew until the `Sleep` wakes up. General variable reads

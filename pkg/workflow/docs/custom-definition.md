@@ -73,9 +73,9 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     // I/O in a participant keeps the domain work out of the definition tree
     // and gives you its event-cache boundary for free.
     return workflow.Execute{
-        ParticipantID: "charge-card",
-        Input:         []workflow.VarName{d.Amount},
-        Output:        []workflow.VarName{"receipt"},
+        Participant: "charge-card",
+        Input:       []workflow.VarName{d.Amount},
+        Output:      []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```
@@ -237,8 +237,8 @@ func (d ChargeOrder) chargeCard(ctx context.Context, pid workflow.ProcessID) err
 - **The ID argument identifies the call.** Together with the path, the
   `ParticipantID` you pass identifies the call, so keep it stable across
   deployments, namespaced, and distinct from other participant calls at the
-  same position. An empty ID is fatal, and so is setting `ParticipantID` or
-  `ConditionID` on the `Execute` as well (a fatal `ErrInvalidDefinition`),
+  same position. An empty ID is fatal, and so is setting `Participant` or
+  `Condition` on the `Execute` as well (a fatal `ErrInvalidDefinition`),
   since those fields belong to `#Execute` and `#Evaluate`.
 - **Recorded like `Execute#Execute`.** The call is recorded as an
   `EventParticipant` under that `ParticipantID`, at

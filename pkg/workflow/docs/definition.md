@@ -14,13 +14,13 @@ If you have not run a workflow yet, start with [Getting Started][GETTING_STARTED
 def := workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
 	workflow.Execute{
-		ParticipantID: "charge-card",
-		Input:         []workflow.VarName{"order_id"},
-		Output:        []workflow.VarName{"receipt"},
+		Participant: "charge-card",
+		Input:       []workflow.VarName{"order_id"},
+		Output:      []workflow.VarName{"receipt"},
 	},
 	workflow.Execute{
-		ParticipantID: "email-receipt",
-		Input:         []workflow.VarName{"receipt"},
+		Participant: "email-receipt",
+		Input:       []workflow.VarName{"receipt"},
 	},
 }
 ```
@@ -56,7 +56,7 @@ workflow.Participants{
 		// Not a failure. "I am finished — and this step needs follow-up stages."
 		return workflow.Spawn{
 			Name:       "fulfilment",
-			Definition: workflow.Execute{ParticipantID: "ship"},
+			Definition: workflow.Execute{Participant: "ship"},
 		}
 	},
 }
@@ -147,7 +147,7 @@ definition tree is walked. A recorded participant step looks like this:
 | `01a042a6-…`  | the `EventID` of the current `EventUseDefinition`        |
 | `sequence`    | the enclosing `Sequence`                                |
 | `[0]`         | its index inside that `Sequence`                        |
-| `participant` | `Execute` with a `ParticipantID`                        |
+| `participant` | `Execute` with a `Participant`                          |
 | `charge-card` | the `ParticipantID` it calls                            |
 
 `If` contributes `if` plus `then`/`else`, `Spawn` contributes `spawn` plus its
@@ -207,7 +207,7 @@ call and replayed from there, so the tree grows by appending, not by editing.
 | `workflow.SetVar`             | Assigns a process variable.                                              |
 | `workflow.DeclareVar`         | Brings a process variable into existence, without assigning a value.     |
 | `workflow.DeleteVar`          | Removes a process variable binding.                                      |
-| `workflow.Execute`            | Calls a registered Go function: a participant as a step (`ParticipantID`), or a condition (`ConditionID`). Implements *both* interfaces. |
+| `workflow.Execute`            | Calls a registered Go function: a participant as a step (`Participant`), or a condition (`Condition`). Implements *both* interfaces. |
 | `workflow.Spawn`              | Launches a sub-workflow as an independent process.                       |
 | `workflow.Join`               | Waits for one, or all, spawned children to complete.                     |
 | `workflow.Defer`              | Registers a definition to run when the process ends, like Go's `defer`.  |
@@ -217,10 +217,10 @@ call and replayed from there, so the tree grows by appending, not by editing.
 ```go
 workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
-	workflow.Execute{ParticipantID: "charge-card",
+	workflow.Execute{Participant: "charge-card",
 		Input:  []workflow.VarName{"order_id"},
 		Output: []workflow.VarName{"receipt"}},
-	workflow.Execute{ParticipantID: "email-receipt",
+	workflow.Execute{Participant: "email-receipt",
 		Input: []workflow.VarName{"receipt"}},
 }
 ```
@@ -235,12 +235,12 @@ top, skipping the already-recorded steps until it reaches the pause point.
 ```go
 workflow.If{
 	Cond: workflow.Execute{
-		ConditionID: "is-vip",
-		Input:       []workflow.VarName{"customer_id"},
+		Condition: "is-vip",
+		Input:     []workflow.VarName{"customer_id"},
 	},
-	Then: workflow.Execute{ParticipantID: "apply-vip-discount",
+	Then: workflow.Execute{Participant: "apply-vip-discount",
 		Input: []workflow.VarName{"order_id"}},
-	Else: workflow.Execute{ParticipantID: "apply-list-price",
+	Else: workflow.Execute{Participant: "apply-list-price",
 		Input: []workflow.VarName{"order_id"}},
 }
 ```
@@ -250,7 +250,7 @@ workflow.If{
 Failing loudly beats silently taking the `Else` branch forever.
 
 The branch is chosen by the condition's answer, and keeping that answer on
-replay is the condition's job: `Execute` with a `ConditionID` and `wftemplate.Condition`
+replay is the condition's job: `Execute` with a `Condition` and `wftemplate.Condition`
 record it at the `if/<ID>` path, so a replay walks the same branch again, even
 after a suspension inside it, and even if the variables the condition read have
 changed since. A custom condition that records nothing is asked again on every
@@ -307,9 +307,9 @@ does not apply the mutation twice. Details in [Variables][VARIABLES].
 
 ```go
 workflow.Execute{
-	ParticipantID: "charge-card",
-	Input:         []workflow.VarName{"order_id"}, // ─► func(ctx, orderID string)
-	Output:        []workflow.VarName{"receipt"},  // ─► (receipt string, error)
+	Participant: "charge-card",
+	Input:       []workflow.VarName{"order_id"}, // ─► func(ctx, orderID string)
+	Output:      []workflow.VarName{"receipt"},  // ─► (receipt string, error)
 }
 ```
 
@@ -326,11 +326,11 @@ The ID that is set decides what `Execute` calls, so set exactly one of them:
 
 | Set             | It is a      | Use it as                               |
 | --------------- | ------------ | --------------------------------------- |
-| `ParticipantID` | `Definition` | a step, e.g. in a `Sequence`            |
-| `ConditionID`   | `Condition`  | a condition, e.g. `If#Cond`, `Sleep#Until` |
+| `Participant`   | `Definition` | a step, e.g. in a `Sequence`            |
+| `Condition`     | `Condition`  | a condition, e.g. `If#Cond`, `Sleep#Until` |
 
 Any other combination fails with a fatal `ErrInvalidDefinition`, before
-anything is called or recorded. That includes a `ConditionID` executed as a
+anything is called or recorded. That includes a `Condition` executed as a
 step, since an answer that is neither stored nor branched on has no effect, and
 `Output` on a condition, since an answer is not stored in variables.
 
@@ -345,7 +345,7 @@ step, since an answer that is neither stored nor branched on has no effect, and
 ```go
 workflow.Spawn{
 	Name: "fulfilment",
-	Definition: workflow.Execute{ParticipantID: "ship",
+	Definition: workflow.Execute{Participant: "ship",
 		Input:  []workflow.VarName{"order"},
 		Output: []workflow.VarName{"tracking"}},
 	Vars: workflow.VarMapping{"order_id": "order"},
@@ -387,10 +387,10 @@ An unknown `SpawnName` is an error, not a silent pass.
 
 ```go
 workflow.Sequence{
-	workflow.Defer{Definition: workflow.Execute{Participant: "release-unpaid-seat",
-		Input: []workflow.VarName{"booking_id"}}},
 	workflow.Execute{Participant: "reserve-seat",
 		Input: []workflow.VarName{"booking_id"}},
+	workflow.Defer{Definition: workflow.Execute{Participant: "release-unpaid-seat",
+		Input: []workflow.VarName{"booking_id"}}},
 }
 ```
 
@@ -399,10 +399,11 @@ when it ends, whether it completes or is terminated. Deferred definitions run
 last-in, first-out, before the outcome is recorded. A process that only
 suspends hasn't ended, so they wait.
 
-Put the `Defer` **ahead of** the step it cleans up after. It commits its
-registration on its own, so the cleanup stays on record even if that step's
-effect took place but its events failed to persist. The cleanup then runs at
-every ending, so it must tolerate having nothing to undo. A nil `Definition`
+Put the `Defer` **right after** the step whose effect it cleans up, the way
+Go's `defer f.Close()` follows a successful `os.Open`. The cleanup is then
+registered only once that step took effect and is on record. A step that fails
+to be recorded is retried rather than cleaned up, so it must stay repeatable,
+and it can undo itself at once with `txkit.OnRollback`. A nil `Definition`
 registers nothing. The details, including where the deferred definition runs
 and how failures resume, are in [Participants][PARTICIPANT].
 
@@ -451,9 +452,9 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     // I/O in a participant keeps the domain work out of the definition tree
     // and gives you its event-cache boundary for free.
     return workflow.Execute{
-        ParticipantID: "charge-card",
-        Input:         []workflow.VarName{d.Amount},
-        Output:        []workflow.VarName{"receipt"},
+        Participant: "charge-card",
+        Input:       []workflow.VarName{d.Amount},
+        Output:      []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```

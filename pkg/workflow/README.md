@@ -54,18 +54,18 @@ A lightweight, code-first workflow engine for Go.
 _ = workflow.Sequence{
 	workflow.SetVar{Name: "topic", Value: "go.llib.dev/frameless"},
 	workflow.Execute{
-		ParticipantID: "summarise",
-		Input:         []workflow.VarName{"topic"},
-		Output:        []workflow.VarName{"summary", "found"},
+		Participant: "summarise",
+		Input:       []workflow.VarName{"topic"},
+		Output:      []workflow.VarName{"summary", "found"},
 	},
 	workflow.If{
 		Cond: workflow.Execute{
-			ConditionID: "is-publishable",
-			Input:       []workflow.VarName{"found"},
+			Condition: "is-publishable",
+			Input:     []workflow.VarName{"found"},
 		},
 		Then: workflow.Execute{
-			ParticipantID: "publish",
-			Input:         []workflow.VarName{"summary"},
+			Participant: "publish",
+			Input:       []workflow.VarName{"summary"},
 		},
 	},
 }
@@ -75,7 +75,7 @@ _ = workflow.Sequence{
 
 Successful [`Participant`][PARTICIPANT] calls and [`Condition`][CONDITION] answers are
 cached in `workflow.EventRepository`. `workflow.Execute` is the entry point for
-both: with a `ParticipantID` it is a step, with a `ConditionID` it is a
+both: with a `Participant` it is a step, with a `Condition` it is a
 condition. A custom definition can cache its own logic the same way through
 `Execute#ExecuteWith`, under a `ParticipantID` it passes, without registering a
 participant. Recording an answer is

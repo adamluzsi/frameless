@@ -60,9 +60,9 @@ It is an ordinary Go value that the runtime may walk repeatedly, reusing durable
 | --- | --- |
 | Composition and control | `Sequence`, `If`, `Sleep`, `For`, `ForEach`, `Break` |
 | Variables | `SetVar`, `DeclareVar`, `DeleteVar`, `Increment` |
-| Application capabilities | `Execute` (a step with `ParticipantID`, a condition with `ConditionID`) |
+| Application capabilities | `Execute` (a step with `Participant`, a condition with `Condition`) |
 | Child processes | `Spawn`, `Join` |
-| Process lifecycle | `Defer` (runs a definition when the process ends, LIFO; place it ahead of the step it cleans up after) |
+| Process lifecycle | `Defer` (runs a definition when the process ends, LIFO; place it right after the step whose effect it cleans up, like Go's `defer f.Close()`) |
 
 A normal composition wires variable names to capability inputs and results:
 
@@ -70,18 +70,18 @@ A normal composition wires variable names to capability inputs and results:
 workflow.Sequence{
     workflow.SetVar{Name: "order_id", Value: "ORD-42"},
     workflow.Execute{
-        ParticipantID: "charge-card",
-        Input:         []workflow.VarName{"order_id"},
-        Output:        []workflow.VarName{"receipt"},
+        Participant: "charge-card",
+        Input:       []workflow.VarName{"order_id"},
+        Output:      []workflow.VarName{"receipt"},
     },
     workflow.If{
         Cond: workflow.Execute{
-            ConditionID: "requires-receipt",
-            Input:       []workflow.VarName{"order_id"},
+            Condition: "requires-receipt",
+            Input:     []workflow.VarName{"order_id"},
         },
         Then: workflow.Execute{
-            ParticipantID: "email-receipt",
-            Input:         []workflow.VarName{"receipt"},
+            Participant: "email-receipt",
+            Input:       []workflow.VarName{"receipt"},
         },
     },
 }
@@ -89,22 +89,23 @@ workflow.Sequence{
 
 `Input` and `Output` are **positional**: inputs map to function parameters after `context.Context`; outputs map to non-error results. They are not matched by variable-name text. Missing variables and arity/type mismatches must remain explicit errors, not panics.
 
-Set exactly one ID on an `Execute`; it decides the role. Anything else fails with a fatal `ErrInvalidDefinition` before anything runs, including a `ConditionID` executed as a step (its answer would be discarded) and `Output` on a condition. Definitions recorded with the former `workflow::participant` / `workflow::condition` tags decode into `pkg/workflow/deprecated` adapters that delegate to `Execute`; don't use them in new code.
+Set exactly one of `Participant` and `Condition` on an `Execute`; it decides the role. Anything else fails with a fatal `ErrInvalidDefinition` before anything runs, including a `Condition` executed as a step (its answer would be discarded) and `Output` on a condition. Definitions recorded with the former `workflow::participant` / `workflow::condition` tags decode into `pkg/workflow/deprecated` adapters that delegate to `Execute`; don't use them in new code.
 
 ### Definition rules
 
 - Store only serializable data: exported values, IDs, variable names, and nested definitions/conditions.
 - A definition may **name** an application capability, but must never hold it. No closures, channels, mutexes, database clients, open connections, or pointers to live application state in a definition.
 - For a custom definition, give it a stable namespaced `Error()` string (it doubles as the codec `@type` tag), keep its fields serializable, and give each nested operation an explicit, stable path segment with `workflow.WithName(ctx, "...")`. See [Writing a custom definition](#writing-a-custom-definition).
-- Make custom behavior replay-safe. Reuse event-backed package operations (variables, `Execute`, etc.) rather than maintaining hidden per-process state. To keep a side effect in the definition's own code, run it through `workflow.Execute{}.ExecuteWith(ctx, pid, participantID, fn)`, where `fn` has the `Definition#Execute` signature: no registration; the `ParticipantID` argument identifies the call at `<path>/participant/<ParticipantID>`, so keep it stable, namespaced, and distinct at the same position (empty is fatal; also setting the `ParticipantID`/`ConditionID` fields on the struct is a fatal `ErrInvalidDefinition`); moving a registered participant inline under the same ID replays its recorded calls, except those recorded with an `Output` mapping, which run again; `Output` must be empty (set variables through `workflow.Vars`; a failed attempt discards them), and a returned `Definition` becomes a recorded follow-up like a participant's.
+- Make custom behavior replay-safe. Reuse event-backed package operations (variables, `Execute`, etc.) rather than maintaining hidden per-process state. To keep a side effect in the definition's own code, run it through `workflow.Execute{}.ExecuteWith(ctx, pid, participantID, fn)`, where `fn` has the `Definition#Execute` signature: no registration; the `ParticipantID` argument identifies the call at `<path>/participant/<ParticipantID>`, so keep it stable, namespaced, and distinct at the same position (empty is fatal; also setting the `Participant`/`Condition` fields on the struct is a fatal `ErrInvalidDefinition`); moving a registered participant inline under the same ID replays its recorded calls, except those recorded with an `Output` mapping, which run again; `Output` must be empty (set variables through `workflow.Vars`; a failed attempt discards them), and a returned `Definition` becomes a recorded follow-up like a participant's.
 - `Sequence` position contributes to a step's idempotency path. A bound definition's data never changes, but a custom definition that builds its children in Go code changes with every deploy: do not insert or reorder steps there while existing processes may replay it. Append compatible work, or use `Replace` to move a process to a new definition.
 - A participant may return a `workflow.Definition` as its `error` result to add recorded follow-up workflow stages. This is successful workflow control flow, not a failure.
+- Clean up the way Go's `defer` does: act first, then defer the cleanup. Put the participant that makes the change first, and `workflow.Defer{Definition: <cleanup>}` right after it, so the cleanup is only registered once the change took place and its call is on record. A change whose call fails to be recorded is retried, not cleaned up, so the participant must stay repeatable; it can register an immediate undo with `txkit.OnRollback`. To register the cleanup in the same commit as the call (no gap where a termination between the two steps skips it), the participant can instead return the `Defer` as its follow-up after its change succeeded. Deferred definitions run LIFO at every ending (completion or termination, before the outcome is recorded), so build them from idempotent steps that undo only what the process no longer needs. Never place a `Defer` ahead of the step it cleans up after.
 
 ### Variables and conditions
 
 - Variables are a fold over process events. General `Vars` reads see current scoped state, including later writes from previous attempts; paths identify steps, not positions on a timeline. Historical input comparison belongs to the executor's cache validation, not ordinary variable reads. Use workflow operations or `workflow.GetVars(ctx)`; do not create an unrecorded side map as workflow state.
 - `DeclareVar` creates a deliberate binding; `SetVar` writes through to the nearest visible binding; `Global: true` declares in the root scope. Use declaration intentionally when shadowing is required.
-- Recording a condition's answer is the condition's responsibility, not the control-flow definition's. `Execute` with a `ConditionID` records at `<path>/<ConditionID>`; `wftemplate.Condition` records under the fixed ID `workflow::template::condition`, so two templates at one path share an answer; a custom `Condition` records only if it answers through `workflow.Execute{}.EvaluateWith(ctx, pid, conditionID, fn)`, which records at `<path>/<ConditionID>` (same ID rules as `ExecuteWith`), otherwise it is asked again on every evaluation, replays included. A recorded answer is replayed at the same path, so `If` walks the same branch again after a suspension, and each `For` round keeps its own answer.
+- Recording a condition's answer is the condition's responsibility, not the control-flow definition's. `Execute` with a `Condition` records at `<path>/<ConditionID>`; `wftemplate.Condition` records under the fixed ID `workflow::template::condition`, so two templates at one path share an answer; a custom `Condition` records only if it answers through `workflow.Execute{}.EvaluateWith(ctx, pid, conditionID, fn)`, which records at `<path>/<ConditionID>` (same ID rules as `ExecuteWith`), otherwise it is asked again on every evaluation, replays included. A recorded answer is replayed at the same path, so `If` walks the same branch again after a suspension, and each `For` round keeps its own answer.
 - Older histories hold no recorded template answer, since templates used to be evaluated live: the first post-upgrade evaluation at each template position uses current scoped state and cannot reconstruct the old branch. Explicitly migrate affected processes where that is unsafe. Answer reuse requires a durable event; evaluation can repeat after event-store failure or enclosing rollback.
 
 - `Sleep` asks its condition anew on every attempt, under `sleep/<unix seconds>` of the attempt, until the answer lets it wake up (`true` for `Until`, `false` for `While`); recording conditions, nested ones included, record per attempt second, so attempts within one second share answers and a frozen clock never wakes a `Sleep`. The wake-up is recorded as `EventSleepCompleted`, and a woken `Sleep` is passed on replay without asking its condition again. Any condition flavour fits `Sleep`.
@@ -160,9 +161,9 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     //    and gives you its event-cache boundary for free. To keep the I/O in
     //    this type instead, pass it to Execute#ExecuteWith.
     return workflow.Execute{
-        ParticipantID: "charge-card",
-        Input:         []workflow.VarName{d.Amount},
-        Output:        []workflow.VarName{"receipt"},
+        Participant: "charge-card",
+        Input:       []workflow.VarName{d.Amount},
+        Output:      []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```
@@ -361,7 +362,7 @@ Read the smallest relevant source first; do not load every document by default.
 | Vocabulary, roles, ports, event/path model | `pkg/workflow/docs/glossary.md` |
 | Built-ins, custom definitions, path identity, spawn/join | `pkg/workflow/docs/definition.md` |
 | Authoring a reusable custom `Definition` end-to-end | `pkg/workflow/docs/custom-definition.md` |
-| Function signature, caching, follow-up stages, fatal errors | `pkg/workflow/docs/participant.md` |
+| Function signature, caching, follow-up stages, fatal errors, cleanups (`txkit.OnRollback`, `Defer`) | `pkg/workflow/docs/participant.md` |
 | Recorded versus live conditions, `Sleep`, and templates | `pkg/workflow/docs/condition.md` |
 | Lifecycle signals and their persistence/retry behavior | `pkg/workflow/docs/signal.md` |
 | Variable scope, visibility, and child mappings | `pkg/workflow/docs/vars.md` |
@@ -397,6 +398,7 @@ Before finalizing workflow-related changes, verify:
 - [ ] Participant/condition signatures and variable wiring match positionally.
 - [ ] Signals use their documented, unwrapped control-flow semantics; pre-signal work is cheap and side-effect free; `Replace` is not treated as an exactly-once external-effect guarantee.
 - [ ] External effects tolerate event-write/commit failures and rollback using stable business idempotency keys or a shared transaction/outbox where applicable.
+- [ ] Cleanups are deferred right after the step whose change they undo (or returned as that participant's follow-up `Defer`), never ahead of it, and are built from idempotent steps.
 - [ ] Follow-up replay resumes suspended work; nested stages are not assumed to have independent top-level commit boundaries.
 - [ ] Older histories without recorded template answers have an explicit migration plan where current-state evaluation is unsafe.
 - [ ] Runtime adapters are covered by their applicable `wfcontract` suite.

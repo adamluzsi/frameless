@@ -60,8 +60,8 @@ func TestOrderWorkflow(t *testing.T) {
 		return workflow.Sequence{
 			workflow.SetVar{Name: "order_id", Value: "42"},
 			workflow.Execute{
-				ParticipantID: chargeID.Get(t),
-				Input:         []workflow.VarName{"order_id"},
+				Participant: chargeID.Get(t),
+				Input:       []workflow.VarName{"order_id"},
 			},
 		}
 	})

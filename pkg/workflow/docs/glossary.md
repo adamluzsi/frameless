@@ -80,7 +80,7 @@ Participants: workflow.Participants{
 ```
 
 The signature must be `func(context.Context, ...ins) (...outs, error)`. A
-definition invokes it with `Execute{ParticipantID, Input, Output}`, which maps
+definition invokes it with `Execute{Participant, Input, Output}`, which maps
 process variables positionally onto the arguments and results.
 
 Every call is recorded as an `EventParticipant` and **replayed from the log** on
@@ -109,7 +109,7 @@ type Condition interface {
 
 Registered Go funcs (`workflow.Conditions`, signature
 `func(context.Context, ...ins) (bool, error)`) are reached from a definition via
-`Execute{ConditionID, Input}`. `wftemplate.Condition` is the shorthand that
+`Execute{Condition, Input}`. `wftemplate.Condition` is the shorthand that
 evaluates a Go template expression against the process variables instead.
 
 The answer is recorded as an `EventCondition`, so a replay re-uses the *same*
@@ -361,7 +361,7 @@ Each composite definition contributes a segment (`Sequence` adds `sequence` plus
 `EventUseDefinition` that bound the definition.
 
 Its job is identity. A step's recorded event is matched by `(ID, Path)`, so two
-`Execute{ParticipantID: "notify"}` entries in the same `Sequence` are distinct
+`Execute{Participant: "notify"}` entries in the same `Sequence` are distinct
 logical steps with independent caches — which is what makes idempotent replay
 work without any per-process bookkeeping on your side.
 

@@ -18,7 +18,7 @@ Anywhere a definition takes a condition — `If#Cond`, `Sleep#Until`,
 
 | Flavour                     | Where the logic lives            | Reads variables      | Answer recorded |
 | --------------------------- | -------------------------------- | -------------------- | --------------- |
-| `workflow.Execute` with a `ConditionID` | a Go func you register by name | yes, via `Input` | **yes**, wherever used |
+| `workflow.Execute` with a `Condition` | a Go func you register by name | yes, via `Input` | **yes**, wherever used |
 | `wftemplate.Condition`      | a template string in the definition | current scoped variables | **yes**, wherever used |
 | your own type               | your Go code                     | yes, however you like | only if it answers through `Execute#EvaluateWith` |
 
@@ -45,16 +45,16 @@ rt := workflow.Runtime{
 ```
 
 Refer to them from a definition by ID, with a `workflow.Execute` that sets
-`ConditionID`:
+`Condition`:
 
 ```go
 workflow.If{
 	Cond: workflow.Execute{
-		ConditionID: "stock-available",
-		Input:       []workflow.VarName{"sku", "qty"},
+		Condition: "stock-available",
+		Input:     []workflow.VarName{"sku", "qty"},
 	},
-	Then: workflow.Execute{ParticipantID: "reserve", Input: []workflow.VarName{"sku"}},
-	Else: workflow.Execute{ParticipantID: "backorder", Input: []workflow.VarName{"sku"}},
+	Then: workflow.Execute{Participant: "reserve", Input: []workflow.VarName{"sku"}},
+	Else: workflow.Execute{Participant: "backorder", Input: []workflow.VarName{"sku"}},
 }
 ```
 
@@ -103,7 +103,7 @@ Input: []workflow.VarName{"sku", "qty"} // ─► func(ctx, sku string, qty int)
 | An input variable is not set     | `ErrFatal` — "missing input argument" | no    |
 | Incompatible input arity/type or invalid nil | `ErrFatal` wrapping `ErrConditionFuncMappingMismatch` | no |
 | Invalid or nil condition function | `ErrInvalidConditionFunc` | no |
-| `Output` is set, or `ParticipantID` is set too | `ErrInvalidDefinition` | no |
+| `Output` is set, or `Participant` is set too | `ErrInvalidDefinition` | no |
 | The condition func returns an error | that error                     | unless fatal |
 
 Registration and mapping errors for conditions remain fatal authoring errors;
@@ -113,8 +113,8 @@ they do not use the participant availability-requeue policy.
 
 ## 3. Not a step
 
-`Execute` implements `Definition` too, but only with a `ParticipantID`. An
-`Execute` with a `ConditionID` executed as a step, e.g. in a `Sequence`, fails
+`Execute` implements `Definition` too, but only with a `Participant`. An
+`Execute` with a `Condition` executed as a step, e.g. in a `Sequence`, fails
 with a fatal `ErrInvalidDefinition`: its answer would be neither stored nor
 branched on, so asking the question would have no effect on the process. Ask it
 where the answer is used, in an `If`, `For` or `Sleep`.
@@ -129,7 +129,7 @@ them.
 
 ## 4. Answers are recorded, not re-asked
 
-Every evaluation of an `Execute` with a `ConditionID` goes through the same
+Every evaluation of an `Execute` with a `Condition` goes through the same
 idempotent executor that participants use, and lands in the event history as:
 
 ```go
@@ -146,10 +146,10 @@ independent questions, and every later attempt is a replay:
 
 ```go
 workflow.Sequence{
-	workflow.If{Cond: workflow.Execute{ConditionID: "flip"},
-		Then: workflow.Execute{ParticipantID: "first"}},
-	workflow.If{Cond: workflow.Execute{ConditionID: "flip"},
-		Then: workflow.Execute{ParticipantID: "second"}},
+	workflow.If{Cond: workflow.Execute{Condition: "flip"},
+		Then: workflow.Execute{Participant: "first"}},
+	workflow.If{Cond: workflow.Execute{Condition: "flip"},
+		Then: workflow.Execute{Participant: "second"}},
 }
 ```
 
@@ -167,7 +167,7 @@ condition itself:
 
 | Condition                                     | Recorded as                                                  |
 | --------------------------------------------- | ------------------------------------------------------------ |
-| `Execute` with a `ConditionID`                | `ConditionID: <ID>` at `<path>/<ID>`                         |
+| `Execute` with a `Condition`                  | `ConditionID: <ID>` at `<path>/<ID>`                         |
 | `wftemplate.Condition`                        | `ConditionID: "workflow::template::condition"`, at `<path>/workflow::template::condition` |
 | your own type answering through `EvaluateWith` | the `ConditionID` you pass it, at `<path>/<ID>` (§6)         |
 | your own type that doesn't                    | nothing — it is asked again on every evaluation, replays included |
@@ -237,7 +237,7 @@ answer lets the `Sleep` wake up — `true` for `Until`, `false` for `While` — 
 the wake-up is recorded as an `EventSleepCompleted` at the `Sleep`'s position:
 
 ```go
-workflow.Sleep{Until: workflow.Execute{ConditionID: "is-approved", Input: []workflow.VarName{"order_id"}}}
+workflow.Sleep{Until: workflow.Execute{Condition: "is-approved", Input: []workflow.VarName{"order_id"}}}
 ```
 
 ```
@@ -277,7 +277,7 @@ type the rule into a form — no Go code, no deployment.
 ```go
 workflow.If{
 	Cond: wftemplate.Condition(`eq .currency "EUR"`),
-	Then: workflow.Execute{ParticipantID: "free-shipping"},
+	Then: workflow.Execute{Participant: "free-shipping"},
 }
 ```
 
@@ -390,7 +390,7 @@ answer, so keep it stable across deployments, namespaced, and distinct from
 other conditions that may be evaluated at the same position. Moving a
 registered condition's logic into your own type under the same `ConditionID`
 replays the answers it already gave. An empty ID is fatal, and so is setting
-`ConditionID` or `ParticipantID` on the `Execute` as well (a fatal
+`Condition` or `Participant` on the `Execute` as well (a fatal
 `ErrInvalidDefinition`), since those fields belong to `Execute#Evaluate` and
 `Execute#Execute`.
 

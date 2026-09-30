@@ -167,7 +167,7 @@ recorded, the process's deferred definitions run (see
 
 ```go
 return workflow.Replace{Definition: workflow.Sequence{
-	workflow.Execute{ParticipantID: "manual-review"},
+	workflow.Execute{Participant: "manual-review"},
 }}
 ```
 
@@ -287,8 +287,8 @@ func (Escalate) Error() string { return "acme::escalate" }
 
 func (sig Escalate) RuntimeSignalExecute(ctx context.Context, rt workflow.Runtime, id workflow.ProcessID) error {
 	return workflow.Replace{Definition: workflow.Execute{
-		ParticipantID: "notify-oncall",
-		Input:         []workflow.VarName{"incident_id"},
+		Participant: "notify-oncall",
+		Input:       []workflow.VarName{"incident_id"},
 	}}.RuntimeSignalExecute(ctx, rt, id)
 }
 ```

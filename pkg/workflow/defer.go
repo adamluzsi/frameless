@@ -18,21 +18,29 @@ import (
 // runs right after the one which registered it, like a nested defer in Go.
 // A Process that suspends or halts hasn't ended, so its deferred Definitions wait.
 //
-// Defer is a step of its own, and it records its registration on its own, apart from the steps that follow it.
-// Place it ahead of the step whose effect it cleans up after,
-// so the cleanup is on record even if that step's events fail to persist after its effect already took place:
+// Defer is a step of its own, and it records its registration on its own.
+// Like Go's defer, which follows the call that acquired what it releases,
+// place it right after the step whose effect it cleans up after,
+// so the cleanup is registered only once that effect took place and the step is on record:
 //
 //	workflow.Sequence{
-//		workflow.Defer{Definition: workflow.Execute{Participant: "release-seat"}},
 //		workflow.Execute{Participant: "reserve-seat"},
+//		workflow.Defer{Definition: workflow.Execute{Participant: "release-seat"}},
 //	}
 //
-// The deferred Definition runs at every ending of the Process,
-// so it has to tolerate that the effect it cleans up after never happened, or was already undone.
-// A participant may also return a Defer as its follow-up Definition;
-// that registration is recorded together with the participant's call, and it is lost along with it.
+// If the step fails, or its effect takes place but its events fail to persist,
+// the Process doesn't get past it, so there is no cleanup registered for it yet.
+// The step is retried instead, so it has to stay repeatable,
+// and it can undo its effect right away through txkit.OnRollback.
 //
-// A deferred Definition runs like any other part of the workflow, with no completion event of its own.
+// A participant may also return a Defer as its follow-up Definition, once its effect took place.
+// That registration is recorded in the same commit as the participant's call,
+// while a Defer step placed after it commits separately,
+// so a Process terminated between the two commits ends without the cleanup.
+//
+// A deferred Definition runs at every ending of the Process, the successful completion included,
+// so it should only undo what the Process no longer needs.
+// It runs like any other part of the workflow, with no completion event of its own.
 // Its steps are recorded and replayed idempotently, so the Definition should be made of idempotent steps.
 // If one fails, the unwinding stops, the error is returned and the outcome is not recorded.
 // The next attempt runs the deferred Definitions again,
