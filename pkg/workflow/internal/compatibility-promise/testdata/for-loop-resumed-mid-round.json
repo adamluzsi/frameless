@@ -1,0 +1,142 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::var::set",
+				"name": "i",
+				"value": 0
+			},
+			{
+				"@type": "workflow::for",
+				"cond": {
+					"@type": "workflow::template::condition",
+					"@value": "lt .i 2.0"
+				},
+				"post": {
+					"@type": "workflow::op::increment",
+					"name": "i"
+				},
+				"do": {
+					"@type": "workflow::sequence",
+					"@value": [
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::a"
+						},
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						}
+					]
+				}
+			}
+		]
+	},
+	"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f290-885a-7a17-8ee0-cf16f69ea69d",
+			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"timestamp": "2026-09-30T13:45:53.498631Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::var::set",
+						"name": "i",
+						"value": 0
+					},
+					{
+						"@type": "workflow::for",
+						"cond": {
+							"@type": "workflow::template::condition",
+							"@value": "lt .i 2.0"
+						},
+						"post": {
+							"@type": "workflow::op::increment",
+							"name": "i"
+						},
+						"do": {
+							"@type": "workflow::sequence",
+							"@value": [
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::a"
+								},
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								}
+							]
+						}
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a0f290-885a-7aaf-8123-85240a475627",
+			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"timestamp": "2026-09-30T13:45:53.498668Z",
+			"path": [
+				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "i"
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a0f290-885a-7abb-bdeb-947157525e7a",
+			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"timestamp": "2026-09-30T13:45:53.498668001Z",
+			"path": [
+				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "i",
+			"value": 0
+		},
+		{
+			"@type": "workflow::event::condition",
+			"event_id": "01a0f290-885a-7bd6-83ec-6376b82a76c2",
+			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"condition_id": "template-condition",
+			"path": [
+				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
+				"sequence",
+				"[1]",
+				"for",
+				"[0]",
+				"cond",
+				"template-condition"
+			],
+			"input": [],
+			"answer": true,
+			"timestamp": "2026-09-30T13:45:53.498741Z"
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a0f290-885a-7c40-bf6e-591ad10a5de0",
+			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"timestamp": "2026-09-30T13:45:53.498767Z",
+			"participant_id": "compat::a",
+			"path": [
+				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
+				"sequence",
+				"[1]",
+				"for",
+				"[0]",
+				"do",
+				"sequence",
+				"[0]",
+				"compat::a"
+			]
+		}
+	]
+}

@@ -1,0 +1,73 @@
+{
+	"definition": {
+		"@type": "workflow::if",
+		"cond": {
+			"@type": "workflow::execute",
+			"condition": "compat::before-upgrade"
+		},
+		"then": {
+			"@type": "workflow::sequence",
+			"@value": [
+				{
+					"@type": "workflow::execute",
+					"participant": "compat::await-upgrade"
+				},
+				{
+					"@type": "workflow::execute",
+					"participant": "compat::a"
+				}
+			]
+		},
+		"else": {
+			"@type": "workflow::execute",
+			"participant": "compat::b"
+		}
+	},
+	"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f290-38ee-7d36-a6a8-2af2997b4116",
+			"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
+			"timestamp": "2026-09-30T13:45:33.166826Z",
+			"definition": {
+				"@type": "workflow::if",
+				"cond": {
+					"@type": "workflow::execute",
+					"condition": "compat::before-upgrade"
+				},
+				"then": {
+					"@type": "workflow::sequence",
+					"@value": [
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						},
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::a"
+						}
+					]
+				},
+				"else": {
+					"@type": "workflow::execute",
+					"participant": "compat::b"
+				}
+			}
+		},
+		{
+			"@type": "workflow::event::condition",
+			"event_id": "01a0f290-38ee-7dfb-b09f-dac9ab726df3",
+			"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
+			"condition_id": "compat::before-upgrade",
+			"path": [
+				"01a0f290-38ee-7d36-a6a8-2af2997b4116",
+				"if",
+				"compat::before-upgrade"
+			],
+			"input": [],
+			"answer": true,
+			"timestamp": "2026-09-30T13:45:33.166875Z"
+		}
+	]
+}

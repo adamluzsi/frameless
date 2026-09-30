@@ -1,0 +1,88 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::a"
+			},
+			{
+				"@type": "workflow::defer",
+				"def": {
+					"@type": "workflow::execute",
+					"participant": "compat::b"
+				}
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::c"
+			}
+		]
+	},
+	"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f290-38f5-7512-b1e4-59514667a3a3",
+			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
+			"timestamp": "2026-09-30T13:45:33.173317Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::a"
+					},
+					{
+						"@type": "workflow::defer",
+						"def": {
+							"@type": "workflow::execute",
+							"participant": "compat::b"
+						}
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::c"
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a0f290-38f5-7591-9338-294c13235d84",
+			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
+			"timestamp": "2026-09-30T13:45:33.173349Z",
+			"participant_id": "compat::a",
+			"path": [
+				"01a0f290-38f5-7512-b1e4-59514667a3a3",
+				"sequence",
+				"[0]",
+				"compat::a"
+			]
+		},
+		{
+			"@type": "workflow::event::defer",
+			"event_id": "01a0f290-38f5-75d2-bc33-40a5b64110c5",
+			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
+			"timestamp": "2026-09-30T13:45:33.173364Z",
+			"path": [
+				"01a0f290-38f5-7512-b1e4-59514667a3a3",
+				"sequence",
+				"[1]",
+				"defer"
+			],
+			"definition": {
+				"@type": "workflow::execute",
+				"participant": "compat::b"
+			}
+		}
+	]
+}

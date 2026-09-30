@@ -294,20 +294,52 @@ Failures are reproducible: fix `TESTCASE_SEED` and rerun.
 
 ---
 
-## 9. Wire-format stability — best effort, with a pin
+## 9. Wire-format stability — the compatibility promise
 
 `wfjson.NewCodec()` produces a wire format that is persisted to a database,
-and stored event logs and definitions outlive any one version of the code. We
-_try_ to keep that format stable across releases, but **we do not promise
-it**: the JSON shape may change as the package evolves, and any byte you store
-today should be treated as readable only by the codec that wrote it. The
-section is here because we want the intent to be visible — _we are trying_
-— and because accidental drift (a field rename, an `@type` discriminator
-typo, a struct reorder that shifts the JSON keys) is the shape of breakage we
-most want to avoid.
+and stored event logs and definitions outlive any one version of the code. So
+the package promises that what it stored keeps working after an upgrade:
 
-The wire format is pinned by `pkg/workflow/wfjson/compat_test.go`. For each of
-the 28 types the codec registers, the test:
+- a Definition stored as JSON still decodes to the same Definition, and
+- a Process that was in flight during the upgrade resumes on the new version,
+  replaying its recorded work instead of repeating it.
+
+Two test suites hold the package to it.
+
+### The promise: `pkg/workflow/internal/compatibility-promise`
+
+Each scenario in the suite is a workflow written with the current API. Its
+fixture, `testdata/<scenario>.json`, is what an earlier version stored for it:
+the encoded Definition, and the event history of a Process that ran until a
+participant suspended it, which stands for the upgrade. The suite decodes the
+fixture with the current code and checks that:
+
+1. the stored Definition still decodes to the scenario's Definition;
+2. the stored history resumes, calls only the participants and conditions the
+   scenario expects after the upgrade, and completes;
+3. the resumed Process ends with the variables the scenario expects.
+
+It checks behaviour rather than bytes, so it also catches a change that
+encodes the same way but replays differently. Moving a step to another path
+segment is one example: the stored calls no longer match, and they run again.
+
+To add a scenario, append it to the scenario table, then record its fixture
+and commit it:
+
+```sh
+go test ./pkg/workflow/internal/compatibility-promise/ -record
+```
+
+Recording only writes the missing fixtures; it never overwrites one. A
+committed fixture is never edited or recorded again, and a fixture without a
+scenario fails the suite, because a promise can't be withdrawn. When the suite
+fails after a change, the change breaks data that is already stored: fix the
+change, for example with a codec migration, rather than the fixture.
+
+### The pin: `pkg/workflow/wfjson/compat_test.go`
+
+The wire bytes themselves are pinned per type. For each of the 28 types the
+codec registers, the test:
 
 1. **Builds a representative value** with stable IDs (a fixed `ProcessID`,
    `EventID`, `ChildID`, and timestamp) so the JSON output is
@@ -330,8 +362,11 @@ the 28 types the codec registers, the test:
    value would still pass the byte-equality check for some shapes but would
    silently break the decoder.
 
-If a future change intentionally widens the format — adding a field, renaming
-a discriminator — the failure message points at the regeneration tool:
+The written format may change, as long as what was stored before still reads
+the same. Replaced formats are kept readable through codec migrations
+(`jsonkit.CodecRegisterMigration`), and the pin keeps their old bytes as
+migration inputs. If a change intentionally alters the written format, the
+failure message points at the regeneration tool:
 
 ```sh
 go test -tags wfjsongen -run TestGenerateV1Snapshots ./pkg/workflow/wfjson/
@@ -339,25 +374,17 @@ go test -tags wfjsongen -run TestGenerateV1Snapshots ./pkg/workflow/wfjson/
 
 …which writes `wfjson/v1_snapshots.txt`. Copy the new line into the
 corresponding `assertMatchesV1Snapshot` call in `compat_test.go`, and commit
-the change with a note that calls out the format change.
+the change with a note that calls out the format change. The
+compatibility-promise fixtures stay as they are, and must still pass.
 
-### What the test is for, and what it is not
+### What the promise covers
 
-- **It catches accidental drift.** An engineer who renames `event_id` to
-  `id` without thinking breaks the build before the change merges. That is
-  the test's job.
-
-- **It is _not_ a backwards-compatibility contract.** A deliberate change
-  to the wire format is allowed: update the snapshot, ship the change. If
-  you store events with one version of the codec and read them back with
-  another, both versions must include the same `wfjson` package version.
-  There is no on-disk version stamp in the envelope; _that_ is the contract.
-
-- **If your data needs to outlive `wfjson`, pin it yourself.** Snapshot a
-  representative payload of each type your system actually uses into a
-  contract test in your own repository, and treat _that_ as the contract for
-  your data. The `wfjson` snapshots are a backstop against careless
-  refactors, not a publication of a stable schema.
+- **The built-in definitions, events and conditions**, as encoded by
+  `wfjson.NewCodec()`, including the event paths their replay depends on.
+- **Not your own types.** Adding a type to a codec doesn't add it to the
+  promise. If your data has to outlive a version of your own code, record
+  representative payloads and histories in your own repository the same way,
+  and treat those as the contract for your data.
 
 ---
 

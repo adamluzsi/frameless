@@ -1,0 +1,173 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::var::set",
+				"name": "names",
+				"value": [
+					"alice",
+					"bob"
+				]
+			},
+			{
+				"@type": "workflow::foreach",
+				"over": "names",
+				"do": {
+					"@type": "workflow::sequence",
+					"@value": [
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::greet",
+							"input": [
+								"name"
+							],
+							"output": [
+								"greeting"
+							]
+						},
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						}
+					]
+				},
+				"value": "name"
+			}
+		]
+	},
+	"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f290-885e-7bea-bd52-96a407b1bb8a",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502745Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::var::set",
+						"name": "names",
+						"value": [
+							"alice",
+							"bob"
+						]
+					},
+					{
+						"@type": "workflow::foreach",
+						"over": "names",
+						"do": {
+							"@type": "workflow::sequence",
+							"@value": [
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::greet",
+									"input": [
+										"name"
+									],
+									"output": [
+										"greeting"
+									]
+								},
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								}
+							]
+						},
+						"value": "name"
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a0f290-885e-7c69-9f2c-516d08848bd3",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502776Z",
+			"path": [
+				"01a0f290-885e-7bea-bd52-96a407b1bb8a",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "names"
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a0f290-885e-7c76-b781-91fcd781336b",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502776001Z",
+			"path": [
+				"01a0f290-885e-7bea-bd52-96a407b1bb8a",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "names",
+			"value": [
+				"alice",
+				"bob"
+			]
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a0f290-885e-7d94-a81e-d099af381d9c",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502849Z",
+			"participant_id": "compat::greet",
+			"path": [
+				"01a0f290-885e-7bea-bd52-96a407b1bb8a",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"input": [
+				"alice"
+			],
+			"output": [
+				"hello alice"
+			]
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a0f290-885e-7dee-9c90-989442072524",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502871Z",
+			"path": [
+				"01a0f290-885e-7bea-bd52-96a407b1bb8a",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"name": "greeting",
+			"scope": [
+				"[0]"
+			]
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a0f290-885e-7dfb-8cd0-3935169f97f5",
+			"process_id": "01a0f290-885e-7bde-855d-b18d6af756e6",
+			"timestamp": "2026-09-30T13:45:53.502871001Z",
+			"path": [
+				"01a0f290-885e-7bea-bd52-96a407b1bb8a",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"name": "greeting",
+			"value": "hello alice"
+		}
+	]
+}
