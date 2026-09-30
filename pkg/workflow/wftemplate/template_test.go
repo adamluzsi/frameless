@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 // setVar seeds a workflow variable into the Process' event history.
@@ -310,6 +311,68 @@ func TestCondition(t *testing.T) {
 				timecop.Travel(t, time.Second)
 				assert.NoError(t, act(t))
 			})
+		})
+	})
+
+	s.Describe("as the condition of an If in the body of a ForEach", func(s *testcase.Spec) {
+		// The loop exposes the iterated element as the Value variable the
+		// expression reads, so .name is not a variable of the Process here, only
+		// an iteration variable of the loop body.
+		const collectionName workflow.VarName = "names"
+
+		var (
+			// elements holds storedValue exactly once, among values which don't
+			// match the expression.
+			elements = let.Var(s, func(t *testcase.T) []string {
+				var (
+					before = random.Slice(t.Random.IntBetween(0, 3), t.Random.UUID)
+					after  = random.Slice(t.Random.IntBetween(0, 3), t.Random.UUID)
+				)
+				return append(append(before, storedValue.Get(t)), after...)
+			})
+			processID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				pid := c.ProcessID.Super(t)
+				setVar(t, c.Runtime.Get(t), pid, collectionName, elements.Get(t))
+				return pid
+			})
+			// matches records the elements for which the expression was true.
+			matches = let.Var(s, func(t *testcase.T) []string {
+				return nil
+			})
+			forEach = let.Var(s, func(t *testcase.T) workflow.ForEach {
+				return workflow.ForEach{
+					Over: collectionName,
+					V:    varName,
+					Do: workflow.If{
+						Cond: subject.Get(t),
+						Then: wftest.Stub{
+							StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+								v, err := workflow.Vars{
+									ProcessID:        pid,
+									EventsRepository: c.EventRepository.Get(t),
+								}.Get(ctx, varName)
+								if err != nil {
+									return err
+								}
+								testcase.Append(t, matches, v.(string))
+								return nil
+							},
+						},
+					},
+				}
+			})
+		)
+
+		act := let.Act(func(t *testcase.T) error {
+			return forEach.Get(t).Execute(c.Runtime.Get(t).Context(t.Context()), processID.Get(t))
+		})
+
+		s.Then("the expression reads the iteration variable of the loop", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, []string{storedValue.Get(t)}, matches.Get(t),
+				"the expression must be true for the matching element only,",
+				"which it can only tell apart by seeing the iteration variable")
 		})
 	})
 

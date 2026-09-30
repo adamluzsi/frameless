@@ -208,6 +208,7 @@ func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodySco
 	ctx = withIterationVars(ctx, iterationVars{
 		KeyName:   foreach.K,
 		ValueName: foreach.V,
+		Scope:     CurrentVarScope(ctx),
 
 		Source: foreach.Over,
 		Index:  index,
@@ -225,13 +226,16 @@ func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodySco
 // collection variable, and the position within that collection.
 //
 // ForEach#Execute sets Index for slice iterations and Key for map iterations
-// (exactly one of them), and lookupIterationVar uses this instruction to
+// (exactly one of them), and iterationVars#lookup uses this instruction to
 // re-resolve the value against the current state of the collection on every
 // read, so a body that reassigns the collection variable sees the new value
 // without the proxy holding a stale snapshot.
 type iterationVars struct {
 	KeyName   VarName
 	ValueName VarName
+	// Scope is the variable scope of the loop body iteration, which the
+	// iteration variables are bound to.
+	Scope VarScope
 
 	Source VarName
 	Index  *int
@@ -246,28 +250,51 @@ func withIterationVars(ctx context.Context, v iterationVars) context.Context {
 	return ctxIterationVars.ContextWith(ctx, v)
 }
 
-func lookupIterationVar(ctx context.Context, name VarName, events []Event) (any, bool, error) {
-	var iv, ok = ctxIterationVars.Lookup(ctx)
-	if !ok {
-		return nil, false, nil
+// names are the variable names the iteration exposes to the loop body.
+func (iv iterationVars) names() []VarName {
+	var names []VarName
+	for _, name := range []VarName{iv.KeyName, iv.ValueName} {
+		if name != "" {
+			names = append(names, name)
+		}
 	}
+	return names
+}
+
+// lookup resolves an iteration variable by its name.
+//
+// declared holds the variable bindings declared in the event history, as they
+// are seen from the loop body, which is where the Value is re-resolved from,
+// against the current value of the collection variable.
+func (iv iterationVars) lookup(name VarName, declared map[VarName]VarBinding) (VarBinding, bool, error) {
+	if name == "" {
+		return VarBinding{}, false, nil
+	}
+	var value any
 	switch name {
 	case iv.KeyName:
 		switch {
 		case iv.Index != nil:
-			return *iv.Index, true, nil
+			value = *iv.Index
 		case iv.Key.IsValid():
-			return iv.Key.Interface(), true, nil
+			value = iv.Key.Interface()
+		default:
+			return VarBinding{}, false, nil
 		}
-		return nil, false, nil
 	case iv.ValueName:
-		_, collVal, ok := lookupVariable(ctx, events, iv.Source)
+		source, ok := declared[iv.Source]
 		if !ok {
-			return nil, false, nil
+			return VarBinding{}, false, nil
 		}
-		return indexCollection(collVal, iv)
+		element, ok, err := indexCollection(source.Value, iv)
+		if err != nil || !ok {
+			return VarBinding{}, false, err
+		}
+		value = element
+	default:
+		return VarBinding{}, false, nil
 	}
-	return nil, false, nil
+	return VarBinding{Name: name, Value: value, Scope: iv.Scope}, true, nil
 }
 
 func indexCollection(coll any, iv iterationVars) (any, bool, error) {

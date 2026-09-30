@@ -891,6 +891,13 @@ func TestForEach(t *testing.T) {
 			_, ok, err = vars(t).Lookup(ctx.Get(t), valueName.Get(t))
 			assert.NoError(t, err)
 			assert.False(t, ok, "the Value belongs to the loop body's variable scope")
+
+			m, err := vars(t).ToMap(ctx.Get(t))
+			assert.NoError(t, err)
+			_, ok = m[keyName.Get(t)]
+			assert.False(t, ok, "#ToMap must not see the Key either, once the loop is over")
+			_, ok = m[valueName.Get(t)]
+			assert.False(t, ok, "#ToMap must not see the Value either, once the loop is over")
 		})
 
 		s.Then("the iteration variables do not add events to the event log", func(t *testcase.T) {
@@ -914,6 +921,77 @@ func TestForEach(t *testing.T) {
 			assert.NoError(t, err)
 			assert.True(t, ok)
 			assert.Equal[any](t, collection.Get(t), got)
+		})
+
+		// Next to the single variable #Lookup, the variables can be read as a
+		// whole too, which is how a template condition sees them. The loop body
+		// must find its iteration variables the same way on every read path.
+		s.When("the loop body reads its variables as a map", func(s *testcase.Spec) {
+			do.Let(s, func(t *testcase.T) workflow.Definition {
+				return wftest.Stub{
+					StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						m, err := workflow.Vars{
+							ProcessID:        pid,
+							EventsRepository: c.EventRepository.Get(t),
+						}.ToMap(ctx)
+						if err != nil {
+							return err
+						}
+						testcase.Append(t, iterations, forEachIteration{
+							Key:   m[keyName.Get(t)],
+							Value: m[valueName.Get(t)],
+						})
+						return nil
+					},
+				}
+			})
+
+			s.Then("the map holds the iteration variables", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				var expected []forEachIteration
+				for index, element := range elements.Get(t) {
+					expected = append(expected, forEachIteration{Key: index, Value: element})
+				}
+				assert.Equal(t, expected, iterations.Get(t),
+					"#ToMap must see the same iteration variables as #Lookup does")
+			})
+		})
+
+		s.When("the loop body lists its variable bindings", func(s *testcase.Spec) {
+			do.Let(s, func(t *testcase.T) workflow.Definition {
+				return wftest.Stub{
+					StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						var vs = workflow.Vars{
+							ProcessID:        pid,
+							EventsRepository: c.EventRepository.Get(t),
+						}
+						var bindings = map[workflow.VarName]any{}
+						for b, err := range vs.All(ctx) {
+							if err != nil {
+								return err
+							}
+							bindings[b.Name] = b.Value
+						}
+						testcase.Append(t, iterations, forEachIteration{
+							Key:   bindings[keyName.Get(t)],
+							Value: bindings[valueName.Get(t)],
+						})
+						return nil
+					},
+				}
+			})
+
+			s.Then("the iteration variables are listed among the bindings", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				var expected []forEachIteration
+				for index, element := range elements.Get(t) {
+					expected = append(expected, forEachIteration{Key: index, Value: element})
+				}
+				assert.Equal(t, expected, iterations.Get(t),
+					"#All must see the same iteration variables as #Lookup does")
+			})
 		})
 
 		s.When("the collection is a map", func(s *testcase.Spec) {

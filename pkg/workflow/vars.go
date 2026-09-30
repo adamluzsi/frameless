@@ -3,10 +3,12 @@ package workflow
 import (
 	"context"
 	"iter"
+	"slices"
 	"time"
 
 	"go.llib.dev/frameless/pkg/comp"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/ds"
 )
@@ -113,11 +115,11 @@ func (vs Vars) Lookup(ctx context.Context, name VarName) (any, bool, error) {
 	return lookupVar(ctx, events, name)
 }
 
+// lookupVar resolves a single variable out of a Process event history, as it is
+// seen from the variable scope of ctx.
 func lookupVar(ctx context.Context, events []Event, name VarName) (any, bool, error) {
-	if _, value, ok := lookupVariable(ctx, events, name); ok {
-		return value, true, nil
-	}
-	return lookupIterationVar(ctx, name, events)
+	b, ok, err := visibleVarsOf(ctx, events).lookup(name)
+	return b.Value, ok, err
 }
 
 func (vs Vars) ToMap(ctx context.Context) (map[VarName]any, error) {
@@ -125,7 +127,15 @@ func (vs Vars) ToMap(ctx context.Context) (map[VarName]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return variablesToMap(ctx, events), nil
+	bindings, err := visibleVarsOf(ctx, events).bindings()
+	if err != nil {
+		return nil, err
+	}
+	var m = make(map[VarName]any, len(bindings))
+	for _, b := range bindings {
+		m[b.Name] = b.Value
+	}
+	return m, nil
 }
 
 func (vs Vars) Keys(ctx context.Context) iter.Seq2[VarName, error] {
@@ -422,15 +432,79 @@ func varBindings(ctx context.Context, events []Event) map[VarName]VarBinding {
 	return bindings
 }
 
-// lookupVariable folds a single variable out of a Process event history, as it
-// is seen from the variable scope of ctx.
+// lookupVariable folds a single declared variable out of a Process event
+// history, as it is seen from the variable scope of ctx.
 //
 // found reports that a declaration of the variable is visible from here, which
 // is not the same as the variable having a value: a variable which was declared
 // but not yet assigned is found, holding a nil value.
+//
+// Only the bindings recorded in the event history are considered, which is what
+// the writes of a variable need. A read goes through visibleVars instead, which
+// sees the iteration variables of a ForEach loop body too.
 func lookupVariable(ctx context.Context, events []Event, name VarName) (scope VarScope, value any, found bool) {
 	b, ok := varBindings(ctx, events)[name]
 	return b.Scope, b.Value, ok
+}
+
+// visibleVars is how the variables of a Process are seen from a variable scope:
+// the bindings declared in the Process event history, together with the
+// iteration variables of the ForEach loop body the scope belongs to.
+//
+// Every read of the variables resolves through it — the single variable
+// Vars#Lookup, just like the whole-scope Vars#ToMap and Vars#All — so the read
+// paths can't disagree on which variables are visible, or on what a name
+// resolves to.
+type visibleVars struct {
+	declared  map[VarName]VarBinding
+	iteration *iterationVars
+}
+
+func visibleVarsOf(ctx context.Context, events []Event) visibleVars {
+	var vv = visibleVars{declared: varBindings(ctx, events)}
+	if iv, ok := ctxIterationVars.Lookup(ctx); ok {
+		vv.iteration = &iv
+	}
+	return vv
+}
+
+// lookup resolves a variable by its name.
+//
+// A declared binding takes precedence over an iteration variable of the same
+// name, which is what lets the loop body reassign its iteration variable with a
+// SetVar.
+func (vv visibleVars) lookup(name VarName) (VarBinding, bool, error) {
+	if b, ok := vv.declared[name]; ok {
+		return b, true, nil
+	}
+	if vv.iteration == nil {
+		return VarBinding{}, false, nil
+	}
+	return vv.iteration.lookup(name, vv.declared)
+}
+
+// bindings resolves every visible variable through #lookup, ordered by name.
+func (vv visibleVars) bindings() ([]VarBinding, error) {
+	var names = mapkit.Keys(vv.declared)
+	if vv.iteration != nil {
+		for _, name := range vv.iteration.names() {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.Sort(names)
+	var bindings = make([]VarBinding, 0, len(names))
+	for _, name := range names {
+		b, ok, err := vv.lookup(name)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			bindings = append(bindings, b)
+		}
+	}
+	return bindings, nil
 }
 
 // eventsToVarBindingsE folds all variable bindings from a Process event stream,
@@ -445,37 +519,17 @@ func eventsToVarBindingsE(ctx context.Context, events iter.Seq2[Event, error], p
 			yield(VarBinding{}, err)
 			return
 		}
-		for b := range eventsToVarBindings(ctx, eventsVS) {
+		bindings, err := visibleVarsOf(ctx, eventsVS).bindings()
+		if err != nil {
+			yield(VarBinding{}, err)
+			return
+		}
+		for _, b := range bindings {
 			if !yield(b, nil) {
 				return
 			}
 		}
 	}
-}
-
-func eventsToVarBindings(ctx context.Context, events []Event) iter.Seq[VarBinding] {
-	return func(yield func(VarBinding) bool) {
-		var bindings []VarBinding
-		for _, b := range varBindings(ctx, events) {
-			bindings = append(bindings, b)
-		}
-		slicekit.SortBy(bindings, func(a, b VarBinding) bool {
-			return a.Name < b.Name
-		})
-		for _, b := range bindings {
-			if !yield(b) {
-				return
-			}
-		}
-	}
-}
-
-func variablesToMap(ctx context.Context, events []Event) map[VarName]any {
-	var m = map[VarName]any{}
-	for b := range eventsToVarBindings(ctx, events) {
-		m[b.Name] = b.Value
-	}
-	return m
 }
 
 // --------------------------------------------------------------------------------------------- //
