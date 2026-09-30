@@ -251,6 +251,53 @@ ordinary failures, place the steps as top-level `Sequence` steps in the bound
 definition, which gives each its own commit. Either way, every step must
 tolerate running again.
 
+### Process-level cleanup with `workflow.Defer`
+
+`txkit.OnRollback` undoes one call. `workflow.Defer` covers the whole process.
+It works like Go's `defer`: a participant registers a definition, and that
+definition runs when the process ends.
+
+```go
+"reserve-seat": func(ctx context.Context, bookingID string) error {
+	if err := seats.Reserve(ctx, bookingID); err != nil {
+		return err
+	}
+	return workflow.Defer(ctx, workflow.Execute{
+		Participant: "release-unpaid-seat",
+		Input:       []workflow.VarName{"booking_id"},
+	})
+},
+```
+
+- **When they run.** Deferred definitions run when the process completes,
+  whether it reached the end of its definition or raised `Complete`. They also
+  run when it is terminated, whether by a `Terminate` signal or by
+  `rt.Terminate`. They run **before** `EventCompleted` or `EventTerminated` is
+  recorded, so an outcome on record means nothing is left to run. A process that
+  suspends or halts hasn't ended, so its deferred definitions wait.
+- **Order.** They run last-in, first-out. A definition deferred from inside a
+  deferred definition runs right after the one that registered it, like a
+  nested `defer` in Go.
+- **Location.** A deferred definition runs at the path and variable scope where
+  it was registered, under a segment named after its registration event:
+  `foo/bar/baz` becomes `foo/bar/baz/<event id>`. It sees the variables visible
+  at registration, and the variables it sets stay local to it.
+- **Registration is idempotent.** A step that is replayed doesn't register its
+  definition twice. A step that runs again under a new variable scope, such as
+  a loop iteration, registers its own.
+- **Failures.** A deferred definition has no completion event of its own. Its
+  steps are recorded and replayed like any other step. If one fails, the error
+  is returned and the process outcome is not recorded. The next attempt runs
+  the deferred definitions again, skips the steps already on record, and
+  retries the failed one. So build deferred definitions from idempotent steps.
+- **Signals.** A deferred definition that raises `Complete` or `Terminate` ends
+  only itself, and the rest still run. Other signals, such as `Suspend`, stop
+  the unwinding the same way an error does, and a later attempt resumes it.
+
+`Defer` is **not** a rollback hook. A deferred definition needs a working event
+history to run, so it can't react to the event history failing. For that case,
+use `txkit.OnRollback`, as shown above.
+
 ---
 
 ## 3. Returning more work

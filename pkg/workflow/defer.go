@@ -6,11 +6,29 @@ import (
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/workflow/internal"
 )
 
-// Defer will register a hook in the current process execution, as a cleanup.
-// Defer will execute the hook at the end of the normal execution or when the application is marked as terminated/completed early on.
-// When multiple Definition is set with consequent Defer calls, the execution order will be LIFO.
+// Defer registers def to run when the Process ends, much like Go's defer does for a function.
+//
+// The deferred Definitions run when the Process completes, whether it reaches the end of its Definition or a step raises Complete,
+// and when it is terminated, whether a step raises Terminate or Runtime#Terminate is called.
+// They run in the reverse order of their registration (LIFO),
+// before the outcome (EventCompleted or EventTerminated) is recorded.
+// A Definition deferred while the deferred Definitions are running
+// runs right after the one which registered it, like a nested defer in Go.
+// A Process that suspends or halts hasn't ended, so its deferred Definitions wait.
+//
+// A deferred Definition runs like any other part of the workflow, with no completion event of its own.
+// Its steps are recorded and replayed idempotently, so the Definition should be made of idempotent steps.
+// If one fails, the unwinding stops, the error is returned and the outcome is not recorded.
+// The next attempt runs the deferred Definitions again,
+// skipping the steps already on record and retrying the one that failed.
+// A deferred Definition raising Complete or Terminate only ends itself,
+// while other signals, like Suspend, stop the unwinding just like an error does.
+//
+// Defer is not a rollback hook: a deferred Definition needs a working EventRepository to run.
+// To undo a participant's effect when its call fails to be recorded, use txkit.OnRollback.
 //
 // The hooked Definition shares the location of its declaration.
 // Both the Path and the VarScope of the context Defer was called with
@@ -82,7 +100,7 @@ type EventDefer struct {
 	// Path is the registration's location.
 	Path Path
 	// VarScope is the variable scope the registration was made in.
-	// The hook's Definition runs in a scope nested under it (see EventDeferHook#Context).
+	// The hook's Definition runs in a scope nested under it (see EventDefer#Context).
 	VarScope   VarScope
 	Definition Definition
 }
@@ -103,4 +121,68 @@ func (e EventDefer) Context(ctx context.Context) context.Context {
 	var segment = e.EventID.String()
 	ctx = withPath(ctx, ctxCurrentPath, append(slicekit.Clone(e.Path), segment))
 	return withPath(ctx, ctxVarScope, append(slicekit.Clone(e.VarScope), segment))
+}
+
+// runDeferred unwinds the Definitions deferred by the Process, newest first.
+//
+// The event log is read again after each deferred Definition,
+// so the ones registered while unwinding are run as well.
+func runDeferred(ctx context.Context, rt Runtime, pid ProcessID) error {
+	if _, ok := RuntimeFromContext(ctx); !ok {
+		// The TTL budget is for scheduled executions,
+		// and an unwinding from outside of one, like Runtime#Terminate, has nobody to resume it.
+		var unbudgeted = rt
+		unbudgeted.TTL = 0
+		ctx = unbudgeted.Context(ctx)
+	}
+	// ctx may belong to another Process, like a parent cascading its termination to its children.
+	ctx = internal.ContextProcessID.ContextWith(ctx, pid)
+	var done = make(map[EventID]struct{})
+	for {
+		hook, ok, err := nextDeferred(ctx, rt.Events, pid, done)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		done[hook.EventID] = struct{}{}
+		if err := hook.Definition.Execute(hook.Context(ctx), pid); err != nil && !endsDeferred(err) {
+			return err
+		}
+	}
+}
+
+// nextDeferred finds the most recently registered deferred Definition that is not done yet.
+func nextDeferred(ctx context.Context, repo EventRepository, pid ProcessID, done map[EventID]struct{}) (EventDefer, bool, error) {
+	var (
+		next  EventDefer
+		found bool
+	)
+	for event, err := range repo.FindByProcessID(ctx, pid) {
+		if err != nil {
+			return EventDefer{}, false, err
+		}
+		hook, ok := event.(EventDefer)
+		if !ok {
+			continue
+		}
+		if _, ok := done[hook.EventID]; ok {
+			continue
+		}
+		next, found = hook, true
+	}
+	return next, found, nil
+}
+
+// endsDeferred reports whether err only ends the deferred Definition that raised it.
+//
+// Like the Runtime's own signal dispatch, it is a plain type check, so a wrapped signal counts as a failure.
+func endsDeferred(err error) bool {
+	switch err.(type) {
+	case Complete, Terminate:
+		return true
+	default:
+		return false
+	}
 }

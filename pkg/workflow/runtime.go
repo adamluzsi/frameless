@@ -304,8 +304,19 @@ func (rt Runtime) tryLock(ctx context.Context, pid ProcessID) (context.Context, 
 	if !acquired {
 		return nil, false, nil, nil
 	}
-	return lockContext, true, func() error { return locker.Unlock(lockContext) }, nil
+	// A lock context is re-entrant: locking it again hands back the same lock.
+	// Releasing it is the job of whoever acquired it in the first place,
+	// otherwise a nested caller, like a participant raising Terminate,
+	// would release the lock from under the execution that holds it.
+	if held, _ := ctx.Value(ctxKeyProcessLock{ProcessID: pid}).(bool); held {
+		return lockContext, true, func() error { return nil }, nil
+	}
+	unlock := func() error { return locker.Unlock(lockContext) }
+	return context.WithValue(lockContext, ctxKeyProcessLock{ProcessID: pid}, true), true, unlock, nil
 }
+
+// ctxKeyProcessLock marks a context in which the lock of the Process is already held.
+type ctxKeyProcessLock struct{ ProcessID ProcessID }
 
 // ErrZeroProcessID is returned when a workflow.Runtime operation is called
 // with a zero ProcessID. The caller must own process identity so that retries

@@ -172,9 +172,330 @@ func TestDefer(t *testing.T) {
 			assert.Empty(t, hooksOf(t, processID.Get(t)))
 		})
 	})
+
+	s.Context("unwinding, as the process ends", func(s *testcase.Spec) {
+		c := wftest.LetC(s)
+
+		// deferredExecution records one execution of a deferred Definition.
+		type deferredExecution struct {
+			Name string
+			// Ended tells whether the process already had its outcome on record
+			// at the time the deferred Definition ran.
+			Ended bool
+		}
+		var executions = let.Var(s, func(t *testcase.T) []deferredExecution {
+			return nil
+		})
+		record := func(t *testcase.T, ctx context.Context, name string) error {
+			completed, err := workflow.IsCompleted(ctx, c.EventRepository.Get(t), c.ProcessID.Get(t))
+			if err != nil {
+				return err
+			}
+			terminated, err := workflow.IsTerminated(ctx, c.EventRepository.Get(t), c.ProcessID.Get(t))
+			if err != nil {
+				return err
+			}
+			executions.Set(t, append(executions.Get(t), deferredExecution{
+				Name:  name,
+				Ended: completed || terminated,
+			}))
+			return nil
+		}
+		executed := func(t *testcase.T) []string {
+			t.Helper()
+			var names []string
+			for _, e := range executions.Get(t) {
+				names = append(names, e.Name)
+			}
+			return names
+		}
+		// deferred makes a Definition that records every one of its executions.
+		// It is deliberately not an idempotent step,
+		// so a repeated execution can't hide behind a replay from the event log.
+		deferred := func(t *testcase.T, name string) workflow.Definition {
+			return wftest.Stub{StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+				return record(t, ctx, name)
+			}}
+		}
+		thenTheyRanBeforeTheOutcome := func(t *testcase.T) {
+			t.Helper()
+			assert.NotEmpty(t, executions.Get(t))
+			for _, e := range executions.Get(t) {
+				assert.False(t, e.Ended, assert.MessageF(
+					"the %q deferred definition ran after the process's outcome was already on record; "+
+						"an outcome must mean that nothing is left to run for the process", e.Name))
+			}
+		}
+		isTerminated := func(t *testcase.T) bool {
+			t.Helper()
+			ok, err := workflow.IsTerminated(t.Context(), c.EventRepository.Get(t), c.ProcessID.Get(t))
+			assert.NoError(t, err)
+			return ok
+		}
+
+		var (
+			firstDeferred = let.Var(s, func(t *testcase.T) workflow.Definition {
+				return deferred(t, "first")
+			})
+			secondDeferred = let.Var(s, func(t *testcase.T) workflow.Definition {
+				return deferred(t, "second")
+			})
+			// ending is what the last step of the process returns.
+			ending = let.VarOf[error](s, nil)
+		)
+		_, deferFirst := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				return workflow.Defer(ctx, firstDeferred.Get(t))
+			}
+		})
+		_, deferSecond := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				return workflow.Defer(ctx, secondDeferred.Get(t))
+			}
+		})
+		_, last := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				return ending.Get(t)
+			}
+		})
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return workflow.Sequence{
+				workflow.Execute{Participant: deferFirst.Get(t)},
+				workflow.Execute{Participant: deferSecond.Get(t)},
+				workflow.Execute{Participant: last.Get(t)},
+			}
+		})
+
+		s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+			act := func(t *testcase.T) error {
+				return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+			}
+
+			s.Then("once the process completes, its deferred definitions run in the reverse order of their registration (LIFO)", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, executed(t), []string{"second", "first"})
+				assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+			})
+
+			s.Then("they run before the completion is recorded", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				thenTheyRanBeforeTheOutcome(t)
+			})
+
+			s.Then("re-executing the completed process doesn't run them again", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, executed(t), []string{"second", "first"})
+			})
+
+			s.When("the execution suspends before the process ends", func(s *testcase.Spec) {
+				ending.Let(s, func(t *testcase.T) error {
+					return workflow.Suspend{}
+				})
+
+				s.Then("the deferred definitions are kept for later, as the process hasn't ended yet", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+					assert.Empty(t, executions.Get(t))
+					assert.Equal(t, len(deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t))), 2)
+				})
+			})
+
+			s.When("a step completes the process early with workflow.Complete", func(s *testcase.Spec) {
+				ending.Let(s, func(t *testcase.T) error {
+					return workflow.Complete{}
+				})
+
+				s.Then("the deferred definitions run in LIFO order, before the completion is recorded", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+			})
+
+			s.When("a step terminates the process with workflow.Terminate", func(s *testcase.Spec) {
+				ending.Let(s, func(t *testcase.T) error {
+					return workflow.Terminate{}
+				})
+
+				s.Then("the deferred definitions still run in LIFO order, before the termination is recorded", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+					assert.True(t, isTerminated(t))
+				})
+
+				s.Then("re-executing the terminated process doesn't run them again", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+				})
+			})
+
+			s.When("a deferred definition registers a deferred definition of its own", func(s *testcase.Spec) {
+				secondDeferred.Let(s, func(t *testcase.T) workflow.Definition {
+					return wftest.Stub{StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						if err := record(t, ctx, "second"); err != nil {
+							return err
+						}
+						return workflow.Defer(ctx, deferred(t, "third"))
+					}}
+				})
+
+				s.Then("it runs right after the one that registered it, like a nested defer in Go", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "third", "first"})
+					thenTheyRanBeforeTheOutcome(t)
+				})
+			})
+
+			s.When("a deferred definition ends itself with workflow.Complete or workflow.Terminate", func(s *testcase.Spec) {
+				signal := let.Var(s, func(t *testcase.T) error {
+					if t.Random.Bool() {
+						return workflow.Complete{}
+					}
+					return workflow.Terminate{}
+				})
+				secondDeferred.Let(s, func(t *testcase.T) workflow.Definition {
+					return wftest.Stub{StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						if err := record(t, ctx, "second"); err != nil {
+							return err
+						}
+						return signal.Get(t)
+					}}
+				})
+
+				s.Then("it only ends that deferred definition, so the rest still run and the process keeps its outcome", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+			})
+
+			s.When("a deferred definition fails", func(s *testcase.Spec) {
+				var (
+					expErr = let.Error(s)
+					// failures is how many more times the first deferred definition fails.
+					failures = let.VarOf(s, 1)
+				)
+				_, recordSecond := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+					return func(ctx context.Context) error {
+						return record(t, ctx, "second")
+					}
+				})
+				_, recordFirst := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+					return func(ctx context.Context) error {
+						if err := record(t, ctx, "first"); err != nil {
+							return err
+						}
+						if 0 < failures.Get(t) {
+							failures.Set(t, failures.Get(t)-1)
+							return expErr.Get(t)
+						}
+						return nil
+					}
+				})
+				// This time, the deferred definitions are idempotent steps,
+				// just like the ones a participant would normally defer.
+				secondDeferred.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Execute{Participant: recordSecond.Get(t)}
+				})
+				firstDeferred.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Execute{Participant: recordFirst.Get(t)}
+				})
+
+				s.Then("the failure is returned, and the completion is not recorded", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), expErr.Get(t))
+
+					assert.False(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+
+				s.Then("the next attempt resumes the unwinding, retrying the failed step without repeating the finished ones", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), expErr.Get(t))
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first", "first"})
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+			})
+		})
+
+		s.Describe("Runtime#Terminate", func(s *testcase.Spec) {
+			act := func(t *testcase.T) error {
+				return c.Runtime.Get(t).Terminate(t.Context(), c.ProcessID.Get(t))
+			}
+
+			// the process registers its deferred definitions, then waits at its last step
+			ending.Let(s, func(t *testcase.T) error {
+				return workflow.Suspend{}
+			})
+			s.Before(func(t *testcase.T) {
+				assert.Must(t).ErrorIs(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)), workflow.Suspend{})
+				assert.Must(t).Empty(executions.Get(t))
+			})
+
+			s.Then("the deferred definitions run in the reverse order of their registration (LIFO)", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, executed(t), []string{"second", "first"})
+				assert.True(t, isTerminated(t))
+			})
+
+			s.Then("they run before the termination is recorded", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				thenTheyRanBeforeTheOutcome(t)
+			})
+
+			s.Then("terminating the process again doesn't run them again", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, executed(t), []string{"second", "first"})
+			})
+
+			s.When("a deferred definition fails", func(s *testcase.Spec) {
+				expErr := let.Error(s)
+				secondDeferred.Let(s, func(t *testcase.T) workflow.Definition {
+					return wftest.Stub{StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+						return expErr.Get(t)
+					}}
+				})
+
+				s.Then("the failure is returned, and the termination is not recorded, so it can be retried", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), expErr.Get(t))
+
+					assert.False(t, isTerminated(t))
+				})
+			})
+
+			s.When("the process has already completed", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					ending.Set(t, nil)
+					assert.Must(t).NoError(c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t)))
+				})
+
+				s.Then("its deferred definitions, which ran at the completion, don't run again", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, executed(t), []string{"second", "first"})
+					assert.True(t, c.IsCompleted(t, c.ProcessID.Get(t)))
+				})
+			})
+		})
+	})
 }
 
-func TestEventDeferHook(t *testing.T) {
+func TestEventDefer(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (

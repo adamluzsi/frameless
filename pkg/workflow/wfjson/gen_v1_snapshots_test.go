@@ -149,6 +149,12 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			Path: workflow.Path{"sequence", "[0]", "sleep"},
 		}},
+		{"EventDefer", workflow.EventDefer{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path:       workflow.Path{"sequence", "[0]", "participant"},
+			VarScope:   workflow.VarScope{"[0]"},
+			Definition: workflow.SetVar{Name: "x", Value: "1"},
+		}},
 		// Schedule-side
 		{"ExecutionRequest", workflow.ExecutionRequest{
 			ProcessID: pid, StartTime: ts, CreatedAt: ts,

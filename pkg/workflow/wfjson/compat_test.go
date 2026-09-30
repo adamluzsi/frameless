@@ -473,6 +473,16 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			`{"@type":"workflow::event::sleep::completed","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","sleep"]}`)
 	})
 
+	s.Test("EventDefer", func(t *testcase.T) {
+		assertMatchesV1Snapshot(t, codec.Get(t),
+			workflow.EventDefer{
+				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
+				Path: path.Get(t), VarScope: scope.Get(t),
+				Definition: workflow.SetVar{Name: "x", Value: "1"},
+			},
+			`{"@type":"workflow::event::defer","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"scope":["[0]"],"definition":{"@type":"workflow::var::set","name":"x","value":"1"}}`)
+	})
+
 	// ---- Schedule-side ----
 
 	s.Test("ExecutionRequest", func(t *testcase.T) {

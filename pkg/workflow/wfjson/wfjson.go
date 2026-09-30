@@ -61,6 +61,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.EventSpawn](&c, "workflow::event::spawn", WorkflowEventSpawn{})
 	jsonkit.CodecRegister[workflow.EventJoin](&c, "workflow::event::join", WorkflowEventJoin{})
 	jsonkit.CodecRegister[workflow.EventSleepCompleted](&c, "workflow::event::sleep::completed", WorkflowEventSleepCompleted{})
+	jsonkit.CodecRegister[workflow.EventDefer](&c, "workflow::event::defer", WorkflowEventDefer{})
 
 	// Schedule-side types: not part of Definition/Condition/Event but
 	// still persisted across the runtime, so they need a stable wire format too.
@@ -1167,6 +1168,54 @@ func (WorkflowEventSleepCompleted) Unmarshal(c *jsonkit.Codec, data []byte, p *w
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
+	return nil
+}
+
+// DeferEvent
+
+type WorkflowEventDefer struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventDefer] = WorkflowEventDefer{}
+
+type workflowDeferEventDTO struct {
+	EventID    workflow.EventID   `json:"event_id"`
+	ProcessID  workflow.ProcessID `json:"process_id"`
+	Timestamp  time.Time          `json:"timestamp"`
+	Path       PathDTO            `json:"path,omitempty"`
+	Scope      VarScopeDTO        `json:"scope,omitempty"`
+	Definition json.RawMessage    `json:"definition"`
+}
+
+func (WorkflowEventDefer) Marshal(c *jsonkit.Codec, v workflow.EventDefer) ([]byte, error) {
+	defBytes, err := c.Marshal(v.Definition)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(workflowDeferEventDTO{
+		EventID:    v.EventID,
+		ProcessID:  v.ProcessID,
+		Timestamp:  v.Timestamp,
+		Path:       ToPathDTO(v.Path),
+		Scope:      ToVarScopeDTO(v.VarScope),
+		Definition: defBytes,
+	})
+}
+
+func (WorkflowEventDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventDefer) error {
+	var dto workflowDeferEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	var def workflow.Definition
+	if err := c.Unmarshal(dto.Definition, &def); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
+	p.VarScope = ToVarScope(dto.Scope)
+	p.Definition = def
 	return nil
 }
 

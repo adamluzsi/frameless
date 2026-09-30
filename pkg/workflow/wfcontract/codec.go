@@ -819,6 +819,17 @@ func Codec(codec workflow.Codec) contract.Contract {
 		}
 	})
 
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventDefer {
+		return workflow.EventDefer{
+			EventID:    randomEventID(t),
+			ProcessID:  randomEventProcessID(t),
+			Timestamp:  randomEventTimestamp(t),
+			Path:       randomPath(t),
+			VarScope:   randomVarScope(t),
+			Definition: MakeDefinition(t),
+		}
+	})
+
 	return s.AsSuite("Codec")
 }
 
