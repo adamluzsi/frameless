@@ -217,6 +217,108 @@ func TestDefer(t *testing.T) {
 		})
 	})
 
+	// A spawned child is a Process of its own, the way a goroutine runs a function call of its own,
+	// so what the child defers runs when the child ends, and not when its parent does:
+	//
+	//	defer see("parent-cleanup")
+	//	go func() { // joined below
+	//		defer see("child-cleanup")
+	//		see("child")
+	//	}()
+	//	join()
+	//	see("parent")
+	s.Context("smoke: a Defer in a spawned child", func(s *testcase.Spec) {
+		c := wftest.LetC(s)
+
+		calls := let.VarOf[[]string](s, nil)
+		recording := func(name string) func(t *testcase.T) func(context.Context) error {
+			return func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					testcase.Append(t, calls, name)
+					return nil
+				}
+			}
+		}
+		childBusy := let.Phaser(s)
+		_, childStep := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				childBusy.Get(t).Wait()
+				testcase.Append(t, calls, "child")
+				return nil
+			}
+		})
+		_, childCleanup := wftest.LetParticipant(s, recording("child-cleanup"))
+		_, parentStep := wftest.LetParticipant(s, recording("parent"))
+		_, parentCleanup := wftest.LetParticipant(s, recording("parent-cleanup"))
+
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return workflow.Sequence{
+				workflow.Defer{Definition: workflow.Execute{Participant: parentCleanup.Get(t)}},
+				workflow.Spawn{
+					Name: "child",
+					Definition: workflow.Sequence{
+						workflow.Defer{Definition: workflow.Execute{Participant: childCleanup.Get(t)}},
+						workflow.Execute{Participant: childStep.Get(t)},
+					},
+				},
+				workflow.Join{Spawn: "child"},
+				workflow.Execute{Participant: parentStep.Get(t)},
+			}
+		})
+
+		s.Describe("Runtime#Execute", func(s *testcase.Spec) {
+			act := func(t *testcase.T) error {
+				return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+			}
+			// untilCompleted resumes the parent until the joined child let it complete.
+			untilCompleted := func(t *testcase.T) {
+				t.Helper()
+				t.Eventually(func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+			}
+
+			s.Then("the child runs its deferred definition as the child ends, before the parent that joins it goes on", func(t *testcase.T) {
+				childBusy.Get(t).Finish()
+				untilCompleted(t)
+
+				assert.Equal(t, calls.Get(t), []string{"child", "child-cleanup", "parent", "parent-cleanup"})
+			})
+
+			s.Then("each Process holds the deferred definitions of its own", func(t *testcase.T) {
+				childBusy.Get(t).Finish()
+				untilCompleted(t)
+
+				parentHooks := deferHooksOf(t, c.EventRepository.Get(t), c.ProcessID.Get(t))
+				assert.Equal(t, len(parentHooks), 1)
+				assert.Equal[workflow.Definition](t, parentHooks[0].Definition, workflow.Execute{Participant: parentCleanup.Get(t)})
+
+				var children int
+				for childID := range wftest.IterChildren(t, c.EventRepository.Get(t), c.ProcessID.Get(t)) {
+					children++
+					childHooks := deferHooksOf(t, c.EventRepository.Get(t), childID)
+					assert.Equal(t, len(childHooks), 1)
+					assert.Equal[workflow.Definition](t, childHooks[0].Definition, workflow.Execute{Participant: childCleanup.Get(t)})
+				}
+				assert.Equal(t, children, 1)
+			})
+
+			s.When("the child is still busy", func(s *testcase.Spec) {
+				// childBusy is left unfinished, so the child's step keeps waiting on it.
+				s.Before(func(t *testcase.T) {
+					t.Cleanup(childBusy.Get(t).Finish)
+				})
+
+				s.Then("neither Process has ended, so none of the deferred definitions runs yet", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+					c.WaitForSpawn(t, c.ProcessID.Get(t))
+					assert.Empty(t, calls.Get(t))
+				})
+			})
+		})
+	})
+
 	s.Context("unwinding, as the process ends", func(s *testcase.Spec) {
 		c := wftest.LetC(s)
 

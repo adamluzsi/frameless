@@ -345,6 +345,35 @@ func TestSpawn_Vars(t *testing.T) {
 				"replaying the spawn must not restore the parent's value over the child's")
 		})
 	})
+
+	s.When("the Spawn is in a variable scope of its own, like the body of a loop", func(s *testcase.Spec) {
+		// for _, parentKey := range []string{parentValue} {
+		// 	go child(parentKey) // the child receives it as childKey
+		// }
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return workflow.Sequence{
+				workflow.SetVar{Name: "items", Value: []string{parentValue.Get(t)}},
+				workflow.ForEach{
+					Over: "items", V: parentKey.Get(t),
+					Do: workflow.Spawn{
+						Name:       workflow.SpawnName(t.Random.UUID()),
+						Definition: workflow.SetVar{Name: "sentinel", Value: "child-finished"},
+						Vars:       workflow.VarMapping{parentKey.Get(t): childKey.Get(t)},
+					},
+				},
+			}
+		})
+
+		s.Then("the forwarded variables are declared in the root scope of the child, where the child can see them", func(t *testcase.T) {
+			assert.NoError(t, c.ActExecute(t))
+			c.WaitForSpawn(t, c.ProcessID.Get(t))
+
+			assert.Equal[any](t, parentValue.Get(t),
+				getVar(t, c.Runtime.Get(t), childID.Get(t), childKey.Get(t)),
+				"the child doesn't run in the variable scope of its parent's loop body,",
+				"so the variables it is given can't be kept there either")
+		})
+	})
 }
 
 func ExampleJoin() {
@@ -583,6 +612,70 @@ func TestJoin(t *testing.T) {
 				})
 			})
 
+		})
+	})
+
+	// A Join is a step of its own, so once it joined, a resumed execution replays it,
+	// rather than joining the same children again.
+	s.Context("as part of a Process which is resumed after its joins", func(s *testcase.Spec) {
+		suspended := let.VarOf(s, false)
+		_, suspendOnce := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+			return func(ctx context.Context) error {
+				if suspended.Get(t) {
+					return nil
+				}
+				suspended.Set(t, true)
+				return workflow.Suspend{}
+			}
+		})
+		c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+			return workflow.Sequence{
+				workflow.Spawn{Name: "foo", Definition: workflow.SetVar{Name: "from-foo", Value: "foo-value"}},
+				workflow.Spawn{Name: "bar", Definition: workflow.SetVar{Name: "from-bar", Value: "bar-value"}},
+				workflow.Join{Spawn: "foo"},
+				workflow.Join{},
+				workflow.Execute{Participant: suspendOnce.Get(t)},
+			}
+		})
+		joinsOf := func(t *testcase.T) []workflow.EventJoin {
+			t.Helper()
+			var joins []workflow.EventJoin
+			for _, e := range c.ProcessEvents(t, c.ProcessID.Get(t)) {
+				if j, ok := e.(workflow.EventJoin); ok {
+					joins = append(joins, j)
+				}
+			}
+			return joins
+		}
+		s.Before(func(t *testcase.T) {
+			t.Eventually(func(t *testcase.T) {
+				assert.ErrorIs(t, c.ActExecute(t), workflow.Suspend{})
+				assert.True(t, suspended.Get(t), "the joins are waiting on the children to complete")
+			})
+		})
+
+		act := func(t *testcase.T) error {
+			return c.Runtime.Get(t).Execute(t.Context(), c.ProcessID.Get(t))
+		}
+
+		s.Then("the resumed execution replays the joins, rather than recording them again", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, len(joinsOf(t)), 2)
+			c.ProcessCompletionIs(t, c.ProcessID.Get(t), true)
+		})
+
+		s.Then("a join records where it joined: every child under a join segment, and a named spawn under join/<name>", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			joins := joinsOf(t)
+			assert.Equal(t, len(joins), 2)
+			assert.True(t, 2 <= len(joins[0].Path))
+			assert.Equal(t, joins[0].Path[len(joins[0].Path)-2:], workflow.Path{"join", "foo"})
+			assert.Equal(t, len(joins[0].Children), 1)
+			assert.True(t, 1 <= len(joins[1].Path))
+			assert.Equal(t, joins[1].Path[len(joins[1].Path)-1:], workflow.Path{"join"})
+			assert.Equal(t, len(joins[1].Children), 2)
 		})
 	})
 }

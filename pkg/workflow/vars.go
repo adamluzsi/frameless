@@ -399,10 +399,6 @@ func (vs Vars) varMutationDone(events []Event, typ EventType, path Path, name Va
 type varDecl struct {
 	Name  VarName
 	Scope VarScope
-	// Path is where the declaration was made. A loop body runs in the same
-	// variable scope on every round of an enclosing For, so it is the Path that
-	// tells which execution of the loop body a declaration was made by.
-	Path  Path
 	Value any
 	// deleted marks a variable which got deleted. A deleted variable is not
 	// found anymore, but it keeps shadowing the variables of the same name that
@@ -438,7 +434,7 @@ func foldVars(events []Event) varFold {
 		case EventDeclareVar:
 			// A declaration is the `var name` half of a variable: it brings the
 			// variable into existence, carrying no value of its own.
-			var d = &varDecl{Name: e.Name, Scope: e.Scope, Path: e.Path}
+			var d = &varDecl{Name: e.Name, Scope: e.Scope}
 			f.scoped[d.Name] = append(slices.DeleteFunc(f.scoped[d.Name], func(o *varDecl) bool {
 				return slices.Equal(o.Scope, d.Scope)
 			}), d)
@@ -532,22 +528,17 @@ func (ref varRef) declared() bool {
 // iteration variable, and so does the declaration which the first assignment
 // to an iteration variable makes.
 //
-// A loop body gets the same variable scope on every round of an enclosing For,
-// so a declaration only counts as made within the iteration if it was made
-// under the iteration's Path; one left behind by an earlier round doesn't.
+// No other execution of a loop body shares the variable scope of an iteration,
+// so a visible declaration in that scope, or in one nested in it, was made
+// within the very same iteration.
 func (vv visibleVars) resolve(name VarName) varRef {
 	var decls = vv.fold.visible(name, vv.scope)
 	for frame := vv.frame; frame != nil; frame = frame.parent {
 		if !frame.exposes(name) {
 			continue
 		}
-		for _, d := range decls {
-			if len(d.Scope) < len(frame.Scope) {
-				break
-			}
-			if d.Path.MatchPrefix(frame.Path) {
-				return varRef{decl: d}
-			}
+		if 0 < len(decls) && len(frame.Scope) <= len(decls[0].Scope) {
+			return varRef{decl: decls[0]}
 		}
 		return varRef{frame: frame}
 	}

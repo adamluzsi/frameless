@@ -1,0 +1,94 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::spawn",
+				"name": "child",
+				"def": {
+					"@type": "workflow::execute",
+					"participant": "compat::b"
+				}
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"@type": "workflow::join"
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::a"
+			}
+		]
+	},
+	"process_id": "01a0f351-7e25-7e69-8867-83a4c81e2fcf",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f351-7e25-7e79-80a2-53ea4fd326cf",
+			"process_id": "01a0f351-7e25-7e69-8867-83a4c81e2fcf",
+			"timestamp": "2026-09-30T17:16:39.333906Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::spawn",
+						"name": "child",
+						"def": {
+							"@type": "workflow::execute",
+							"participant": "compat::b"
+						}
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"@type": "workflow::join"
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::a"
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::spawn",
+			"event_id": "01a0f351-7e26-71c6-9f2c-b3ec89fd1861",
+			"process_id": "01a0f351-7e25-7e69-8867-83a4c81e2fcf",
+			"child_id": "01a0f351-7e26-71ca-8c25-b63dcf525dea",
+			"name": "child",
+			"timestamp": "2026-09-30T17:16:39.334112Z"
+		},
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f351-7e26-7224-9ba5-fab295884972",
+			"process_id": "01a0f351-7e26-71ca-8c25-b63dcf525dea",
+			"timestamp": "2026-09-30T17:16:39.334135Z",
+			"definition": {
+				"@type": "workflow::execute",
+				"participant": "compat::b"
+			}
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a0f351-7e26-766a-8e02-a128df182940",
+			"process_id": "01a0f351-7e26-71ca-8c25-b63dcf525dea",
+			"timestamp": "2026-09-30T17:16:39.334405Z",
+			"participant_id": "compat::b",
+			"path": [
+				"01a0f351-7e26-7224-9ba5-fab295884972",
+				"compat::b"
+			]
+		},
+		{
+			"@type": "workflow::event::completed",
+			"event_id": "01a0f351-7e26-7b84-b0b9-19548386dde0",
+			"process_id": "01a0f351-7e26-71ca-8c25-b63dcf525dea",
+			"timestamp": "2026-09-30T17:16:39.334722Z"
+		}
+	]
+}

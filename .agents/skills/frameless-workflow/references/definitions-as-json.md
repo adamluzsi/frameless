@@ -186,6 +186,8 @@ the process history. See [Conditions][CONDITION].
 ```
 
 `cond` is required. The other three are independently optional.
+`init`, `cond` and `post` share the loop's variable scope, while `do` gets a
+fresh scope nested in it on every round, like the body of Go's `for` loop.
 
 ### `workflow.ForEach`
 

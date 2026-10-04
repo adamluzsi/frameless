@@ -10,11 +10,18 @@
 // Its fixture, testdata/<scenario>.json, is what an earlier version stored for it:
 // the Definition encoded by the codec,
 // and the event history of a Process that ran until the compat::await-upgrade participant suspended it.
+// The history also holds the events of the children the Process spawned,
+// since a child is persisted the same way, and has to resume after the upgrade too.
 // The tests decode the fixture with the current version and check that:
 //
 //   - the stored Definition still decodes to the scenario's Definition,
 //   - the stored history resumes, calls only what the scenario expects after the upgrade, and completes,
-//   - the resumed Process ends with the variables the scenario expects.
+//   - the resumed Process ends with the variables the scenario expects,
+//   - each spawned child ends with the variables the scenario expects for it.
+//
+// Variables of a nested scope, like a loop body or a deferred hook, are gone once their block ends,
+// so a scenario checks them where they are read instead:
+// the compat::see participant lists the value it was given among the calls.
 //
 // A promise can't be withdrawn, so every fixture has to belong to a scenario.
 //

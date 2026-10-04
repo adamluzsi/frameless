@@ -9,7 +9,16 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
-type Path []string
+type Path []Scope
+
+type Scope struct {
+	Name string
+	Var  bool
+}
+
+func (s Scope) Equal(oth Scope) bool {
+	return s.Name == oth.Name
+}
 
 func (p Path) Equal(oth Path) bool {
 	return slicekit.Equal(p, oth)

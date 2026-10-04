@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -629,6 +630,191 @@ func TestFor(t *testing.T) {
 				assert.Equal(t, afterCalls.Get(t), 1,
 					"the round was already running when done changed,",
 					"so only the next round's condition may see it")
+			})
+		})
+	})
+
+	// The variables of a For are scoped the way Go scopes them:
+	//
+	//	for i := 0; i < n; i++ { // i belongs to the loop
+	//		x := i               // x belongs to the body of the round
+	//	}
+	//
+	// The loop has a variable scope of its own, which Init, Cond and Post share,
+	// and the body gets a fresh scope nested in it on every round.
+	s.Context("var-scope", func(s *testcase.Spec) {
+		var seen = let.VarOf[[]any](s, nil)
+
+		s.Test("a variable declared in the body is fresh on every round", func(t *testcase.T) {
+			// for i := 0; i < 3; i++ {
+			// 	see(x) // undeclared on every round
+			// 	x := "declared-in-body"
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.For{
+				Init: workflow.SetVar{Name: "i", Value: 0},
+				Cond: wftemplate.Condition("lt .i 3"),
+				Post: workflow.Increment{Name: "i"},
+				Do: workflow.Sequence{
+					peekVar(t, seen, "x"),
+					workflow.SetVar{Name: "x", Value: "declared-in-body"},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared, undeclared, undeclared}, seen.Get(t),
+				"a round must not start with the variables an earlier round declared in its body")
+		})
+
+		s.Test("the loop clause doesn't see the variables of the body", func(t *testcase.T) {
+			// for i := 0; see(x), i < 2; see(x), i++ {
+			// 	x := "declared-in-body"
+			// }
+			//
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.For{
+				Init: workflow.SetVar{Name: "i", Value: 0},
+				Cond: wftest.Stub{StubEvaluate: func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+					if err := peekVar(t, seen, "x").Execute(ctx, pid); err != nil {
+						return false, err
+					}
+					return wftemplate.Condition("lt .i 2").Evaluate(ctx, pid)
+				}},
+				Post: workflow.Sequence{
+					peekVar(t, seen, "x"),
+					workflow.Increment{Name: "i"},
+				},
+				Do: workflow.SetVar{Name: "x", Value: "declared-in-body"},
+			})
+			assert.NoError(t, err)
+
+			pp.PP(seen.Get(t))
+			assert.Equal(t, []any{undeclared, undeclared, undeclared, undeclared, undeclared}, seen.Get(t),
+				"Cond and Post belong to the loop, outside of the body's scope")
+		})
+
+		s.Test("an assignment in the body to a variable from outside of it writes through", func(t *testcase.T) {
+			// total := 0
+			// for i := 0; i < 3; i++ {
+			// 	total++
+			// }
+			// // total == 3
+			pid, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "total", Value: 0},
+				workflow.For{
+					Init: workflow.SetVar{Name: "i", Value: 0},
+					Cond: wftemplate.Condition("lt .i 3"),
+					Post: workflow.Increment{Name: "i"},
+					Do:   workflow.Increment{Name: "total"},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal[any](t, 3, getVar(t, c.Runtime.Get(t), pid, "total"),
+				"the body assigns to the variable it refers to, rather than declaring one of its own")
+		})
+
+		s.Test("a sibling loop doesn't see the variables of the loop before it", func(t *testcase.T) {
+			// for i := 0; i < 1; i++ {
+			// 	x := "declared-in-first-loop"
+			// }
+			// for see(i), i := 0; i < 1; i++ {
+			// 	see(x)
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.For{
+					Init: workflow.SetVar{Name: "i", Value: 0},
+					Cond: wftemplate.Condition("lt .i 1"),
+					Post: workflow.Increment{Name: "i"},
+					Do:   workflow.SetVar{Name: "x", Value: "declared-in-first-loop"},
+				},
+				workflow.For{
+					Init: workflow.Sequence{
+						peekVar(t, seen, "i"),
+						workflow.SetVar{Name: "i", Value: 0},
+					},
+					Cond: wftemplate.Condition("lt .i 1"),
+					Post: workflow.Increment{Name: "i"},
+					Do:   peekVar(t, seen, "x"),
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared, undeclared}, seen.Get(t),
+				"the first loop's variables went out of scope with the first loop")
+		})
+
+		s.Test("a Defer in the body sees the variables of its own round", func(t *testcase.T) {
+			// for i := 0; i < 2; i++ {
+			// 	x := i
+			// 	defer func() { see(x) }()
+			// }
+			// // see(1), see(0)
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.For{
+				Init: workflow.SetVar{Name: "i", Value: 0},
+				Cond: wftemplate.Condition("lt .i 2"),
+				Post: workflow.Increment{Name: "i"},
+				Do: workflow.Sequence{
+					copyVar("i", "x"),
+					workflow.Defer{Definition: peekVar(t, seen, "x")},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{1, 0}, seen.Get(t),
+				"every round has its own x, and the Defer of the round refers to that one")
+		})
+
+		s.Context("a resumed Process replays the loop with the same variables", func(s *testcase.Spec) {
+			var (
+				calls     = let.VarOf[[]string](s, nil)
+				suspended = let.VarOf(s, false)
+			)
+			c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
+				return workflow.Participants{
+					"stringify": func(ctx context.Context, v int) (string, error) {
+						return fmt.Sprint(v), nil
+					},
+					"see": func(ctx context.Context, v string) error {
+						testcase.Append(t, calls, v)
+						return nil
+					},
+					"suspend-once": func(ctx context.Context) error {
+						if suspended.Get(t) {
+							return nil
+						}
+						suspended.Set(t, true)
+						return workflow.Suspend{}
+					},
+				}
+			})
+
+			s.Test("the variables of the body, on every round", func(t *testcase.T) {
+				// for i := 0; i < 2; i++ {
+				// 	x := stringify(i)
+				// 	see(x)
+				// }
+				// suspend()
+				rt := c.Runtime.Get(t)
+				pid, err := execProcess(t, rt, workflow.Sequence{
+					workflow.For{
+						Init: workflow.SetVar{Name: "i", Value: 0},
+						Cond: wftemplate.Condition("lt .i 2"),
+						Post: workflow.Increment{Name: "i"},
+						Do: workflow.Sequence{
+							workflow.Execute{Participant: "stringify", Input: []workflow.VarName{"i"}, Output: []workflow.VarName{"x"}},
+							workflow.Execute{Participant: "see", Input: []workflow.VarName{"x"}},
+						},
+					},
+					workflow.Execute{Participant: "suspend-once"},
+				})
+				assert.Must(t).ErrorIs(err, workflow.Suspend{})
+				assert.Must(t).NoError(rt.Execute(t.Context(), pid))
+
+				assert.Equal(t, []string{"0", "1"}, calls.Get(t),
+					"every round is seen exactly once, and the resumed execution replays each of them")
+
+				_, ok, err := getVars(t, rt, pid).Lookup(t.Context(), "x")
+				assert.NoError(t, err)
+				assert.False(t, ok, "the variables of the body don't outlive the loop")
 			})
 		})
 	})
@@ -1607,6 +1793,8 @@ func TestForEach(t *testing.T) {
 	})
 
 	s.Context("var-scope", func(s *testcase.Spec) {
+		var seen = let.VarOf[[]any](s, nil)
+
 		s.Test("SetVar on #V within #Do will update the variables inner scope", func(t *testcase.T) {
 			def := workflow.Sequence{
 				workflow.DeclareVar{Name: "vs"},
@@ -1827,6 +2015,83 @@ func TestForEach(t *testing.T) {
 			assert.Equal[any](t, "outer", item,
 				"the assignment targeted the iteration variable,",
 				"so it must not write through to the shadowed outer `item`")
+		})
+
+		s.Test("a sibling loop doesn't see the variables of the loop before it", func(t *testcase.T) {
+			// items := []string{"a", "b"}
+			// for range items {
+			// 	x := "declared-in-first-loop"
+			// }
+			// for range items {
+			// 	see(x)
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.ForEach{
+					Over: "items",
+					Do:   workflow.SetVar{Name: "x", Value: "declared-in-first-loop"},
+				},
+				workflow.ForEach{
+					Over: "items",
+					Do:   peekVar(t, seen, "x"),
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared, undeclared}, seen.Get(t),
+				"the iterations of two loops are different blocks, even at the same position of their collections")
+		})
+
+		s.Test("a sibling loop has iteration variables of its own, whatever the loop before it assigned to its own", func(t *testcase.T) {
+			// items := []string{"a", "b"}
+			// for _, item := range items {
+			// 	item = "changed-in-first-loop"
+			// }
+			// for _, item := range items {
+			// 	see(item)
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "items", Value: []string{"a", "b"}},
+				workflow.ForEach{
+					Over: "items", V: "item",
+					Do: workflow.SetVar{Name: "item", Value: "changed-in-first-loop"},
+				},
+				workflow.ForEach{
+					Over: "items", V: "item",
+					Do: peekVar(t, seen, "item"),
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{"a", "b"}, seen.Get(t))
+		})
+
+		s.Test("a loop nested in the body of a For starts over with fresh variables on every round", func(t *testcase.T) {
+			// items := []string{"a"}
+			// for i := 0; i < 2; i++ {
+			// 	for range items {
+			// 		see(x) // undeclared on every round
+			// 		x := "declared-in-nested-loop"
+			// 	}
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "items", Value: []string{"a"}},
+				workflow.For{
+					Init: workflow.SetVar{Name: "i", Value: 0},
+					Cond: wftemplate.Condition("lt .i 2"),
+					Post: workflow.Increment{Name: "i"},
+					Do: workflow.ForEach{
+						Over: "items",
+						Do: workflow.Sequence{
+							peekVar(t, seen, "x"),
+							workflow.SetVar{Name: "x", Value: "declared-in-nested-loop"},
+						},
+					},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared, undeclared}, seen.Get(t))
 		})
 	})
 

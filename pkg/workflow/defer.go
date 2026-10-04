@@ -145,11 +145,13 @@ func (e EventDefer) EventType() EventType    { return "workflow::defer" }
 // each extended with the hook's EventID:
 // the Path becomes <hook Path>/<EventID>,
 // and the VarScope becomes <hook VarScope>/<EventID>.
-// Every other value of ctx, such as the runtime, is kept.
+// The hook runs outside of the loop bodies that ctx may be in,
+// and every other value of ctx, such as the runtime, is kept.
 func (e EventDefer) Context(ctx context.Context) context.Context {
 	var segment = e.EventID.String()
-	ctx = withPath(ctx, ctxCurrentPath, append(slicekit.Clone(e.Path), segment))
-	return withPath(ctx, ctxVarScope, append(slicekit.Clone(e.VarScope), segment))
+	return withVarScopeAt(ctx,
+		append(slicekit.Clone(e.Path), segment),
+		append(slicekit.Clone(e.VarScope), segment))
 }
 
 // runDeferred unwinds the Definitions deferred by the Process, newest first.

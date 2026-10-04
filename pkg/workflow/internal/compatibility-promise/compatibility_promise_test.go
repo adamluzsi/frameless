@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -32,16 +33,22 @@ var record = flag.Bool("record", false,
 // Its Definition runs until compat::await-upgrade suspends it, which stands for the upgrade:
 // everything before it was recorded by the version that wrote the fixture,
 // and everything after it runs on the current version.
+// The children the Process spawns run along with it, and suspend on compat::await-upgrade the same way.
 type scenario struct {
 	// Name identifies the scenario and names its fixture, so it never changes.
 	Name string
 	// Definition is the scenario's workflow, written with the current API.
 	Definition workflow.Definition
-	// ResumedCalls lists the participants and conditions called after the upgrade, in order.
+	// ResumedCalls lists the participants and conditions called after the upgrade, in order,
+	// the ones of the spawned children included.
 	// Whatever was recorded before the upgrade is replayed from the history instead.
 	ResumedCalls []string
 	// Vars are the process variables once the resumed Process has completed.
+	// They are the variables of the root scope;
+	// the ones of a nested scope, like a loop body, are checked where they are read, with compat::see.
 	Vars map[workflow.VarName]any
+	// ChildVars are the variables of each spawned child, by its spawn name, once the resumed Process has completed.
+	ChildVars map[workflow.SpawnName]map[workflow.VarName]any
 }
 
 // scenarios is append-only: a recorded scenario is a promise.
@@ -152,6 +159,94 @@ var scenarios = []scenario{
 		ResumedCalls: []string{string(greet)},
 		Vars:         map[workflow.VarName]any{"names": []string{"alice", "bob"}},
 	},
+	{
+		// The child was spawned, and it completed, before the upgrade,
+		// so the resumed parent neither spawns it again nor waits on it.
+		Name: "spawn-recorded-before-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.Spawn{Name: "child", Definition: workflow.Execute{Participant: stepB}},
+			workflow.Execute{Participant: awaitUpgrade},
+			workflow.Join{},
+			workflow.Execute{Participant: stepA},
+		},
+		ResumedCalls: []string{string(stepA)},
+		ChildVars:    map[workflow.SpawnName]map[workflow.VarName]any{"child": nil},
+	},
+	{
+		// The parent waits on the child across the upgrade,
+		// and the child reads the variable forwarded to it before the upgrade after it.
+		Name: "join-waiting-on-a-child-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "name", Value: "world"},
+			workflow.Spawn{
+				Name: "greeter",
+				Definition: workflow.Sequence{
+					workflow.Execute{Participant: stepB},
+					workflow.Execute{Participant: awaitUpgrade},
+					workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+				},
+				Vars: workflow.VarMapping{"name": "name"},
+			},
+			workflow.Join{Spawn: "greeter"},
+			workflow.Execute{Participant: stepA},
+		},
+		ResumedCalls: []string{string(greet), string(stepA)},
+		Vars:         map[workflow.VarName]any{"name": "world"},
+		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
+			"greeter": {"name": "world", "greeting": "hello world"},
+		},
+	},
+	{
+		// The body of the first round declared a variable before the upgrade, and the same round reads it after.
+		Name: "for-loop-body-variable-read-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "name", Value: "world"},
+			workflow.SetVar{Name: "i", Value: 0.0},
+			workflow.For{
+				Cond: wftemplate.Condition(`lt .i 2.0`),
+				Post: workflow.Increment{Name: "i"},
+				Do: workflow.Sequence{
+					workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+					workflow.Execute{Participant: awaitUpgrade},
+					workflow.Execute{Participant: see, Input: []workflow.VarName{"greeting"}},
+				},
+			},
+		},
+		ResumedCalls: []string{seen("hello world"), string(greet), seen("hello world")},
+		Vars:         map[workflow.VarName]any{"name": "world", "i": 2},
+	},
+	{
+		// The first iteration declared a variable before the upgrade, and the same iteration reads it after.
+		Name: "foreach-body-variable-read-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "names", Value: []string{"alice", "bob"}},
+			workflow.ForEach{
+				Over: "names",
+				V:    "name",
+				Do: workflow.Sequence{
+					workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+					workflow.Execute{Participant: awaitUpgrade},
+					workflow.Execute{Participant: see, Input: []workflow.VarName{"greeting"}},
+				},
+			},
+		},
+		ResumedCalls: []string{seen("hello alice"), string(greet), seen("hello bob")},
+		Vars:         map[workflow.VarName]any{"names": []string{"alice", "bob"}},
+	},
+	{
+		// The deferred definition declared a variable in its own scope before the upgrade, and reads it after.
+		Name: "deferred-variable-read-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "name", Value: "world"},
+			workflow.Defer{Definition: workflow.Sequence{
+				workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+				workflow.Execute{Participant: awaitUpgrade},
+				workflow.Execute{Participant: see, Input: []workflow.VarName{"greeting"}},
+			}},
+		},
+		ResumedCalls: []string{seen("hello world")},
+		Vars:         map[workflow.VarName]any{"name": "world"},
+	},
 }
 
 // The vocabulary of the scenarios.
@@ -164,6 +259,9 @@ const (
 	stepC workflow.ParticipantID = "compat::c"
 	// greet takes a name and returns "hello <name>".
 	greet workflow.ParticipantID = "compat::greet"
+	// see takes a value, and is listed among the calls together with it (see seen),
+	// so a scenario can tell what a variable held where the step read it.
+	see workflow.ParticipantID = "compat::see"
 	// awaitUpgrade suspends the Process until the upgrade.
 	awaitUpgrade workflow.ParticipantID = "compat::await-upgrade"
 	// beforeUpgrade answers whether the Process still runs on the version that recorded it,
@@ -180,6 +278,11 @@ type vocabulary struct {
 	calls []string
 }
 
+// seen is how a call to compat::see is listed, with the value it was given.
+func seen(value string) string {
+	return fmt.Sprintf("%s(%s)", see, value)
+}
+
 func (v *vocabulary) participants() workflow.Participants {
 	step := func(id workflow.ParticipantID) func(context.Context) error {
 		return func(context.Context) error {
@@ -194,6 +297,10 @@ func (v *vocabulary) participants() workflow.Participants {
 		greet: func(_ context.Context, name string) (string, error) {
 			v.calls = append(v.calls, string(greet))
 			return "hello " + name, nil
+		},
+		see: func(_ context.Context, value string) error {
+			v.calls = append(v.calls, seen(value))
+			return nil
 		},
 		awaitUpgrade: func(context.Context) error {
 			if !v.upgraded {
@@ -235,14 +342,105 @@ func (noRetry) ShouldTry(_ context.Context, attempt resilience.RetryAttempt) boo
 	return attempt.FailureCount == 0
 }
 
+// run executes the Process, together with the children it spawned, as far as they can get.
+//
+// Nothing runs the scheduled children in the background, so they run here:
+// whenever the Process suspends, maybe to Join them, its unfinished children run,
+// and once any of them completes, the Process is executed again.
+// It returns what the last execution of the Process returned.
+//
+// A scenario needs only a few rounds, so running out of them means
+// a replay keeps making new progress, for example by spawning a new child on every execution.
+func run(ctx context.Context, rt workflow.Runtime, pid workflow.ProcessID) error {
+	const maxRounds = 16
+	for range maxRounds {
+		err := rt.Execute(ctx, pid)
+		if !errors.Is(err, workflow.Suspend{}) {
+			return err
+		}
+		progressed, cerr := runChildren(ctx, rt, pid)
+		if cerr != nil {
+			return cerr
+		}
+		if !progressed {
+			return err
+		}
+	}
+	return fmt.Errorf("process %s did not settle after %d rounds of execution", pid, maxRounds)
+}
+
+// runChildren runs the children of the Process which have not completed yet,
+// and reports whether any of them completed meanwhile.
+func runChildren(ctx context.Context, rt workflow.Runtime, pid workflow.ProcessID) (bool, error) {
+	children, err := childrenOf(ctx, rt.Events, pid)
+	if err != nil {
+		return false, err
+	}
+	var progressed bool
+	for _, child := range children {
+		if done, err := workflow.IsCompleted(ctx, rt.Events, child.ChildID); err != nil || done {
+			if err != nil {
+				return false, err
+			}
+			continue
+		}
+		if err := run(ctx, rt, child.ChildID); err != nil && !errors.Is(err, workflow.Suspend{}) {
+			return false, err
+		}
+		done, err := workflow.IsCompleted(ctx, rt.Events, child.ChildID)
+		if err != nil {
+			return false, err
+		}
+		progressed = progressed || done
+	}
+	return progressed, nil
+}
+
+// childrenOf lists the spawns of the Process, in the order they were made.
+func childrenOf(ctx context.Context, events workflow.EventRepository, pid workflow.ProcessID) ([]workflow.EventSpawn, error) {
+	var spawns []workflow.EventSpawn
+	for event, err := range events.FindByProcessID(ctx, pid) {
+		if err != nil {
+			return nil, err
+		}
+		if spawn, ok := event.(workflow.EventSpawn); ok {
+			spawns = append(spawns, spawn)
+		}
+	}
+	return spawns, nil
+}
+
+// historyOf lists the events of the Process, followed by the ones of the children it spawned, recursively.
+func historyOf(ctx context.Context, events workflow.EventRepository, pid workflow.ProcessID) ([]workflow.Event, error) {
+	var history []workflow.Event
+	for event, err := range events.FindByProcessID(ctx, pid) {
+		if err != nil {
+			return nil, err
+		}
+		history = append(history, event)
+	}
+	children, err := childrenOf(ctx, events, pid)
+	if err != nil {
+		return nil, err
+	}
+	for _, child := range children {
+		childHistory, err := historyOf(ctx, events, child.ChildID)
+		if err != nil {
+			return nil, err
+		}
+		history = append(history, childHistory...)
+	}
+	return history, nil
+}
+
 // fixture is what an earlier version stored for a scenario.
 type fixture struct {
 	// Definition is the scenario's Definition, as the recording version encoded it.
 	Definition json.RawMessage `json:"definition"`
 	// ProcessID identifies the recorded Process.
 	ProcessID workflow.ProcessID `json:"process_id"`
-	// History is the event history of the Process, as the recording version encoded it,
-	// up to where it suspended before the upgrade.
+	// History is the event history of the Process, followed by the ones of the children it spawned,
+	// as the recording version encoded them, up to where they suspended before the upgrade.
 	History []json.RawMessage `json:"history"`
 }
 
@@ -282,15 +480,16 @@ func recordFixture(t *testcase.T, sc scenario) {
 	pid, err := workflow.MakeProcessID()
 	assert.Must(t).NoError(err)
 	assert.Must(t).NoError(rt.Bind(ctx, pid, sc.Definition))
-	if err := rt.Execute(ctx, pid); !errors.Is(err, workflow.Suspend{}) {
+	if err := run(ctx, rt, pid); !errors.Is(err, workflow.Suspend{}) {
 		t.Fatalf("scenario %q has to suspend on %s before the upgrade, but its execution returned: %v",
 			sc.Name, awaitUpgrade, err)
 	}
 	var f = fixture{ProcessID: pid}
 	f.Definition, err = codec.Marshal(sc.Definition)
 	assert.Must(t).NoError(err)
-	for event, err := range events.FindByProcessID(ctx, pid) {
-		assert.Must(t).NoError(err)
+	history, err := historyOf(ctx, events, pid)
+	assert.Must(t).NoError(err)
+	for _, event := range history {
 		data, err := codec.Marshal(event)
 		assert.Must(t).NoError(err)
 		f.History = append(f.History, data)
@@ -370,7 +569,7 @@ func TestCompatibilityPromise(t *testing.T) {
 					})
 				)
 				act := func(t *testcase.T) error {
-					return newRuntime(events.Get(t), vocab.Get(t)).Execute(t.Context(), stored.Get(t).ProcessID)
+					return run(t.Context(), newRuntime(events.Get(t), vocab.Get(t)), stored.Get(t).ProcessID)
 				}
 
 				s.Then("the Process resumes on the current version and completes", func(t *testcase.T) {
@@ -399,6 +598,29 @@ func TestCompatibilityPromise(t *testing.T) {
 					var expected = map[workflow.VarName]any{}
 					maps.Copy(expected, sc.Vars)
 					assert.Equal(t, asJSON(t, expected), asJSON(t, vars))
+				})
+
+				s.Then("the spawned children end with the expected variables", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					children, err := childrenOf(t.Context(), events.Get(t), stored.Get(t).ProcessID)
+					assert.NoError(t, err)
+					var got = map[workflow.SpawnName]map[workflow.VarName]any{}
+					for _, child := range children {
+						vars, err := workflow.Vars{
+							ProcessID:        child.ChildID,
+							EventsRepository: events.Get(t),
+						}.ToMap(t.Context())
+						assert.NoError(t, err)
+						got[child.Name] = vars
+					}
+
+					var expected = map[workflow.SpawnName]map[workflow.VarName]any{}
+					for name, vars := range sc.ChildVars {
+						expected[name] = map[workflow.VarName]any{}
+						maps.Copy(expected[name], vars)
+					}
+					assert.Equal(t, asJSON(t, expected), asJSON(t, got))
 				})
 			})
 		})

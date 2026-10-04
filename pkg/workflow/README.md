@@ -12,6 +12,7 @@ A lightweight, code-first workflow engine for Go.
 - [Codec][CODEC]
 - [Workflow Builder Actor][END_USER]
 - [local development testing support][TESTING]
+- [Mental Model (for contributors: design idioms and invariants)][MENTAL_MODEL]
 
 --- 
 
@@ -183,3 +184,4 @@ processes where that would be unsafe; see [Conditions][CONDITION].
 [END_USER]: ./docs/end-user.md
 [TESTING]: ./docs/testing.md
 [SIGNAL]: ./docs/signal.md
+[MENTAL_MODEL]: ./docs/mental-model.md

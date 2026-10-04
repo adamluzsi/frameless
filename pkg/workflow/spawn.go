@@ -149,6 +149,10 @@ func (spawn Spawn) ensureEvents(ctx context.Context, rt Runtime, parentID Proces
 // current value of parentKey on the parent process is read and stored under
 // childKey on the child process.
 //
+// The parent variables are looked up from where the Spawn is,
+// while the child variables are declared at the root of the child,
+// as the child doesn't run in any of its parent's variable scopes.
+//
 // Parent variables that are not set are skipped silently rather than raising
 // an error: the caller can compose a missing parent value by chaining a
 // workflow.SetVar before the Spawn, and a half-populated child is preferable
@@ -164,6 +168,7 @@ func (spawn Spawn) forwardVars(ctx context.Context, parentID, childID ProcessID)
 	var (
 		parentVars = Vars{ProcessID: parentID, EventsRepository: repo}
 		childVars  = Vars{ProcessID: childID, EventsRepository: repo}
+		childCtx   = atProcessRoot(ctx)
 	)
 	for parentKey, childKey := range spawn.Vars {
 		value, ok, err := parentVars.Lookup(ctx, parentKey)
@@ -173,7 +178,7 @@ func (spawn Spawn) forwardVars(ctx context.Context, parentID, childID ProcessID)
 		if !ok {
 			continue
 		}
-		if err := childVars.Set(ctx, childKey, value); err != nil {
+		if err := childVars.Set(childCtx, childKey, value); err != nil {
 			return err
 		}
 	}
@@ -371,6 +376,10 @@ scan:
 				break scan
 			}
 		}
+	}
+	if done {
+		logger.Debug(ctx, "join of every child is completed")
+		return nil
 	}
 	for _, child := range children {
 		done, err = IsCompleted(ctx, repo, child)

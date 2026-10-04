@@ -165,6 +165,26 @@ reaches the outer `x` only:
 
 ### Loop variables
 
+The variables of a loop are scoped the way Go scopes them. Every block has a
+scope of its own: the body of a loop gets a fresh one on every iteration, or
+round, and two loops side by side never share one.
+
+`For`'s loop clause (`Init`, `Cond`, `Post`) has a scope of its own, so the
+loop variable is visible to the whole loop and gone after it. The body, `Do`,
+is a fresh scope nested in it on every round:
+
+```go
+for i := 0; i < 3; i++ { // i belongs to the loop
+	x := i                // x belongs to this round's body
+	defer see(x)          // a deferred step sees the x of its own round
+}
+// neither i nor x is visible here
+```
+
+What a round declares in the body is gone by the next round, and `Post`
+doesn't see it either. An assignment to `i`, or to a variable from outside of
+the loop, still writes through.
+
 `ForEach`'s `K` and `V` work like the variables of Go's `for range` loop: every
 iteration has its own, in the iteration's scope.
 
@@ -237,6 +257,9 @@ workflow.Spawn{
 
 The parent's `order_id` is written into the child as `order`. A child gets its
 own process, its own history and its own variables — nothing else is shared.
+The parent's variable is looked up from where the `Spawn` is, even from within
+a loop body, while the child's is declared in the child's **root scope**, where
+every step of the child sees it.
 
 Parent variables that are not set yet are **skipped silently**, so put a
 `SetVar` before the `Spawn` if the value must be there.

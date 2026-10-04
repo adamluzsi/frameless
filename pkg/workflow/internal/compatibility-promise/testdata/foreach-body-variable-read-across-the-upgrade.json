@@ -1,0 +1,190 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::var::set",
+				"name": "names",
+				"value": [
+					"alice",
+					"bob"
+				]
+			},
+			{
+				"@type": "workflow::foreach",
+				"over": "names",
+				"do": {
+					"@type": "workflow::sequence",
+					"@value": [
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::greet",
+							"input": [
+								"name"
+							],
+							"output": [
+								"greeting"
+							]
+						},
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						},
+						{
+							"@type": "workflow::execute",
+							"participant": "compat::see",
+							"input": [
+								"greeting"
+							]
+						}
+					]
+				},
+				"value": "name"
+			}
+		]
+	},
+	"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.3586Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::var::set",
+						"name": "names",
+						"value": [
+							"alice",
+							"bob"
+						]
+					},
+					{
+						"@type": "workflow::foreach",
+						"over": "names",
+						"do": {
+							"@type": "workflow::sequence",
+							"@value": [
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::greet",
+									"input": [
+										"name"
+									],
+									"output": [
+										"greeting"
+									]
+								},
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								},
+								{
+									"@type": "workflow::execute",
+									"participant": "compat::see",
+									"input": [
+										"greeting"
+									]
+								}
+							]
+						},
+						"value": "name"
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a0f351-7e3e-7a20-b94f-90566311fc3a",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.358633Z",
+			"path": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "names"
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a0f351-7e3e-7a2c-b0d8-c8a0bbc25397",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.358633001Z",
+			"path": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+				"sequence",
+				"[0]",
+				"set-var"
+			],
+			"name": "names",
+			"value": [
+				"alice",
+				"bob"
+			]
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a0f351-7e3e-7b11-9511-8b79d34fbeec",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.358692Z",
+			"participant_id": "compat::greet",
+			"path": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"input": [
+				"alice"
+			],
+			"output": [
+				"hello alice"
+			]
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a0f351-7e3e-7b6f-a717-3f2049e5c3e7",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.358715Z",
+			"path": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"name": "greeting",
+			"scope": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8/sequence/[1]/[0]"
+			]
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a0f351-7e3e-7b7c-b59b-4ed79230738a",
+			"process_id": "01a0f351-7e3e-798c-a3f7-e662c9079d1a",
+			"timestamp": "2026-09-30T17:16:39.358715001Z",
+			"path": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8",
+				"sequence",
+				"[1]",
+				"[0]",
+				"sequence",
+				"[0]",
+				"compat::greet"
+			],
+			"name": "greeting",
+			"scope": [
+				"01a0f351-7e3e-7999-aafb-d9888e96d3e8/sequence/[1]/[0]"
+			],
+			"value": "hello alice"
+		}
+	]
+}

@@ -13,11 +13,13 @@ import (
 //
 //	for Init; Cond; Post { Do }
 //
-// Init, Cond, Post and Do share a single variable scope which belongs to the
-// loop, so the loop variable is visible to every part of the loop without
-// leaking out of it. A variable declared outside of the loop is still visible
-// inside, and an assignment to it writes through, so it keeps whatever the loop
-// counted it to.
+// The variables of a For are scoped the way Go scopes them.
+// Init, Cond and Post share a variable scope which belongs to the loop,
+// so the loop variable is visible to every part of the loop without leaking out of it.
+// Do, the body, gets a fresh variable scope on every round, nested in the loop's,
+// so what a round declares in the body is gone by the next round, and by Post.
+// A variable declared outside of the loop is still visible inside,
+// and an assignment to it writes through, so it keeps whatever the loop counted it to.
 //
 // Every round is a step of its own on the definition path, so the idempotent
 // replay of a Process can tell the rounds apart: a participant in the body runs
@@ -50,12 +52,15 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 	}
 
 	for round := 0; ; round++ {
-		// Each round derives its own context from the loop scoped ctx, so the
-		// rounds don't leak path segments into one another.
-		roundCtx := WithName(ctx, fmt.Sprintf("[%d]", round))
+		var (
+			ctx = ctx
+			id  = fmt.Sprintf("[%d]", round)
+		)
+		ctx = WithName(ctx, id)
+		ctx = WithVarScope(ctx, id)
 
 		if loop.Cond != nil {
-			ok, err := loop.Cond.Evaluate(WithName(roundCtx, "cond"), processID)
+			ok, err := loop.Cond.Evaluate(ctx, processID)
 			if err != nil {
 				return loopDone(err)
 			}
@@ -65,13 +70,15 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 		}
 
 		if loop.Do != nil {
-			if err := loop.Do.Execute(WithName(roundCtx, "do"), processID); err != nil {
+			ctx := WithVarScope(ctx, "body")
+			// The body is a block of its own on every round, just like in Go.
+			if err := loop.Do.Execute(ctx, processID); err != nil {
 				return loopDone(err)
 			}
 		}
 
 		if loop.Post != nil {
-			if err := loop.Post.Execute(WithName(roundCtx, "post"), processID); err != nil {
+			if err := loop.Post.Execute(ctx, processID); err != nil {
 				return loopDone(err)
 			}
 		}
@@ -199,9 +206,9 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 
 // iterate runs a single iteration of the loop body.
 //
-// The iteration gets a scope of its own on the definition path so the
-// idempotent replay of a Process can tell the iterations apart and skip the
-// ones it already ran.
+// The iteration is a step of its own on the definition path, so the idempotent
+// replay of a Process can tell the iterations apart and skip the ones it
+// already ran. It is a block of its own too, with a variable scope of its own.
 //
 // The iteration's Key and Value are not stored as state on the iteration: the
 // context only carries a reference — the name of the collection variable and
@@ -216,14 +223,13 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 // loop: each iteration has its own, declared in the iteration's variable
 // scope. So they shadow the variables of the same name from outside of the
 // loop, and an assignment to them stays within the iteration.
-func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodyScope string, index *int, key reflect.Value) error {
-	ctx = WithName(ctx, bodyScope)
-	ctx = WithVarScope(ctx, bodyScope)
+func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, name string, index *int, key reflect.Value) error {
+	ctx = WithName(ctx, name)
+	ctx = openVarScope(ctx)
 	ctx = withIterationVars(ctx, iterationVars{
 		KeyName:   foreach.K,
 		ValueName: foreach.V,
 		Scope:     CurrentVarScope(ctx),
-		Path:      CurrentPath(ctx),
 
 		Source: foreach.Over,
 		Index:  index,
@@ -249,12 +255,10 @@ type iterationVars struct {
 	KeyName   VarName
 	ValueName VarName
 	// Scope is the variable scope of the loop body iteration, which the
-	// iteration variables are bound to.
+	// iteration variables are bound to. No other execution of a loop body
+	// shares it, not even the same iteration on another round of an
+	// enclosing For.
 	Scope VarScope
-	// Path is the definition path of the loop body iteration, which tells this
-	// iteration apart from the ones that ran in the same variable scope before,
-	// on an earlier round of an enclosing For loop.
-	Path Path
 
 	Source VarName
 	Index  *int

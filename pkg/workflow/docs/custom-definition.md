@@ -130,6 +130,12 @@ without colliding with them. It is the right tool when your definition is
 looped, recursive, or otherwise re-enters a scope its parent might also be
 writing to.
 
+The scope gets exactly the name you give it. The loops of the package open a
+fresh scope for every round and iteration, so an instance in a loop body gets
+a scope of its own on every round. Two instances side by side in the same
+enclosing scope share it, though, so give them names that tell them apart if
+they must not see each other's variables.
+
 A definition that wraps another and records bookkeeping values around it is
 the canonical case:
 
