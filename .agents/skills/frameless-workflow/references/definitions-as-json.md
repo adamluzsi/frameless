@@ -143,6 +143,10 @@ An empty sequence is `{"@value": []}`. A nil element in the array becomes
 
 `then` and `else` are independently optional. `cond` is required — a missing
 condition is a fatal authoring error.
+The `if` is a variable scope where `cond` is evaluated, and the branch it takes
+gets a scope nested in it, like the blocks of Go's `if`. What a branch declares
+is gone after the `if`, so declare a variable before it to keep a value the
+branch produces; an assignment to it from the branch writes through.
 
 ### `workflow.Sleep`
 
@@ -360,13 +364,28 @@ a `VarMapping` (`parent → child`) and is omitted when empty.
 { "@type": "workflow::join", "spawn": "fulfilment" }
 ```
 
+```json
+{
+  "@type": "workflow::join",
+  "spawn": "fulfilment",
+  "collect": { "tracking": "tracking_number" }
+}
+```
+
 `spawn` is the `name` of the `workflow::spawn` to wait for. Without `spawn`,
 the join waits for every child spawned so far. The codec ignores keys it does
 not know, so a misspelt `spawn` silently turns into that wait-for-all join.
-`collect` is a `VarMapping` describing which child variables
-to fold back into the parent; it is declared
-and serialised today, but **`Join#Execute` does not yet copy anything back**
-see [Definitions][DEFINITION] §6 for the current workaround.
+
+`collect` is a `VarMapping` that reads **child → parent**, the reverse of
+`vars` on a spawn: once the child completed, its root-scope `tracking` is
+assigned to the parent's `tracking_number`. It needs `spawn`, and only the
+listed variables are collected; without `collect`, nothing is. The parent
+variable is assigned where the join is, so it writes through to a variable
+declared before an enclosing `if`, or is local to that branch otherwise. A
+child variable that isn't set is skipped, and a variable the child only set in
+a nested scope (an `if` branch, a loop body) is gone by the time it completes.
+The collection is recorded together with the join, so a replay never collects
+again.
 
 ### `workflow.Defer`
 

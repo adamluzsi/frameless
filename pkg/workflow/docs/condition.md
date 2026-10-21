@@ -135,7 +135,7 @@ idempotent executor that participants use, and lands in the event history as:
 ```go
 workflow.EventCondition{
 	ConditionID: "is-vip",
-	Path:        workflow.Path{"…", "if", "is-vip"},
+	Path:        workflow.Path{ /* … */ {Name: "if", Var: true}, {Name: "is-vip"}},
 	Input:       []any{"cust-1"},
 	Answer:      true,
 }

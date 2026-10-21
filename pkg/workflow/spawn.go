@@ -3,6 +3,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -165,20 +167,34 @@ func (spawn Spawn) forwardVars(ctx context.Context, parentID, childID ProcessID)
 	if err != nil {
 		return err
 	}
-	var (
-		parentVars = Vars{ProcessID: parentID, EventsRepository: repo}
-		childVars  = Vars{ProcessID: childID, EventsRepository: repo}
-		childCtx   = atProcessRoot(ctx)
-	)
-	for parentKey, childKey := range spawn.Vars {
-		value, ok, err := parentVars.Lookup(ctx, parentKey)
+	return transferVars(spawn.Vars,
+		ctx, Vars{ProcessID: parentID, EventsRepository: repo},
+		atProcessRoot(ctx), Vars{ProcessID: childID, EventsRepository: repo})
+}
+
+// transferVars copies variables between a parent and a child Process,
+// for each {fromName: toName} entry of the mapping,
+// from what fromName refers to at fromCtx in the from Process,
+// to toName at toCtx in the to Process.
+//
+// It is the common ground of Spawn#Vars and Join#Collect,
+// so passing variables to a child and collecting them from it behave alike:
+//   - a variable that is not set in the from Process is skipped silently;
+//   - toName is assigned like any other variable,
+//     which writes through to a toName visible from toCtx,
+//     or declares it in the variable scope of toCtx otherwise;
+//   - the entries are transferred in the order of their fromName,
+//     so even a mapping with two entries of the same toName is deterministic.
+func transferVars(mapping VarMapping, fromCtx context.Context, from Vars, toCtx context.Context, to Vars) error {
+	for _, fromName := range slices.Sorted(maps.Keys(mapping)) {
+		value, ok, err := from.Lookup(fromCtx, fromName)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			continue
 		}
-		if err := childVars.Set(childCtx, childKey, value); err != nil {
+		if err := to.Set(toCtx, mapping[fromName], value); err != nil {
 			return err
 		}
 	}
@@ -258,13 +274,23 @@ func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
 type Join struct {
 	// Spawn [optional] will configure Join to Join a specific Spawn back by its name.
 	Spawn SpawnName
-	// Collect [optional] will collect the results from the child process variables
+	// Collect [optional] collects the results of the joined child into the parent's variables.
+	// It is a VarMapping ([FROM] child [TO] parent), so for each {childKey: parentKey} entry,
+	// the value of childKey in the root variable scope of the completed child is assigned to parentKey.
 	//
-	// Mapping happens from child VariableKey -> parent VariableKey (From -> To)
+	// The parentKey is assigned like the Output of an Execute at the place of the Join:
+	// it writes through to a parentKey variable visible from there,
+	// or declares parentKey in the variable scope of the Join otherwise.
 	//
-	// - If it is nil, it means collect all
-	// - If it is empty, it means dispose result from the child workflow
-	// - If it contains mappings, then it will collect values and assign them in the parent
+	// Only the listed variables are collected, a nil or empty Collect collects nothing.
+	// Child variables that are not set are skipped silently,
+	// so a value the parent assigned to parentKey before the Join remains as a default.
+	//
+	// The collection is part of the Join itself, so it happens once:
+	// a resumed Process replays the Join, and doesn't collect the values again.
+	//
+	// Collect requires the Spawn to be named, as it collects from that single child.
+	// The transferred values must be encodable by the Runtime#Codec.
 	Collect VarMapping
 }
 
@@ -283,7 +309,7 @@ func (d Join) Execute(ctx context.Context, processID ProcessID) error {
 	return d.joinChild(ctx, processID) // join .SpawnName
 }
 
-func (d Join) joinChild(ctx context.Context, parentID ProcessID) error {
+func (d Join) joinChild(ctx context.Context, parentID ProcessID) (rErr error) {
 	if len(d.Spawn) == 0 {
 		return fmt.Errorf("missing %T#Spawn", d)
 	}
@@ -338,6 +364,18 @@ scan:
 		return Suspend{}
 	}
 
+	// The collected variables and the EventJoin are recorded together,
+	// as the EventJoin is what keeps a replay from collecting the values again.
+	ctx, err = repo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, repo, ctx)
+
+	if err := d.collect(ctx, repo, parentID, child.ChildID); err != nil {
+		return err
+	}
+
 	eventID, err := MakeEventID()
 	if err != nil {
 		return err
@@ -350,6 +388,20 @@ scan:
 		Path:      currentPath,
 	}
 	return repo.Create(ctx, &event)
+}
+
+// collect assigns the child variables listed in Join#Collect to the parent variables they are mapped to.
+//
+// The child variables are looked up from the root of the child,
+// as only its root variable scope outlives the child's execution,
+// while the parent variables are assigned where the Join is.
+func (d Join) collect(ctx context.Context, repo EventRepository, parentID, childID ProcessID) error {
+	if len(d.Collect) == 0 {
+		return nil
+	}
+	return transferVars(d.Collect,
+		atProcessRoot(ctx), Vars{ProcessID: childID, EventsRepository: repo},
+		ctx, Vars{ProcessID: parentID, EventsRepository: repo})
 }
 
 func (d Join) joinAll(ctx context.Context, parentID ProcessID) (rerr error) {

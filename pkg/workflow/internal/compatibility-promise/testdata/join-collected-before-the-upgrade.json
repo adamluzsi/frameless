@@ -1,0 +1,275 @@
+{
+	"definition": {
+		"@type": "workflow::sequence",
+		"@value": [
+			{
+				"@type": "workflow::spawn",
+				"name": "greeter",
+				"def": {
+					"@type": "workflow::var::set",
+					"name": "greeting",
+					"value": "hello"
+				}
+			},
+			{
+				"@type": "workflow::join",
+				"spawn": "greeter",
+				"collect": {
+					"greeting": "reply"
+				}
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::greet",
+				"input": [
+					"reply"
+				],
+				"output": [
+					"reply"
+				]
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"@type": "workflow::execute",
+				"participant": "compat::see",
+				"input": [
+					"reply"
+				]
+			}
+		]
+	},
+	"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+	"history": [
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a15f11-5e07-71d6-b101-4c3abe2e7df3",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.135115Z",
+			"definition": {
+				"@type": "workflow::sequence",
+				"@value": [
+					{
+						"@type": "workflow::spawn",
+						"name": "greeter",
+						"def": {
+							"@type": "workflow::var::set",
+							"name": "greeting",
+							"value": "hello"
+						}
+					},
+					{
+						"@type": "workflow::join",
+						"spawn": "greeter",
+						"collect": {
+							"greeting": "reply"
+						}
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::greet",
+						"input": [
+							"reply"
+						],
+						"output": [
+							"reply"
+						]
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"@type": "workflow::execute",
+						"participant": "compat::see",
+						"input": [
+							"reply"
+						]
+					}
+				]
+			}
+		},
+		{
+			"@type": "workflow::event::spawn",
+			"event_id": "01a15f11-5e07-7272-91b7-ceabc17e0afa",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"child_id": "01a15f11-5e07-7272-8c3c-5593009ec2d7",
+			"name": "greeter",
+			"timestamp": "2026-10-21T15:25:36.135154Z"
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a15f11-5e07-76f9-a324-19c956f9df51",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.135435Z",
+			"path": [
+				{
+					"name": "01a15f11-5e07-71d6-b101-4c3abe2e7df3"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			],
+			"name": "reply"
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a15f11-5e07-7701-8408-8d9501b2e152",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.135435001Z",
+			"path": [
+				{
+					"name": "01a15f11-5e07-71d6-b101-4c3abe2e7df3"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			],
+			"name": "reply",
+			"value": "hello"
+		},
+		{
+			"@type": "workflow::event::join",
+			"event_id": "01a15f11-5e07-7709-be39-9849da20e016",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.13544Z",
+			"children": [
+				"01a15f11-5e07-7272-8c3c-5593009ec2d7"
+			],
+			"path": [
+				{
+					"name": "01a15f11-5e07-71d6-b101-4c3abe2e7df3"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			]
+		},
+		{
+			"@type": "workflow::event::participant",
+			"event_id": "01a15f11-5e07-77f3-8ad2-91bbe46f8a6c",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.135497Z",
+			"participant_id": "compat::greet",
+			"path": [
+				{
+					"name": "01a15f11-5e07-71d6-b101-4c3abe2e7df3"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"input": [
+				"hello"
+			],
+			"output": [
+				"hello hello"
+			]
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a15f11-5e07-787a-bf03-777ebb5a1364",
+			"process_id": "01a15f11-5e07-71ca-b5b5-d92480b9e922",
+			"timestamp": "2026-10-21T15:25:36.135530001Z",
+			"path": [
+				{
+					"name": "01a15f11-5e07-71d6-b101-4c3abe2e7df3"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "reply",
+			"value": "hello hello"
+		},
+		{
+			"@type": "workflow::event::use-definition",
+			"event_id": "01a15f11-5e07-72a7-872d-b3430e0b50f3",
+			"process_id": "01a15f11-5e07-7272-8c3c-5593009ec2d7",
+			"timestamp": "2026-10-21T15:25:36.135166Z",
+			"definition": {
+				"@type": "workflow::var::set",
+				"name": "greeting",
+				"value": "hello"
+			}
+		},
+		{
+			"@type": "workflow::event::var::declare",
+			"event_id": "01a15f11-5e07-73fb-ad49-341bd2b36223",
+			"process_id": "01a15f11-5e07-7272-8c3c-5593009ec2d7",
+			"timestamp": "2026-10-21T15:25:36.135249Z",
+			"path": [
+				{
+					"name": "01a15f11-5e07-72a7-872d-b3430e0b50f3"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "greeting"
+		},
+		{
+			"@type": "workflow::event::var::set",
+			"event_id": "01a15f11-5e07-7403-9b6d-75e607780ca0",
+			"process_id": "01a15f11-5e07-7272-8c3c-5593009ec2d7",
+			"timestamp": "2026-10-21T15:25:36.135249001Z",
+			"path": [
+				{
+					"name": "01a15f11-5e07-72a7-872d-b3430e0b50f3"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "greeting",
+			"value": "hello"
+		},
+		{
+			"@type": "workflow::event::completed",
+			"event_id": "01a15f11-5e07-746e-a23c-8ae4f601de74",
+			"process_id": "01a15f11-5e07-7272-8c3c-5593009ec2d7",
+			"timestamp": "2026-10-21T15:25:36.135277Z"
+		}
+	]
+}

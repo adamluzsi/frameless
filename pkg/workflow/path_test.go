@@ -425,12 +425,16 @@ func TestIfTrueBranchPropagatesIfThenSegments(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		s.Then("Then sees its [if, then, ...] path", func(t *testcase.T) {
+		s.Then("Then sees its [if, then, ...] path, where both the If and its Then are variable scopes", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "then", pid.Get(t).String()), paths[0])
+			assertSamePath(t, workflow.Path{
+				{Name: "if", Var: true},
+				{Name: "then", Var: true},
+				{Name: pid.Get(t).String()},
+			}, paths[0])
 		})
 	})
 }
@@ -467,12 +471,16 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 			return subject.Get(t).Execute(Context.Get(t), processID.Get(t))
 		})
 
-		s.Then("Else sees its [if, else, ...] path", func(t *testcase.T) {
+		s.Then("Else sees its [if, else, ...] path, where both the If and its Else are variable scopes", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "else", participantID.Get(t).String()), paths[0])
+			assertSamePath(t, workflow.Path{
+				{Name: "if", Var: true},
+				{Name: "else", Var: true},
+				{Name: participantID.Get(t).String()},
+			}, paths[0])
 		})
 	})
 }

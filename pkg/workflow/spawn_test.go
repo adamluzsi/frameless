@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -521,23 +523,6 @@ func TestJoin(t *testing.T) {
 								assert.NoError(t, act(t))
 							})
 						})
-
-						s.And("Join specified collection too", func(s *testcase.Spec) {
-							collect := let.Var[workflow.VarMapping](s, nil)
-							subject.Let(s, func(t *testcase.T) workflow.Join {
-								sub := subject.Super(t)
-								sub.Collect = collect.Get(t)
-								return sub
-							})
-
-							s.And("collection points to an existing variable", func(s *testcase.Spec) {
-								collect.Let(s, func(t *testcase.T) workflow.VarMapping {
-									return workflow.VarMapping{
-										"to-foo-key": "from-foo",
-									}
-								})
-							})
-						})
 					})
 
 					s.And("the child is not finished yet", func(s *testcase.Spec) {
@@ -553,6 +538,242 @@ func TestJoin(t *testing.T) {
 				})
 			})
 
+		})
+
+		// The Join collects the results of a child, the way a Go function returns them to its caller:
+		//
+		//	child := func() (result string) { result = "..."; return }
+		//	parentKey := child() // Join{Spawn: "child", Collect: {result: parentKey}}
+		//	see(parentKey)
+		s.When("the Join collects variables from the joined child", func(s *testcase.Spec) {
+			var (
+				childKey    = letVarName(s)
+				parentKey   = letVarName(s)
+				unlistedKey = letVarName(s)
+				childValue  = let.String(s)
+
+				seen = let.VarOf[[]any](s, nil)
+
+				// child is what the joined child runs.
+				child = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.SetVar{Name: childKey.Get(t), Value: childValue.Get(t)},
+						workflow.SetVar{Name: unlistedKey.Get(t), Value: t.Random.String()},
+					}
+				})
+				// before is what the parent runs before spawning the child.
+				before = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{}
+				})
+				// join is where the parent joins the child, which is right after spawning it.
+				join = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return subject.Get(t)
+				})
+				// after is what the parent runs once it joined the child.
+				after = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return peekVar(t, seen, parentKey.Get(t))
+				})
+			)
+			subject.Let(s, func(t *testcase.T) workflow.Join {
+				return workflow.Join{
+					Spawn:   "child",
+					Collect: workflow.VarMapping{childKey.Get(t): parentKey.Get(t)},
+				}
+			})
+			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					before.Get(t),
+					workflow.Spawn{Name: "child", Definition: child.Get(t)},
+					join.Get(t),
+					after.Get(t),
+				}
+			})
+			// joined executes the parent until it is completed,
+			// which takes the child to be completed and joined first.
+			joined := func(t *testcase.T) {
+				t.Helper()
+				t.Eventually(func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+				c.ProcessCompletionIs(t, c.ProcessID.Get(t), true)
+			}
+
+			s.Then("the child variable is assigned to the parent variable it is mapped to", func(t *testcase.T) {
+				joined(t)
+
+				assert.Equal(t, []any{childValue.Get(t)}, seen.Get(t),
+					"the steps after the Join see the collected value")
+				assert.Equal[any](t, childValue.Get(t),
+					getVar(t, c.Runtime.Get(t), c.ProcessID.Get(t), parentKey.Get(t)))
+			})
+
+			s.Then("only the listed variables are collected, under the names they are mapped to", func(t *testcase.T) {
+				joined(t)
+
+				vars := getVars(t, c.Runtime.Get(t), c.ProcessID.Get(t))
+				for _, name := range []workflow.VarName{childKey.Get(t), unlistedKey.Get(t)} {
+					_, ok, err := vars.Lookup(t.Context(), name)
+					assert.NoError(t, err)
+					assert.False(t, ok, assert.MessageF("%s is not expected to be in the parent", name))
+				}
+			})
+
+			s.When("the child doesn't set the collected variable", func(s *testcase.Spec) {
+				child.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.SetVar{Name: unlistedKey.Get(t), Value: t.Random.String()}
+				})
+
+				s.Then("it is skipped, so the parent variable is not declared either", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, []any{undeclared}, seen.Get(t))
+				})
+
+				s.And("the parent assigned the variable before the Join", func(s *testcase.Spec) {
+					parentValue := let.String(s)
+					before.Let(s, func(t *testcase.T) workflow.Definition {
+						return workflow.SetVar{Name: parentKey.Get(t), Value: parentValue.Get(t)}
+					})
+
+					s.Then("the parent value remains, like a default", func(t *testcase.T) {
+						joined(t)
+
+						assert.Equal(t, []any{parentValue.Get(t)}, seen.Get(t))
+					})
+				})
+			})
+
+			s.When("the child sets the collected variable only in a variable scope nested in its root", func(s *testcase.Spec) {
+				// go func() {
+				// 	if true {
+				// 		childKey := childValue
+				// 	}
+				// }()
+				child.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.If{
+						Cond: wftemplate.Condition("true"),
+						Then: workflow.SetVar{Name: childKey.Get(t), Value: childValue.Get(t)},
+					}
+				})
+
+				s.Then("it is not collected, as the variable is gone by the time the child completes", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, []any{undeclared}, seen.Get(t))
+				})
+			})
+
+			s.When("the Join is in a variable scope of its own, like a branch of an If", func(s *testcase.Spec) {
+				// if true {
+				// 	parentKey := child()
+				// 	see(parentKey)
+				// }
+				// see(parentKey)
+				join.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.If{
+						Cond: wftemplate.Condition("true"),
+						Then: workflow.Sequence{
+							subject.Get(t),
+							peekVar(t, seen, parentKey.Get(t)),
+						},
+					}
+				})
+
+				s.Then("the collected variable is declared in that scope, so it is gone after it", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, []any{childValue.Get(t), undeclared}, seen.Get(t))
+				})
+
+				s.And("the parent variable is declared outside of that scope", func(s *testcase.Spec) {
+					// parentKey := parentValue
+					// if true {
+					// 	parentKey = child()
+					// 	see(parentKey)
+					// }
+					// see(parentKey)
+					before.Let(s, func(t *testcase.T) workflow.Definition {
+						return workflow.SetVar{Name: parentKey.Get(t), Value: t.Random.String()}
+					})
+
+					s.Then("the collected value is assigned to the outer variable, like any assignment would be", func(t *testcase.T) {
+						joined(t)
+
+						assert.Equal(t, []any{childValue.Get(t), childValue.Get(t)}, seen.Get(t))
+					})
+				})
+			})
+
+			s.When("the parent reassigns the collected variable after the Join, and gets resumed later", func(s *testcase.Spec) {
+				var (
+					reassigned = let.Var(s, func(t *testcase.T) string {
+						return random.Unique(t.Random.String, childValue.Get(t))
+					})
+					suspended      = let.VarOf(s, false)
+					_, suspendOnce = wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+						return func(ctx context.Context) error {
+							if suspended.Get(t) {
+								return nil
+							}
+							suspended.Set(t, true)
+							return workflow.Suspend{}
+						}
+					})
+				)
+				after.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.SetVar{Name: parentKey.Get(t), Value: reassigned.Get(t)},
+						workflow.Execute{Participant: suspendOnce.Get(t)},
+						peekVar(t, seen, parentKey.Get(t)),
+					}
+				})
+
+				s.Then("the resumed parent replays the Join, rather than collecting the child's value over the reassigned one", func(t *testcase.T) {
+					joined(t)
+					assert.True(t, suspended.Get(t), "precondition: the parent was resumed after the Join")
+
+					assert.Equal(t, []any{reassigned.Get(t)}, seen.Get(t))
+					assert.Equal[any](t, reassigned.Get(t),
+						getVar(t, c.Runtime.Get(t), c.ProcessID.Get(t), parentKey.Get(t)))
+				})
+			})
+
+			s.When("the event log fails to record the Join", func(s *testcase.Spec) {
+				var (
+					expErr    = let.Error(s)
+					joinFails = let.Var(s, func(t *testcase.T) *atomic.Bool {
+						var fails atomic.Bool
+						fails.Store(true)
+						return &fails
+					})
+				)
+				c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+					rt := c.Runtime.Super(t)
+					rt.Events = failingJoinEventRepository{
+						WorkflowEventRepository: c.EventRepository.Get(t),
+						Err:                     expErr.Get(t),
+						Fails:                   joinFails.Get(t),
+					}
+					return rt
+				})
+
+				s.Then("the collected values are not recorded either, so the Join is retried as a whole", func(t *testcase.T) {
+					t.Eventually(func(t *testcase.T) {
+						assert.ErrorIs(t, act(t), expErr.Get(t))
+					})
+					for _, event := range c.ProcessEvents(t, c.ProcessID.Get(t)) {
+						if set, ok := event.(workflow.EventSetVar); ok {
+							assert.NotEqual(t, parentKey.Get(t), set.Name,
+								"the collected value is only recorded together with the Join")
+						}
+					}
+
+					joinFails.Get(t).Store(false)
+					joined(t)
+
+					assert.Equal(t, []any{childValue.Get(t)}, seen.Get(t))
+				})
+			})
 		})
 
 		s.When("join has collection but no name configured", func(s *testcase.Spec) {
@@ -678,6 +899,27 @@ func TestJoin(t *testing.T) {
 			assert.Equal(t, len(joins[1].Children), 2)
 		})
 	})
+}
+
+func letVarName(s *testcase.Spec) testcase.Var[workflow.VarName] {
+	return let.Var(s, func(t *testcase.T) workflow.VarName {
+		return workflow.VarName(t.Random.UUID())
+	})
+}
+
+// failingJoinEventRepository simulates an event log which goes down right as a Join is recorded:
+// while it Fails, every EventJoin fails to be created with Err.
+type failingJoinEventRepository struct {
+	*memory.WorkflowEventRepository
+	Err   error
+	Fails *atomic.Bool
+}
+
+func (r failingJoinEventRepository) Create(ctx context.Context, ptr *workflow.Event) error {
+	if _, ok := (*ptr).(workflow.EventJoin); ok && r.Fails.Load() {
+		return r.Err
+	}
+	return r.WorkflowEventRepository.Create(ctx, ptr)
 }
 
 func TestJoin_multiStagesJoin(tt *testing.T) {

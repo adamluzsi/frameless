@@ -184,9 +184,14 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 				return rt
 			})
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.If{
-					Cond: workflow.Execute{Condition: "choose"},
-					Then: workflow.SetVar{Name: "chosen", Value: true},
+				// chosen := false
+				// if choose() { chosen = true }
+				return workflow.Sequence{
+					workflow.SetVar{Name: "chosen", Value: false},
+					workflow.If{
+						Cond: workflow.Execute{Condition: "choose"},
+						Then: workflow.SetVar{Name: "chosen", Value: true},
+					},
 				}
 			})
 

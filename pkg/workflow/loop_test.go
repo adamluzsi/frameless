@@ -12,7 +12,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pp"
+
 	"go.llib.dev/testcase/random"
 )
 
@@ -686,7 +686,6 @@ func TestFor(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			pp.PP(seen.Get(t))
 			assert.Equal(t, []any{undeclared, undeclared, undeclared, undeclared, undeclared}, seen.Get(t),
 				"Cond and Post belong to the loop, outside of the body's scope")
 		})

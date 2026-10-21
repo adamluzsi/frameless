@@ -197,7 +197,9 @@ func (b *Broadcast[E]) statefulSubscribe(ctx context.Context) pubsub.Subscriptio
 
 				var event E
 				if err := b.Codec.Unmarshal([]byte(n.Payload), &event); err != nil {
-					yield(nil, fmt.Errorf("decode broadcast message: %w", err))
+					if !yield(nil, fmt.Errorf("decode broadcast message: %w", err)) {
+						return
+					}
 					continue
 				}
 				if !yield(pubsub.MakeMessage(ctx, event, nil, nil), nil) {

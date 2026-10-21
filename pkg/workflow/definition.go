@@ -33,6 +33,24 @@ func (seq Sequence) Execute(ctx context.Context, pid ProcessID) error {
 
 // If executes Then when Cond is true, Else otherwise.
 //
+// The variables of an If are scoped the way Go scopes them.
+// The If is a variable scope of its own, where Cond is evaluated,
+// and Then and Else are variable scopes nested in it, the blocks of the two branches:
+//
+//	x := "outer"
+//	if v := cond(); v { // what Cond declares belongs to the If, so both branches see it
+//		y := "then"     // y belongs to Then
+//		x = "then"      // x is declared outside of the If, so the assignment writes through
+//	} else {
+//		z := "else"     // z belongs to Else
+//		x = "else"
+//	}
+//	// neither v, y nor z is visible here, and x holds what the taken branch assigned
+//
+// So a step in a branch declares into the branch, unless the variable is already
+// visible from there, and DeclareVar shadows an outer variable within the branch only.
+// To keep a value the branch produces, declare its variable before the If.
+//
 // Keeping the same branch on replay is the responsibility of the Condition.
 // Execute (with ConditionID) and wftemplate.Condition record their answer at the `if/<ID>` path,
 // so a replay takes the same branch even if the variables they read have changed since.
@@ -49,7 +67,7 @@ var _ Definition = (*If)(nil)
 func (If) Error() string { return "workflow::if" }
 
 func (d If) Execute(ctx context.Context, pid ProcessID) error {
-	ctx = WithName(ctx, "if")
+	ctx = WithVarScope(ctx, "if")
 	if d.Cond == nil {
 		return ErrFatal.F("missing %s condition", d.Error())
 	}
@@ -59,11 +77,11 @@ func (d If) Execute(ctx context.Context, pid ProcessID) error {
 	}
 	if ok {
 		if d.Then != nil {
-			return d.Then.Execute(WithName(ctx, "then"), pid)
+			return d.Then.Execute(WithVarScope(ctx, "then"), pid)
 		}
 	} else {
 		if d.Else != nil {
-			return d.Else.Execute(WithName(ctx, "else"), pid)
+			return d.Else.Execute(WithVarScope(ctx, "else"), pid)
 		}
 	}
 	return nil

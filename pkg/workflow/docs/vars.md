@@ -170,6 +170,46 @@ so its variable scope is the root: `"path": [{"name": "block"}, {"name": "set-va
 > visible binding, even one an enclosing scope owns, whereas declaring first
 > creates a fresh binding here, so the assignments that follow stay local.
 
+### Branches
+
+The branches of an `If` are blocks, the way they are in Go. The `If` is a scope
+of its own, where `Cond` is evaluated, and `Then` and `Else` are scopes nested
+in it:
+
+```go
+x := "outer"
+if v := cond(); v { // what Cond declares belongs to the If, so both branches see it
+	y := "then"     // y belongs to Then
+	x = "then"      // x is declared outside of the If, so the assignment writes through
+} else {
+	z := "else"     // z belongs to Else
+	x = "else"
+}
+// neither v, y nor z is visible here, and x holds what the taken branch assigned
+```
+
+A `SetVar` in a branch, or an `Execute` `Output`, declares into the branch
+unless the name is already visible from there. So what a branch produces is gone
+once the `If` is done. **To keep it, declare the variable before the `If`**, and
+the branch writes through to it:
+
+```go
+workflow.Sequence{
+	workflow.SetVar{Name: "discount", Value: 0}, // declared before the If, so it outlives it
+	workflow.If{
+		Cond: wftemplate.Condition(`gt .order_total 100`),
+		Then: workflow.Execute{Participant: "calc-discount",
+			Input: []workflow.VarName{"order_total"}, Output: []workflow.VarName{"discount"}},
+	},
+	workflow.Execute{Participant: "charge",
+		Input: []workflow.VarName{"order_total", "discount"}},
+}
+```
+
+A `DeclareVar` in a branch shadows an outer variable within the branch only,
+and two `If`s side by side never share a branch scope, even though their
+branches have the same names.
+
 ### Loop variables
 
 The variables of a loop are scoped the way Go scopes them. Every block has a
@@ -274,10 +314,39 @@ every step of the child sees it.
 Parent variables that are not set yet are **skipped silently**, so put a
 `SetVar` before the `Spawn` if the value must be there.
 
-> **Not implemented yet:** `Join#Collect` is declared and serialised, but
-> `Join#Execute` does not copy anything back. To get a result out of a child
-> today, read the child's variables directly via its `EventSpawn#ChildID`, or
-> have the child write to a store the parent can see.
+`Join#Collect` is the way back, and it reads the other way, **child → parent**:
+
+```go
+workflow.Sequence{
+	workflow.SetVar{Name: "tracking", Value: ""},
+	workflow.Spawn{
+		Name:       "fulfilment",
+		Definition: workflow.Execute{Participant: "ship",
+			Input:  []workflow.VarName{"order"},
+			Output: []workflow.VarName{"tracking"}},
+		Vars: workflow.VarMapping{"order_id": "order"},
+	},
+	workflow.Join{Spawn: "fulfilment", Collect: workflow.VarMapping{"tracking": "tracking"}},
+}
+```
+
+Once the child completed, its `tracking` is assigned to the parent's
+`tracking`. Both directions share the same rules, mirrored:
+
+- The child's variable is looked up from its **root scope**, as a variable it
+  declared in a nested scope is gone by the time it completes.
+- The parent's variable is assigned where the `Join` is: it writes through to a
+  variable visible from there, or it is declared in the `Join`'s scope. So a
+  `Join` in an `If` branch keeps the collected value within the branch, unless
+  the parent declared the variable before the `If`.
+- Child variables that are not set are **skipped silently**, which leaves a
+  value the parent assigned before the `Join` in place, like a default.
+- Only the listed variables are collected; a nil or empty `Collect` collects
+  nothing.
+
+The collected values are recorded together with the `EventJoin`, so the
+collection happens once: a replay of the `Join` doesn't collect again, and an
+assignment the parent made after the `Join` is kept.
 
 ---
 

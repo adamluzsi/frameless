@@ -210,7 +210,7 @@ call and replayed from there, so the tree grows by appending, not by editing.
 | `workflow.DeleteVar`          | Removes a process variable binding.                                      |
 | `workflow.Execute`            | Calls a registered Go function: a participant as a step (`Participant`), or a condition (`Condition`). Implements *both* interfaces. |
 | `workflow.Spawn`              | Launches a sub-workflow as an independent process.                       |
-| `workflow.Join`               | Waits for one, or all, spawned children to complete.                     |
+| `workflow.Join`               | Waits for one, or all, spawned children to complete, and collects the results of a named one. |
 | `workflow.Defer`              | Registers a definition to run when the process ends, like Go's `defer`.  |
 
 ### Sequence — run steps in order
@@ -256,6 +256,14 @@ record it at the `if/<ID>` path, so a replay walks the same branch again, even
 after a suspension inside it, and even if the variables the condition read have
 changed since. A custom condition that records nothing is asked again on every
 replay. See [Conditions][CONDITION].
+
+The branches are scoped the way Go scopes the blocks of an `if`. The `If` is a
+variable scope of its own, where `Cond` is evaluated, and `Then` and `Else` are
+scopes nested in it. A variable a branch declares, including an `Execute`
+`Output` to a name not visible from there, is gone once the `If` is done, while
+an assignment to a variable declared before the `If` writes through to it. So
+to keep a value a branch produces, declare its variable before the `If`. See
+[Variables § Branches](./vars.md#branches).
 
 ### Sleep — wait for something
 
@@ -371,18 +379,35 @@ definition if the value must be there.
 ### Join — wait for the children
 
 ```go
-workflow.Join{SpawnName: "fulfilment"} // wait for one named child
-workflow.Join{}                        // wait for every child spawned so far
+workflow.Join{Spawn: "fulfilment"} // wait for one named child
+workflow.Join{}                    // wait for every child spawned so far
+
+workflow.Join{Spawn: "fulfilment", // wait for it, then collect its results
+	Collect: workflow.VarMapping{"tracking": "tracking_number"}}
 ```
 
 `Join` returns `Suspend{}` until the child (or every child) has recorded
 `EventCompleted`, then records an `EventJoin` and lets the sequence continue.
-An unknown `SpawnName` is an error, not a silent pass.
+An unknown `Spawn` name is an error, not a silent pass.
 
-> **Not implemented yet:** `Join#Collect` is declared, validated and
-> serialised, but `Join#Execute` does not copy anything — child variables do
-> not reach the parent today. Have the child write to a shared store, or read
-> the child's variables yourself via its `EventSpawn#ChildID`.
+`Collect` is a `VarMapping` too, but it reads the other way, **child → parent**:
+the child's `tracking` is assigned to the parent's `tracking_number`, the way a
+Go function returns its results to the caller. Some rules:
+
+- Only the child's **root scope** is collected, as that is all that outlives
+  the child. A variable the child declared in a nested scope, like an `If`
+  branch or a loop body, is gone by the time the child completes.
+- The parent variable is assigned like the `Output` of an `Execute` at the
+  place of the `Join`: it writes through to a variable visible from there, or is
+  declared in the `Join`'s own scope otherwise. Declare it before an `If` to
+  use it after the `If`.
+- Only the listed variables are collected. A nil or empty `Collect` collects
+  nothing, and `Collect` requires `Spawn`, as it collects from one child.
+- A child variable that isn't set is skipped silently, so a value the parent
+  assigned before the `Join` remains as a default.
+- The collected values and the `EventJoin` are recorded in one transaction, so
+  a resumed process replays the `Join` and never collects again: a later
+  reassignment of the collected variable stays as it is.
 
 ### Defer — clean up when the process ends
 

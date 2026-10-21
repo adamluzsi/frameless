@@ -122,7 +122,7 @@ know its position, and doesn't need to: the parent puts it in `ctx`.
 | Definition           | Path segments                                         | Of which variable scopes |
 | -------------------- | ----------------------------------------------------- | ------------------------ |
 | `Sequence`           | `sequence/[i]`                                        | —                        |
-| `If`                 | `if/then`, `if/else`                                  | —                        |
+| `If`                 | `if/then`, `if/else`                                  | `if`, `then`, `else`     |
 | `For`                | `for/init`, `for/[n]/…` (cond, post), `for/[n]/body/…` | `for`, `[n]`, `body`     |
 | `ForEach`            | `[i]` or `%v` of the map key                          | the iteration's segment  |
 | `Sleep`              | `sleep/<unix-second>` (for the condition)             | —                        |
@@ -135,9 +135,10 @@ know its position, and doesn't need to: the parent puts it in `ctx`.
 **Every block is a variable scope.** Like every block in Go, the body of a loop
 gets a variable scope of its own on every execution: each `ForEach` iteration,
 and the `body` of each `For` round. The loop and the rounds of a `For` get one
-too. As a scope is a segment of the path, the scopes are exactly as distinct as
-the paths. For example, `Sequence{SetVar, ForEach, For{Do: ForEach}}` walks
-(`R` is the root, `*` marks a variable scope):
+too, and so do an `If`, where its condition is evaluated, and the branch it
+takes. As a scope is a segment of the path, the scopes are exactly as distinct
+as the paths. For example, `Sequence{SetVar, ForEach, For{Do: ForEach}, If}`
+walks (`R` is the root, `*` marks a variable scope):
 
 ```text
 R/sequence/[0]/set-var                  the SetVar, in the root scope
@@ -146,6 +147,8 @@ R/sequence/[2]/for*/init                the init of the For, in the loop's scope
 R/sequence/[2]/for*/[0]*                its first round, where cond and post run
 R/sequence/[2]/for*/[0]*/body*          the body of its first round
 R/sequence/[2]/for*/[0]*/body*/[0]*     the first iteration of the ForEach in that body
+R/sequence/[3]/if*                      the If, where its condition is evaluated
+R/sequence/[3]/if*/then*                the Then branch, when the condition holds
 ```
 
 `WithVarScope(ctx, name)` adds a variable scope segment of the given name, the

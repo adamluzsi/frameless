@@ -247,6 +247,64 @@ var scenarios = []scenario{
 		ResumedCalls: []string{seen("hello world")},
 		Vars:         map[workflow.VarName]any{"name": "world"},
 	},
+	{
+		// The parent waits on the child across the upgrade,
+		// then collects the variable the child set before the upgrade.
+		Name: "join-collecting-a-child-variable-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "name", Value: "world"},
+			workflow.Spawn{
+				Name: "greeter",
+				Definition: workflow.Sequence{
+					workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+					workflow.Execute{Participant: awaitUpgrade},
+				},
+				Vars: workflow.VarMapping{"name": "name"},
+			},
+			workflow.Join{Spawn: "greeter", Collect: workflow.VarMapping{"greeting": "reply"}},
+			workflow.Execute{Participant: see, Input: []workflow.VarName{"reply"}},
+		},
+		ResumedCalls: []string{seen("hello world")},
+		Vars:         map[workflow.VarName]any{"name": "world", "reply": "hello world"},
+		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
+			"greeter": {"name": "world", "greeting": "hello world"},
+		},
+	},
+	{
+		// The child was joined, and its variable collected, before the upgrade,
+		// then the parent reassigned the collected variable,
+		// so collecting it again on the resume would undo the reassignment.
+		Name: "join-collected-before-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.Spawn{Name: "greeter", Definition: workflow.SetVar{Name: "greeting", Value: "hello"}},
+			workflow.Join{Spawn: "greeter", Collect: workflow.VarMapping{"greeting": "reply"}},
+			workflow.Execute{Participant: greet, Input: []workflow.VarName{"reply"}, Output: []workflow.VarName{"reply"}},
+			workflow.Execute{Participant: awaitUpgrade},
+			workflow.Execute{Participant: see, Input: []workflow.VarName{"reply"}},
+		},
+		ResumedCalls: []string{seen("hello hello")},
+		Vars:         map[workflow.VarName]any{"reply": "hello hello"},
+		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
+			"greeter": {"greeting": "hello"},
+		},
+	},
+	{
+		// The branch declared a variable in its own scope before the upgrade, and reads it after.
+		Name: "if-branch-variable-read-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "name", Value: "world"},
+			workflow.If{
+				Cond: wftemplate.Condition(`eq .name "world"`),
+				Then: workflow.Sequence{
+					workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+					workflow.Execute{Participant: awaitUpgrade},
+					workflow.Execute{Participant: see, Input: []workflow.VarName{"greeting"}},
+				},
+			},
+		},
+		ResumedCalls: []string{seen("hello world")},
+		Vars:         map[workflow.VarName]any{"name": "world"},
+	},
 }
 
 // The vocabulary of the scenarios.

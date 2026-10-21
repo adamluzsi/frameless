@@ -170,7 +170,7 @@ type Event interface {
 | `EventSetVar`        | `workflow::event::var::set`       | A variable was assigned a value.                                 |
 | `EventDeleteVar`     | `workflow::event::var::delete`    | A variable binding was removed.                                  |
 | `EventSpawn`         | `workflow::event::spawn`          | A sub-workflow was requested; links parent to `ChildID`.        |
-| `EventJoin`          | `workflow::event::join`           | A parent observed its children as complete.                      |
+| `EventJoin`          | `workflow::event::join`           | A parent observed its children as complete; recorded together with the variables it collected. |
 | `EventSleepCompleted` | `workflow::event::sleep::completed` | A `Sleep` woke up; a replay passes it without asking its condition. |
 | `EventCompleted`     | `workflow::completed`             | The definition finished successfully.                            |
 | `EventTerminated`    | `workflow::terminated`            | The process was called off via `rt.Terminate`. The two terminal events are mutually exclusive on the log. |
@@ -292,9 +292,11 @@ Careful — "spawn" names two related things:
 forwarded variables in one transaction, then schedules the child *after* that
 transaction commits.
 
-`workflow.Join{SpawnName, Collect}` is the other half: it suspends the parent
-until the named child (or every child, when `SpawnName` is empty) has recorded
-an `EventCompleted`, then records an `EventJoin`.
+`workflow.Join{Spawn, Collect}` is the other half: it suspends the parent
+until the named child (or every child, when `Spawn` is empty) has recorded
+an `EventCompleted`, then records an `EventJoin`. With `Collect`, it also
+assigns the listed root-scope variables of the child to the parent's variables,
+in the same transaction as the `EventJoin`, so a replay never collects again.
 
 **SpawnName** is the human-friendly handle for a child — unique among a given
 process' children — and it exists purely so a later `Join` can name which child
