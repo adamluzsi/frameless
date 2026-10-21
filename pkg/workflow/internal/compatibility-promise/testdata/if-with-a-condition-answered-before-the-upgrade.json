@@ -23,13 +23,13 @@
 			"participant": "compat::b"
 		}
 	},
-	"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
+	"process_id": "01a106ac-6df5-78b3-9549-92fad2909de5",
 	"history": [
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f290-38ee-7d36-a6a8-2af2997b4116",
-			"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
-			"timestamp": "2026-09-30T13:45:33.166826Z",
+			"event_id": "01a106ac-6df5-78d0-b1a6-452b82d65482",
+			"process_id": "01a106ac-6df5-78b3-9549-92fad2909de5",
+			"timestamp": "2026-10-04T11:28:46.069552Z",
 			"definition": {
 				"@type": "workflow::if",
 				"cond": {
@@ -57,17 +57,23 @@
 		},
 		{
 			"@type": "workflow::event::condition",
-			"event_id": "01a0f290-38ee-7dfb-b09f-dac9ab726df3",
-			"process_id": "01a0f290-38ee-7d21-84c8-e30ce75957a4",
+			"event_id": "01a106ac-6df5-7bea-969c-04226fc0bab0",
+			"process_id": "01a106ac-6df5-78b3-9549-92fad2909de5",
 			"condition_id": "compat::before-upgrade",
 			"path": [
-				"01a0f290-38ee-7d36-a6a8-2af2997b4116",
-				"if",
-				"compat::before-upgrade"
+				{
+					"name": "01a106ac-6df5-78d0-b1a6-452b82d65482"
+				},
+				{
+					"name": "if"
+				},
+				{
+					"name": "compat::before-upgrade"
+				}
 			],
 			"input": [],
 			"answer": true,
-			"timestamp": "2026-09-30T13:45:33.166875Z"
+			"timestamp": "2026-10-04T11:28:46.069747Z"
 		}
 	]
 }

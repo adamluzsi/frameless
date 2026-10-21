@@ -859,7 +859,6 @@ type workflowEventDeclareVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
-	Scope     VarScopeDTO        `json:"scope,omitempty"`
 }
 
 func (WorkflowEventDeclareVar) Marshal(c *jsonkit.Codec, v workflow.EventDeclareVar) ([]byte, error) {
@@ -869,7 +868,6 @@ func (WorkflowEventDeclareVar) Marshal(c *jsonkit.Codec, v workflow.EventDeclare
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
-		Scope:     ToVarScopeDTO(v.Scope),
 	})
 }
 
@@ -883,7 +881,6 @@ func (WorkflowEventDeclareVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workf
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
-	p.Scope = ToVarScope(dto.Scope)
 	return nil
 }
 
@@ -897,7 +894,6 @@ type workflowEventSetVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
-	Scope     VarScopeDTO        `json:"scope,omitempty"`
 	Value     any                `json:"value,omitempty"`
 }
 
@@ -908,7 +904,6 @@ func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
-		Scope:     ToVarScopeDTO(v.Scope),
 		Value:     v.Value,
 	})
 }
@@ -923,7 +918,6 @@ func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
-	p.Scope = ToVarScope(dto.Scope)
 	p.Value = dto.Value
 	return nil
 }
@@ -938,7 +932,6 @@ type workflowEventDeleteVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
-	Scope     VarScopeDTO        `json:"scope,omitempty"`
 }
 
 func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVar) ([]byte, error) {
@@ -948,7 +941,6 @@ func (WorkflowEventDeleteVar) Marshal(c *jsonkit.Codec, v workflow.EventDeleteVa
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
-		Scope:     ToVarScopeDTO(v.Scope),
 	})
 }
 
@@ -962,7 +954,6 @@ func (WorkflowEventDeleteVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workfl
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
-	p.Scope = ToVarScope(dto.Scope)
 	return nil
 }
 
@@ -1229,7 +1220,6 @@ type workflowDeferEventDTO struct {
 	ProcessID  workflow.ProcessID `json:"process_id"`
 	Timestamp  time.Time          `json:"timestamp"`
 	Path       PathDTO            `json:"path,omitempty"`
-	Scope      VarScopeDTO        `json:"scope,omitempty"`
 	Definition json.RawMessage    `json:"definition"`
 }
 
@@ -1243,7 +1233,6 @@ func (WorkflowEventDefer) Marshal(c *jsonkit.Codec, v workflow.EventDefer) ([]by
 		ProcessID:  v.ProcessID,
 		Timestamp:  v.Timestamp,
 		Path:       ToPathDTO(v.Path),
-		Scope:      ToVarScopeDTO(v.VarScope),
 		Definition: defBytes,
 	})
 }
@@ -1261,7 +1250,6 @@ func (WorkflowEventDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.E
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
-	p.VarScope = ToVarScope(dto.Scope)
 	p.Definition = def
 	return nil
 }
@@ -1359,7 +1347,11 @@ func ToPath(dto PathDTO) workflow.Path {
 	if dto == nil {
 		return nil
 	}
-	return workflow.Path(dto)
+	var p = make(workflow.Path, 0, len(dto))
+	for _, s := range dto {
+		p = append(p, workflow.Scope{Name: s.Name, Var: s.Var})
+	}
+	return p
 }
 
 // ToPathDTO converts a workflow.Path into its wire representation.
@@ -1370,32 +1362,26 @@ func ToPathDTO(p workflow.Path) PathDTO {
 	if p == nil {
 		return nil
 	}
-	return PathDTO(p)
+	var dto = make(PathDTO, 0, len(p))
+	for _, s := range p {
+		dto = append(dto, ScopeDTO{Name: s.Name, Var: s.Var})
+	}
+	return dto
 }
 
-// PathDTO is the wire representation of a workflow.Path.
+// PathDTO is the wire representation of a workflow.Path:
+// a JSON array of its Scopes, from the root.
 //
-// A path is a chain of scope names, so its wire form is a plain JSON array of
-// strings — the same shape it had back when workflow.Path was a []string, which
-// keeps histories recorded before the Scope detour readable without any shim.
-type PathDTO []string
+// The "var" marks are part of the Path, as they tell the variable scopes of the location,
+// and the variable events rely on them to tell the scope of the variable they are about.
+type PathDTO []ScopeDTO
 
-// ToVarScope converts the wire representation of a workflow.VarScope back into
-// the domain type, following the same nil-preserving convention as ToPath.
-func ToVarScope(dto VarScopeDTO) workflow.VarScope {
-	if dto == nil {
-		return nil
-	}
-	return workflow.VarScope(dto)
+// ScopeDTO is the wire representation of a workflow.Scope.
+//
+//	{"name": "for", "var": true}
+//
+// "var" is omitted for a Scope which is not a variable scope.
+type ScopeDTO struct {
+	Name string `json:"name"`
+	Var  bool   `json:"var,omitempty"`
 }
-
-// ToVarScopeDTO converts a workflow.VarScope into its wire representation.
-func ToVarScopeDTO(vs workflow.VarScope) VarScopeDTO {
-	if vs == nil {
-		return nil
-	}
-	return VarScopeDTO(vs)
-}
-
-// VarScopeDTO is the wire representation of a workflow.VarScope.
-type VarScopeDTO []string

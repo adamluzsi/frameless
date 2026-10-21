@@ -225,7 +225,7 @@ func TestExecute(t *testing.T) {
 			events := participantEventsOf(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ParticipantID, pid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(pid.Get(t))})
+			assert.Equal(t, events[0].Path, pathOf(string(pid.Get(t))))
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Equal(t, events[0].Output, []any{participantOut.Get(t)})
 			assert.False(t, events[0].Timestamp.IsZero())
@@ -237,7 +237,7 @@ func TestExecute(t *testing.T) {
 				var answer workflow.Event = workflow.EventCondition{
 					EventID: mustEventID(t), ProcessID: processID.Get(t), Timestamp: clock.Now(),
 					ConditionID: workflow.ConditionID(pid.Get(t)),
-					Path:        workflow.Path{string(pid.Get(t))},
+					Path:        pathOf(string(pid.Get(t))),
 					Input:       []any{inVal.Get(t)},
 					Answer:      true,
 				}
@@ -288,7 +288,7 @@ func TestExecute(t *testing.T) {
 				failures := failuresOf(t)
 				assert.Must(t).Equal(len(failures), 1)
 				assert.Equal(t, failures[0].ParticipantID, pid.Get(t))
-				assert.Equal(t, failures[0].Path, workflow.Path{string(pid.Get(t))})
+				assert.Equal(t, failures[0].Path, pathOf(string(pid.Get(t))))
 				assert.Equal(t, failures[0].Error, failure.Get(t).Error())
 			})
 
@@ -560,7 +560,7 @@ func TestExecute(t *testing.T) {
 			events := participantEventsOf(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ParticipantID, id.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(id.Get(t))})
+			assert.Equal(t, events[0].Path, pathOf(string(id.Get(t))))
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Empty(t, events[0].Output)
 			assert.Nil(t, events[0].Definition)
@@ -723,7 +723,7 @@ func TestExecute(t *testing.T) {
 				failures := failuresOf(t)
 				assert.Must(t).Equal(len(failures), 1)
 				assert.Equal(t, failures[0].ParticipantID, id.Get(t))
-				assert.Equal(t, failures[0].Path, workflow.Path{string(id.Get(t))})
+				assert.Equal(t, failures[0].Path, pathOf(string(id.Get(t))))
 				assert.Equal(t, failures[0].Error, executeErr.Get(t).Error())
 			})
 
@@ -957,7 +957,7 @@ func TestExecute(t *testing.T) {
 			events := answersOf(t)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ConditionID, cid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(cid.Get(t))})
+			assert.Equal(t, events[0].Path, pathOf(string(cid.Get(t))))
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Equal(t, events[0].Answer, got)
 			assert.False(t, events[0].Timestamp.IsZero())
@@ -968,7 +968,7 @@ func TestExecute(t *testing.T) {
 				var call workflow.Event = workflow.EventParticipant{
 					EventID: mustEventID(t), ProcessID: processID.Get(t), Timestamp: clock.Now(),
 					ParticipantID: workflow.ParticipantID(cid.Get(t)),
-					Path:          workflow.Path{string(cid.Get(t))},
+					Path:          pathOf(string(cid.Get(t))),
 					Input:         []any{inVal.Get(t)},
 				}
 				assert.Must(t).NoError(c.EventRepository.Get(t).Create(t.Context(), &call))
@@ -1211,7 +1211,7 @@ func TestExecute(t *testing.T) {
 			events := answersOf(t)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ConditionID, id.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(id.Get(t))})
+			assert.Equal(t, events[0].Path, pathOf(string(id.Get(t))))
 			assert.Equal(t, events[0].Input, []any{inVal.Get(t)})
 			assert.Equal(t, events[0].Answer, got)
 		})

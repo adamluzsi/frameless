@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -64,15 +65,14 @@ func TestDefer(t *testing.T) {
 			assert.Equal(t, hook.Definition, def.Get(t))
 		})
 
-		s.Then("the hook records the location of the Defer step: its own path segment, and the variable scope it runs in", func(t *testcase.T) {
+		s.Then("the hook records the location of the Defer step: its own path segment, within the variable scope of the step", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			hooks := hooksOf(t, processID.Get(t))
 			assert.Equal(t, len(hooks), 1)
-			expPath := append(workflow.Path{}, workflow.CurrentPath(ctx.Get(t))...)
-			expPath = append(expPath, "defer")
-			assert.Equal(t, hooks[0].Path, expPath)
-			assert.Equal(t, hooks[0].VarScope, workflow.CurrentVarScope(ctx.Get(t)))
+			expPath := slices.Concat(workflow.CurrentPath(ctx.Get(t)), pathOf("defer"))
+			assertSamePath(t, expPath, hooks[0].Path)
+			assertSamePath(t, workflow.CurrentPath(ctx.Get(t)).VarScope(), hooks[0].Path.VarScope())
 		})
 
 		s.Then("the hook is not registered to other processes", func(t *testcase.T) {
@@ -107,13 +107,13 @@ func TestDefer(t *testing.T) {
 			})
 		})
 
-		s.When("the same step is re-entered under a different variable scope, like a loop iteration", func(s *testcase.Spec) {
+		s.When("the same step is re-entered at a different path, like in a loop iteration", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				sibling := workflow.WithVarScope(ctx.Get(t), t.Random.UUID())
 				assert.Must(t).NoError(subject.Get(t).Execute(sibling, processID.Get(t)))
 			})
 
-			s.Then("each scope registers its own hook", func(t *testcase.T) {
+			s.Then("each path registers its own hook", func(t *testcase.T) {
 				assert.NoError(t, act(t))
 
 				assert.Equal(t, len(hooksOf(t, processID.Get(t))), 2)
@@ -834,10 +834,7 @@ func TestEventDefer(t *testing.T) {
 			return mustProcessID(t)
 		})
 		declaredPath = let.Var(s, func(t *testcase.T) workflow.Path {
-			return workflow.Path{t.Random.UUID(), t.Random.UUID(), t.Random.UUID()}
-		})
-		declaredScope = let.Var(s, func(t *testcase.T) workflow.VarScope {
-			return workflow.VarScope{t.Random.UUID(), t.Random.UUID()}
+			return letRandomPath(t, t.Random.IntBetween(1, 5))
 		})
 		subject = let.Var(s, func(t *testcase.T) workflow.EventDefer {
 			id, err := workflow.MakeEventID()
@@ -846,7 +843,6 @@ func TestEventDefer(t *testing.T) {
 				EventID:   id,
 				ProcessID: processID.Get(t),
 				Path:      declaredPath.Get(t),
-				VarScope:  declaredScope.Get(t),
 			}
 		})
 	)
@@ -859,22 +855,20 @@ func TestEventDefer(t *testing.T) {
 			return subject.Get(t).Context(ctx.Get(t))
 		}
 
-		s.Then("the hooked definition runs under the declaration's path, in a segment named after the hook's event id", func(t *testcase.T) {
-			exp := append(workflow.Path{}, declaredPath.Get(t)...)
-			exp = append(exp, subject.Get(t).EventID.String())
-			assert.Equal(t, workflow.CurrentPath(act(t)), exp)
+		hookScope := func(t *testcase.T) workflow.Scope {
+			return workflow.Scope{Name: subject.Get(t).EventID.String(), Var: true}
+		}
+
+		s.Then("the hooked definition runs under the declaration's path, in a variable scope named after the hook's event id", func(t *testcase.T) {
+			exp := slices.Concat(declaredPath.Get(t), workflow.Path{hookScope(t)})
+			assertSamePath(t, exp, workflow.CurrentPath(act(t)))
+			assertSamePath(t, exp, workflow.CurrentPath(act(t)).VarScope())
 		})
 
-		s.Then("the hooked definition runs under the declaration's variable scope, in a scope named after the hook's event id", func(t *testcase.T) {
-			exp := append(workflow.VarScope{}, declaredScope.Get(t)...)
-			exp = append(exp, subject.Get(t).EventID.String())
-			assert.Equal(t, workflow.CurrentVarScope(act(t)), exp)
-		})
-
-		s.Then("the hook's own path and variable scope are left untouched", func(t *testcase.T) {
+		s.Then("the hook's own path is left untouched", func(t *testcase.T) {
+			exp := slices.Clone(declaredPath.Get(t))
 			_ = act(t)
-			assert.Equal(t, subject.Get(t).Path, declaredPath.Get(t))
-			assert.Equal(t, subject.Get(t).VarScope, declaredScope.Get(t))
+			assertSamePath(t, exp, subject.Get(t).Path)
 		})
 
 		s.When("multiple hooks are declared at the same location", func(s *testcase.Spec) {
@@ -886,67 +880,52 @@ func TestEventDefer(t *testing.T) {
 				return h
 			})
 
-			s.Then("each hook runs on a distinct path, so their idempotent steps don't collide", func(t *testcase.T) {
-				assert.NotEqual(t, workflow.CurrentPath(act(t)), workflow.CurrentPath(othHook.Get(t).Context(ctx.Get(t))))
-			})
-
-			s.Then("each hook runs in a distinct variable scope, so their local variables don't collide", func(t *testcase.T) {
-				assert.NotEqual(t, workflow.CurrentVarScope(act(t)), workflow.CurrentVarScope(othHook.Get(t).Context(ctx.Get(t))))
+			s.Then("each hook runs in a variable scope of its own, so neither their idempotent steps nor their local variables collide", func(t *testcase.T) {
+				var (
+					got = workflow.CurrentPath(act(t))
+					oth = workflow.CurrentPath(othHook.Get(t).Context(ctx.Get(t)))
+				)
+				assert.False(t, got.Equal(oth))
+				assert.False(t, got.VarScope().Equal(oth.VarScope()))
 			})
 		})
 
-		s.When("the context already carries a path and a variable scope, like the one where the process finishes", func(s *testcase.Spec) {
+		s.When("the context already carries a path, like the one where the process finishes", func(s *testcase.Spec) {
 			ctx.Let(s, func(t *testcase.T) context.Context {
-				c := workflow.WithName(t.Context(), t.Random.UUID())
-				return workflow.WithVarScope(c, t.Random.UUID())
+				return withPath(t.Context(), letRandomPath(t, t.Random.IntBetween(1, 3)))
 			})
 
-			s.Then("they are replaced by the declaration's location rather than nested under it", func(t *testcase.T) {
-				assert.Equal(t, workflow.CurrentPath(act(t))[:len(declaredPath.Get(t))], declaredPath.Get(t))
-				assert.Equal(t, len(workflow.CurrentPath(act(t))), len(declaredPath.Get(t))+1)
-				assert.Equal(t, workflow.CurrentVarScope(act(t))[:len(declaredScope.Get(t))], declaredScope.Get(t))
-				assert.Equal(t, len(workflow.CurrentVarScope(act(t))), len(declaredScope.Get(t))+1)
+			s.Then("it is replaced by the declaration's location rather than nested under it", func(t *testcase.T) {
+				exp := slices.Concat(declaredPath.Get(t), workflow.Path{hookScope(t)})
+				assertSamePath(t, exp, workflow.CurrentPath(act(t)))
 			})
 
-			s.And("the hook was declared in the process's root variable scope", func(s *testcase.Spec) {
-				declaredScope.LetValue(s, nil)
+			s.And("the hook was declared at the root of the process", func(s *testcase.Spec) {
+				declaredPath.LetValue(s, nil)
 
-				s.Then("the hooked definition's scope is nested directly under the root", func(t *testcase.T) {
-					assert.Equal(t, workflow.CurrentVarScope(act(t)), workflow.VarScope{subject.Get(t).EventID.String()})
+				s.Then("the hooked definition's variable scope is nested directly under the root", func(t *testcase.T) {
+					assertSamePath(t, workflow.Path{hookScope(t)}, workflow.CurrentPath(act(t)))
 				})
 			})
 		})
 
 		s.Test("a hook registered by a workflow.Defer step runs within the location of that step", func(t *testcase.T) {
 			declCtx := workflow.Runtime{Events: eventRepository.Get(t)}.Context(t.Context())
-			for _, name := range declaredPath.Get(t) {
-				declCtx = workflow.WithName(declCtx, name)
-			}
-			for _, name := range declaredScope.Get(t) {
-				declCtx = workflow.WithVarScope(declCtx, name)
-			}
+			declCtx = withPath(declCtx, declaredPath.Get(t))
 			assert.NoError(t, workflow.Defer{Definition: workflow.Sequence{}}.Execute(declCtx, processID.Get(t)))
 
 			hooks := deferHooksOf(t, eventRepository.Get(t), processID.Get(t))
 			assert.Equal(t, len(hooks), 1)
 			runCtx := hooks[0].Context(t.Context())
 
-			exp := append(workflow.Path{}, declaredPath.Get(t)...)
-			exp = append(exp, "defer", hooks[0].EventID.String())
-			assert.Equal(t, workflow.CurrentPath(runCtx), exp)
-
-			expScope := append(workflow.VarScope{}, declaredScope.Get(t)...)
-			expScope = append(expScope, hooks[0].EventID.String())
-			assert.Equal(t, workflow.CurrentVarScope(runCtx), expScope)
+			exp := slices.Concat(declaredPath.Get(t), pathOf("defer"), varScopeOf(hooks[0].EventID.String()))
+			assertSamePath(t, exp, workflow.CurrentPath(runCtx))
 		})
 
 		s.Test("the hooked definition sees the variables of its declaration, but its own writes stay local to the hook", func(t *testcase.T) {
 			vars := workflow.Vars{ProcessID: processID.Get(t), EventsRepository: eventRepository.Get(t)}
 
-			declCtx := t.Context()
-			for _, name := range declaredScope.Get(t) {
-				declCtx = workflow.WithVarScope(declCtx, name)
-			}
+			declCtx := withPath(t.Context(), declaredPath.Get(t))
 			var (
 				shared = workflow.VarName(t.Random.UUID())
 				local  = workflow.VarName(t.Random.UUID())

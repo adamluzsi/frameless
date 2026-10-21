@@ -712,6 +712,26 @@ func TestFor(t *testing.T) {
 				"the body assigns to the variable it refers to, rather than declaring one of its own")
 		})
 
+		s.Test("the body and Post assigning the same variable are distinct steps, so both take effect", func(t *testcase.T) {
+			// last := ""
+			// for ; last == ""; last = "post" {
+			// 	last = "body"
+			// }
+			// // last == "post"
+			pid, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "last", Value: ""},
+				workflow.For{
+					Cond: wftemplate.Condition(`eq .last ""`),
+					Do:   workflow.SetVar{Name: "last", Value: "body"},
+					Post: workflow.SetVar{Name: "last", Value: "post"},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal[any](t, "post", getVar(t, c.Runtime.Get(t), pid, "last"),
+				"Post's assignment must not count as already done because the body made the same one")
+		})
+
 		s.Test("a sibling loop doesn't see the variables of the loop before it", func(t *testcase.T) {
 			// for i := 0; i < 1; i++ {
 			// 	x := "declared-in-first-loop"

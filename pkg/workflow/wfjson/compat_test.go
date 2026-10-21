@@ -230,10 +230,8 @@ func TestCompat_v1WireFormat(t *testing.T) {
 	})
 	ts := let.Var(s, v1FixedTime)
 	path := let.Var(s, func(t *testcase.T) workflow.Path {
-		return workflow.Path{"sequence", "[0]", "participant"}
-	})
-	scope := let.Var(s, func(t *testcase.T) workflow.VarScope {
-		return workflow.VarScope{"[0]"}
+		// the path is in a variable scope, so its wire form shows the var flag as well.
+		return workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "participant"}}
 	})
 
 	// ---- Definitions ----
@@ -405,27 +403,27 @@ func TestCompat_v1WireFormat(t *testing.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventDeclareVar{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), Name: "x", Scope: scope.Get(t),
+				Path: path.Get(t), Name: "x",
 			},
-			`{"@type":"workflow::event::var::declare","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","scope":["[0]"]}`)
+			`{"@type":"workflow::event::var::declare","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"name":"x"}`)
 	})
 
 	s.Test("EventSetVar", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventSetVar{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), Name: "x", Scope: scope.Get(t), Value: "v",
+				Path: path.Get(t), Name: "x", Value: "v",
 			},
-			`{"@type":"workflow::event::var::set","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","scope":["[0]"],"value":"v"}`)
+			`{"@type":"workflow::event::var::set","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"name":"x","value":"v"}`)
 	})
 
 	s.Test("EventDeleteVar", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventDeleteVar{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), Name: "x", Scope: scope.Get(t),
+				Path: path.Get(t), Name: "x",
 			},
-			`{"@type":"workflow::event::var::delete","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"name":"x","scope":["[0]"]}`)
+			`{"@type":"workflow::event::var::delete","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"name":"x"}`)
 	})
 
 	s.Test("EventParticipant", func(t *testcase.T) {
@@ -437,7 +435,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 				Input:         []any{"a"},
 				Output:        []any{"b"},
 			},
-			`{"@type":"workflow::event::participant","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","participant_id":"p1","path":["sequence","[0]","participant"],"input":["a"],"output":["b"]}`)
+			`{"@type":"workflow::event::participant","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","participant_id":"p1","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"input":["a"],"output":["b"]}`)
 	})
 
 	s.Test("EventCondition", func(t *testcase.T) {
@@ -449,7 +447,7 @@ func TestCompat_v1WireFormat(t *testing.T) {
 				Input:       []any{"a"},
 				Answer:      true,
 			},
-			`{"@type":"workflow::event::condition","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","condition_id":"c1","path":["sequence","[0]","participant"],"input":["a"],"answer":true,"timestamp":"2026-01-02T03:04:05Z"}`)
+			`{"@type":"workflow::event::condition","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","condition_id":"c1","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"input":["a"],"answer":true,"timestamp":"2026-01-02T03:04:05Z"}`)
 	})
 
 	s.Test("EventUseDefinition", func(t *testcase.T) {
@@ -475,28 +473,28 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			workflow.EventJoin{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
 				Children: []workflow.ProcessID{childID.Get(t)},
-				Path:     workflow.Path{"sequence", "[0]"},
+				Path:     workflow.Path{{Name: "sequence"}, {Name: "[0]"}},
 			},
-			`{"@type":"workflow::event::join","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","children":["00000000-0000-4000-8000-000000000003"],"path":["sequence","[0]"]}`)
+			`{"@type":"workflow::event::join","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","children":["00000000-0000-4000-8000-000000000003"],"path":[{"name":"sequence"},{"name":"[0]"}]}`)
 	})
 
 	s.Test("EventSleepCompleted", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventSleepCompleted{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: workflow.Path{"sequence", "[0]", "sleep"},
+				Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "sleep"}},
 			},
-			`{"@type":"workflow::event::sleep::completed","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","sleep"]}`)
+			`{"@type":"workflow::event::sleep::completed","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]"},{"name":"sleep"}]}`)
 	})
 
 	s.Test("EventDefer", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventDefer{
 				EventID: evID.Get(t), ProcessID: pid.Get(t), Timestamp: ts.Get(t),
-				Path: path.Get(t), VarScope: scope.Get(t),
+				Path:       path.Get(t),
 				Definition: workflow.SetVar{Name: "x", Value: "1"},
 			},
-			`{"@type":"workflow::event::defer","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":["sequence","[0]","participant"],"scope":["[0]"],"definition":{"@type":"workflow::var::set","name":"x","value":"1"}}`)
+			`{"@type":"workflow::event::defer","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}],"definition":{"@type":"workflow::var::set","name":"x","value":"1"}}`)
 	})
 
 	// ---- Schedule-side ----

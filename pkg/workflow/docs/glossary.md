@@ -323,18 +323,18 @@ See [Signals][SIGNAL].
 
 ## The data layer
 
-### Variable, VarName, VarScope, VarBinding
+### Variable, VarName, variable scope, VarBinding
 
 A **variable** is not a key-value store. It is a *fold* over the variable events
 of a process — `EventDeclareVar`, `EventSetVar`, `EventDeleteVar` — replayed in
 `EventID` order. Read them with `workflow.Vars{ProcessID, EventsRepository}` or
 `workflow.GetVars(ctx)`.
 
-| Term         | What it is                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------ |
-| `VarName`    | The name a definition refers to, e.g. `"greeting"`.                                                    |
-| `VarScope`   | A `[]string` naming the scope a declaration was made in. A declaration in a scope you cannot see shadows the name. |
-| `VarBinding` | The folded result: `{Name, Value, Scope}`.                                                             |
+| Term             | What it is                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `VarName`        | The name a definition refers to, e.g. `"greeting"`.                                                    |
+| variable scope   | A segment of the `Path` marked `Var` (added by `WithVarScope`), like a block of a Go function. The variable scope of a step is `Path#VarScope()`, its path up to the last such segment. A declaration in a scope you cannot see shadows the name. |
+| `VarBinding`     | The folded result: `{Name, Value, Scope}`, where `Scope` is the variable scope of the binding.         |
 
 `DeclareVar{..., Global: true}` declares in the root scope, so the name escapes
 the scope the step happens to run under. See [Variables][VARIABLES].
@@ -349,11 +349,11 @@ the child as `id`.* Parent variables that are not set yet are skipped silently.
 
 ### Path
 
-A `[]string` breadcrumb of where execution currently is inside the definition
-tree, for example:
+A breadcrumb of where execution currently is inside the definition tree, made
+of `Scope` segments, for example:
 
 ```go
-workflow.Path{"sequence", "[0]", "set-var"}
+workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "set-var"}}
 ```
 
 Each composite definition contributes a segment (`Sequence` adds `sequence` plus
@@ -364,6 +364,11 @@ Its job is identity. A step's recorded event is matched by `(ID, Path)`, so two
 `Execute{Participant: "notify"}` entries in the same `Sequence` are distinct
 logical steps with independent caches — which is what makes idempotent replay
 work without any per-process bookkeeping on your side.
+
+A segment can be a variable scope as well (`Scope.Var`), like the body of a
+loop. Two segments are the same location when their names are, so
+`Path#Equal` compares the names only, while `Path#VarScope()` tells which
+variable scope the path is in. See [variable scope](#variable-varname-variable-scope-varbinding).
 
 ### Codec
 

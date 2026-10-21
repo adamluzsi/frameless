@@ -382,9 +382,14 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 }
 
+// withPath extends ctx with the Scopes of the given Path, its variable scopes included.
 func withPath(ctx context.Context, path workflow.Path) context.Context {
-	for _, name := range path {
-		ctx = workflow.WithName(ctx, name)
+	for _, scope := range path {
+		if scope.Var {
+			ctx = workflow.WithVarScope(ctx, scope.Name)
+		} else {
+			ctx = workflow.WithName(ctx, scope.Name)
+		}
 	}
 	return ctx
 }

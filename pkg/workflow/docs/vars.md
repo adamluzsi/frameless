@@ -117,9 +117,10 @@ if true {
 _ = x // still "foo"
 ```
 
-Workflow variables behave the same way. A `VarScope` is a path of scope names,
-and a binding is visible from anywhere whose scope has the declaring scope as a
-prefix. So:
+Workflow variables behave the same way. The variable scopes are segments of the
+workflow `Path`, the ones marked as `var`, the way the blocks of a Go function
+are places in its source, and a binding is visible from anywhere within the
+scope it was declared in. So:
 
 - A **declaration** decides which scope a name lives in. Every declaration is a
   variable of its own.
@@ -128,11 +129,13 @@ prefix. So:
 - A **delete** removes that same binding. A deleted binding keeps shadowing the
   outer ones, so the name is simply gone from that scope.
 
-A set or a delete records the variable scope of the variable it reached
-(`Scope`), next to the `Path` of the step that made it. A scope holds at most
-one variable of a name, as re-declaring in the same scope replaces it, so the
-name and the scope tell exactly which variable was meant, and a re-declaration
-elsewhere never steals it:
+A set or a delete records the variable scope of the variable it reached as the
+variable scope of its `Path` (`Path#VarScope()`, the path up to its last `var`
+segment). The event is recorded at the location of the step that made it, but
+the scopes nested in the reached variable's scope are not marked as `var` on it.
+A scope holds at most one variable of a name, as re-declaring in the same scope
+replaces it, so the name and the scope tell exactly which variable was meant,
+and a re-declaration elsewhere never steals it:
 
 ```go
 x := 1
@@ -144,18 +147,22 @@ x = 3 // still the outer x; the nested x keeps 2
 ```
 
 The assignments are recorded with the scope of the variable they reached. The
-nested `x := 2` names the nested scope:
+nested `x := 2` is made in the nested scope, and names it:
 
 ```json
-{"@type": "workflow::event::var::set", "name": "x", "scope": ["block"], "value": 2}
+{"@type": "workflow::event::var::set", "path": [{"name": "block", "var": true}, {"name": "set-var"}], "name": "x", "value": 2}
 ```
 
-while the outer `x = 3` names the root scope, which is an omitted `scope`, so it
+while the outer `x = 3` is made outside of the block, in the root scope, so it
 reaches the outer `x` only:
 
 ```json
-{"@type": "workflow::event::var::set", "name": "x", "value": 3}
+{"@type": "workflow::event::var::set", "path": [{"name": "set-var"}], "name": "x", "value": 3}
 ```
+
+Had the block assigned to the outer `x` instead (`x = 2`), the assignment
+would be recorded at the block's location, with the block not marked as `var`,
+so its variable scope is the root: `"path": [{"name": "block"}, {"name": "set-var"}]`.
 
 > **Declaring is a step of its own.** `workflow.DeclareVar{Name: "x"}` brings a
 > name into existence in the current scope and assigns nothing. That is what
@@ -169,9 +176,10 @@ The variables of a loop are scoped the way Go scopes them. Every block has a
 scope of its own: the body of a loop gets a fresh one on every iteration, or
 round, and two loops side by side never share one.
 
-`For`'s loop clause (`Init`, `Cond`, `Post`) has a scope of its own, so the
-loop variable is visible to the whole loop and gone after it. The body, `Do`,
-is a fresh scope nested in it on every round:
+`For` is a scope of its own, where `Init` runs, so the loop variable is visible
+to the whole loop and gone after it. Every round is a scope nested in it, where
+`Cond` and `Post` run, and the body, `Do`, is a fresh scope nested in the
+round's:
 
 ```go
 for i := 0; i < 3; i++ { // i belongs to the loop
@@ -213,8 +221,10 @@ deletion made to them adds events.
 workflow.DeclareVar{Name: "trace_id", Global: true}
 ```
 
-`Global: true` drops the current variable scope before declaring, so the name
-lands in the **root scope** and stays visible from every scope in the process.
+`Global: true` declares the name in the **root scope**, rather than in the
+current variable scope, so it stays visible from every scope in the process.
+The declaration is still recorded at the location of the step, with none of
+its path segments marked as `var`.
 
 Use it for cross-cutting values — a correlation ID, a tenant — that every step
 should see regardless of where it sits in the tree.

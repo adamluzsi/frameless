@@ -42,6 +42,8 @@ func TestGenerateV1Snapshots(t *testing.T) {
 	evID := workflow.EventID(evUUID)
 	childPID := workflow.ProcessID(childUUID)
 	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	// path is in a variable scope, so its wire form shows the var flag as well.
+	path := workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "participant"}}
 
 	c := wfjson.NewCodec()
 
@@ -95,7 +97,7 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Condition: "c1",
 			Input:     []workflow.VarName{"a"},
 		}},
-		{"Join", workflow.Join{SpawnName: "child1", Collect: workflow.VarMapping{"x": "y"}}},
+		{"Join", workflow.Join{Spawn: "child1", Collect: workflow.VarMapping{"x": "y"}}},
 		// Conditions
 		{"TemplateCondition", wftemplate.Condition(".x == .y")},
 		// Events
@@ -103,34 +105,31 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"EventTerminated", workflow.EventTerminated{EventID: evID, ProcessID: pid, Timestamp: ts}},
 		{"EventDeclareVar", workflow.EventDeclareVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path:  workflow.Path{"sequence", "[0]", "participant"},
-			Name:  "x",
-			Scope: workflow.VarScope{"[0]"},
+			Path: path,
+			Name: "x",
 		}},
 		{"EventSetVar", workflow.EventSetVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path:  workflow.Path{"sequence", "[0]", "participant"},
+			Path:  path,
 			Name:  "x",
-			Scope: workflow.VarScope{"[0]"},
 			Value: "v",
 		}},
 		{"EventDeleteVar", workflow.EventDeleteVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path:  workflow.Path{"sequence", "[0]", "participant"},
-			Name:  "x",
-			Scope: workflow.VarScope{"[0]"},
+			Path: path,
+			Name: "x",
 		}},
 		{"EventParticipant", workflow.EventParticipant{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			ParticipantID: "p1",
-			Path:          workflow.Path{"sequence", "[0]", "participant"},
+			Path:          path,
 			Input:         []any{"a"},
 			Output:        []any{"b"},
 		}},
 		{"EventCondition", workflow.EventCondition{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			ConditionID: "c1",
-			Path:        workflow.Path{"sequence", "[0]", "participant"},
+			Path:        path,
 			Input:       []any{"a"},
 			Answer:      true,
 		}},
@@ -148,16 +147,15 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"EventJoin", workflow.EventJoin{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			Children: []workflow.ProcessID{childPID},
-			Path:     workflow.Path{"sequence", "[0]"},
+			Path:     workflow.Path{{Name: "sequence"}, {Name: "[0]"}},
 		}},
 		{"EventSleepCompleted", workflow.EventSleepCompleted{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path: workflow.Path{"sequence", "[0]", "sleep"},
+			Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "sleep"}},
 		}},
 		{"EventDefer", workflow.EventDefer{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path:       workflow.Path{"sequence", "[0]", "participant"},
-			VarScope:   workflow.VarScope{"[0]"},
+			Path:       path,
 			Definition: workflow.SetVar{Name: "x", Value: "1"},
 		}},
 		// Schedule-side

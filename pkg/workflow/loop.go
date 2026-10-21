@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -14,16 +15,19 @@ import (
 //	for Init; Cond; Post { Do }
 //
 // The variables of a For are scoped the way Go scopes them.
-// Init, Cond and Post share a variable scope which belongs to the loop,
-// so the loop variable is visible to every part of the loop without leaking out of it.
-// Do, the body, gets a fresh variable scope on every round, nested in the loop's,
-// so what a round declares in the body is gone by the next round, and by Post.
+// The loop is a variable scope of its own, which Init declares the loop variables in,
+// so they are visible to every part of the loop without leaking out of it.
+// Every round is a variable scope nested in the loop's, where Cond and Post run,
+// and Do, the body, is a variable scope nested in the round's,
+// so what a round declares in the body is gone by Post, and by the next round.
 // A variable declared outside of the loop is still visible inside,
 // and an assignment to it writes through, so it keeps whatever the loop counted it to.
 //
 // Every round is a step of its own on the definition path, so the idempotent
 // replay of a Process can tell the rounds apart: a participant in the body runs
 // again on the next round rather than being skipped as already done.
+// Within a round, Do is a step of its own as well,
+// so the same step in Do and in Post doesn't count as done for the other.
 //
 // A For without a Cond is `for { ... }`: nothing in the loop clause will ever
 // end it, so it runs until something inside it raises a Break.
@@ -42,7 +46,6 @@ type For struct {
 var _ Definition = For{}
 
 func (loop For) Execute(ctx context.Context, processID ProcessID) error {
-	ctx = WithName(ctx, "for")
 	ctx = WithVarScope(ctx, "for")
 
 	if loop.Init != nil {
@@ -52,12 +55,7 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 	}
 
 	for round := 0; ; round++ {
-		var (
-			ctx = ctx
-			id  = fmt.Sprintf("[%d]", round)
-		)
-		ctx = WithName(ctx, id)
-		ctx = WithVarScope(ctx, id)
+		var ctx = WithVarScope(ctx, fmt.Sprintf("[%d]", round))
 
 		if loop.Cond != nil {
 			ok, err := loop.Cond.Evaluate(ctx, processID)
@@ -70,9 +68,8 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 		}
 
 		if loop.Do != nil {
-			ctx := WithVarScope(ctx, "body")
 			// The body is a block of its own on every round, just like in Go.
-			if err := loop.Do.Execute(ctx, processID); err != nil {
+			if err := loop.Do.Execute(WithVarScope(ctx, "body"), processID); err != nil {
 				return loopDone(err)
 			}
 		}
@@ -224,12 +221,11 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 // scope. So they shadow the variables of the same name from outside of the
 // loop, and an assignment to them stays within the iteration.
 func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, name string, index *int, key reflect.Value) error {
-	ctx = WithName(ctx, name)
-	ctx = openVarScope(ctx)
+	ctx = WithVarScope(ctx, name)
 	ctx = withIterationVars(ctx, iterationVars{
 		KeyName:   foreach.K,
 		ValueName: foreach.V,
-		Scope:     CurrentVarScope(ctx),
+		Scope:     CurrentPath(ctx),
 
 		Source: foreach.Over,
 		Index:  index,
@@ -255,10 +251,10 @@ type iterationVars struct {
 	KeyName   VarName
 	ValueName VarName
 	// Scope is the variable scope of the loop body iteration, which the
-	// iteration variables are bound to. No other execution of a loop body
-	// shares it, not even the same iteration on another round of an
-	// enclosing For.
-	Scope VarScope
+	// iteration variables are bound to. As it is the Path of the iteration,
+	// no other execution of a loop body shares it, not even the same iteration
+	// on another round of an enclosing For.
+	Scope Path
 
 	Source VarName
 	Index  *int
@@ -309,12 +305,12 @@ func (iv iterationVars) key() (any, bool, error) {
 	}
 }
 
-// enclosingScope is the variable scope the loop itself runs in.
-func (iv iterationVars) enclosingScope() VarScope {
+// loopPath is the Path of the loop itself, which the iteration is nested in.
+func (iv iterationVars) loopPath() Path {
 	if len(iv.Scope) == 0 {
 		return nil
 	}
-	return iv.Scope[:len(iv.Scope)-1]
+	return slices.Clip(iv.Scope[:len(iv.Scope)-1])
 }
 
 func indexCollection(coll any, iv iterationVars) (any, bool, error) {

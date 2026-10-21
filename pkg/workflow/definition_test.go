@@ -201,6 +201,24 @@ func TestIf(t *testing.T) {
 
 		})
 	})
+
+	s.Context("exp", func(s *testcase.Spec) {
+		s.Test("if scope in go", func(t *testcase.T) {
+			var x string = t.Random.String()
+			_ = x
+
+			if t.Random.Bool() {
+				y := t.Random.String() // scoped to the #Then block
+				_ = y
+				x = t.Random.String() // overrides the value in the outer scope
+			} else {
+				z := t.Random.String() // scoped to #Else block
+				_ = z
+				x = t.Random.String() // overrides the value in the outer scope
+			}
+			// neither "y" nor "z" exist here.
+		})
+	})
 }
 
 func ExampleSequence() {
@@ -447,7 +465,7 @@ func TestSleep(t *testing.T) {
 			assert.Must(t).Equal(len(got), 1)
 			assert.NotEmpty(t, got[0].EventID)
 			assert.Equal(t, got[0].ProcessID, process.Get(t))
-			assert.Equal(t, got[0].Path, workflow.Path{"sleep"})
+			assert.Equal(t, got[0].Path, pathOf("sleep"))
 			assert.False(t, got[0].Timestamp.Before(before) || got[0].Timestamp.After(after),
 				"the completion is timestamped at the wake-up")
 		})
@@ -464,7 +482,7 @@ func TestSleep(t *testing.T) {
 			assert.Must(t).Equal(len(events), 2)
 			for i, attempt := range []string{first, second} {
 				assert.Must(t).True(2 <= len(events[i].Path))
-				assert.Equal(t, events[i].Path[:2], workflow.Path{"sleep", attempt})
+				assert.Equal(t, events[i].Path[:2], pathOf("sleep", attempt))
 			}
 		})
 
@@ -527,7 +545,7 @@ func TestSleep(t *testing.T) {
 					var event workflow.Event = workflow.EventCondition{
 						EventID: mustEventID(t), ProcessID: process.Get(t), Timestamp: clock.Now(),
 						ConditionID: cid.Get(t),
-						Path:        workflow.Path{"sleep", string(cid.Get(t))},
+						Path:        pathOf("sleep", string(cid.Get(t))),
 						Input:       []any{true}, Answer: false,
 					}
 					assert.Must(t).NoError(wftest.EventRepository.Get(t).Create(t.Context(), &event))

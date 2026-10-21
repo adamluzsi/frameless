@@ -268,24 +268,17 @@ func randomEventID(tc *testcase.T) workflow.EventID {
 	return id
 }
 
-// randomPath builds a random workflow.Path fixture.
+// randomPath builds a random workflow.Path fixture,
+// with Scopes that are variable scopes and Scopes that are not.
 func randomPath(tc *testcase.T) workflow.Path {
 	tc.Helper()
 	var length = tc.Random.IntBetween(0, 5)
 	if length == 0 && tc.Random.Bool() {
 		return nil
 	}
-	return random.Slice(length, tc.Random.UUID)
-}
-
-// randomVarScope builds a random workflow.VarScope fixture.
-func randomVarScope(tc *testcase.T) workflow.VarScope {
-	tc.Helper()
-	var length = tc.Random.IntBetween(0, 5)
-	if length == 0 && tc.Random.Bool() {
-		return nil
-	}
-	return random.Slice(length, tc.Random.UUID)
+	return random.Slice(length, func() workflow.Scope {
+		return workflow.Scope{Name: tc.Random.UUID(), Var: tc.Random.Bool()}
+	})
 }
 
 // Codec returns a contract.Contract that asserts a workflow.Codec faithfully
@@ -744,7 +737,6 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp: randomEventTimestamp(t),
 			Path:      randomPath(t),
 			Name:      workflow.VarName(t.Random.String()),
-			Scope:     randomVarScope(t),
 		}
 	})
 
@@ -755,7 +747,6 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp: randomEventTimestamp(t),
 			Path:      randomPath(t),
 			Name:      workflow.VarName(t.Random.String()),
-			Scope:     randomVarScope(t),
 			Value: random.Pick(t.Random,
 				func() any { return nil },
 				func() any { return randomSetVarValue(t) },
@@ -770,7 +761,6 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp: randomEventTimestamp(t),
 			Path:      randomPath(t),
 			Name:      workflow.VarName(t.Random.String()),
-			Scope:     randomVarScope(t),
 		}
 	})
 
@@ -840,7 +830,6 @@ func Codec(codec workflow.Codec) contract.Contract {
 			ProcessID:  randomEventProcessID(t),
 			Timestamp:  randomEventTimestamp(t),
 			Path:       randomPath(t),
-			VarScope:   randomVarScope(t),
 			Definition: MakeDefinition(t),
 		}
 	})
@@ -858,6 +847,39 @@ func assertRoundTripEvent(tc *testcase.T, codec workflow.Codec, event workflow.E
 	assert.NoError(tc, codec.Unmarshal(data, &got))
 	assert.Equal(tc, event, got,
 		assert.MessageF("expected the %T to round-trip through the codec\nJSON: %s", event, string(data)))
+	assertPathsRoundTrip(tc, event, got, data)
+}
+
+// assertPathsRoundTrip checks the workflow.Path fields of an event Scope by Scope,
+// the Var flags included.
+//
+// A workflow.Scope is identified by its name, so assert.Equal, which honours its Equal method,
+// doesn't notice a codec that drops whether a Scope is a variable scope.
+func assertPathsRoundTrip(tc *testcase.T, exp, got workflow.Event, data []byte) {
+	tc.Helper()
+	var (
+		expV = reflectkit.BaseValueOf(exp)
+		gotV = reflectkit.BaseValueOf(got)
+	)
+	if expV.Kind() != reflect.Struct || expV.Type() != gotV.Type() {
+		return
+	}
+	for i := range expV.NumField() {
+		if expV.Type().Field(i).Type != reflect.TypeFor[workflow.Path]() {
+			continue
+		}
+		var (
+			name    = expV.Type().Field(i).Name
+			expPath = expV.Field(i).Interface().(workflow.Path)
+			gotPath = gotV.Field(i).Interface().(workflow.Path)
+		)
+		assert.Equal(tc, len(expPath), len(gotPath))
+		for j := range expPath {
+			assert.True(tc, expPath[j] == gotPath[j],
+				assert.MessageF("expected %T#%s to round-trip Scope by Scope\nexpected: %#v\ngot: %#v\nJSON: %s",
+					exp, name, expPath, gotPath, string(data)))
+		}
+	}
 }
 
 // randomEventTimestamp builds a non-zero, varied timestamp for event fixtures

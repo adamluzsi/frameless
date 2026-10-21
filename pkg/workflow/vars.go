@@ -16,17 +16,16 @@ type VarName string
 
 // EventDeclareVar records that a variable was declared in a variable scope.
 //
-// A declaration brings a variable into existence within its Scope, without
-// assigning it a value yet — it is the `var name` part, separate from the
-// `= value` assignment that an EventSetVar records.
+// A declaration brings a variable into existence within its variable scope,
+// without assigning it a value yet — it is the `var name` part, separate from
+// the `= value` assignment that an EventSetVar records.
 type EventDeclareVar struct {
 	EventID   EventID `ext:"id"`
 	ProcessID ProcessID
 	Timestamp time.Time
-	Path      Path
 
-	Name  VarName
-	Scope VarScope
+	Path Path
+	Name VarName
 }
 
 var _ Event = EventDeclareVar{}
@@ -43,8 +42,6 @@ type EventSetVar struct {
 	Timestamp time.Time
 
 	Path  Path
-	Scope VarScope
-
 	Name  VarName
 	Value any
 }
@@ -61,13 +58,9 @@ type EventDeleteVar struct {
 	EventID   EventID `ext:"id"`
 	ProcessID ProcessID
 	Timestamp time.Time
-	// Path is where the deletion was made.
-	Path Path
 
+	Path Path
 	Name VarName
-	// Scope is the variable scope of the variable that got deleted.
-	// See EventSetVar#Scope.
-	Scope VarScope
 }
 
 var _ Event = EventDeleteVar{}
@@ -162,7 +155,7 @@ func (vs Vars) Keys(ctx context.Context) iter.Seq2[VarName, error] {
 type VarBinding struct {
 	Name  VarName
 	Value any
-	Scope VarScope
+	Path  Path
 }
 
 func (vs Vars) All(ctx context.Context) iter.Seq2[VarBinding, error] {
@@ -204,7 +197,7 @@ func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) e
 	// contradicting it under a coarse or frozen clock.
 	var now = timeNow()
 	var ref = vv.resolve(name)
-	var scope VarScope
+	var scope Path
 	if ref.declared() {
 		scope = ref.decl.Scope
 	} else {
@@ -215,7 +208,7 @@ func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) e
 		// transaction: each is idempotent on its own, and the intermediate state
 		// — declared but not yet assigned — is a valid one that a retry simply
 		// resumes from.
-		scope = CurrentVarScope(ctx)
+		scope = CurrentPath(ctx).VarScope()
 		if ref.frame != nil {
 			scope = ref.frame.Scope
 		}
@@ -231,9 +224,8 @@ func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) e
 		EventID:   eventID,
 		ProcessID: vs.ProcessID,
 		Timestamp: now.Add(time.Nanosecond),
-		Path:      CurrentPath(ctx),
+		Path:      declarationPath(CurrentPath(ctx), scope),
 		Name:      name,
-		Scope:     scope,
 		Value:     val,
 	}
 	return vs.EventsRepository.Create(ctx, &event)
@@ -247,15 +239,16 @@ func (vs Vars) declareOnce(ctx context.Context, name VarName, global bool) error
 	if vs.varMutationDone(events, EventDeclareVar{}.EventType(), CurrentPath(ctx), name) {
 		return nil
 	}
-	var scope VarScope
+	var scope Path
 	if !global {
-		scope = CurrentVarScope(ctx)
+		scope = CurrentPath(ctx).VarScope()
 	}
 	return vs.recordDeclaration(ctx, name, scope, timeNow())
 }
 
-// recordDeclaration records the declaration of a variable in a variable scope.
-func (vs Vars) recordDeclaration(ctx context.Context, name VarName, scope VarScope, at time.Time) error {
+// recordDeclaration records the declaration of a variable in a variable scope,
+// which is the variable scope of the current Path or one enclosing it.
+func (vs Vars) recordDeclaration(ctx context.Context, name VarName, scope Path, at time.Time) error {
 	eventID, err := MakeEventID()
 	if err != nil {
 		return err
@@ -264,11 +257,25 @@ func (vs Vars) recordDeclaration(ctx context.Context, name VarName, scope VarSco
 		EventID:   eventID,
 		ProcessID: vs.ProcessID,
 		Timestamp: at,
-		Path:      CurrentPath(ctx),
+		Path:      declarationPath(CurrentPath(ctx), scope),
 		Name:      name,
-		Scope:     scope,
 	}
 	return vs.EventsRepository.Create(ctx, &declareEvent)
+}
+
+// declarationPath is the Path of a variable event made at path, about a variable of scope.
+//
+// The scope is the VarScope of path, or a variable scope enclosing it.
+// The variable scopes of path which are nested in scope get unmarked,
+// so the VarScope of the event's Path is the scope of its variable,
+// while the Path keeps the names of the location the event was made at.
+func declarationPath(path, scope Path) Path {
+	path = slices.Clone(path)
+	copy(path, scope)
+	for i := len(scope); i < len(path); i++ {
+		path[i].Var = false
+	}
+	return path
 }
 
 // setOnce is Set, guarded against being applied twice for the same logical
@@ -300,7 +307,7 @@ func (vs Vars) delete(ctx context.Context, events []Event, name VarName) error {
 	var (
 		now   = timeNow()
 		ref   = visibleVarsOf(ctx, events).resolve(name)
-		scope VarScope
+		scope Path
 	)
 	switch {
 	case ref.declared():
@@ -325,9 +332,8 @@ func (vs Vars) delete(ctx context.Context, events []Event, name VarName) error {
 		EventID:   eventID,
 		ProcessID: vs.ProcessID,
 		Timestamp: now,
-		Path:      CurrentPath(ctx),
+		Path:      declarationPath(CurrentPath(ctx), scope),
 		Name:      name,
-		Scope:     scope,
 	}
 	return vs.EventsRepository.Create(ctx, &event)
 }
@@ -352,15 +358,14 @@ func (vs Vars) deleteOnce(ctx context.Context, name VarName) error {
 // varMutationDone reports whether the Process event history already contains a
 // variable mutation event recorded for a given logical step.
 //
-// A step is identified by the triplet of
+// A step is identified by the pair of
 //
-//   - Path — where in the definition tree the mutation was executed,
-//   - Name — which variable it mutates, and
-//   - Scope — which variable scope the mutation applies to.
+//   - Path — where in the definition tree the mutation was executed, and
+//   - Name — which variable it mutates.
 //
-// The Path pins the mutation to a single location of the workflow definition,
-// while the Scope tells apart repeated executions of that very same location
-// which run under different variable scopes, such as loop iterations.
+// The Path pins the mutation to a single execution of a single location of the
+// workflow definition, as repeated executions of the very same location, such
+// as loop iterations, are at Paths of their own.
 //
 // Replaying a step that is already present in the history must not append a
 // second event, otherwise a retry would apply the mutation twice.
@@ -398,7 +403,7 @@ func (vs Vars) varMutationDone(events []Event, typ EventType, path Path, name Va
 // existence, as the assignments and the deletions made to it since left it.
 type varDecl struct {
 	Name  VarName
-	Scope VarScope
+	Scope Path
 	Value any
 	// deleted marks a variable which got deleted. A deleted variable is not
 	// found anymore, but it keeps shadowing the variables of the same name that
@@ -434,16 +439,16 @@ func foldVars(events []Event) varFold {
 		case EventDeclareVar:
 			// A declaration is the `var name` half of a variable: it brings the
 			// variable into existence, carrying no value of its own.
-			var d = &varDecl{Name: e.Name, Scope: e.Scope}
+			var d = &varDecl{Name: e.Name, Scope: e.Path.VarScope()}
 			f.scoped[d.Name] = append(slices.DeleteFunc(f.scoped[d.Name], func(o *varDecl) bool {
-				return slices.Equal(o.Scope, d.Scope)
+				return o.Scope.Equal(d.Scope)
 			}), d)
 		case EventSetVar:
-			if d, ok := f.variableOf(e.Name, e.Scope); ok {
+			if d, ok := f.variableOf(e.Name, e.Path.VarScope()); ok {
 				d.Value, d.deleted = e.Value, false
 			}
 		case EventDeleteVar:
-			if d, ok := f.variableOf(e.Name, e.Scope); ok {
+			if d, ok := f.variableOf(e.Name, e.Path.VarScope()); ok {
 				d.Value, d.deleted = nil, true
 			}
 		}
@@ -452,26 +457,27 @@ func foldVars(events []Event) varFold {
 }
 
 // variableOf finds the variable of a name which lives in a variable scope.
-func (f varFold) variableOf(name VarName, scope VarScope) (*varDecl, bool) {
+func (f varFold) variableOf(name VarName, scope Path) (*varDecl, bool) {
 	for _, d := range f.scoped[name] {
-		if slices.Equal(d.Scope, scope) {
+		if d.Scope.Equal(scope) {
 			return d, true
 		}
 	}
 	return nil, false
 }
 
-// visible returns the variables of a name which are visible from a variable
-// scope, the innermost first.
+// visible returns the variables of a name which are visible from a position of
+// the workflow, the innermost first.
 //
-// A variable is visible from the scope it was declared in, and from every
-// scope nested in it. The visible scopes form a single chain, each holding at
-// most one variable of a name, so the innermost is the one the name refers to
-// and the others are shadowed by it.
-func (f varFold) visible(name VarName, scope VarScope) []*varDecl {
+// A variable is visible from every position within the variable scope it was
+// declared in, nested scopes included. The visible scopes are all prefixes of
+// the position's Path, so they form a single chain, each holding at most one
+// variable of a name, so the innermost is the one the name refers to and the
+// others are shadowed by it.
+func (f varFold) visible(name VarName, at Path) []*varDecl {
 	var decls []*varDecl
 	for _, d := range f.scoped[name] {
-		if slicekit.MatchPrefix(scope, d.Scope) {
+		if at.MatchPrefix(d.Scope) {
 			decls = append(decls, d)
 		}
 	}
@@ -483,23 +489,24 @@ func (f varFold) visible(name VarName, scope VarScope) []*varDecl {
 
 // visibleVars is how the variables of a Process are seen from a position of
 // the workflow: the variables declared in the Process event history, as they
-// are visible from the variable scope of the position, together with the
-// iteration variables of the ForEach loop bodies the position is nested in.
+// are visible from the Path of the position, together with the iteration
+// variables of the ForEach loop bodies the position is nested in.
 //
 // Every access to the variables resolves a name through it — the reads, from
 // the single variable Vars#Lookup to the whole-scope Vars#ToMap and Vars#All,
 // just like the writes — so none of them can disagree on which variable a name
 // refers to.
 type visibleVars struct {
-	fold  varFold
-	scope VarScope
+	fold varFold
+	// at is the Path of the position.
+	at Path
 	// frame is the iteration of the innermost ForEach loop body the position
 	// is in, if any, linked to the iterations of the enclosing loops.
 	frame *iterationVars
 }
 
 func visibleVarsOf(ctx context.Context, events []Event) visibleVars {
-	var vv = visibleVars{fold: foldVars(events), scope: CurrentVarScope(ctx)}
+	var vv = visibleVars{fold: foldVars(events), at: CurrentPath(ctx)}
 	if iv, ok := ctxIterationVars.Lookup(ctx); ok {
 		vv.frame = &iv
 	}
@@ -530,9 +537,11 @@ func (ref varRef) declared() bool {
 //
 // No other execution of a loop body shares the variable scope of an iteration,
 // so a visible declaration in that scope, or in one nested in it, was made
-// within the very same iteration.
+// within the very same iteration. Both the iteration's scope and the visible
+// declarations' scopes are prefixes of the position's Path, so the longer one
+// is the inner one.
 func (vv visibleVars) resolve(name VarName) varRef {
-	var decls = vv.fold.visible(name, vv.scope)
+	var decls = vv.fold.visible(name, vv.at)
 	for frame := vv.frame; frame != nil; frame = frame.parent {
 		if !frame.exposes(name) {
 			continue
@@ -561,9 +570,9 @@ func (vv visibleVars) lookup(name VarName) (VarBinding, bool, error) {
 		if err != nil || !ok {
 			return VarBinding{}, false, err
 		}
-		return VarBinding{Name: name, Value: value, Scope: ref.frame.Scope}, true, nil
+		return VarBinding{Name: name, Value: value, Path: ref.frame.Scope}, true, nil
 	case ref.declared():
-		return VarBinding{Name: name, Value: ref.decl.Value, Scope: ref.decl.Scope}, true, nil
+		return VarBinding{Name: name, Value: ref.decl.Value, Path: ref.decl.Scope}, true, nil
 	default:
 		return VarBinding{}, false, nil
 	}
@@ -581,7 +590,7 @@ func (vv visibleVars) iterationValue(frame *iterationVars, name VarName) (any, b
 	case frame.KeyName:
 		return frame.key()
 	case frame.ValueName:
-		var loop = visibleVars{fold: vv.fold, scope: frame.enclosingScope(), frame: frame.parent}
+		var loop = visibleVars{fold: vv.fold, at: frame.loopPath(), frame: frame.parent}
 		source, ok, err := loop.lookup(frame.Source)
 		if err != nil || !ok {
 			return nil, false, err
@@ -596,7 +605,7 @@ func (vv visibleVars) iterationValue(frame *iterationVars, name VarName) (any, b
 func (vv visibleVars) bindings() ([]VarBinding, error) {
 	var names []VarName
 	for name := range vv.fold.scoped {
-		if 0 < len(vv.fold.visible(name, vv.scope)) {
+		if 0 < len(vv.fold.visible(name, vv.at)) {
 			names = append(names, name)
 		}
 	}

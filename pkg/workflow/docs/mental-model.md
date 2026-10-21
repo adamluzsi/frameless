@@ -26,7 +26,7 @@ When you face a new problem, the native answer is almost always this:
 ```mermaid
 flowchart TD
     D[Definition value: encodable data] --> X[Definition#Execute]
-    C[Coordinates in ctx: Path and VarScope] --> X
+    C[Coordinates in ctx: the Path, with its variable scopes] --> X
     X --> Q{Recorded at this coordinate?}
     Q -- yes --> R[Reuse the recorded result]
     Q -- no --> W[Run participant, condition or ExecuteWith fn]
@@ -76,22 +76,32 @@ an outcome.
 No event references another event's ID. Facts are correlated only by
 coordinates:
 
-| Coordinate  | Answers                                   | Comes from                                         |
-| ----------- | ----------------------------------------- | -------------------------------------------------- |
-| `ProcessID` | Which process                             | Caller-owned, `Bind`/`Execute` argument            |
-| `Path`      | **Which step / which execution** of it    | `WithName` segments accumulated in `ctx`           |
-| `VarScope`  | **Which variable binding** a fact targets | `WithVarScope` segments accumulated in `ctx`       |
-| `Name` / ID | Which variable / participant / condition  | The definition's own data                          |
+| Coordinate        | Answers                                   | Comes from                                                     |
+| ----------------- | ----------------------------------------- | -------------------------------------------------------------- |
+| `ProcessID`       | Which process                             | Caller-owned, `Bind`/`Execute` argument                        |
+| `Path`            | **Which step / which execution** of it    | `WithName` and `WithVarScope` segments accumulated in `ctx`    |
+| `Path#VarScope()` | **Which variable binding** a fact targets | The `Var` segments of the `Path`, the ones `WithVarScope` adds |
+| `Name` / ID       | Which variable / participant / condition  | The definition's own data                                      |
 
-`Path` and `VarScope` are both `pathNode` chains carried in `context.Context`
-(`path.go`). They are **deliberately independent**:
+The `Path` is a `pathNode` chain carried in `context.Context` (`path.go`), and
+each of its segments is a `Scope`. A segment marked `Var` is a variable scope as
+well, the way a block of a Go function is: the variables declared within it are
+local to it and to the segments nested in it. So the variable scope of a step is
+a prefix of its own path, `Path#VarScope()`, the path up to its last `Var`
+segment, and **the identity of a variable scope is its location**:
 
-- One scope can be visited by many executions. A `For`'s loop scope is shared
-  by its `init`, and by the `cond` and `post` of every round, each on a path
-  of its own (`for/init`, `for/[n]/cond`, `for/[n]/post`).
-- One execution can target a scope other than its own. An `Increment` inside a
-  loop records its event at the loop body's path, against the binding in the
-  root scope.
+- One scope is visited by many steps. A `For`'s loop scope (`for`) is where
+  `init` runs, and every round is a scope nested in it (`for/[n]`), where `cond`
+  and `post` run, so the loop variables `init` declares are visible to all of
+  them.
+- Two scopes of the same name at different locations are distinct. Sibling
+  loops, or the rounds of a loop, never share variables, while a replay of the
+  same block is at the very same location, so it sees the same variables again.
+- One step can target a scope enclosing its own. An `Increment` inside a loop
+  body writes through to the binding in the root scope. Its event is recorded at
+  the step's path, with the `Var` segments nested in the target scope unmarked
+  (`declarationPath` in `vars.go`): the names still tell which step made it,
+  while the `VarScope()` of the event's `Path` is the scope of the binding.
 
 The coordinates are derived, never stored on the definition. A child cannot
 know its position, and doesn't need to: the parent puts it in `ctx`.
@@ -101,46 +111,46 @@ know its position, and doesn't need to: the parent puts it in `ctx`.
 - **Path root:** the `EventUseDefinition.EventID` of the active binding
   (`Runtime.execute`, `WithName(ctx, def.EventID.String())`). A `Replace`
   therefore re-roots every step path, so the new definition starts fresh.
-- **VarScope root:** empty. *Derived from code, not covered by a dedicated
-  test:* variables in the root scope survive a `Replace`, because the scope,
-  unlike the path, is not re-rooted. The scopes the built-ins open are named
-  after paths (see below), so a new definition never reopens a scope of the
-  one it replaced.
+- **Variable scope root:** the empty path, the scope of a path without `Var`
+  segments. The path root is not a variable scope, so *derived from code, not
+  covered by a dedicated test:* variables in the root scope survive a
+  `Replace`, while every scope the built-ins open is nested in the re-rooted
+  path, so a new definition never reopens a scope of the one it replaced.
 
 ### Segments contributed by the built-ins
 
-| Definition           | Path segments                              | VarScope segments       |
-| -------------------- | ------------------------------------------ | ----------------------- |
-| `Sequence`           | `sequence/[i]`                             | —                       |
-| `If`                 | `if/then`, `if/else`                       | —                       |
-| `For`                | `for/init`, `for/[n]/cond`, `…/do`, `…/post` | the loop's block, then `[n]` for the `do` of each round |
-| `ForEach`            | `[i]` or `%v` of the map key               | the iteration's block   |
-| `Sleep`              | `sleep/<unix-second>` (for the condition)  | —                       |
-| `Execute` (and `…With`) | `<ParticipantID or ConditionID>`        | —                       |
+| Definition           | Path segments                                         | Of which variable scopes |
+| -------------------- | ----------------------------------------------------- | ------------------------ |
+| `Sequence`           | `sequence/[i]`                                        | —                        |
+| `If`                 | `if/then`, `if/else`                                  | —                        |
+| `For`                | `for/init`, `for/[n]/…` (cond, post), `for/[n]/body/…` | `for`, `[n]`, `body`     |
+| `ForEach`            | `[i]` or `%v` of the map key                          | the iteration's segment  |
+| `Sleep`              | `sleep/<unix-second>` (for the condition)             | —                        |
+| `Execute` (and `…With`) | `<ParticipantID or ConditionID>`                   | —                        |
 | `SetVar` / `DeclareVar` / `DeleteVar` / `Increment` | `set-var` / `declare-var` / `delete-var` / `inc-op` | — |
-| `Defer`              | `defer`, then `<EventDefer.EventID>` when run | `<EventDefer.EventID>` when run |
-| `Spawn`              | `spawn/<SpawnName>`                        | —                       |
-| `Join`               | `join[/<SpawnName>]`                       | —                       |
+| `Defer`              | `defer`, then `<EventDefer.EventID>` when run         | `<EventDefer.EventID>`   |
+| `Spawn`              | `spawn/<SpawnName>`                                   | —                        |
+| `Join`               | `join[/<SpawnName>]`                                  | —                        |
 
-**A block's scope is named after its path.** Like every block in Go, the body
-of a loop gets a variable scope of its own on every execution: each `ForEach`
-iteration, and the `do` of each `For` round. The loop clause of a `For` gets
-one too. The built-ins name such a scope after the block's path, relative to
-the path where the enclosing scope was opened (`openVarScope` in `path.go`).
-That keeps one segment per scope, and makes the scopes exactly as distinct as
-the paths: two sibling loops, or two rounds of a loop, never share a scope,
-while a replay of the same block gets the very same one. For example,
-`Sequence{SetVar, ForEach, For{Do: ForEach}}` opens:
+**Every block is a variable scope.** Like every block in Go, the body of a loop
+gets a variable scope of its own on every execution: each `ForEach` iteration,
+and the `body` of each `For` round. The loop and the rounds of a `For` get one
+too. As a scope is a segment of the path, the scopes are exactly as distinct as
+the paths. For example, `Sequence{SetVar, ForEach, For{Do: ForEach}}` walks
+(`R` is the root, `*` marks a variable scope):
 
 ```text
-R/sequence/[1]/[0]                                   the first iteration of the ForEach
-R/sequence/[2]/for                                   the loop clause of the For
-R/sequence/[2]/for  →  [0]                           the body of its first round
-R/sequence/[2]/for  →  [0]  →  do/[0]                the first iteration of the ForEach in that body
+R/sequence/[0]/set-var                  the SetVar, in the root scope
+R/sequence/[1]/[0]*                     the first iteration of the ForEach
+R/sequence/[2]/for*/init                the init of the For, in the loop's scope
+R/sequence/[2]/for*/[0]*                its first round, where cond and post run
+R/sequence/[2]/for*/[0]*/body*          the body of its first round
+R/sequence/[2]/for*/[0]*/body*/[0]*     the first iteration of the ForEach in that body
 ```
 
-`WithVarScope(ctx, name)` opens a scope under the given name instead, and the
-scopes opened within it are named relative to where it was opened.
+`WithVarScope(ctx, name)` adds a variable scope segment of the given name, the
+same way the built-ins do. It is a segment of its own, so it needs no
+`WithName` next to it.
 
 **Idiom:** a composite gives every child a segment that is distinct among its
 siblings and **deterministic from definition data plus recorded facts**. The
@@ -155,23 +165,24 @@ children.
 
 ## 3. Variables are a fold keyed by coordinates
 
-A variable event carries three coordinates:
+A variable event carries two coordinates:
 
-- `Path`: where it was recorded, meaning which execution made it.
-- `Scope`: which binding it applies to.
+- `Path`: where it was recorded, meaning which execution made it. Its
+  `VarScope()` is which binding it applies to.
 - `Name`.
 
 Folding them in `EventID` order produces the bindings.
 
-- **One binding per `(Name, Scope)`.** A re-declaration in the same scope
-  replaces the binding (`varFold` in `vars.go`). Inner scopes shadow outer
+- **One binding per `(Name, variable scope)`.** A re-declaration in the same
+  scope replaces the binding (`varFold` in `vars.go`). Inner scopes shadow outer
   ones, and a deleted binding keeps shadowing.
 - **Assignments are bound at write time.** `Set` and `Delete` resolve the name
-  from the current scope and record the **`Scope` of the binding they
-  reached**. A later declaration of the same name in a nearer scope shadows
-  that binding for future reads. It can never retroactively capture earlier
-  assignments. This is how the package answers "which declaration does this set
-  belong to?" without a declaration ID.
+  from the current scope and record **the scope of the binding they reached**,
+  as the `VarScope()` of the event's `Path`: the `Var` segments nested in that
+  scope are unmarked on it (`declarationPath`). A later declaration of the same
+  name in a nearer scope shadows that binding for future reads. It can never
+  retroactively capture earlier assignments. This is how the package answers
+  "which declaration does this set belong to?" without a declaration ID.
 - **Assigning an undeclared name declares it first.** The declaration goes in
   the current scope, or in the iteration scope for a `ForEach` K/V. The declare
   and the set are two separately idempotent events, and "declared but
@@ -200,23 +211,25 @@ workflow.Sequence{
 }
 ```
 
-With `R` as the binding's `EventID` and two orders, the log records:
+With `R` as the binding's `EventID` and two orders, the log records (`*` marks
+a variable scope):
 
-| # | Event       | Path                                         | Scope                | Name     |
-| - | ----------- | -------------------------------------------- | -------------------- | -------- |
-| 1 | DeclareVar  | `R/sequence/[0]/set-var`                     | *(root)*             | `total`  |
-| 2 | SetVar `0`  | `R/sequence/[0]/set-var`                     | *(root)*             | `total`  |
-| 3 | DeclareVar  | `R/sequence/[1]/[0]/sequence/[0]/set-var`    | `R/sequence/[1]/[0]` | `status` |
-| 4 | SetVar      | `R/sequence/[1]/[0]/sequence/[0]/set-var`    | `R/sequence/[1]/[0]` | `status` |
-| 5 | SetVar `1`  | `R/sequence/[1]/[0]/sequence/[1]/inc-op`     | *(root)*             | `total`  |
-| 6 | DeclareVar  | `R/sequence/[1]/[1]/sequence/[0]/set-var`    | `R/sequence/[1]/[1]` | `status` |
-| 7 | SetVar      | `R/sequence/[1]/[1]/sequence/[0]/set-var`    | `R/sequence/[1]/[1]` | `status` |
-| 8 | SetVar `2`  | `R/sequence/[1]/[1]/sequence/[1]/inc-op`     | *(root)*             | `total`  |
+| # | Event       | Path                                         | `Path#VarScope()`     | Name     |
+| - | ----------- | -------------------------------------------- | --------------------- | -------- |
+| 1 | DeclareVar  | `R/sequence/[0]/set-var`                     | *(root)*              | `total`  |
+| 2 | SetVar `0`  | `R/sequence/[0]/set-var`                     | *(root)*              | `total`  |
+| 3 | DeclareVar  | `R/sequence/[1]/[0]*/sequence/[0]/set-var`   | `R/sequence/[1]/[0]*` | `status` |
+| 4 | SetVar      | `R/sequence/[1]/[0]*/sequence/[0]/set-var`   | `R/sequence/[1]/[0]*` | `status` |
+| 5 | SetVar `1`  | `R/sequence/[1]/[0]/sequence/[1]/inc-op`     | *(root)*              | `total`  |
+| 6 | DeclareVar  | `R/sequence/[1]/[1]*/sequence/[0]/set-var`   | `R/sequence/[1]/[1]*` | `status` |
+| 7 | SetVar      | `R/sequence/[1]/[1]*/sequence/[0]/set-var`   | `R/sequence/[1]/[1]*` | `status` |
+| 8 | SetVar `2`  | `R/sequence/[1]/[1]/sequence/[1]/inc-op`     | *(root)*              | `total`  |
 
 How to read it:
 
 - Rows 5 and 8 are recorded deep inside an iteration. Their `Path` says so, but
-  they apply to the root binding, which is what their `Scope` says.
+  the iteration's segment is unmarked on it, so its `VarScope()` is the root,
+  the scope of the binding they apply to.
 - `status` is a different binding per iteration.
 - A replay walks the same paths, finds each event at its path, and appends
   nothing.
@@ -244,11 +257,11 @@ stored, be produced by an end-user builder, and be decoded years later.
   `ContextSetup`), never from struct fields holding clients, funcs or
   channels.
 - **`Execute` starts by claiming its coordinate.** The first line is
-  `ctx = WithName(ctx, "<own-name>")`. Add `WithVarScope(ctx, "<name>")`
-  only if the definition introduces bindings that must not leak to the caller.
-  The scope gets exactly that name, so every execution under the same
-  enclosing scope that uses the same name shares it; name it after something
-  that tells those executions apart, like a round or an item.
+  `ctx = WithName(ctx, "<own-name>")`, or `ctx = WithVarScope(ctx, "<own-name>")`
+  instead if the definition introduces bindings that must not leak to the
+  caller. The scope is a segment of the path, so it is as distinct as the
+  location of the step: sibling instances and the rounds of a loop each get
+  their own.
   `wfcontract.Definition` asserts that children receive a non-empty path and
   that re-execution appends nothing.
 - **Children get distinct, deterministic segments** (§2).
@@ -337,9 +350,9 @@ When an event carries a definition to run later, that event's `EventID` becomes
 the coordinate segment for it:
 
 - `EventUseDefinition.EventID` is the root `Path` segment of the binding.
-- `EventDefer.EventID` is appended to both the `Path` and the `VarScope` when
-  the deferred definition runs (`EventDefer#Context` in `defer.go`).
-  Registration is deduplicated by the `(Path, VarScope)` where `Defer` ran.
+- `EventDefer.EventID` is appended to the `Path` of the registration, as a
+  variable scope, when the deferred definition runs (`EventDefer#Context` in
+  `defer.go`). Registration is deduplicated by the `Path` where `Defer` ran.
 - A participant's returned definition is walked under the recorded call's path.
 
 This is the one sanctioned way to get a unique yet replay-stable segment: it is
@@ -454,8 +467,8 @@ Recorded histories outlive the code that wrote them.
 
 1. It is a plain value type. Every field is data, and it has an `Error()`
    name.
-2. `Execute` begins with `WithName`, plus `WithVarScope` if it introduces local
-   bindings.
+2. `Execute` begins with `WithName`, or with `WithVarScope` instead if it
+   introduces local bindings.
 3. Each child gets a distinct, deterministic segment.
 4. Anything non-deterministic (time, randomness, I/O) happens inside
    `ExecuteWith`/`EvaluateWith` or a participant.
@@ -471,7 +484,7 @@ Recorded histories outlive the code that wrote them.
 
 | Tempting solution                                          | Native idiom                                                                 |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `DeclarationEventID` on `EventSetVar`                      | Record the `Scope` of the binding the name resolved to; fold in `EventID` order |
+| `DeclarationEventID` on `EventSetVar`                      | Record the scope of the binding the name resolved to, as the `Path#VarScope()` of the event; fold in `EventID` order |
 | "Step status" field or table                               | A success event at the step's `Path` is the status                           |
 | In-memory cache or `sync.Map` per process                  | An event plus a fold, or `ExecuteWith`                                       |
 | Update or delete an event to change an answer              | Ask at a new coordinate (`Sleep`) or `Replace` with compensation             |
@@ -493,21 +506,14 @@ These are places where the current code or docs don't fully follow the model.
 Treat them as open questions. Don't use them as precedent, and don't "fix" them
 without a migration story (§13).
 
-- **A fixed `WithVarScope` name is shared.** The built-ins name the scopes
-  they open after the block's path (§2), but `WithVarScope(ctx, name)` takes
-  the name as given. So the sibling instances of a custom definition that use
-  the same name share a scope, and so do its repeated executions within the
-  same enclosing scope, like the rounds of a loop.
 - **A deferred definition doesn't see `ForEach` iteration variables.** The hook
-  runs from the `Path` and `VarScope` recorded in its `EventDefer`, and the
+  runs from the `Path` recorded in its `EventDefer`, and the
   iteration variables are not recorded (§3), so a `Defer` in a `ForEach` body
   can't refer to `K` or `V` by the time it runs. It does see the variables the
   iteration declared, so assigning the iteration variable to one of those
   first, for example through a participant's `Output`, works.
 - **`ForEach` contributes no `foreach` path segment.** Every other composite
   names itself. `ForEach` adds only `[i]` or the key.
-- **The `varMutationDone` comment** describes a `(Path, Name, Scope)` triplet,
-  but the code matches `(EventType, Path, Name)`.
 - **Tags vs `Error()`.** `custom-definition.md` says a codec tag must match
   `Error()` byte-for-byte, but the built-ins don't follow this. For example,
   `SetVar.Error()` is `workflow::set-var` while its tag is

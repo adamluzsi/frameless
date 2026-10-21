@@ -47,13 +47,13 @@
 			}
 		]
 	},
-	"process_id": "01a0f351-7e2a-7915-9de1-67cd6d829d6b",
+	"process_id": "01a106ac-6e25-7191-8e36-441bed6a8f00",
 	"history": [
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f351-7e2a-7926-acc0-abf83bbeea84",
-			"process_id": "01a0f351-7e2a-7915-9de1-67cd6d829d6b",
-			"timestamp": "2026-09-30T17:16:39.338573Z",
+			"event_id": "01a106ac-6e25-71a1-be84-be0823197904",
+			"process_id": "01a106ac-6e25-7191-8e36-441bed6a8f00",
+			"timestamp": "2026-10-04T11:28:46.117103Z",
 			"definition": {
 				"@type": "workflow::sequence",
 				"@value": [
@@ -105,44 +105,60 @@
 		},
 		{
 			"@type": "workflow::event::var::declare",
-			"event_id": "01a0f351-7e2a-7a0b-a87e-7b82f812a9d8",
-			"process_id": "01a0f351-7e2a-7915-9de1-67cd6d829d6b",
-			"timestamp": "2026-09-30T17:16:39.338627Z",
+			"event_id": "01a106ac-6e25-7251-b0aa-0526ce9c5225",
+			"process_id": "01a106ac-6e25-7191-8e36-441bed6a8f00",
+			"timestamp": "2026-10-04T11:28:46.117145Z",
 			"path": [
-				"01a0f351-7e2a-7926-acc0-abf83bbeea84",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e25-71a1-be84-be0823197904"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "name"
 		},
 		{
 			"@type": "workflow::event::var::set",
-			"event_id": "01a0f351-7e2a-7a17-a200-a5b857367ec4",
-			"process_id": "01a0f351-7e2a-7915-9de1-67cd6d829d6b",
-			"timestamp": "2026-09-30T17:16:39.338627001Z",
+			"event_id": "01a106ac-6e25-725e-b732-4712094aa40b",
+			"process_id": "01a106ac-6e25-7191-8e36-441bed6a8f00",
+			"timestamp": "2026-10-04T11:28:46.117145001Z",
 			"path": [
-				"01a0f351-7e2a-7926-acc0-abf83bbeea84",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e25-71a1-be84-be0823197904"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "name",
 			"value": "world"
 		},
 		{
 			"@type": "workflow::event::spawn",
-			"event_id": "01a0f351-7e2a-7ad4-9308-c4a25acd1432",
-			"process_id": "01a0f351-7e2a-7915-9de1-67cd6d829d6b",
-			"child_id": "01a0f351-7e2a-7ad8-9a8c-eb2be26c8366",
+			"event_id": "01a106ac-6e25-7312-bac7-fc8b6ea5a4c7",
+			"process_id": "01a106ac-6e25-7191-8e36-441bed6a8f00",
+			"child_id": "01a106ac-6e25-7312-a6af-a58725a89ed9",
 			"name": "greeter",
-			"timestamp": "2026-09-30T17:16:39.338678Z"
+			"timestamp": "2026-10-04T11:28:46.117192Z"
 		},
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f351-7e2a-7b5b-bb69-2f2410056e37",
-			"process_id": "01a0f351-7e2a-7ad8-9a8c-eb2be26c8366",
-			"timestamp": "2026-09-30T17:16:39.338711Z",
+			"event_id": "01a106ac-6e25-7380-b5ac-d9b2ea22bc15",
+			"process_id": "01a106ac-6e25-7312-a6af-a58725a89ed9",
+			"timestamp": "2026-10-04T11:28:46.117219Z",
 			"definition": {
 				"@type": "workflow::sequence",
 				"@value": [
@@ -169,30 +185,38 @@
 		},
 		{
 			"@type": "workflow::event::var::declare",
-			"event_id": "01a0f351-7e2a-7c48-894d-e567d6192491",
-			"process_id": "01a0f351-7e2a-7ad8-9a8c-eb2be26c8366",
-			"timestamp": "2026-09-30T17:16:39.338768Z",
+			"event_id": "01a106ac-6e25-7449-b980-d2e0c46918a8",
+			"process_id": "01a106ac-6e25-7312-a6af-a58725a89ed9",
+			"timestamp": "2026-10-04T11:28:46.117268Z",
 			"name": "name"
 		},
 		{
 			"@type": "workflow::event::var::set",
-			"event_id": "01a0f351-7e2a-7c59-8fec-459775073956",
-			"process_id": "01a0f351-7e2a-7ad8-9a8c-eb2be26c8366",
-			"timestamp": "2026-09-30T17:16:39.338768001Z",
+			"event_id": "01a106ac-6e25-7451-b161-e066b37c05a5",
+			"process_id": "01a106ac-6e25-7312-a6af-a58725a89ed9",
+			"timestamp": "2026-10-04T11:28:46.117268001Z",
 			"name": "name",
 			"value": "world"
 		},
 		{
 			"@type": "workflow::event::participant",
-			"event_id": "01a0f351-7e2b-7008-8b1a-0c0f4a60b4f3",
-			"process_id": "01a0f351-7e2a-7ad8-9a8c-eb2be26c8366",
-			"timestamp": "2026-09-30T17:16:39.339002Z",
+			"event_id": "01a106ac-6e25-775f-bc6b-d7ac1cd41043",
+			"process_id": "01a106ac-6e25-7312-a6af-a58725a89ed9",
+			"timestamp": "2026-10-04T11:28:46.117461Z",
 			"participant_id": "compat::b",
 			"path": [
-				"01a0f351-7e2a-7b5b-bb69-2f2410056e37",
-				"sequence",
-				"[0]",
-				"compat::b"
+				{
+					"name": "01a106ac-6e25-7380-b5ac-d9b2ea22bc15"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::b"
+				}
 			]
 		}
 	]

@@ -73,7 +73,7 @@ func TestIf_replay(t *testing.T) {
 			assert.NoError(t, act(t))
 			assert.Equal(t, calls.Get(t), []string{"then"})
 			assert.Equal(t, evaluations.Get(t), 1)
-			assert.Equal(t, paths.Get(t), []workflow.Path{{"if", "then", "then"}})
+			assert.Equal(t, paths.Get(t), []workflow.Path{pathOf("if", "then", "then")})
 		})
 
 		s.Then("the answer is recorded by the condition itself, at the if/<condition ID> path", func(t *testcase.T) {
@@ -81,7 +81,7 @@ func TestIf_replay(t *testing.T) {
 			events := conditionEvents(t, wftest.EventRepository.Get(t), process.Get(t))
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ConditionID, cid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{"if", string(cid.Get(t))})
+			assert.Equal(t, events[0].Path, pathOf("if", string(cid.Get(t))))
 			assert.Equal(t, events[0].Answer, answer.Get(t))
 		})
 
@@ -98,7 +98,7 @@ func TestIf_replay(t *testing.T) {
 					branch := map[bool]string{true: "then", false: "else"}[initial]
 					assert.Equal(t, calls.Get(t), []string{branch, branch})
 					assert.Equal(t, evaluations.Get(t), 1)
-					assert.Equal(t, paths.Get(t), []workflow.Path{{"if", branch, branch}, {"if", branch, branch}})
+					assert.Equal(t, paths.Get(t), []workflow.Path{pathOf("if", branch, branch), pathOf("if", branch, branch)})
 				})
 			})
 		}
@@ -124,8 +124,8 @@ func TestIf_replay(t *testing.T) {
 
 			s.Then("different named scope paths keep independent decisions", func(t *testcase.T) {
 				vars := workflow.Vars{ProcessID: process.Get(t), EventsRepository: wftest.EventRepository.Get(t)}
-				left := workflow.WithVarScope(workflow.WithName(t.Context(), "left"), "left")
-				right := workflow.WithVarScope(workflow.WithName(t.Context(), "right"), "right")
+				left := workflow.WithVarScope(t.Context(), "left")
+				right := workflow.WithVarScope(t.Context(), "right")
 				assert.NoError(t, vars.Set(left, "flag", true))
 				assert.NoError(t, vars.Set(right, "flag", false))
 				ctx.Set(t, left)
@@ -179,7 +179,7 @@ func TestIf_replay(t *testing.T) {
 					assert.Equal(t, evaluations.Get(t), 1)
 					events := conditionEvents(t, wftest.EventRepository.Get(t), process.Get(t))
 					assert.Must(t).Equal(len(events), 1)
-					assert.Equal(t, events[0].Path, workflow.Path{"if", string(cid.Get(t))})
+					assert.Equal(t, events[0].Path, pathOf("if", string(cid.Get(t))))
 					assert.Equal(t, events[0].Input, []any{true})
 				})
 
@@ -206,7 +206,7 @@ func TestIf_replay(t *testing.T) {
 						var event workflow.Event = workflow.EventCondition{
 							EventID: mustEventID(t), ProcessID: process.Get(t), Timestamp: clock.Now(),
 							ConditionID: cid.Get(t),
-							Path:        workflow.Path{"if", string(cid.Get(t))},
+							Path:        pathOf("if", string(cid.Get(t))),
 							Input:       []any{true}, Answer: true,
 						}
 						assert.Must(t).NoError(repo.Create(t.Context(), &event))

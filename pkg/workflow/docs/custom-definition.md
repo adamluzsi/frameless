@@ -123,18 +123,18 @@ contributes a segment, and `Sequence` contributes its index.
 > every built-in composite (`Sequence`, `If`, `Sleep`, `Spawn`); your custom
 > definition should do the same.
 
-`WithVarScope` is the variable analogue: it opens a new variable scope whose
-name is part of the variable path. `SetVar` and `DeclareVar` find the nearest
-visible binding, so scoping lets a custom definition shadow outer variables
-without colliding with them. It is the right tool when your definition is
-looped, recursive, or otherwise re-enters a scope its parent might also be
-writing to.
+`WithVarScope` is the variable analogue: it adds a path segment that is a
+variable scope as well, like a block in Go. `SetVar` and `DeclareVar` find the
+nearest visible binding, so scoping lets a custom definition shadow outer
+variables without colliding with them. It is the right tool when your
+definition is looped, recursive, or otherwise re-enters a scope its parent
+might also be writing to.
 
-The scope gets exactly the name you give it. The loops of the package open a
-fresh scope for every round and iteration, so an instance in a loop body gets
-a scope of its own on every round. Two instances side by side in the same
-enclosing scope share it, though, so give them names that tell them apart if
-they must not see each other's variables.
+As the scope is a path segment, it claims the definition's coordinate on its
+own, so use it instead of `WithName`, not next to it. Its identity is its
+location: two instances side by side, like the elements of a `Sequence`, or the
+rounds of a loop, are at different paths, so each gets a scope of its own,
+while a replay of the same instance gets the same scope again.
 
 A definition that wraps another and records bookkeeping values around it is
 the canonical case:
@@ -152,8 +152,7 @@ var _ workflow.Definition = Timed{}
 func (Timed) Error() string { return "acme::timed" }
 
 func (d Timed) Execute(ctx context.Context, pid workflow.ProcessID) error {
-    ctx = workflow.WithName(ctx, "timed")
-    ctx = workflow.WithVarScope(ctx, "timed") // keep `elapsed` local
+    ctx = workflow.WithVarScope(ctx, "timed") // its own segment, and keeps `elapsed` local
 
     startedAt := time.Now()
     if err := d.Body.Execute(ctx, pid); err != nil {
@@ -171,7 +170,7 @@ func (d Timed) Execute(ctx context.Context, pid workflow.ProcessID) error {
 
 Use the rule: if your definition writes variables that should not bleed into
 the caller's scope — temporary bookkeeping, per-iteration state, anything
-local — wrap the writes in `WithVarScope`. Otherwise `WithName` alone is
+local — claim the coordinate with `WithVarScope`. Otherwise `WithName` is
 enough.
 
 ---

@@ -33,13 +33,13 @@
 			}
 		]
 	},
-	"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
+	"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
 	"history": [
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f290-38f2-73e7-b7a1-441b998d6d90",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170244Z",
+			"event_id": "01a106ac-6e05-71db-80e9-539686de24d9",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085117Z",
 			"definition": {
 				"@type": "workflow::sequence",
 				"@value": [
@@ -77,42 +77,66 @@
 		},
 		{
 			"@type": "workflow::event::var::declare",
-			"event_id": "01a0f290-38f2-7472-a6c8-9f3226fad4dc",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170278Z",
+			"event_id": "01a106ac-6e05-734f-92bc-28a669a75079",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085206Z",
 			"path": [
-				"01a0f290-38f2-73e7-b7a1-441b998d6d90",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e05-71db-80e9-539686de24d9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "name"
 		},
 		{
 			"@type": "workflow::event::var::set",
-			"event_id": "01a0f290-38f2-747e-b509-cc26e17de23b",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170278001Z",
+			"event_id": "01a106ac-6e05-7368-98b1-2cdda638b754",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085206001Z",
 			"path": [
-				"01a0f290-38f2-73e7-b7a1-441b998d6d90",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e05-71db-80e9-539686de24d9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "name",
 			"value": "world"
 		},
 		{
 			"@type": "workflow::event::participant",
-			"event_id": "01a0f290-38f2-753f-9357-58e41b7c25d7",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170329Z",
+			"event_id": "01a106ac-6e05-74ab-997a-3e5992b7bee0",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085293Z",
 			"participant_id": "compat::greet",
 			"path": [
-				"01a0f290-38f2-73e7-b7a1-441b998d6d90",
-				"sequence",
-				"[1]",
-				"compat::greet"
+				{
+					"name": "01a106ac-6e05-71db-80e9-539686de24d9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
 			],
 			"input": [
 				"world"
@@ -123,27 +147,43 @@
 		},
 		{
 			"@type": "workflow::event::var::declare",
-			"event_id": "01a0f290-38f2-75a1-a074-8b060188e314",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170352Z",
+			"event_id": "01a106ac-6e05-756c-a2c2-4737557f30f2",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085339Z",
 			"path": [
-				"01a0f290-38f2-73e7-b7a1-441b998d6d90",
-				"sequence",
-				"[1]",
-				"compat::greet"
+				{
+					"name": "01a106ac-6e05-71db-80e9-539686de24d9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
 			],
 			"name": "greeting"
 		},
 		{
 			"@type": "workflow::event::var::set",
-			"event_id": "01a0f290-38f2-75ad-a11d-c4a821b9f055",
-			"process_id": "01a0f290-38f2-73d6-80e6-864bee55ef05",
-			"timestamp": "2026-09-30T13:45:33.170352001Z",
+			"event_id": "01a106ac-6e05-7580-b89d-2040d46fb4b8",
+			"process_id": "01a106ac-6e05-7191-b8ad-c71520a19c28",
+			"timestamp": "2026-10-04T11:28:46.085339001Z",
 			"path": [
-				"01a0f290-38f2-73e7-b7a1-441b998d6d90",
-				"sequence",
-				"[1]",
-				"compat::greet"
+				{
+					"name": "01a106ac-6e05-71db-80e9-539686de24d9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
 			],
 			"name": "greeting",
 			"value": "hello world"

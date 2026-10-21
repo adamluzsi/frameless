@@ -33,13 +33,13 @@
 			}
 		]
 	},
-	"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+	"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
 	"history": [
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f290-885a-7a17-8ee0-cf16f69ea69d",
-			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
-			"timestamp": "2026-09-30T13:45:53.498631Z",
+			"event_id": "01a106ac-6e11-70ab-b75f-4fec9c1b608e",
+			"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
+			"timestamp": "2026-10-04T11:28:46.097042Z",
 			"definition": {
 				"@type": "workflow::sequence",
 				"@value": [
@@ -77,65 +77,115 @@
 		},
 		{
 			"@type": "workflow::event::var::declare",
-			"event_id": "01a0f290-885a-7aaf-8123-85240a475627",
-			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
-			"timestamp": "2026-09-30T13:45:53.498668Z",
+			"event_id": "01a106ac-6e11-7153-8334-11b1c50cc6e7",
+			"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
+			"timestamp": "2026-10-04T11:28:46.097082Z",
 			"path": [
-				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e11-70ab-b75f-4fec9c1b608e"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "i"
 		},
 		{
 			"@type": "workflow::event::var::set",
-			"event_id": "01a0f290-885a-7abb-bdeb-947157525e7a",
-			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
-			"timestamp": "2026-09-30T13:45:53.498668001Z",
+			"event_id": "01a106ac-6e11-7164-9185-30428a5a32b8",
+			"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
+			"timestamp": "2026-10-04T11:28:46.097082001Z",
 			"path": [
-				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
-				"sequence",
-				"[0]",
-				"set-var"
+				{
+					"name": "01a106ac-6e11-70ab-b75f-4fec9c1b608e"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
 			],
 			"name": "i",
 			"value": 0
 		},
 		{
 			"@type": "workflow::event::condition",
-			"event_id": "01a0f290-885a-7bd6-83ec-6376b82a76c2",
-			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
+			"event_id": "01a106ac-6e11-731a-8877-031dc1db3edb",
+			"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
 			"condition_id": "template-condition",
 			"path": [
-				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
-				"sequence",
-				"[1]",
-				"for",
-				"[0]",
-				"cond",
-				"template-condition"
+				{
+					"name": "01a106ac-6e11-70ab-b75f-4fec9c1b608e"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "template-condition"
+				}
 			],
 			"input": [],
 			"answer": true,
-			"timestamp": "2026-09-30T13:45:53.498741Z"
+			"timestamp": "2026-10-04T11:28:46.097195Z"
 		},
 		{
 			"@type": "workflow::event::participant",
-			"event_id": "01a0f290-885a-7c40-bf6e-591ad10a5de0",
-			"process_id": "01a0f290-885a-7a07-a381-975b95d58834",
-			"timestamp": "2026-09-30T13:45:53.498767Z",
+			"event_id": "01a106ac-6e11-73ba-9209-dbe6ea9d4327",
+			"process_id": "01a106ac-6e11-7097-af92-ae8d0f398bdf",
+			"timestamp": "2026-10-04T11:28:46.097233Z",
 			"participant_id": "compat::a",
 			"path": [
-				"01a0f290-885a-7a17-8ee0-cf16f69ea69d",
-				"sequence",
-				"[1]",
-				"for",
-				"[0]",
-				"do",
-				"sequence",
-				"[0]",
-				"compat::a"
+				{
+					"name": "01a106ac-6e11-70ab-b75f-4fec9c1b608e"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "body",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
 			]
 		}
 	]

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -183,7 +182,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 			continue
 		}
 
-		if ee.ID == ie.ID && slices.Equal(ee.Path, path) {
+		if ee.ID == ie.ID && ee.Path.Equal(path) {
 			found = true
 			matchingEE = ee
 			mEvents = slicekit.Clone(events)

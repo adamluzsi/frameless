@@ -3,6 +3,7 @@ package wfjson_test
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -214,8 +215,10 @@ func TestWorkflowJoin(t *testing.T) {
 // TestPathDTO covers how a workflow.Path is written to and read back from a
 // persisted event log.
 //
-// A path is a chain of scope names, so its wire form is a plain JSON array of
-// strings. Event logs outlive the code that wrote them, which is why this
+// A path is a chain of scopes, so its wire form is a JSON array of objects,
+// one per scope, holding the name of the scope, and whether it is a variable scope as well.
+// The "var" flag is omitted for the scopes which are not variable scopes.
+// Event logs outlive the code that wrote them, which is why this
 // stable, long-lived shape is pinned here.
 func TestPathDTO(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -224,11 +227,61 @@ func TestPathDTO(t *testing.T) {
 		return wfjson.NewCodec()
 	})
 
+	// samePath compares two paths strictly, as workflow.Path#Equal only compares the names of the scopes.
+	samePath := func(tb testing.TB, exp, got workflow.Path) {
+		tb.Helper()
+		assert.True(tb, slices.Equal(exp, got), assert.MessageF("expected: %#v\ngot:      %#v", exp, got))
+	}
+
+	var expPath = workflow.Path{
+		{Name: "sequence"},
+		{Name: "[0]", Var: true},
+		{Name: "participant"},
+	}
+
+	s.Describe("#Marshal", func(s *testcase.Spec) {
+		event := let.Var(s, func(t *testcase.T) workflow.EventSetVar {
+			eventID, err := workflow.MakeEventID()
+			assert.NoError(t, err)
+			processID, err := workflow.MakeProcessID()
+			assert.NoError(t, err)
+			return workflow.EventSetVar{
+				EventID:   eventID,
+				ProcessID: processID,
+				Timestamp: time.Now().UTC(),
+				Path:      expPath,
+				Name:      "n",
+				Value:     "v",
+			}
+		})
+
+		act := let.Act(func(t *testcase.T) []byte {
+			data, err := subject.Get(t).Marshal(event.Get(t))
+			assert.NoError(t, err)
+			return data
+		})
+
+		s.Then("the path is written as an array of scope objects, with the var flag only on the variable scopes", func(t *testcase.T) {
+			var got struct {
+				Path json.RawMessage `json:"path"`
+			}
+			assert.NoError(t, json.Unmarshal(act(t), &got))
+			assert.Equal(t, string(got.Path), `[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}]`)
+		})
+
+		s.Then("there is no separate variable scope field, as the path carries it", func(t *testcase.T) {
+			var got map[string]json.RawMessage
+			assert.NoError(t, json.Unmarshal(act(t), &got))
+			_, ok := got["scope"]
+			assert.False(t, ok)
+		})
+	})
+
 	s.Describe("#Unmarshal", func(s *testcase.Spec) {
 		var (
 			// path is the JSON value of the "path" field, as found in the event log.
 			path = let.Var(s, func(t *testcase.T) string {
-				return `["sequence","[0]","participant"]`
+				return `[{"name":"sequence"},{"name":"[0]","var":true},{"name":"participant"}]`
 			})
 			data = let.Var(s, func(t *testcase.T) []byte {
 				return fmt.Appendf(nil, `{"@type":"workflow::event::var::set",`+
@@ -245,11 +298,12 @@ func TestPathDTO(t *testing.T) {
 			return got
 		})
 
-		s.Then("the path is restored as the chain of scope names", func(t *testcase.T) {
+		s.Then("the path is restored as the chain of scopes, the variable scopes included", func(t *testcase.T) {
 			got, ok := act(t).(workflow.EventSetVar)
 			assert.True(t, ok, "expected an EventSetVar")
 
-			assert.Equal(t, workflow.Path{"sequence", "[0]", "participant"}, got.Path)
+			samePath(t, expPath, got.Path)
+			samePath(t, workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}}, got.Path.VarScope())
 		})
 
 		s.When("the path field is absent", func(s *testcase.Spec) {
@@ -281,9 +335,8 @@ func TestPathDTO(t *testing.T) {
 					EventID:   eventID,
 					ProcessID: processID,
 					Timestamp: time.Now().UTC(),
-					Path:      workflow.Path{"sequence", "[0]", "participant"},
+					Path:      expPath,
 					Name:      "n",
-					Scope:     workflow.VarScope{"[0]"},
 				}
 			})
 		)
@@ -297,12 +350,12 @@ func TestPathDTO(t *testing.T) {
 			return got
 		})
 
-		s.Then("the path and the variable scope survive the round-trip", func(t *testcase.T) {
+		s.Then("the path survives the round-trip, and with it the variable scope of the variable", func(t *testcase.T) {
 			got, ok := act(t).(workflow.EventDeclareVar)
 			assert.True(t, ok, "expected an EventDeclareVar")
 
-			assert.Equal(t, event.Get(t).Path, got.Path)
-			assert.Equal(t, event.Get(t).Scope, got.Scope)
+			samePath(t, event.Get(t).Path, got.Path)
+			samePath(t, event.Get(t).Path.VarScope(), got.Path.VarScope())
 			assert.Equal(t, event.Get(t).Name, got.Name)
 		})
 	})

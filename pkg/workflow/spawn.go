@@ -285,7 +285,7 @@ func (d Join) Execute(ctx context.Context, processID ProcessID) error {
 
 func (d Join) joinChild(ctx context.Context, parentID ProcessID) error {
 	if len(d.Spawn) == 0 {
-		return fmt.Errorf("missing %T#SpawnName", d)
+		return fmt.Errorf("missing %T#Spawn", d)
 	}
 
 	ctx = WithName(ctx, string(d.Spawn))

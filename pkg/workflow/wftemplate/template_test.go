@@ -109,7 +109,7 @@ func TestCondition(t *testing.T) {
 			id := "template-condition"
 			assert.OneOf(t, events, func(t testing.TB, e workflow.EventCondition) {
 				assert.Equal(t, e.ConditionID, workflow.ConditionID(id))
-				assert.Equal(t, e.Path, workflow.Path{id})
+				assert.Equal(t, e.Path, workflow.Path{{Name: id}})
 				assert.Equal(t, e.Answer, got)
 			})
 		})

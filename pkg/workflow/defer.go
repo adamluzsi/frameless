@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow/internal"
 )
 
@@ -53,16 +52,14 @@ import (
 //
 // The hooked Definition shares the location of the Defer step.
 // The registration is made at the step's own path, under a "defer" segment,
-// and in the variable scope the step runs in.
-// Both are extended with a segment of the hook's own, named after its EventID,
-// so a Defer at foo/bar/baz runs its Definition at foo/bar/baz/defer/<hook event id>,
-// and in the <step scope>/<hook event id> variable scope.
+// and the hooked Definition runs there, in a variable scope of the hook's own, named after its EventID.
+// So a Defer at foo/bar/baz runs its Definition at foo/bar/baz/defer/<hook event id>.
 // So hooks never collide on their idempotent steps or on their local variables,
 // while they still see every variable visible to the Defer step.
 //
-// A registration is identified by its Path and VarScope,
+// A registration is identified by its Path,
 // so replaying the same step doesn't register the hook twice,
-// while the same step re-entered under a new variable scope (e.g. a loop iteration) registers its own.
+// while the same step re-entered at another Path (e.g. in a loop iteration) registers its own.
 // A Defer without a Definition has nothing to defer, so it registers nothing.
 type Defer struct {
 	Definition Definition
@@ -84,10 +81,7 @@ func (d Defer) Execute(ctx context.Context, pid ProcessID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var (
-		path  = CurrentPath(ctx)
-		scope = CurrentVarScope(ctx)
-	)
+	var path = CurrentPath(ctx)
 	for event, err := range repo.FindByProcessID(ctx, pid) {
 		if err != nil {
 			return err
@@ -96,7 +90,7 @@ func (d Defer) Execute(ctx context.Context, pid ProcessID) error {
 		if !ok {
 			continue
 		}
-		if slicekit.Equal(ed.Path, path) && slicekit.Equal(ed.VarScope, scope) {
+		if ed.Path.Equal(path) {
 			return nil
 		}
 	}
@@ -109,7 +103,6 @@ func (d Defer) Execute(ctx context.Context, pid ProcessID) error {
 		ProcessID:  pid,
 		Timestamp:  timeNow(),
 		Path:       path,
-		VarScope:   scope,
 		Definition: d.Definition,
 	}
 	return repo.Create(ctx, &event)
@@ -127,10 +120,8 @@ type EventDefer struct {
 	Timestamp time.Time
 
 	// Path is the registration's location.
-	Path Path
-	// VarScope is the variable scope the registration was made in.
-	// The hook's Definition runs in a scope nested under it (see EventDefer#Context).
-	VarScope   VarScope
+	// The hook's Definition runs in a variable scope nested under it (see EventDefer#Context).
+	Path       Path
 	Definition Definition
 }
 
@@ -141,17 +132,14 @@ func (e EventDefer) EventType() EventType    { return "workflow::defer" }
 
 // Context returns the context in which the hooked Definition is meant to run.
 //
-// Whatever path and variable scope ctx carries is replaced with the declaration's,
-// each extended with the hook's EventID:
-// the Path becomes <hook Path>/<EventID>,
-// and the VarScope becomes <hook VarScope>/<EventID>.
+// Whatever Path ctx carries is replaced with the registration's,
+// extended with a variable scope named after the hook's EventID: <hook Path>/<EventID>.
 // The hook runs outside of the loop bodies that ctx may be in,
 // and every other value of ctx, such as the runtime, is kept.
 func (e EventDefer) Context(ctx context.Context) context.Context {
-	var segment = e.EventID.String()
-	return withVarScopeAt(ctx,
-		append(slicekit.Clone(e.Path), segment),
-		append(slicekit.Clone(e.VarScope), segment))
+	ctx = atProcessRoot(ctx)
+	ctx = withPath(ctx, e.Path)
+	return WithVarScope(ctx, e.EventID.String())
 }
 
 // runDeferred unwinds the Definitions deferred by the Process, newest first.

@@ -50,7 +50,7 @@ func TestExecuteParticipant(t *testing.T) {
 			events := participantEvents(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ParticipantID, pid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(pid.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{{Name: string(pid.Get(t))}})
 		})
 
 		s.Then("the recorded call is replayed by the replacement workflow.Execute", func(t *testcase.T) {
@@ -139,7 +139,7 @@ func TestExecuteCondition(t *testing.T) {
 			events := conditionEvents(t, c)
 			assert.Must(t).Equal(len(events), 1)
 			assert.Equal(t, events[0].ConditionID, cid.Get(t))
-			assert.Equal(t, events[0].Path, workflow.Path{string(cid.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{{Name: string(cid.Get(t))}})
 		})
 
 		s.Then("the recorded answer is replayed by the replacement workflow.Execute", func(t *testcase.T) {
@@ -193,7 +193,7 @@ func TestExecuteCondition(t *testing.T) {
 			assert.Equal(t, calls.Get(t), 1)
 			events := conditionEvents(t, c)
 			assert.Must(t).Equal(len(events), 1)
-			assert.Equal(t, events[0].Path, workflow.Path{string(cid.Get(t))})
+			assert.Equal(t, events[0].Path, workflow.Path{{Name: string(cid.Get(t))}})
 		})
 
 		s.Then("a later execution at the same position replays the answer", func(t *testcase.T) {

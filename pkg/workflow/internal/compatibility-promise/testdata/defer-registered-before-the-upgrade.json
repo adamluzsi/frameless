@@ -23,13 +23,13 @@
 			}
 		]
 	},
-	"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
+	"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
 	"history": [
 		{
 			"@type": "workflow::event::use-definition",
-			"event_id": "01a0f290-38f5-7512-b1e4-59514667a3a3",
-			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
-			"timestamp": "2026-09-30T13:45:33.173317Z",
+			"event_id": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092644Z",
 			"definition": {
 				"@type": "workflow::sequence",
 				"@value": [
@@ -57,27 +57,43 @@
 		},
 		{
 			"@type": "workflow::event::participant",
-			"event_id": "01a0f290-38f5-7591-9338-294c13235d84",
-			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
-			"timestamp": "2026-09-30T13:45:33.173349Z",
+			"event_id": "01a106ac-6e0c-7b11-b86f-bdf851be30ac",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092692Z",
 			"participant_id": "compat::a",
 			"path": [
-				"01a0f290-38f5-7512-b1e4-59514667a3a3",
-				"sequence",
-				"[0]",
-				"compat::a"
+				{
+					"name": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
 			]
 		},
 		{
 			"@type": "workflow::event::defer",
-			"event_id": "01a0f290-38f5-75d2-bc33-40a5b64110c5",
-			"process_id": "01a0f290-38f5-7501-a1a5-771c956c8987",
-			"timestamp": "2026-09-30T13:45:33.173364Z",
+			"event_id": "01a106ac-6e0c-7bce-9db3-2a9f79c1de1a",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092738Z",
 			"path": [
-				"01a0f290-38f5-7512-b1e4-59514667a3a3",
-				"sequence",
-				"[1]",
-				"defer"
+				{
+					"name": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "defer"
+				}
 			],
 			"definition": {
 				"@type": "workflow::execute",
