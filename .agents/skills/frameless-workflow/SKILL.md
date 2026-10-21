@@ -35,15 +35,15 @@ Everything recorded is immutable, the bound definition included. Aim for appendi
 
 The package answers every state question the same way: **record a fact at a coordinate, and derive everything else by folding the ordered log.** Keep new code in that shape.
 
-- **Coordinates come from `ctx`, not from references.** `Path` (built by `WithName`) says *which step or execution* recorded a fact. `VarScope` (built by `WithVarScope`) says *which variable binding* the fact targets. Together with `ProcessID` and the variable name or capability ID, that is the whole identity of a fact. No event references another event's ID.
-- **`Path` and `VarScope` are independent.** A `For`'s loop scope is shared by its `init` and by every round's `cond` and `post`, each on its own `for/[n]/…` path. An `Increment` inside a loop records its event at the loop body's path, against a binding in the root scope.
-- **Every block has a scope of its own, named after its path.** A `ForEach` iteration, a `For`'s loop clause, and the `do` of every `For` round each open a fresh scope, named after the block's path relative to where the enclosing scope was opened. Sibling loops and repeated rounds never share variables, while a replay of the same block gets the same scope again.
+- **Coordinates come from `ctx`, not from references.** The `Path` (built by `WithName` and `WithVarScope`) says *which step or execution* recorded a fact. Its `Var` segments, the ones `WithVarScope` adds, are the variable scopes along it, like the blocks of a Go function, so `Path#VarScope()` says *which variable binding* the fact targets. Together with `ProcessID` and the variable name or capability ID, that is the whole identity of a fact. No event references another event's ID.
+- **A variable scope is a location.** A scope is a segment of the `Path`, so its identity is where it is. Two scopes of the same name at different locations never share variables, while a replay of the same block is at the same location, so it sees the same scope again. A variable event made on behalf of an enclosing scope (a `Global` declaration, or an assignment that writes through) keeps the names of its location, with the scopes nested in the target scope unmarked, so its `Path#VarScope()` is the target scope.
+- **Every block has a scope of its own.** A `For` is a scope (`for`) where `init` runs, each round is a scope nested in it (`[n]`) where `cond` and `post` run, and the `do` of the round is a scope nested in that (`body`). A `ForEach` iteration (`[i]` or the key) is a scope too. Sibling loops and repeated rounds never share variables.
 - **The log is ordered by creation.** `EventID` is a UUIDv7. Order-sensitive folds sort by it (`sortEvents`), because timestamps can tie.
 - **"Do once and remember" has one primitive:** the idempotent executor behind `Execute`, `Execute#ExecuteWith` and `Execute#EvaluateWith`. Only success is recorded. Signals leave no call record.
-- **A recorded event's `EventID` is the only sanctioned segment that is both unique and replay-stable.** It roots the paths of the bound definition (`EventUseDefinition`), and the path and scope of a deferred definition (`EventDefer`). A UUID generated during execution differs on every replay.
+- **A recorded event's `EventID` is the only sanctioned segment that is both unique and replay-stable.** It roots the paths of the bound definition (`EventUseDefinition`), and the variable scope a deferred definition runs in (`EventDefer`). A UUID generated during execution differs on every replay.
 - **To get a different answer, move to a different coordinate.** `Sleep` asks at `sleep/<unix-second>`, `Replace` re-roots every path, and each loop round gets a new path. Recorded answers are never edited.
 
-A solution can be correct and still be foreign to this model. For example, linking an `EventSetVar` to its declaration through a `DeclarationEventID` would work. But the package already records the `Scope` of the binding the name resolved to, and the fold does the rest. A second identity scheme would have to be taught to every fold, replay guard, codec and adapter. The full rationale is in `pkg/workflow/docs/mental-model.md`.
+A solution can be correct and still be foreign to this model. For example, linking an `EventSetVar` to its declaration through a `DeclarationEventID` would work. But the `Path` of the event already names the variable scope of the binding the name resolved to, and the fold does the rest. A second identity scheme would have to be taught to every fold, replay guard, codec and adapter. The full rationale is in `pkg/workflow/docs/mental-model.md`.
 
 Before changing behavior, identify whether the request concerns:
 
@@ -119,11 +119,11 @@ Set exactly one of `Participant` and `Condition` on an `Execute`; it decides the
 ### Variables and conditions
 
 - Variables are a fold over process events. General `Vars` reads see current scoped state, including later writes from previous attempts; paths identify steps, not positions on a timeline. Historical input comparison belongs to the executor's cache validation, not ordinary variable reads. Use workflow operations or `workflow.GetVars(ctx)`; do not create an unrecorded side map as workflow state.
-- `DeclareVar` creates a deliberate binding; `SetVar` writes through to the nearest visible binding; `Global: true` declares in the root scope. Use declaration intentionally when shadowing is required. A set/delete records the variable scope of the variable it reached (`EventSetVar#Scope`, next to the `Path` of the step), and a scope holds at most one variable of a name, so a later re-declaration elsewhere never takes it over.
+- `DeclareVar` creates a deliberate binding; `SetVar` writes through to the nearest visible binding; `Global: true` declares in the root scope. Use declaration intentionally when shadowing is required. A set/delete records the variable scope of the variable it reached as the `Path#VarScope()` of its event (the scopes nested in it are unmarked on the `Path`), and a scope holds at most one variable of a name, so a later re-declaration elsewhere never takes it over.
 - The built-in variable steps (`SetVar`, `DeclareVar`, `DeleteVar`, `Increment`) are path-guarded. On replay, each skips if an event of its kind for that name already exists at its path, so inside a loop it records once per round or iteration. A direct `Vars#Set`/`Vars#Delete` call is only skipped when the value is unchanged. Inside a participant or an `ExecuteWith` function that is enough, because the recorded call is the guard. In plain definition code, a value that differs between attempts (clock, randomness, live reads) appends a new event on every replay, so compute it inside a recorded call.
 - `ForEach` `K`/`V` behave like Go's `for range` loop variables: per iteration, shadowing outer variables of the same name, visible to nested loops, and an assignment to them stays within the iteration (it declares them in the iteration scope first). Never rely on a body `SetVar` on `V` to change an outer variable; assign to the collection or to a differently named outer variable instead.
-- `For` scopes like Go's three clause loop: `Init`/`Cond`/`Post` share the loop's scope, and `Do` gets a fresh scope on every round, so a body variable doesn't survive into the next round or into `Post`, while an assignment to the loop variable or an outer variable writes through. A `Defer` in the body sees the variables of its own round.
-- A `Defer`'s hook runs at the recorded `Path`/`VarScope` of its registration, outside of any loop body, so it can't see `ForEach` `K`/`V`. Copy the value into a variable the iteration declares first (e.g. through a participant's `Output`) if the cleanup needs it.
+- `For` scopes like Go's three clause loop: `Init` declares the loop variables in the loop's scope, every round is a scope nested in it where `Cond` and `Post` run, and `Do` gets a fresh scope nested in the round's, so a body variable doesn't survive into `Post` or into the next round, while an assignment to the loop variable or an outer variable writes through. `Do` and `Post` are distinct steps, so the same step in both counts as done for neither. A `Defer` in the body sees the variables of its own round.
+- A `Defer`'s hook runs at the recorded `Path` of its registration, in a variable scope of its own, outside of any loop body, so it can't see `ForEach` `K`/`V`. Copy the value into a variable the iteration declares first (e.g. through a participant's `Output`) if the cleanup needs it.
 - `Spawn#Vars` reads the parent variable from where the `Spawn` is, and declares the child variable in the child's root scope.
 - Recording a condition's answer is the condition's responsibility, not the control-flow definition's. `Execute` with a `Condition` records at `<path>/<ConditionID>`; `wftemplate.Condition` records under the fixed ID `template-condition`, so two templates at one path share an answer; a custom `Condition` records only if it answers through `workflow.Execute{}.EvaluateWith(ctx, pid, conditionID, fn)`, which records at `<path>/<ConditionID>` (same ID rules as `ExecuteWith`), otherwise it is asked again on every evaluation, replays included. A recorded answer is replayed at the same path, so `If` walks the same branch again after a suspension, and each `For` round keeps its own answer.
 - Older histories hold no recorded template answer, since templates used to be evaluated live: the first post-upgrade evaluation at each template position uses current scoped state and cannot reconstruct the old branch. Explicitly migrate affected processes where that is unsafe. Answer reuse requires a durable event; evaluation can repeat after event-store failure or enclosing rollback.
@@ -207,7 +207,7 @@ var _ workflow.Definition = Timed{}
 func (Timed) Error() string { return "acme::timed" }
 
 func (d Timed) Execute(ctx context.Context, pid workflow.ProcessID) error {
-    ctx = workflow.WithName(ctx, "timed")
+    // a variable scope is a path segment too, so it claims the coordinate on its own
     ctx = workflow.WithVarScope(ctx, "timed") // keep the bookkeeping local
 
     repo, err := workflow.LookupEventsRepository(ctx)
@@ -245,13 +245,13 @@ codec round trip, and plain JSON scalars do.
 
 Three obligations make a custom definition well-behaved:
 
-1. **Stable path identity.** Always call `workflow.WithName(ctx, "...")` with a stable, namespaced segment before you recurse into nested operations. The path is the step's identity in the event log; without a unique segment, your child steps collide with siblings and replay skips the wrong one. Use `workflow.WithVarScope(ctx, "...")` alongside it when the definition writes bookkeeping variables that should not leak into the caller's scope.
+1. **Stable path identity.** Always call `workflow.WithName(ctx, "...")` with a stable, namespaced segment before you recurse into nested operations. The path is the step's identity in the event log; without a unique segment, your child steps collide with siblings and replay skips the wrong one. When the definition writes bookkeeping variables that should not leak into the caller's scope, call `workflow.WithVarScope(ctx, "...")` instead: it adds a segment that is a variable scope as well, so don't pair it with a `WithName` of the same name.
 2. **Serializability.** Every field must round-trip through the codec. The struct holds only names, IDs, and nested definitions/conditions — never closures, channels, or live application state.
 3. **Statelessness and replay safety.** A definition may be walked repeatedly. General variable reads use current scoped state, not the state at the step's original execution; use recorded condition answers rather than assuming those reads reproduce the past. Lean on event-backed operations (`SetVar`, `vars.Lookup`, `Execute`, `Execute#ExecuteWith` for side effects the definition runs itself, etc.). Anything non-deterministic (clock, randomness, I/O) belongs inside a recorded call, together with the `vars.Set` that stores its result. If you need to wait on something the process does not own (a payment, a webhook, an external approval), that is a participant's job — return a `RuntimeSignal` from the participant, not from the definition.
 
 ### Path identity
 
-A step's idempotency key is its `workflow.Path`, assembled from the context as the definition tree is walked. The first segment is the `EventID` of the current `EventUseDefinition`. Every nested `WithName` contributes a segment, and `Sequence` contributes `sequence/[i]`. `WithVarScope` does not touch the path: it builds the separate `VarScope` coordinate that decides which variable bindings a step sees and declares into. Two steps that resolve to the same path look like one step to the runtime — which means a replay short-circuits whichever the engine finds in the log first.
+A step's idempotency key is its `workflow.Path`, assembled from the context as the definition tree is walked. The first segment is the `EventID` of the current `EventUseDefinition`. Every nested `WithName` and `WithVarScope` contributes a segment, and `Sequence` contributes `sequence/[i]`. The segments `WithVarScope` adds are marked `Var`: they are the variable scopes along the path, and `Path#VarScope()`, the path up to its last `Var` segment, decides which variable bindings a step sees and declares into. Two steps that resolve to the same path look like one step to the runtime — which means a replay short-circuits whichever the engine finds in the log first.
 
 Segments must be distinct among siblings and deterministic from definition data plus recorded facts. Don't use random, time-based, or in-memory counter segments. The only exceptions in the package are recorded `EventID`s and `Sleep`'s deliberate per-second attempt segment.
 
@@ -397,7 +397,7 @@ Work inside `pkg/workflow` must keep every history that deployed code has alread
   A new event type is justified only for a new *kind* of fact. A new identity scheme is almost never justified.
 - **Shape of a built-in definition:**
   - a plain value type;
-  - `Execute` begins with `WithName(ctx, "<name>")`, plus `WithVarScope` if it has local bindings;
+  - `Execute` begins with `WithName(ctx, "<name>")`, or with `WithVarScope(ctx, "<name>")` instead if it has local bindings;
   - distinct, deterministic child segments;
   - variable writes guarded by path (`setOnce`/`declareOnce`/`deleteOnce`);
   - `ErrFatal`/`ErrInvalidDefinition` for invalid data, and signals returned unwrapped;
@@ -412,7 +412,7 @@ Work inside `pkg/workflow` must keep every history that deployed code has alread
 
 | Tempting solution | Native idiom |
 | --- | --- |
-| An event field pointing at another event (e.g. `DeclarationEventID`) | Record the coordinates (`Path`, `Scope`, `Name`) and fold in `EventID` order |
+| An event field pointing at another event (e.g. `DeclarationEventID`) | Record the coordinates (`Path` with its variable scopes, `Name`) and fold in `EventID` order |
 | A step-status flag, table or in-memory cache | A success event at the step's `Path` is the status |
 | Updating or deleting an event to change an outcome | Ask at a new coordinate, or `Replace` with a compensating definition |
 | A parent-ID field passed down to children | The parent adds a `WithName` segment to `ctx` |
@@ -423,10 +423,8 @@ Work inside `pkg/workflow` must keep every history that deployed code has alread
 
 The current code has a few spots that don't follow the model. Treat them as open questions, and don't build on or around them. See "Known deviations" in `docs/mental-model.md`. In short:
 
-- A fixed `WithVarScope` name is shared by the sibling instances of a custom definition and by its repeated executions (the built-ins name their scopes after paths instead).
 - A deferred definition can't see `ForEach` `K`/`V`.
 - `ForEach` adds no `foreach` path segment.
-- The `varMutationDone` comment claims a `Scope` check that the code doesn't do.
 - Built-in `Error()` strings differ from their wire tags.
 - The active binding and `Defer` unwinding are ordered by timestamp.
 - `Spawn` identity is per name, not per path.
@@ -485,10 +483,10 @@ Use these implementation/test files as concrete, current examples:
 Before finalizing workflow-related changes, verify:
 
 - [ ] Definitions are serializable data; every custom type is codec-registered with a namespaced tag and has a round-trip test.
-- [ ] Custom definitions call `workflow.WithName` (and `workflow.WithVarScope` when they need scoped variables) at the top of `Execute`; nested steps have distinct path segments.
+- [ ] Custom definitions call `workflow.WithName` (or `workflow.WithVarScope` when they need scoped variables) at the top of `Execute`; nested steps have distinct path segments.
 - [ ] Steps are replay-safe and retain stable path identity; no insertion or reordering of steps in code-built children that in-flight processes replay.
 - [ ] Non-deterministic values (clock, randomness, live reads) are produced inside a recorded call; plain definition code writes variables only through the path-guarded steps.
-- [ ] New behavior is expressed with coordinates (`Path`/`VarScope`), events plus folds, and the idempotent executor; no event references another event's ID, and no second identity scheme is introduced.
+- [ ] New behavior is expressed with coordinates (the `Path`, with its variable scopes), events plus folds, and the idempotent executor; no event references another event's ID, and no second identity scheme is introduced.
 - [ ] Changes inside `pkg/workflow` leave built-in path/scope segments, wire tags, and event shapes unchanged, or come with a migration; `internal/compatibility-promise` fixtures are untouched.
 - [ ] Recorded events and bound definitions are never updated or deleted; definition changes go through a new `EventUseDefinition`, and run-time decisions through a participant-returned `Definition`.
 - [ ] Process IDs are caller-owned and reused after ambiguous retries.

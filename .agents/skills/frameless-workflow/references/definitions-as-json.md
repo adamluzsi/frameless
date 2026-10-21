@@ -185,9 +185,11 @@ the process history. See [Conditions][CONDITION].
 }
 ```
 
-`cond` is required. The other three are independently optional.
-`init`, `cond` and `post` share the loop's variable scope, while `do` gets a
-fresh scope nested in it on every round, like the body of Go's `for` loop.
+All four are independently optional. Without `cond`, the loop is `for { ... }`,
+which only ends when its body raises a `workflow::break`.
+`init` declares the loop variables in the loop's variable scope. Every round is
+a scope nested in it, where `cond` and `post` run, and `do` gets a fresh scope
+nested in the round's, like the body of Go's `for` loop.
 
 ### `workflow.ForEach`
 
