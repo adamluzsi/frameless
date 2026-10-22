@@ -3,10 +3,12 @@ package workflow_test
 import (
 	"context"
 	"iter"
+	"math/rand"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
@@ -37,16 +39,15 @@ func Test_resilience(t *testing.T) {
 		}
 	})
 
-	s.Context("flaky event repository", func(s *testcase.Spec) {
-		c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
-			rt := c.Runtime.Super(t)
-			rt.Events = &FlakyEventRepository{
-				R:      c.EventRepository.Get(t),
-				Random: t.Random,
-			}
-			return rt
-		})
+	// greet can only greet with the name it is given.
+	_, greet := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context, string) (string, error) {
+		return func(ctx context.Context, name string) (string, error) {
+			return "hello " + name, ctx.Err()
+		}
+	})
 
+	// itIsResilient is what must hold, whatever faults a dependency of the Runtime has.
+	itIsResilient := func(s *testcase.Spec) {
 		s.Test("scheduled tasks are resilient", func(t *testcase.T) {
 			var def = workflow.Sequence{
 				workflow.Execute{Participant: pid.Get(t)},
@@ -82,6 +83,70 @@ func Test_resilience(t *testing.T) {
 				assert.NoError(t, err)
 				assert.True(t, isCompleted)
 			})
+		})
+
+		s.Test("variables passed to a spawned child and collected from it are not lost", func(t *testcase.T) {
+			t.Random.Repeat(3, 7, func() {
+				name := t.Random.UUID()
+				// greeting := make(chan string)
+				// go func(name string) { greeting <- greet(name) }(name)
+				// <-greeting
+				var def = workflow.Sequence{
+					workflow.SetVar{Name: "name", Value: name},
+					workflow.Spawn{
+						Name: "greeter",
+						Definition: workflow.Execute{
+							Participant: greet.Get(t),
+							Input:       []workflow.VarName{"name"},
+							Output:      []workflow.VarName{"greeting"},
+						},
+						Vars: workflow.VarMapping{"name": "name"},
+					},
+					workflow.Join{Spawn: "greeter", Collect: workflow.VarMapping{"greeting": "greeting"}},
+				}
+				processID, err := workflow.MakeProcessID()
+				assert.NoError(t, err)
+				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
+				assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
+				assert.Eventually(t, 5*time.Second, func(tb testing.TB) {
+					done, err := workflow.IsCompleted(tb.Context(), c.EventRepository.Get(t), processID)
+					assert.NoError(tb, err)
+					assert.True(tb, done, "the Join waits for the child, which can't greet without the name it is given")
+				})
+
+				vars := workflow.Vars{ProcessID: processID, EventsRepository: c.EventRepository.Get(t)}
+				greeting, err := vars.Get(t.Context(), "greeting")
+				assert.NoError(t, err)
+				assert.Equal[any](t, "hello "+name, greeting)
+			})
+		})
+	}
+
+	// faults is where the flaky dependencies take their faults from, while the Runtime's goroutines use them at once.
+	// It is not t.Random, as the test keeps using that one too,
+	// and random.Random#Read, so random.Random#UUID, is not guarded against concurrent use.
+	faults := let.Var(s, func(t *testcase.T) *random.Random {
+		return random.New(rand.NewSource(int64(t.Random.Int())))
+	})
+
+	s.Context("flaky event repository", func(s *testcase.Spec) {
+		statementLevel := let.VarOf(s, false)
+		c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+			rt := c.Runtime.Super(t)
+			rt.Events = &FlakyEventRepository{
+				R:              c.EventRepository.Get(t),
+				Random:         faults.Get(t),
+				StatementLevel: statementLevel.Get(t),
+			}
+			return rt
+		})
+
+		itIsResilient(s)
+
+		s.When("a fault fails only the operation it hits, and leaves its transaction open", func(s *testcase.Spec) {
+			statementLevel.LetValue(s, true)
+
+			itIsResilient(s)
 		})
 	})
 
@@ -90,47 +155,12 @@ func Test_resilience(t *testing.T) {
 			rt := c.Runtime.Super(t)
 			rt.Queue = &FlakyQueue{
 				Q:   c.Queue.Get(t),
-				RND: t.Random,
+				RND: faults.Get(t),
 			}
 			return rt
 		})
 
-		s.Test("scheduled tasks are resilient", func(t *testcase.T) {
-			var def = workflow.Sequence{
-				workflow.Execute{Participant: pid.Get(t)},
-				workflow.Execute{Participant: pid.Get(t)},
-				workflow.Execute{Participant: pid.Get(t)},
-			}
-			t.Random.Repeat(3, 7, func() {
-				processID, err := workflow.MakeProcessID()
-				assert.NoError(t, err)
-				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
-				assert.NoError(t, c.Runtime.Get(t).Schedule(t.Context(), processID))
-				assert.Eventually(t, 5*time.Second, func(tb testing.TB) {
-					done, err := workflow.IsCompleted(tb.Context(), c.EventRepository.Get(t), processID)
-					assert.NoError(tb, err)
-					assert.True(tb, done)
-				})
-			})
-		})
-
-		s.Test("executed tasks are resilient", func(t *testcase.T) {
-			var def = workflow.Sequence{
-				workflow.Execute{Participant: pid.Get(t)},
-				workflow.Execute{Participant: pid.Get(t)},
-				workflow.Execute{Participant: pid.Get(t)},
-			}
-			t.Random.Repeat(3, 7, func() {
-				processID, err := workflow.MakeProcessID()
-				assert.NoError(t, err)
-				assert.NoError(t, c.Runtime.Get(t).Bind(t.Context(), processID, def))
-				assert.NoError(t, c.Runtime.Get(t).Execute(t.Context(), processID))
-
-				isCompleted, err := workflow.IsCompleted(t.Context(), c.EventRepository.Get(t), processID)
-				assert.NoError(t, err)
-				assert.True(t, isCompleted)
-			})
-		})
+		itIsResilient(s)
 	})
 }
 
@@ -202,14 +232,37 @@ func flake(rnd *random.Random) bool {
 	return rnd.IntBetween(0, 100) <= 10
 }
 
+// FlakyEventRepository is an event log behind an unreliable connection:
+// any of its operations may fail with a fault.
 type FlakyEventRepository struct {
 	R *memory.WorkflowEventRepository
 
 	*random.Random
+
+	// StatementLevel makes a fault fail only the operation it hits,
+	// while the transaction of the operation stays open, and it can still be committed,
+	// like after a failed statement in MySQL.
+	// Otherwise, a fault aborts the transaction as a whole, like in PostgreSQL.
+	//
+	// Either way, a failed commit commits nothing.
+	StatementLevel bool
 }
 
 var _ workflow.EventRepository = (*FlakyEventRepository)(nil)
 
+// fault makes the operation of ctx fail at random, in the way StatementLevel tells.
+func (r *FlakyEventRepository) fault(ctx context.Context) (context.Context, error) {
+	if !r.StatementLevel {
+		return r.withFlake(ctx), nil
+	}
+	if flake(r.Random) {
+		return ctx, r.Random.Error()
+	}
+	return ctx, nil
+}
+
+// withFlake makes ctx fail the operation it is used for at random,
+// while it aborts the transaction of ctx too, if there is one.
 func (r *FlakyEventRepository) withFlake(ctx context.Context) context.Context {
 	if !flake(r.Random) {
 		return ctx
@@ -226,7 +279,11 @@ func (r *FlakyEventRepository) withFlake(ctx context.Context) context.Context {
 }
 
 func (r *FlakyEventRepository) BeginTx(ctx context.Context) (context.Context, error) {
-	return r.R.BeginTx(r.withFlake(ctx))
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	return r.R.BeginTx(ctx)
 }
 
 func (r *FlakyEventRepository) CommitTx(ctx context.Context) error {
@@ -238,27 +295,51 @@ func (r *FlakyEventRepository) RollbackTx(ctx context.Context) error {
 }
 
 func (r *FlakyEventRepository) Create(ctx context.Context, ptr *workflow.Event) error {
-	return r.R.Create(r.withFlake(ctx), ptr)
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return err
+	}
+	return r.R.Create(ctx, ptr)
 }
 
 func (r *FlakyEventRepository) Update(ctx context.Context, ptr *workflow.Event) error {
-	return r.R.Update(r.withFlake(ctx), ptr)
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return err
+	}
+	return r.R.Update(ctx, ptr)
 }
 
 func (r *FlakyEventRepository) FindByID(ctx context.Context, id workflow.EventID) (workflow.Event, bool, error) {
-	return r.R.FindByID(r.withFlake(ctx), id)
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	return r.R.FindByID(ctx, id)
 }
 
 func (r *FlakyEventRepository) DeleteByID(ctx context.Context, id workflow.EventID) error {
-	return r.R.DeleteByID(r.withFlake(ctx), id)
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return err
+	}
+	return r.R.DeleteByID(ctx, id)
 }
 
 func (r *FlakyEventRepository) FindAll(ctx context.Context) iter.Seq2[workflow.Event, error] {
-	return r.R.FindAll(r.withFlake(ctx))
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return iterkit.Error[workflow.Event](err)
+	}
+	return r.R.FindAll(ctx)
 }
 
 func (r *FlakyEventRepository) FindByProcessID(ctx context.Context, pid workflow.ProcessID) iter.Seq2[workflow.Event, error] {
-	return r.R.FindByProcessID(r.withFlake(ctx), pid)
+	ctx, err := r.fault(ctx)
+	if err != nil {
+		return iterkit.Error[workflow.Event](err)
+	}
+	return r.R.FindByProcessID(ctx, pid)
 }
 
 type FlakyQueue struct {

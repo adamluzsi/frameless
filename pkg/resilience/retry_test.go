@@ -407,6 +407,11 @@ func TestJitter_ShouldTry(t *testing.T) {
 				assert.True(it, duration <= subject.Get(t).Delay+buffer)
 			})
 		})
+
+		s.Test("it is safe to retry with it from multiple goroutines at once", func(t *testcase.T) {
+			_, _, _ = subject.Get(t), Context.Get(t), attempt.Get(t) // initialised before the goroutines would race on them
+			testcase.Race(func() { act(t) }, func() { act(t) }, func() { act(t) })
+		})
 	})
 
 	s.Context("integrate testcase/clock", func(s *testcase.Spec) {
