@@ -376,6 +376,54 @@ func TestSpawn_Vars(t *testing.T) {
 				"so the variables it is given can't be kept there either")
 		})
 	})
+
+	s.When("the event log fails while the variables are forwarded to the child", func(s *testcase.Spec) {
+		// go child(parentKey) // a goroutine never starts without its arguments
+		var (
+			expErr       = let.Error(s)
+			forwardFails = let.Var(s, func(t *testcase.T) *atomic.Bool {
+				var fails atomic.Bool
+				fails.Store(true)
+				return &fails
+			})
+		)
+		c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+			forwarded := childKey.Get(t)
+			rt := c.Runtime.Super(t)
+			rt.Events = failingEventRepository{
+				WorkflowEventRepository: c.EventRepository.Get(t),
+				Err:                     expErr.Get(t),
+				Fails:                   forwardFails.Get(t),
+				FailsOn: func(event workflow.Event) bool {
+					set, ok := event.(workflow.EventSetVar)
+					return ok && set.Name == forwarded
+				},
+			}
+			return rt
+		})
+
+		s.Then("the child is spawned with its variables once the event log recovers", func(t *testcase.T) {
+			assert.ErrorIs(t, c.ActExecute(t), expErr.Get(t))
+
+			forwardFails.Get(t).Store(false)
+			assert.NoError(t, c.ActExecute(t))
+			c.WaitForSpawn(t, c.ProcessID.Get(t))
+			c.ChildrenCompletionAre(t, c.ProcessID.Get(t), true)
+
+			assert.Equal[any](t, parentValue.Get(t),
+				getVar(t, c.Runtime.Get(t), childID.Get(t), childKey.Get(t)),
+				"the retried Spawn must not take a child left without its variables for an already spawned one")
+		})
+
+		s.Then("the Spawn is not recorded either, so it is retried as a whole", func(t *testcase.T) {
+			assert.ErrorIs(t, c.ActExecute(t), expErr.Get(t))
+
+			for _, event := range c.ProcessEvents(t, c.ProcessID.Get(t)) {
+				_, ok := event.(workflow.EventSpawn)
+				assert.False(t, ok, "the Spawn is only recorded together with the variables forwarded to the child")
+			}
+		})
+	})
 }
 
 func ExampleJoin() {
@@ -749,10 +797,14 @@ func TestJoin(t *testing.T) {
 				)
 				c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
 					rt := c.Runtime.Super(t)
-					rt.Events = failingJoinEventRepository{
+					rt.Events = failingEventRepository{
 						WorkflowEventRepository: c.EventRepository.Get(t),
 						Err:                     expErr.Get(t),
 						Fails:                   joinFails.Get(t),
+						FailsOn: func(event workflow.Event) bool {
+							_, ok := event.(workflow.EventJoin)
+							return ok
+						},
 					}
 					return rt
 				})
@@ -907,16 +959,17 @@ func letVarName(s *testcase.Spec) testcase.Var[workflow.VarName] {
 	})
 }
 
-// failingJoinEventRepository simulates an event log which goes down right as a Join is recorded:
-// while it Fails, every EventJoin fails to be created with Err.
-type failingJoinEventRepository struct {
+// failingEventRepository simulates an event log which goes down right as a certain event is recorded:
+// while it Fails, every event that FailsOn matches fails to be created with Err.
+type failingEventRepository struct {
 	*memory.WorkflowEventRepository
-	Err   error
-	Fails *atomic.Bool
+	Err     error
+	Fails   *atomic.Bool
+	FailsOn func(workflow.Event) bool
 }
 
-func (r failingJoinEventRepository) Create(ctx context.Context, ptr *workflow.Event) error {
-	if _, ok := (*ptr).(workflow.EventJoin); ok && r.Fails.Load() {
+func (r failingEventRepository) Create(ctx context.Context, ptr *workflow.Event) error {
+	if r.Fails.Load() && r.FailsOn(*ptr) {
 		return r.Err
 	}
 	return r.WorkflowEventRepository.Create(ctx, ptr)

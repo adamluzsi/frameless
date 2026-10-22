@@ -642,6 +642,7 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
   "@type": "workflow::sequence",
   "@value": [
     { "@type": "workflow::var::set", "name": "order_id", "value": "ORD-42" },
+    { "@type": "workflow::var::set", "name": "tracking", "value": "" },
 
     {
       "@type": "workflow::if",
@@ -668,12 +669,17 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
                 {
                   "@type": "workflow::execute",
                   "participant": "ship",
-                  "input": ["reservation_id"],
+                  "input": ["order", "reservation"],
                   "output": ["tracking"]
                 }
               ]
             },
-            "vars": { "order_id": "order" }
+            "vars": { "order_id": "order", "reservation_id": "reservation" }
+          },
+          {
+            "@type": "workflow::join",
+            "spawn": "fulfilment",
+            "collect": { "tracking": "tracking" }
           }
         ]
       },
@@ -683,8 +689,6 @@ An order-fulfilment flow, written in JSON by hand, that decodes into a working
         "input": ["order_id"]
       }
     },
-
-    { "@type": "workflow::join", "spawn": "fulfilment" },
 
     {
       "@type": "workflow::if",
@@ -708,8 +712,19 @@ A few things to notice:
 - The whole tree is a `Sequence` because everything has to run in order.
 - The `If` branches are themselves nested `Sequence`s — a single step is just
   a one-element sequence in disguise.
-- `Spawn` declares a child process; `Join` waits for it. The parent's
-  `order_id` lands in the child as `order` through the `vars` mapping.
+- `Spawn` starts a child process; `Join` waits for it. The child only sees what
+  `vars` forwards (`parent → child`): the parent's `order_id` and
+  `reservation_id` land in the child as `order` and `reservation`. `collect`
+  is the way back (`child → parent`): the child's `tracking` is assigned to the
+  parent's `tracking`.
+- The `join` sits in the same branch as the `spawn`. On the backorder path
+  there is no `fulfilment` child, and joining a name that was never spawned is
+  an error.
+- `tracking` is declared before the `If`, so the `join` in the `then` branch
+  writes through to it, and `email-receipt` sees it after the `If` (it stays
+  `""` on the backorder path). Without that declaration, the collected
+  `tracking` would be local to the branch, like any variable assigned there —
+  `reservation_id` is, which is fine, as only the branch needs it.
 - `input`/`output` lists on `workflow::execute` are positional; the order of
   the names must match the registered participant's `func(ctx, …)` signature.
 - This JSON can be parsed by `wfjson.NewCodec()` and decoded into a

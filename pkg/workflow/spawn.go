@@ -121,7 +121,7 @@ func (spawn Spawn) ensureEvents(ctx context.Context, rt Runtime, parentID Proces
 	if err != nil {
 		return EventSpawn{}, err
 	}
-	defer comproto.FinishOnePhaseCommit(&err, rt.Events, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, rt.Events, ctx)
 	event, err := spawn.ensureSpawnEvent(ctx, rt, parentID)
 	if err != nil {
 		return EventSpawn{}, err
