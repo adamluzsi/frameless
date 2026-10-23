@@ -25,17 +25,9 @@ func (dto WithType[T]) MarshalJSON() ([]byte, error) {
 var _ json.Unmarshaler = (*WithType[any])(nil)
 
 func (dto *WithType[T]) UnmarshalJSON(data []byte) error {
-	var value T
-	var c = typed{
-		Type:  reflectkit.TypeOf[T](),
-		Value: &value,
-		Force: true,
-	}
-	if err := c.UnmarshalJSON(data); err != nil {
+	value, err := unmarshalWithType[T](data)
+	if err != nil {
 		return err
-	}
-	if c.Value != nil {
-		value = c.Value.(T)
 	}
 	dto.V = value
 	return nil
@@ -56,20 +48,23 @@ func (dto WithTypeIDOf[T, IDType]) MarshalJSON() ([]byte, error) {
 var _ json.Unmarshaler = (*WithTypeIDOf[any, any])(nil)
 
 func (dto *WithTypeIDOf[T, IDType]) UnmarshalJSON(data []byte) error {
-	var value T
-	var c = typed{
-		Type:  reflectkit.TypeOf[T](),
-		Value: &value,
-		Force: true,
-	}
-	if err := c.UnmarshalJSON(data); err != nil {
+	value, err := unmarshalWithType[T](data)
+	if err != nil {
 		return err
-	}
-	if c.Value != nil {
-		value = c.Value.(T)
 	}
 	dto.V = value
 	return nil
+}
+
+func unmarshalWithType[T any](data []byte) (T, error) {
+	var c = typed{
+		Type:  reflectkit.TypeOf[T](),
+		Force: true,
+	}
+	if err := c.UnmarshalJSON(data); err != nil {
+		return *new(T), err
+	}
+	return typeAssert[T](c.Value)
 }
 
 type typed struct {
@@ -210,18 +205,13 @@ func (v typed) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON will deserialize the T from data.
 func (v *typed) UnmarshalJSON(data []byte) error {
-	isInterfaceType := v.Type.Kind() == reflect.Interface
+	// data is not always the exact JSON value that encoding/json hands to an Unmarshaler.
+	// It can be the whole input of Codec#Unmarshal or a direct UnmarshalJSON call,
+	// and that may have insignificant whitespace around the value, like the trailing newline of a JSON file.
+	data = bytes.TrimSpace(data)
 
-	if !isInterfaceType {
-		switch {
-		case isNull(data), isPrimitive(data) && !v.Force:
-			var val typed
-			if err := json.Unmarshal(data, &val.Value); err != nil {
-				return err
-			}
-			*v = val
-			return nil
-		}
+	if !isInterfaceType(v.Type) && !isTypeEnvelope(data) {
+		return v.unmarshalValue(data)
 	}
 
 	if isObject(data) {
@@ -236,8 +226,37 @@ func (v *typed) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// unmarshalValue decodes data, a JSON value without a @type envelope, straight into the concrete v.Type.
+// The JSON carries no type information, but v.Type already tells what it is.
+func (v *typed) unmarshalValue(data []byte) error {
+	ptr := reflect.New(v.Type)
+	// null is the zero value of T, even for a T with its own UnmarshalJSON,
+	// as that is what a nil T is marshaled into.
+	if !isNull(data) {
+		if err := unmarshalReflectWithReg(data, ptr.Elem(), v.reg, v.codec); err != nil {
+			return err
+		}
+	}
+	v.Value = ptr.Elem().Interface()
+	return nil
+}
+
+// isTypeEnvelope reports whether data is a JSON object with a @type discriminator.
+func isTypeEnvelope(data []byte) bool {
+	return isObject(data) && !isNestedObjectWithoutType(data)
+}
+
+func implementsJSONUnmarshaler(T reflect.Type) bool {
+	return T.Implements(jsonUnmarshalerType) || reflect.PointerTo(T).Implements(jsonUnmarshalerType)
+}
+
 func (v *typed) unmarshalObject(data []byte) error {
-	var typeID TypeID
+	var (
+		typeID TypeID
+		// unwrapped tells whether data is already the @value of a {"@type":"...","@value":...} envelope,
+		// instead of a flat envelope, where @type sits next to the value's own fields.
+		unwrapped bool
+	)
 
 	if v.Force {
 		d := json.NewDecoder(bytes.NewReader(data))
@@ -253,6 +272,7 @@ func (v *typed) unmarshalObject(data []byte) error {
 			// replaces data with the inner bytes.
 			if len(tc.Value) > 0 {
 				data = tc.Value
+				unwrapped = true
 			}
 		}
 	}
@@ -277,81 +297,40 @@ func (v *typed) unmarshalObject(data []byte) error {
 	// For Force=false callers, the data was not stripped above, so a
 	// typedContainer envelope would still wrap the concrete value. Strip
 	// it now that we know the typeID so the dispatch below receives the
-	// inner payload, not the envelope. Without this, dispatching to
-	// jsonArray.UnmarshalJSON would receive `{"@type":"...","@value":[…]}`
-	// where it expects a bare array and fail with "cannot unmarshal
-	// object into []json.RawMessage".
+	// inner payload, not the envelope. Without this, a registered slice type
+	// would receive `{"@type":"...","@value":[…]}` where it expects a bare array.
 	if len(data) > 0 && data[0] == '{' {
 		var tc typedContainer
 		if err := json.Unmarshal(data, &tc); err == nil && tc.Type == typeID && len(tc.Value) > 0 {
 			data = tc.Value
+			unwrapped = true
 		}
 	}
 
 	var value reflect.Value
 	rType, ok := lookupTypeByIDForCodec(v.reg, typeID)
 	if ok {
-		switch rType.Kind() {
-		case reflect.Slice:
-			slice := reflect.MakeSlice(rType, 0, 0)
-			ptr := reflect.New(rType)
-			ptr.Elem().Set(slice)
-
-			var ary jsonArray
-			ary.ptr = ptr
-			ary.reg = v.reg
-			ary.codec = v.codec
-			if err := json.Unmarshal(data, &ary); err != nil {
-				return err
-			}
-			value = ptr.Elem()
-
-		case reflect.Struct, reflect.Pointer:
-			// Route struct values through the codec's reflection-based
-			// unmarshalling so that nested interface-typed fields are
-			// dispatched correctly via the per-codec registry. stdlib
-			// json.Unmarshal cannot do this dispatch.
-			//
-			// Exception: if the concrete type brings its own
-			// json.Unmarshaler, defer to its wire format so its custom
-			// decoding logic is preserved.
-			if rType.Implements(jsonUnmarshalerType) || reflect.PointerTo(rType).Implements(jsonUnmarshalerType) {
-				ptr, err := newImpl(v.Type, rType)
-				if err != nil {
-					return err
-				}
-				if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-					return err
-				}
-				value = ptr.Elem()
-				break
-			}
-			ptr, err := newImpl(v.Type, rType)
-			if err != nil {
-				return err
-			}
-			// newImpl may return a pointer-to-pointer when the concrete
-			// implementation sits behind a pointer (e.g. *TypeC implements
-			// Greeter). Walk to the non-pointer struct before decoding.
-			target := ptr
-			for target.Kind() == reflect.Pointer {
-				target = target.Elem()
-			}
-			if err := unmarshalStructWithReg(data, target, v.reg, v.codec); err != nil {
-				return err
-			}
-			value = ptr.Elem()
-
-		default: // try for primitives
-			ptr, err := newImpl(v.Type, rType)
-			if err != nil {
-				return err
-			}
-			if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-				return err
-			}
-			value = ptr.Elem()
+		// A map has no struct fields to keep apart from its @type, so the Codec writes it as a flat envelope:
+		// {"@type":"...","key":...}. The @type is not one of the map's entries.
+		if rType.Kind() == reflect.Map && !unwrapped {
+			data = stripTypeField(data)
 		}
+		ptr, err := newImpl(v.Type, rType)
+		if err != nil {
+			return err
+		}
+		// newImpl wraps the registered type into further pointers
+		// when only a pointer of it implements v.Type, like *TypeC for Greeter.
+		registered := ptr
+		for registered.Type().Elem() != rType {
+			registered = registered.Elem()
+		}
+		// Unlike encoding/json, the codec's reflection based decoding dispatches the interface values nested in the registered type,
+		// and it still decodes a registered type which has its own json.Unmarshaler with it.
+		if err := unmarshalReflectWithReg(data, registered.Elem(), v.reg, v.codec); err != nil {
+			return err
+		}
+		value = ptr.Elem()
 	} else {
 		if TypeID(v.Type.String()) != typeID {
 			return fmt.Errorf("%s is not a recognised primitive type", typeID)

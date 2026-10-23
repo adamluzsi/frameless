@@ -3,6 +3,7 @@ package jsonkit_test
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
@@ -200,5 +201,150 @@ func TestWithType_json(t *testing.T) {
 		err := json.Unmarshal([]byte(`{"@type":"int","@value":"not-an-integer"}`), &dto)
 		assert.Error(t, err)
 		assert.Equal(t, previous, dto.V)
+	})
+
+	s.Test("JSON surrounded by whitespace is decoded the same way as without it", func(t *testcase.T) {
+		exp := jsonkit.WithType[withTypeInterface]{V: withTypeString(t.Random.String())}
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+		data = []byte(makeJSONWhitespace(t) + string(data) + makeJSONWhitespace(t))
+
+		var got jsonkit.WithType[withTypeInterface]
+		assert.NotPanic(t, func() { err = got.UnmarshalJSON(data) })
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("a JSON value which can not be decoded into T is rejected with an error, and the previous value is preserved", func(t *testcase.T) {
+		previous := t.Random.Int()
+		dto := jsonkit.WithType[int]{V: previous}
+
+		var err error
+		assert.NotPanic(t, func() { err = json.Unmarshal([]byte(strconv.Quote(t.Random.String())), &dto) })
+		assert.Error(t, err)
+		assert.Equal(t, previous, dto.V)
+	})
+
+	s.Test("a JSON value which the interface T can not hold is rejected with an error", func(t *testcase.T) {
+		var (
+			dto jsonkit.WithType[withTypeInterface]
+			err error
+		)
+		assert.NotPanic(t, func() { err = json.Unmarshal([]byte(strconv.Itoa(t.Random.Int())), &dto) })
+		assert.Error(t, err)
+	})
+
+	s.Test("bare integer JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, t.Random.Int())
+	})
+
+	s.Test("bare named integer JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeInt(t.Random.Int()))
+	})
+
+	s.Test("bare named string JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeString(t.Random.String()))
+	})
+
+	s.Test("bare struct JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeStruct{Name: t.Random.String(), Age: t.Random.Int()})
+	})
+
+	s.Test("bare struct JSON is decoded straight into a pointer T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, &withTypeStruct{Name: t.Random.String(), Age: t.Random.Int()})
+	})
+
+	s.Test("bare nested struct JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeNested{
+			Value:  &withTypeStruct{Name: t.Random.String(), Age: t.Random.Int()},
+			Labels: map[string]string{t.Random.String(): t.Random.String()},
+			Items:  []withTypeStruct{{Name: t.Random.String(), Age: t.Random.Int()}},
+		})
+	})
+
+	s.Test("bare map JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, map[string]int{t.Random.String(): t.Random.Int()})
+	})
+
+	s.Test("bare slice JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeSlice{t.Random.Int(), t.Random.Int()})
+	})
+
+	s.Test("bare array JSON is decoded straight into T", func(t *testcase.T) {
+		assertDecodesBareJSON(t, [3]int{t.Random.Int(), t.Random.Int(), t.Random.Int()})
+	})
+
+	s.Test("bare JSON of a T with its own UnmarshalJSON is decoded with it", func(t *testcase.T) {
+		assertDecodesBareJSON(t, withTypeCustomJSON{Value: t.Random.String()})
+	})
+
+	s.Test("bare struct JSON keeps the @type dispatch of its interface fields", func(t *testcase.T) {
+		type T struct{ V withTypeInterface }
+		exp := T{V: withTypeString(t.Random.String())}
+		// The Codec puts a @type envelope only on the interface field, as T itself is not registered.
+		data, err := (&jsonkit.Codec{}).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.WithType[T]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got.V)
+	})
+
+	s.Test("null is decoded as the zero value of T", func(t *testcase.T) {
+		dto := jsonkit.WithType[withTypeStruct]{V: withTypeStruct{Name: t.Random.String(), Age: t.Random.Int()}}
+		assert.NoError(t, json.Unmarshal([]byte(`null`), &dto))
+		assert.Equal(t, withTypeStruct{}, dto.V)
+	})
+
+	s.Test("null is decoded as the zero value of T, even when T has its own UnmarshalJSON", func(t *testcase.T) {
+		dto := jsonkit.WithType[withTypeCustomJSON]{V: withTypeCustomJSON{Value: t.Random.String()}}
+		assert.NoError(t, json.Unmarshal([]byte(`null`), &dto))
+		assert.Equal(t, withTypeCustomJSON{}, dto.V)
+	})
+}
+
+// assertDecodesBareJSON asserts that a JSON value without a @type envelope,
+// like what encoding/json makes from v, is decoded straight into T.
+// The JSON carries no type information, but WithType[T] already tells the type.
+func assertDecodesBareJSON[T any](t *testcase.T, v T) {
+	t.Helper()
+	data, err := json.Marshal(v)
+	assert.NoError(t, err)
+
+	var got jsonkit.WithType[T]
+	assert.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, v, got.V)
+}
+
+func TestWithTypeIDOf_json(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("interface containing a custom implementation", func(t *testcase.T) {
+		exp := jsonkit.WithTypeIDOf[withTypeInterface, string]{V: withTypeString(t.Random.String())}
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.WithTypeIDOf[withTypeInterface, string]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("bare struct JSON is decoded straight into T", func(t *testcase.T) {
+		exp := withTypeStruct{Name: t.Random.String(), Age: t.Random.Int()}
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.WithTypeIDOf[withTypeStruct, string]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got.V)
+	})
+
+	s.Test("a JSON value which the interface T can not hold is rejected with an error", func(t *testcase.T) {
+		var (
+			dto jsonkit.WithTypeIDOf[withTypeInterface, string]
+			err error
+		)
+		assert.NotPanic(t, func() { err = json.Unmarshal([]byte(strconv.Itoa(t.Random.Int())), &dto) })
+		assert.Error(t, err)
 	})
 }

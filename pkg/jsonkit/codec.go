@@ -565,10 +565,7 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 	// but it has no way to receive a per-instance registry, so when the
 	// codec owns the marshaling, the reflection path is what produces a
 	// codec-isolated wire.
-	if v.Kind() == reflect.Slice && v.CanInterface() && v.Type().Implements(jsonMarshalerType) &&
-		v.Type().PkgPath() == "go.llib.dev/frameless/pkg/jsonkit" &&
-		strings.HasPrefix(v.Type().Name(), "Array[") &&
-		v.Type().Elem().Kind() == reflect.Interface {
+	if v.CanInterface() && isArrayOfInterfaces(v.Type()) {
 		// Recurse on the underlying []T (the slice that Array[T] is
 		// defined as), keeping the registry. allowEnvelopeWrap=false so
 		// the inner reflection path picks the right marshaling branch.
@@ -798,6 +795,29 @@ func validAnonymousFieldType(t reflect.Type) bool {
 	return t.Name() != ""
 }
 
+// isArrayOfInterfaces reports whether t is a jsonkit.Array[T] with an interface T.
+// Its own MarshalJSON and UnmarshalJSON can only use the package level registry,
+// so the Codec processes it as the []T it is defined as, which keeps the Codec's own registry in use.
+func isArrayOfInterfaces(t reflect.Type) bool {
+	return t.Kind() == reflect.Slice &&
+		t.PkgPath() == "go.llib.dev/frameless/pkg/jsonkit" &&
+		strings.HasPrefix(t.Name(), "Array[") &&
+		t.Elem().Kind() == reflect.Interface
+}
+
+// hasOwnJSONUnmarshaler reports whether the Codec decodes a value of type t with t's own json.Unmarshaler.
+// It mirrors the marshal side, where a value with its own json.Marshaler is encoded with it.
+// A pointer has the json.Unmarshaler of the type it points to.
+func hasOwnJSONUnmarshaler(t reflect.Type) bool {
+	if !implementsJSONUnmarshaler(t) {
+		return false
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return !isArrayOfInterfaces(t)
+}
+
 // unmarshalPlan describes how to unmarshal JSON into a target struct value
 // using a generated DTO and stdlib json.Unmarshal.
 type unmarshalPlan struct {
@@ -878,10 +898,12 @@ func buildUnmarshalPlan(rt reflect.Type) (*unmarshalPlan, error) {
 			dtoTag = stripStringifyTag(field.Tag)
 		}
 		dtoFields = append(dtoFields, reflect.StructField{
-			Name:      dtoFieldName(name),
-			Type:      dtoFieldType,
-			Tag:       reflect.StructTag(dtoTag),
-			Anonymous: field.Anonymous && validAnonymousFieldType(dtoFieldType),
+			Name: dtoFieldName(name),
+			Type: dtoFieldType,
+			Tag:  reflect.StructTag(dtoTag),
+			// A json.RawMessage stand-in is never embedded: it would be read from under its field name anyway,
+			// and reflect.StructOf panics on an embedded type with methods unless it is the first field.
+			Anonymous: field.Anonymous && dtoFieldType != rawMessageType && validAnonymousFieldType(dtoFieldType),
 		})
 		copies = append(copies, fieldCopy{
 			dtoIndex:  len(dtoFields) - 1,
@@ -953,11 +975,11 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 	envTypeID, inner, ok := splitTypedEnvelope(raw)
 	if !ok {
 		// Not a @type/@value envelope; fall back to typed.UnmarshalJSON.
-		return applyTypedValueWithReg(raw, target, reg)
+		return applyTypedValueWithReg(raw, target, reg, codec)
 	}
 	rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
 	if !registered {
-		return applyTypedValueWithReg(raw, target, reg)
+		return applyTypedValueWithReg(raw, target, reg, codec)
 	}
 	switch rType.Kind() {
 	case reflect.Struct:
@@ -965,7 +987,7 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 	case reflect.Slice, reflect.Array, reflect.Map:
 		return copyTypedContainerWithReg(inner, rType, target, reg, codec)
 	}
-	return applyTypedValueWithReg(raw, target, reg)
+	return applyTypedValueWithReg(raw, target, reg, codec)
 }
 
 // copyTypedStruct dispatches a struct polymorphic value through the DTO path.
@@ -984,7 +1006,7 @@ func copyTypedStructWithReg(inner []byte, rType reflect.Type, target reflect.Val
 		if err := decode(codec, inner, value.Interface()); err != nil {
 			return err
 		}
-	} else if err := unmarshalStructWithReg(inner, value.Elem(), reg, codec); err != nil {
+	} else if err := unmarshalReflectWithReg(inner, value.Elem(), reg, codec); err != nil {
 		return err
 	}
 	concrete := value.Elem()
@@ -1098,14 +1120,15 @@ func decodeContainerElementsWithReg(jsonBytes []byte, dest reflect.Value, reg *_
 // applyTypedValue delegates to typed.UnmarshalJSON for non-struct or unknown
 // polymorphic values.
 func applyTypedValue(raw []byte, target reflect.Value) error {
-	return applyTypedValueWithReg(raw, target, nil)
+	return applyTypedValueWithReg(raw, target, nil, nil)
 }
 
-func applyTypedValueWithReg(raw []byte, target reflect.Value, reg *_TypeRegistry) error {
+func applyTypedValueWithReg(raw []byte, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 	var t typed
 	t.Type = target.Type()
 	t.Force = true
 	t.reg = reg
+	t.codec = codec
 	if err := t.UnmarshalJSON(raw); err != nil {
 		return err
 	}
@@ -1190,6 +1213,48 @@ func containsInterfaceElement(t reflect.Type) bool {
 		return containsInterfaceElement(t.Elem())
 	case reflect.Map:
 		return containsInterfaceElement(t.Elem())
+	}
+	return false
+}
+
+// requiresCodec reports whether decoding a value of type t needs the Codec,
+// because it holds an interface or a type with a custom codec somewhere inside,
+// which encoding/json can't decode on its own.
+// Unlike containsInterfaceElement, it also looks into struct fields, and it handles recursive types.
+func requiresCodec(t reflect.Type) bool {
+	return requiresCodecSeen(t, map[reflect.Type]struct{}{})
+}
+
+func requiresCodecSeen(t reflect.Type, seen map[reflect.Type]struct{}) bool {
+	if _, ok := seen[t]; ok {
+		return false
+	}
+	seen[t] = struct{}{}
+	if t.Kind() == reflect.Interface {
+		return true
+	}
+	if hasOwnJSONUnmarshaler(t) {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+		return requiresCodecSeen(t.Elem(), seen)
+	case reflect.Struct:
+		if isCustomCodecField(t) {
+			return true
+		}
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			if tag, _, _ := jsonTag.Lookup(field); tag.Ignore {
+				continue
+			}
+			if requiresCodecSeen(field.Type, seen) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1292,6 +1357,13 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 		}
 		return rawMessageType, copyFn, true
 	}
+	if hasOwnJSONUnmarshaler(field.Type) {
+		// encoding/json decodes the field with the type's own json.Unmarshaler.
+		return field.Type, func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+			target.Set(dto)
+			return nil
+		}, true
+	}
 	if containsInterfaceElement(field.Type) {
 		dtoType := dtoTypeFor(field.Type)
 		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
@@ -1328,7 +1400,9 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 				decode = typeIDRegistry.lookupDecoder(target.Type(), envTypeID)
 			}
 			if decode == nil {
-				return fmt.Errorf("missing custom codec entry for %s during unmarshal", target.Type())
+				// Nothing is registered to decode this @type, e.g. the type only has migrations
+				// and the data uses its current @type, so the field decodes like a top-level value would.
+				return unmarshalReflectWithReg(raw, target, reg, codec)
 			}
 			// Allocate a fresh pointer of the field's concrete type so the
 			// user's Unmarshal closure writes into it. If the field type is
@@ -1343,30 +1417,27 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 		}
 		return rawMessageType, copyFn, true
 	}
-	if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct {
-		// Use the nested struct's DTO type so json.Unmarshal can populate it
-		// using the same rules (interface fields as RawMessage, etc.).
-		nestedPlan, err := getUnmarshalPlan(field.Type.Elem())
-		if err != nil {
-			return nil, nil, false
-		}
-		dtoPtrType := reflect.PointerTo(nestedPlan.dtoType)
+	// Fields that hold an interface or a custom codec type deeper inside, like a nested struct, a []Struct or a map[K]Struct,
+	// are captured as raw JSON and decoded through the codec when the value is copied.
+	// Decoding them lazily, instead of planning the nested types upfront, is what lets recursive types decode.
+	// Pointers to structs always take this path, so embedded ones keep being read from under their type's name,
+	// like the marshal side writes them.
+	isPointerToStruct := field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct
+	if isPointerToStruct || requiresCodec(field.Type) {
 		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			if dto.IsNil() {
+			raw := dto.Bytes()
+			if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || bytes.Equal(trimmed, null) {
 				target.SetZero()
 				return nil
 			}
-			ptr := reflect.New(target.Type().Elem())
-			dtoElem := dto.Elem()
-			for _, fc := range nestedPlan.copies {
-				if err := fc.copy(dtoElem.Field(fc.dtoIndex), ptr.Elem().FieldByIndex(fc.targetIdx), reg, codec); err != nil {
-					return err
-				}
+			value := reflect.New(target.Type()).Elem()
+			if err := unmarshalReflectWithReg(raw, value, reg, codec); err != nil {
+				return err
 			}
-			target.Set(ptr)
+			target.Set(value)
 			return nil
 		}
-		return dtoPtrType, copyFn, true
+		return rawMessageType, copyFn, true
 	}
 	if tag.Stringify && isStringifyKind(field.Type.Kind()) {
 		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
@@ -1532,13 +1603,16 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 			raw = stripped
 			envTypeID = TypeID(id)
 		}
-		decode := reg.lookupDecoder(dst.Type(), envTypeID)
-		dest := reflect.New(dst.Type())
-		if err := decode(codec, raw, dest.Interface()); err != nil {
-			return err
+		// A type that only has migrations has no decoder for its current @type,
+		// so such data falls through to the default DTO path below.
+		if decode := reg.lookupDecoder(dst.Type(), envTypeID); decode != nil {
+			dest := reflect.New(dst.Type())
+			if err := decode(codec, raw, dest.Interface()); err != nil {
+				return err
+			}
+			dst.Set(dest.Elem())
+			return nil
 		}
-		dst.Set(dest.Elem())
-		return nil
 	}
 	plan, err := getUnmarshalPlan(dst.Type())
 	if err != nil {
@@ -1688,6 +1762,9 @@ func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry,
 		}
 		return unmarshalReflectWithReg(data, dst.Elem(), reg, codec)
 	}
+	if dst.CanAddr() && hasOwnJSONUnmarshaler(dst.Type()) {
+		return json.Unmarshal(data, dst.Addr().Interface())
+	}
 
 	switch dst.Kind() {
 	case reflect.Struct:
@@ -1748,6 +1825,11 @@ func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry,
 		if envTypeID, inner, ok := splitTypedEnvelope(data); ok && len(envTypeID) > 0 {
 			rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
 			if registered && rType == dst.Type() {
+				if len(inner) == len(data) {
+					// splitTypedEnvelope returns the whole object for a flat envelope,
+					// which keeps the @type next to the entries: {"@type":"...","key":...}.
+					inner = stripTypeField(inner)
+				}
 				data = inner
 			}
 		}

@@ -2,14 +2,19 @@ package jsonkit_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
+	"reflect"
+	"strconv"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
+	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/testing/testent"
 	. "go.llib.dev/frameless/testing/testent"
@@ -310,6 +315,243 @@ func TestCodec(t *testing.T) {
 			assert.Equal(t, exp, *ptr.Get(t).(*any))
 		})
 
+		// JSON allows insignificant whitespace around a value, like the trailing newline of a JSON file.
+		// It must not change how the value is decoded.
+		itIgnoresTheWhitespaceAroundTheJSON := func(s *testcase.Spec) {
+			s.When("the JSON is surrounded by whitespace", func(s *testcase.Spec) {
+				withoutWhitespace := let.Var(s, func(t *testcase.T) []byte {
+					return data.Super(t)
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(makeJSONWhitespace(t) + string(withoutWhitespace.Get(t)) + makeJSONWhitespace(t))
+				})
+
+				s.Then("it is decoded the same way as without the whitespace", func(t *testcase.T) {
+					exp := reflect.New(reflect.TypeOf(ptr.Get(t)).Elem())
+					assert.Must(t).NoError(subject.Get(t).Unmarshal(withoutWhitespace.Get(t), exp.Interface()))
+
+					assert.NoError(t, act(t))
+					assert.Equal(t, exp.Elem().Interface(), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
+				})
+			})
+		}
+
+		itIgnoresTheWhitespaceAroundTheJSON(s)
+
+		s.When("the JSON value is a @type envelope of a registered type", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
+				c := subject.Super(t)
+				t.Defer(jsonkit.CodecRegisterTypeID[testent.FooerT1](c, "fooer-t1"))
+				return c
+			})
+			fooer := let.Var(s, func(t *testcase.T) testent.FooerT1 {
+				return testent.FooerT1{V: t.Random.String()}
+			})
+			value.Let(s, func(t *testcase.T) string {
+				return mustMarshalJSON(t, map[string]any{"@type": "fooer-t1", "V": fooer.Get(t).V})
+			})
+
+			s.Then("it is decoded into the registered type", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, fooer.Get(t), *ptr.Get(t).(*any))
+			})
+
+			itIgnoresTheWhitespaceAroundTheJSON(s)
+
+			s.And("the destination is an interface which the registered type implements", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(testent.Fooer)
+				})
+
+				s.Then("it is decoded into the registered type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal[testent.Fooer](t, fooer.Get(t), *ptr.Get(t).(*testent.Fooer))
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+
+			s.And("the destination is a pointer to an interface which the registered type implements", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(*testent.Fooer)
+				})
+
+				s.Then("it is decoded into the registered type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					got := *ptr.Get(t).(**testent.Fooer)
+					assert.NotNil(t, got)
+					assert.Equal[testent.Fooer](t, fooer.Get(t), *got)
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+
+			s.And("the destination is a struct field with an interface type which the registered type implements", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(struct{ V testent.Fooer })
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(`{"V":` + value.Get(t) + `}`)
+				})
+
+				s.Then("it is decoded into the registered type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal[testent.Fooer](t, fooer.Get(t), ptr.Get(t).(*struct{ V testent.Fooer }).V)
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+		})
+
+		s.When("the JSON value is a @type envelope of a registered container type", func(s *testcase.Spec) {
+			container := let.Var(s, func(t *testcase.T) any {
+				return random.Pick[any](t.Random,
+					withTypeSlice{t.Random.Int(), t.Random.Int()},
+					map[string]int{t.Random.HexN(4): t.Random.Int()},
+				)
+			})
+			value.Let(s, func(t *testcase.T) string {
+				v := container.Get(t)
+				data, err := subject.Get(t).Marshal(&v)
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("it is decoded into the registered container type", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal(t, container.Get(t), *ptr.Get(t).(*any))
+			})
+
+			itIgnoresTheWhitespaceAroundTheJSON(s)
+
+			s.And("the destination is the registered container type itself", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return reflect.New(reflect.TypeOf(container.Get(t))).Interface()
+				})
+
+				s.Then("it is decoded into the registered container type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, container.Get(t), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+
+			s.And("the destination is a struct field with an `any` type", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(struct{ V any })
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(`{"V":` + value.Get(t) + `}`)
+				})
+
+				s.Then("it is decoded into the registered container type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, container.Get(t), ptr.Get(t).(*struct{ V any }).V)
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+		})
+
+		s.When("the JSON value is a @value envelope of a registered map which has an entry with a @ prefixed key", func(s *testcase.Spec) {
+			entries := let.Var(s, func(t *testcase.T) map[string]int {
+				return map[string]int{"@" + t.Random.HexN(4): t.Random.Int()}
+			})
+			value.Let(s, func(t *testcase.T) string {
+				return `{"@type":"with_type_map","@value":` + mustMarshalJSON(t, entries.Get(t)) + `}`
+			})
+
+			s.Then("the entry is kept, as only a flat envelope has a @type next to the entries", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, entries.Get(t), *ptr.Get(t).(*any))
+			})
+
+			s.And("the destination is the registered map type itself", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(map[string]int)
+				})
+
+				s.Then("the entry is kept, as only a flat envelope has a @type next to the entries", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, entries.Get(t), *ptr.Get(t).(*map[string]int))
+				})
+			})
+		})
+
+		s.When("the JSON value is a @type envelope of a registered map with interface values", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
+				c := subject.Super(t)
+				t.Defer(jsonkit.CodecRegisterTypeID[MT_GreeterMap](c, "greeter-map"))
+				return c
+			})
+			greeters := let.Var(s, func(t *testcase.T) MT_GreeterMap {
+				return random.Map(t.Random.IntBetween(1, 3), func() (string, Greeter) {
+					return t.Random.HexN(4), random.Pick[Greeter](t.Random,
+						TypeA{V: t.Random.String()},
+						TypeB{V: t.Random.Int()},
+					)
+				})
+			})
+			value.Let(s, func(t *testcase.T) string {
+				var v any = greeters.Get(t)
+				data, err := subject.Get(t).Marshal(&v)
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("its values are decoded into their registered types", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, greeters.Get(t), *ptr.Get(t).(*any))
+			})
+
+			itIgnoresTheWhitespaceAroundTheJSON(s)
+
+			s.And("the destination is an interface which the registered map implements", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(Greeter)
+				})
+
+				s.Then("its values are decoded into their registered types", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal[Greeter](t, greeters.Get(t), *ptr.Get(t).(*Greeter))
+				})
+			})
+
+			s.And("the destination is the registered map type itself", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(MT_GreeterMap)
+				})
+
+				s.Then("its values are decoded into their registered types", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, greeters.Get(t), *ptr.Get(t).(*MT_GreeterMap))
+				})
+			})
+		})
+
+		s.When("the JSON value is a registered slice type which holds a nil element", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(Greeter)
+			})
+			greeters := let.Var(s, func(t *testcase.T) TypeE {
+				return TypeE{TypeA{V: t.Random.String()}, nil}
+			})
+			value.Let(s, func(t *testcase.T) string {
+				var g Greeter = greeters.Get(t)
+				data, err := subject.Get(t).Marshal(&g)
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("the nil element is decoded back as a nil interface value", func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.NoError(t, err)
+				assert.Equal[Greeter](t, greeters.Get(t), *ptr.Get(t).(*Greeter))
+			})
+		})
+
 		// A non-empty interface can only hold a value that implements it.
 		// When the JSON describes anything else, Unmarshal must report it as an error,
 		// and must not let the reflect based assignment panic.
@@ -415,6 +657,11 @@ func makeUntypedJSONArray(t *testcase.T) string {
 	// start from a non-nil slice, so an empty array encodes as [] instead of null.
 	vs := append([]string{}, random.Slice(t.Random.IntBetween(0, 3), func() string { return t.Random.String() })...)
 	return mustMarshalJSON(t, vs)
+}
+
+// makeJSONWhitespace makes a random, non-empty run of the insignificant whitespace JSON allows around a value.
+func makeJSONWhitespace(t *testcase.T) string {
+	return t.Random.StringNC(t.Random.IntBetween(1, 3), " \t\r\n")
 }
 
 func mustMarshalJSON(t *testcase.T, v any) string {
@@ -532,6 +779,96 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.NoError(t, err)
 
 		var got MT_T3
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("nested struct value with an interface field", func(t *testcase.T) {
+		exp := MT_T16{Inner: MT_T1{Fooer: testent.MakeFoo(t)}}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_T16
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("struct values with an interface field, nested in containers and deeper structs", func(t *testcase.T) {
+		makeT1 := func() MT_T1 { return MT_T1{Fooer: testent.MakeFoo(t)} }
+		exp := MT_T17{
+			Deep:     MT_T16{Inner: makeT1()},
+			List:     []MT_T1{makeT1(), makeT1()},
+			ByName:   map[string]MT_T1{t.Random.HexN(8): makeT1()},
+			Pointers: []*MT_T1{{Fooer: testent.MakeFoo(t)}},
+		}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_T17
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("recursive type", func(t *testcase.T) {
+		exp := MT_PlainNode{
+			V:    t.Random.Int(),
+			Next: &MT_PlainNode{V: t.Random.Int()},
+			Kids: []MT_PlainNode{{V: t.Random.Int()}},
+		}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_PlainNode
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("recursive type with an interface field", func(t *testcase.T) {
+		exp := MT_Node{
+			Fooer: testent.MakeFoo(t),
+			Next:  &MT_Node{Fooer: testent.MakeFoo(t)},
+			Kids:  []MT_Node{{Fooer: testent.MakeFoo(t)}},
+		}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_Node
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("absent nested fields decode as zero values", func(t *testcase.T) {
+		var got MT_T17
+		assert.NoError(t, c.Get(t).Unmarshal([]byte(`{}`), &got))
+		assert.Equal(t, MT_T17{}, got)
+	})
+
+	s.Test("embedded struct pointers", func(t *testcase.T) {
+		exp := MT_T18{
+			Name:        t.Random.String(),
+			MT_T1:       &MT_T1{Fooer: testent.MakeFoo(t)},
+			MT_T18_Base: &MT_T18_Base{ID: t.Random.UUID()},
+		}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_T18
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("embedded struct value with an interface field", func(t *testcase.T) {
+		exp := MT_T19{Name: t.Random.String(), MT_T1: MT_T1{Fooer: testent.MakeFoo(t)}}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_T19
 		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
@@ -905,6 +1242,42 @@ type MT_T3 struct {
 	Array  [2]testent.Fooer
 }
 
+type MT_T16 struct {
+	Inner MT_T1
+}
+
+type MT_T17 struct {
+	Deep     MT_T16
+	List     []MT_T1
+	ByName   map[string]MT_T1
+	Pointers []*MT_T1
+}
+
+type MT_PlainNode struct {
+	V    int
+	Next *MT_PlainNode
+	Kids []MT_PlainNode
+}
+
+type MT_Node struct {
+	Fooer testent.Fooer
+	Next  *MT_Node
+	Kids  []MT_Node
+}
+
+type MT_T18 struct {
+	Name string
+	*MT_T1
+	*MT_T18_Base
+}
+
+type MT_T18_Base struct{ ID string }
+
+type MT_T19 struct {
+	Name string
+	MT_T1
+}
+
 type MT_T4 struct {
 	Fooer   testent.Fooer `json:"fooer"`
 	Ignored testent.Fooer `json:"-"`
@@ -929,6 +1302,11 @@ type MT_T7 struct {
 
 type MT_Fooers []testent.Fooer
 type MT_FooerMap map[string]testent.Fooer
+
+// MT_GreeterMap is a map with interface values, which implements the same interface itself.
+type MT_GreeterMap map[string]Greeter
+
+func (MT_GreeterMap) Hello() {}
 
 type MT_T8 struct {
 	List MT_Fooers
@@ -1127,6 +1505,52 @@ func TestCodec_jsonMarshaler(t *testing.T) {
 			t.Random.String(): {V: t.Random.String()},
 		}}
 		roundTrip(t, &c, exp)
+	})
+
+	s.Test("pointer struct field implementing json.Marshaler and json.Unmarshaler", func(t *testcase.T) {
+		roundTrip(t, &c, MT_JM_PointerStruct{Inner: &MT_JM_Inner{V: t.Random.String()}})
+	})
+
+	s.Test("top-level value implementing json.Marshaler and json.Unmarshaler", func(t *testcase.T) {
+		roundTrip(t, &c, MT_JM_Inner{V: t.Random.String()})
+	})
+
+	s.Test("top-level value implementing json.Marshaler and json.Unmarshaler, which is not a struct", func(t *testcase.T) {
+		roundTrip(t, &c, uuid.Must(uuid.MakeV4))
+	})
+
+	s.Test("top-level slice of json.Marshaler elements", func(t *testcase.T) {
+		roundTrip(t, &c, random.Slice(t.Random.IntBetween(1, 5), func() MT_JM_Inner {
+			return MT_JM_Inner{V: t.Random.String()}
+		}))
+	})
+
+	s.Test("top-level array of json.Marshaler elements", func(t *testcase.T) {
+		roundTrip(t, &c, [2]MT_JM_Inner{{V: t.Random.String()}, {V: t.Random.String()}})
+	})
+
+	s.Test("top-level map of json.Marshaler values", func(t *testcase.T) {
+		roundTrip(t, &c, map[string]MT_JM_Inner{t.Random.HexN(4): {V: t.Random.String()}})
+	})
+
+	s.Test("interface field holding a json.Unmarshaler implementation", func(t *testcase.T) {
+		roundTrip(t, &c, struct{ V any }{V: withTypeCustomJSON{Value: t.Random.String()}})
+	})
+
+	s.Test("slice of interfaces holding json.Unmarshaler implementations", func(t *testcase.T) {
+		roundTrip(t, &c, []any{withTypeCustomJSON{Value: t.Random.String()}})
+	})
+
+	// jsonkit.Array's own MarshalJSON and UnmarshalJSON can only use the package level registry,
+	// so the Codec processes a jsonkit.Array of interfaces as a plain slice, to keep using its own registry.
+	s.Test("jsonkit.Array of interfaces as a struct field is decoded with the Codec's own registry", func(t *testcase.T) {
+		var isolated jsonkit.Codec // the implementations are registered only on this Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[wfCircle](&isolated, "circle"))
+		t.Defer(jsonkit.CodecRegisterTypeID[wfSquare](&isolated, "square"))
+
+		roundTrip(t, &isolated, struct{ Shapes jsonkit.Array[wfShape] }{
+			Shapes: jsonkit.Array[wfShape]{wfCircle{R: t.Random.Float64()}, wfSquare{S: t.Random.Float64()}},
+		})
 	})
 
 	s.Test("json.Marshaler returned wire format takes precedence over @type wrapping", func(t *testcase.T) {
@@ -1416,18 +1840,20 @@ func TestCodecRegisterMigration(t *testing.T) {
 		Name     string `json:"name"`
 	}
 
+	migrateLegacyFoo := func(c *jsonkit.Codec, data []byte, p *testent.Foo) error {
+		var dto legacyFooDTO
+		if err := json.Unmarshal(data, &dto); err != nil {
+			return err
+		}
+		p.ID = testent.FooID(dto.LegacyID)
+		p.Foo = dto.Name
+		return nil
+	}
+
 	codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
 		var c jsonkit.Codec
 		t.Defer(jsonkit.CodecRegister(&c, "foo", TestEntFooTypeCodec{}))
-		t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-foo", func(c *jsonkit.Codec, data []byte, p *testent.Foo) error {
-			var dto legacyFooDTO
-			if err := json.Unmarshal(data, &dto); err != nil {
-				return err
-			}
-			p.ID = testent.FooID(dto.LegacyID)
-			p.Foo = dto.Name
-			return nil
-		}))
+		t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-foo", migrateLegacyFoo))
 		return &c
 	})
 
@@ -1453,14 +1879,35 @@ func TestCodecRegisterMigration(t *testing.T) {
 			Foo    testent.Foo
 		}
 
+		boxOf := func(foo []byte) []byte {
+			f := string(foo)
+			return []byte(`{"Fooer":` + f + `,"Fooers":[` + f + `],"Foo":` + f + `}`)
+		}
+
 		data := let.Var(s, func(t *testcase.T) []byte {
-			l := string(legacyData.Get(t))
-			return []byte(`{"Fooer":` + l + `,"Fooers":[` + l + `],"Foo":` + l + `}`)
+			return boxOf(legacyData.Get(t))
 		})
+
+		// currentFoo is a Foo written today, under the current @type.
+		currentFoo := let.Var(s, func(t *testcase.T) []byte {
+			foo, err := codec.Get(t).Marshal(expected.Get(t))
+			assert.Must(t).NoError(err)
+			return foo
+		})
+
+		// unmarshalInto fails the test instead of blocking the suite when Unmarshal never returns.
+		unmarshalInto := func(t *testcase.T, ptr any) error {
+			c, in := codec.Get(t), data.Get(t)
+			var err error
+			assert.Within(t, 5*time.Second, func(context.Context) {
+				err = c.Unmarshal(in, ptr)
+			}, "Unmarshal is expected to return")
+			return err
+		}
 
 		act := func(t *testcase.T) (Box, error) {
 			var got Box
-			err := codec.Get(t).Unmarshal(data.Get(t), &got)
+			err := unmarshalInto(t, &got)
 			return got, err
 		}
 
@@ -1477,16 +1924,14 @@ func TestCodecRegisterMigration(t *testing.T) {
 
 			s.Then("it decodes into a concrete destination", func(t *testcase.T) {
 				var got testent.Foo
-				assert.NoError(t, codec.Get(t).Unmarshal(data.Get(t), &got))
+				assert.NoError(t, unmarshalInto(t, &got))
 				assert.Equal(t, got, expected.Get(t))
 			})
 		})
 
 		s.When("the data uses the canonical type ID", func(s *testcase.Spec) {
 			data.Let(s, func(t *testcase.T) []byte {
-				foo, err := codec.Get(t).Marshal(expected.Get(t))
-				assert.Must(t).NoError(err)
-				return []byte(`{"Fooer":` + string(foo) + `,"Fooers":[` + string(foo) + `],"Foo":` + string(foo) + `}`)
+				return boxOf(currentFoo.Get(t))
 			})
 
 			s.Then("the canonical codec is still used", func(t *testcase.T) {
@@ -1495,6 +1940,51 @@ func TestCodecRegisterMigration(t *testing.T) {
 				assert.Equal[testent.Fooer](t, got.Fooer, expected.Get(t))
 				assert.Equal(t, got.Fooers, []testent.Fooer{expected.Get(t)})
 				assert.Equal(t, got.Foo, expected.Get(t))
+			})
+		})
+
+		// The migration is the only decoder registered for the type,
+		// so data written under the current type ID has to be decoded the default way.
+		s.When("the type is registered by type ID only, without a custom codec", func(s *testcase.Spec) {
+			codec.Let(s, func(t *testcase.T) *jsonkit.Codec {
+				var c jsonkit.Codec
+				t.Defer(jsonkit.CodecRegisterTypeID[testent.Foo](&c, "foo"))
+				t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-foo", migrateLegacyFoo))
+				return &c
+			})
+
+			s.Then("legacy data is still migrated", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal[testent.Fooer](t, got.Fooer, expected.Get(t))
+				assert.Equal(t, got.Fooers, []testent.Fooer{expected.Get(t)})
+				assert.Equal(t, got.Foo, expected.Get(t))
+			})
+
+			s.And("the data was written under the current type ID", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					return boxOf(currentFoo.Get(t))
+				})
+
+				s.Then("it decodes, whatever the destination", func(t *testcase.T) {
+					got, err := act(t)
+					assert.NoError(t, err)
+					assert.Equal[testent.Fooer](t, got.Fooer, expected.Get(t))
+					assert.Equal(t, got.Fooers, []testent.Fooer{expected.Get(t)})
+					assert.Equal(t, got.Foo, expected.Get(t))
+				})
+			})
+
+			s.And("a top-level value was written under the current type ID", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					return currentFoo.Get(t)
+				})
+
+				s.Then("it decodes into a concrete destination", func(t *testcase.T) {
+					var got testent.Foo
+					assert.NoError(t, unmarshalInto(t, &got))
+					assert.Equal(t, got, expected.Get(t))
+				})
 			})
 		})
 	})
@@ -1609,6 +2099,31 @@ func TestCodecRegister(t *testing.T) {
 		var got T
 		assert.NoError(t, c.Unmarshal(data, &got))
 
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("slices, maps and nested structs of the registered type as struct fields", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister(&c, "foo", fooCodec.Get(t))()
+
+		type Inner struct{ Foo testent.Foo }
+		type T struct {
+			List   []testent.Foo
+			ByName map[string]testent.Foo
+			Inner  Inner
+		}
+
+		exp := T{
+			List:   []testent.Foo{testent.MakeFoo(t), testent.MakeFoo(t)},
+			ByName: map[string]testent.Foo{t.Random.HexN(8): testent.MakeFoo(t)},
+			Inner:  Inner{Foo: testent.MakeFoo(t)},
+		}
+
+		data, err := c.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got T
+		assert.NoError(t, c.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 
@@ -2167,6 +2682,42 @@ func TestCodecRegister(t *testing.T) {
 			"the codec's own Unmarshal path must thread the *Codec through to the closure")
 	})
 
+	// A custom codec only applies to the Codec it was registered on.
+	// Any other Codec writes the type in its default JSON shape, and has to read that shape back,
+	// also when the type is a struct field.
+	s.Test("another codec, without the registration, round-trips the type as a struct field", func(t *testcase.T) {
+		type T struct{ V string }
+		type DTO struct {
+			X string `json:"x"`
+		}
+
+		var registered jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister[T](&registered, "registered_elsewhere_t", jsonkit.TypeCodec[T]{
+			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+				return json.Marshal(DTO{X: v.V})
+			},
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+				var dto DTO
+				if err := json.Unmarshal(data, &dto); err != nil {
+					return err
+				}
+				p.V = dto.X
+				return nil
+			},
+		}))
+
+		type Container struct{ Val T }
+		exp := Container{Val: T{V: t.Random.String()}}
+
+		var other jsonkit.Codec
+		data, err := other.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got Container
+		assert.NoError(t, other.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
 	// Deregister must clean up the per-codec entry AND the package-wide
 	// marker. If the marker leaks, future unmarshal plans for parent
 	// structs that contain this type would still be built with the
@@ -2450,9 +3001,8 @@ func TestCodec_customUnmarshalReceivesOriginatingCodec(t *testing.T) {
 	})
 
 	// Companion scenario for the slice dispatch path: the per-element
-	// `typed` produced inside jsonArray.UnmarshalJSON must also receive
-	// the codec. The assertion below drives the same regression class via
-	// a heterogeneous slice round-trip.
+	// dispatch of a slice must also receive the codec. The assertion below
+	// drives the same regression class via a heterogeneous slice round-trip.
 	s.Test("slice dispatch propagates the codec to per-element custom unmarshals", func(t *testcase.T) {
 		var c jsonkit.Codec
 		defer jsonkit.CodecRegister[MT_Inner](&c, "inner",
@@ -2489,6 +3039,43 @@ func TestCodec_customUnmarshalReceivesOriginatingCodec(t *testing.T) {
 		var got []MT_Inner
 		assert.NoError(t, c.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
+	})
+
+	// Companion scenario for registered container elements without their own @type envelope.
+	// The element type is known from the container, so the element is decoded straight into it,
+	// and the element type's custom unmarshal must receive the codec there too.
+	s.Test("registered container dispatch propagates the codec to the custom unmarshal of elements without @type", func(t *testcase.T) {
+		type MT_Inners []MT_Inner
+
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister[MT_Inner](&c, "inner",
+			jsonkit.TypeCodec[MT_Inner]{
+				MarshalFunc: func(_ *jsonkit.Codec, v MT_Inner) ([]byte, error) {
+					return json.Marshal(map[string]string{"marker": v.Marker})
+				},
+				UnmarshalFunc: func(supplied *jsonkit.Codec, data []byte, p *MT_Inner) error {
+					if supplied == nil {
+						return fmt.Errorf("supplied codec is nil during dispatch")
+					}
+					var dto struct {
+						Marker string `json:"marker"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					p.Marker = dto.Marker
+					return nil
+				},
+			},
+		)()
+		defer jsonkit.CodecRegisterTypeID[MT_Inners](&c, "inners")()
+
+		marker := t.Random.HexN(8)
+		data := []byte(`{"V":{"@type":"inners","@value":[{"marker":` + strconv.Quote(marker) + `}]}}`)
+
+		var got struct{ V any }
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal[any](t, MT_Inners{{Marker: marker}}, got.V)
 	})
 }
 

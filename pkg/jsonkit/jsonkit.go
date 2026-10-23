@@ -68,12 +68,6 @@ type jsonArray struct {
 	// reg is the codec's per-instance type registry. May be nil, in which
 	// case the package-level registry is consulted.
 	reg *_TypeRegistry
-	// codec is the originating *Codec when jsonArray is constructed during
-	// unmarshal dispatch. It is forwarded into each per-element typed
-	// dispatch so user-registered custom Unmarshal closures receive the
-	// same codec instance, not a freshly-zero Codec that has lost its
-	// registry.
-	codec *Codec
 }
 
 func (ary jsonArray) MarshalJSON() ([]byte, error) {
@@ -102,45 +96,6 @@ func (ary jsonArray) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(vs)
-}
-
-func (ary *jsonArray) UnmarshalJSON(data []byte) error {
-	ET, ok := ary.elemT()
-	if !ok {
-		return fmt.Errorf("unable to determine of type T in slice *[]T: %s", ary.typeName())
-	}
-
-	if !isInterfaceType(ET) {
-		ptr := reflectkit.PointerOf(reflect.MakeSlice(reflect.SliceOf(ET), 0, 0))
-		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-			return err
-		}
-		ary.ptr.Elem().Set(ptr.Elem())
-		return nil
-	}
-
-	var raws []json.RawMessage
-	if err := json.Unmarshal(data, &raws); err != nil {
-		return err
-	}
-
-	var vs = reflect.MakeSlice(reflect.SliceOf(ET), 0, len(raws))
-	for _, data := range raws {
-		var tv = typed{Type: ET, reg: ary.reg, codec: ary.codec}
-		if err := json.Unmarshal(data, &tv); err != nil {
-			return err
-		}
-
-		var decValue = reflect.ValueOf(tv.Value)
-		if !decValue.CanConvert(ET) {
-			return fmt.Errorf("unable to convert %s to %s", decValue.Type().String(), ET.String())
-		}
-
-		vs = reflect.Append(vs, decValue.Convert(ET))
-	}
-
-	ary.ptr.Elem().Set(vs)
-	return nil
 }
 
 func (ary jsonArray) slice() (reflect.Value, bool) {
@@ -332,11 +287,12 @@ func (i *Interface[I]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// typeAssert asserts that a decoded value is a T, following the same rules as setDecoded.
+// A nil value, such as a decoded JSON null, is the zero value of T.
 func typeAssert[T any](v any) (T, error) {
-	value, ok := v.(T)
-	if !ok && !isInterfaceType(reflectkit.TypeOf[T]()) {
-		return *new(T), fmt.Errorf("type assertion failed, expected %s got %T",
-			reflectkit.TypeOf[T]().String(), v)
+	var value T
+	if err := setDecoded(reflect.ValueOf(&value).Elem(), reflect.ValueOf(v)); err != nil {
+		return *new(T), err
 	}
 	return value, nil
 }

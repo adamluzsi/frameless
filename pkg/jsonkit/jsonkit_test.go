@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -199,6 +200,38 @@ func TestInterface(t *testing.T) {
 			assert.Error(t, json.Unmarshal(data, &got))
 		})
 	})
+	t.Run("interface T type with a JSON value which T can not hold fails", func(t *testing.T) {
+		for kind, data := range jsonValuesWithoutType() {
+			t.Run(kind, func(t *testing.T) {
+				var got jsonkit.Interface[Greeter]
+				assert.Error(t, json.Unmarshal([]byte(data), &got))
+			})
+		}
+	})
+	t.Run("interface T type with a slice implementation holding nil elements", func(t *testing.T) {
+		var exp jsonkit.Interface[Greeter]
+		exp.V = TypeE{TypeA{V: rnd.String()}, nil, TypeB{V: rnd.Int()}}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[Greeter]
+		assert.NotPanic(t, func() { err = json.Unmarshal(data, &got) })
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+	})
+}
+
+// jsonValuesWithoutType are JSON values without a @type discriminator, by their JSON kind.
+// Only an empty interface like `any` could hold them.
+func jsonValuesWithoutType() map[string]string {
+	return map[string]string{
+		"string":      strconv.Quote(rnd.String()),
+		"number":      strconv.Itoa(rnd.Int()),
+		"boolean":     strconv.FormatBool(rnd.Bool()),
+		"empty array": `[]`,
+		"array":       `[` + strconv.Itoa(rnd.Int()) + `]`,
+	}
 }
 
 func TestArray_json(t *testing.T) {
@@ -268,6 +301,28 @@ func TestArray_json(t *testing.T) {
 
 		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with an element which T can not hold fails", func(t *testing.T) {
+		for kind, data := range jsonValuesWithoutType() {
+			t.Run(kind, func(t *testing.T) {
+				var got jsonkit.Array[Greeter]
+				assert.Error(t, json.Unmarshal([]byte(`[`+data+`]`), &got))
+			})
+		}
+	})
+	t.Run("interface T type with a slice implementation holding nil elements", func(t *testing.T) {
+		var exp = jsonkit.Array[Greeter]{
+			TypeE{nil, TypeA{V: rnd.String()}},
+			nil,
+		}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Array[Greeter]
+		assert.NotPanic(t, func() { err = json.Unmarshal(data, &got) })
+		assert.NoError(t, err)
 		assert.Equal(t, exp, got)
 	})
 }
