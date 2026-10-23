@@ -2,13 +2,16 @@ package jsonkit
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
@@ -657,34 +660,35 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 		return ptr, nil
 
 	case reflect.Struct:
-		fields := make([]reflect.StructField, 0, v.NumField())
-		values := make([]reflect.Value, 0, v.NumField())
-		for field, value := range reflectkit.IterStructFields(v) {
-			if field.PkgPath != "" {
+		fields := jsonFields(v.Type())
+		shadowFields := make([]reflect.StructField, 0, len(fields))
+		values := make([]reflect.Value, 0, len(fields))
+		for _, field := range fields {
+			value, err := v.FieldByIndexErr(field.index)
+			if err != nil {
+				// The field is in a struct embedded through a nil pointer, which encoding/json leaves out too.
 				continue
 			}
-			tagConfig, ok, err := jsonTag.Lookup(field)
-			if err == nil && ok {
-				if tagConfig.Omitzero && reflectkit.IsZero(value) {
-					continue
-				}
-				if tagConfig.Omitempty && isEmptyForOmitEmpty(field.Type, value) {
-					continue
-				}
+			if field.tag.Omitzero && reflectkit.IsZero(value) {
+				continue
 			}
-			value, err = marshalPlaceholderWithReg(value, field.Type, reg, codec, false)
+			if field.tag.Omitempty && isEmptyForOmitEmpty(field.field.Type, value) {
+				continue
+			}
+			value, err = marshalPlaceholderWithReg(value, field.field.Type, reg, codec, false)
 			if err != nil {
-				return reflect.Value{}, fmt.Errorf("%s: %w", field.Name, err)
+				return reflect.Value{}, fmt.Errorf("%s: %w", field.field.Name, err)
 			}
-			field.Type = value.Type()
-			if field.Anonymous && !validAnonymousFieldType(field.Type) {
-				field.Anonymous = false
-			}
-			fields = append(fields, field)
+			shadowFields = append(shadowFields, reflect.StructField{
+				Name: "F" + strconv.Itoa(len(shadowFields)),
+				Type: value.Type(),
+				Tag:  jsonStructTag(field.name, field.tag.Stringify),
+				// A shadow field is never embedded, as the methods of an embedded type,
+				// like the MarshalJSON of a json.RawMessage, would be promoted to the shadow struct.
+			})
 			values = append(values, value)
 		}
-		shadowType := reflect.StructOf(fields)
-		shadow := reflect.New(shadowType).Elem()
+		shadow := reflect.New(reflect.StructOf(shadowFields)).Elem()
 		for i, value := range values {
 			shadow.Field(i).Set(value)
 		}
@@ -788,13 +792,6 @@ func marshalSequencePlaceholderWithReg(v reflect.Value, array bool, reg *_TypeRe
 	return shadow, nil
 }
 
-func validAnonymousFieldType(t reflect.Type) bool {
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	return t.Name() != ""
-}
-
 // isArrayOfInterfaces reports whether t is a jsonkit.Array[T] with an interface T.
 // Its own MarshalJSON and UnmarshalJSON can only use the package level registry,
 // so the Codec processes it as the []T it is defined as, which keeps the Codec's own registry in use.
@@ -828,7 +825,10 @@ type unmarshalPlan struct {
 type fieldCopy struct {
 	dtoIndex  int
 	targetIdx []int
-	copy      func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
+	// throughPointer reports whether the target field is in a struct embedded through a pointer,
+	// which is allocated only when the JSON has a member for the field, like with encoding/json.
+	throughPointer bool
+	copy           func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
 }
 
 // unmarshalPlanCache memoizes unmarshalPlan per struct reflect.Type.
@@ -874,83 +874,109 @@ func invalidateUnmarshalPlanCache() {
 // buildUnmarshalPlan constructs the DTO type and per-field copy closures
 // that copy values from a populated DTO into the target struct.
 func buildUnmarshalPlan(rt reflect.Type) (*unmarshalPlan, error) {
-	dtoFields := make([]reflect.StructField, 0, rt.NumField())
-	copies := make([]fieldCopy, 0, rt.NumField())
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		if field.PkgPath != "" {
-			continue
-		}
-		tag, _, _ := jsonTag.Lookup(field)
-		if tag.Ignore {
-			continue
-		}
-		dtoFieldType, copyFn, ok := dtoFieldFor(field, tag)
+	fields := jsonFields(rt)
+	dtoFields := make([]reflect.StructField, 0, len(fields))
+	copies := make([]fieldCopy, 0, len(fields))
+	for _, field := range fields {
+		dtoFieldType, copyFn, ok := dtoFieldFor(field.field, field.tag)
 		if !ok {
 			continue
 		}
-		name := field.Name
-		if tag.Name != "" {
-			name = tag.Name
+		if !field.field.IsExported() {
+			copyFn = copyThroughExportedFields(copyFn)
 		}
-		dtoTag := field.Tag
-		if tag.Stringify {
-			dtoTag = stripStringifyTag(field.Tag)
+		if field.throughPointer {
+			// The field is captured as raw JSON, which tells whether the JSON has a member for it.
+			dtoFieldType, copyFn = rawMessageType, copyFromRawAs(dtoFieldType, copyFn)
 		}
 		dtoFields = append(dtoFields, reflect.StructField{
-			Name: dtoFieldName(name),
+			Name: "F" + strconv.Itoa(len(dtoFields)),
 			Type: dtoFieldType,
-			Tag:  reflect.StructTag(dtoTag),
-			// A json.RawMessage stand-in is never embedded: it would be read from under its field name anyway,
-			// and reflect.StructOf panics on an embedded type with methods unless it is the first field.
-			Anonymous: field.Anonymous && dtoFieldType != rawMessageType && validAnonymousFieldType(dtoFieldType),
+			Tag:  jsonStructTag(field.name, false),
+			// A DTO field is never embedded, as the methods of an embedded type would be promoted to the DTO.
 		})
 		copies = append(copies, fieldCopy{
-			dtoIndex:  len(dtoFields) - 1,
-			targetIdx: field.Index,
-			copy:      copyFn,
+			dtoIndex:       len(dtoFields) - 1,
+			targetIdx:      field.index,
+			throughPointer: field.throughPointer,
+			copy:           copyFn,
 		})
 	}
 	dtoType := reflect.StructOf(dtoFields)
 	return &unmarshalPlan{dtoType: dtoType, copies: copies}, nil
 }
 
-// dtoFieldName returns a struct field name suitable for reflect.StructOf.
-// reflect.StructOf requires that any lowercase (unexported) field name carry
-// a non-empty PkgPath, which would complicate reflection; we simply ensure
-// DTO field names are exported. The actual JSON matching uses the field tag.
-func dtoFieldName(name string) string {
-	if name == "" {
-		return "Field"
+// copyFromRawAs returns a copy function for a json.RawMessage DTO field,
+// which decodes the raw JSON into a dtoType value, and copies it with copyFn.
+func copyFromRawAs(dtoType reflect.Type, copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error) func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	return func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+		value := reflect.New(dtoType)
+		if err := json.Unmarshal(dto.Bytes(), value.Interface()); err != nil {
+			return err
+		}
+		return copyFn(value.Elem(), target, reg, codec)
 	}
-	if r := []rune(name)[0]; r >= 'a' && r <= 'z' {
-		return string(r-'a'+'A') + name[1:]
-	}
-	return name
 }
 
-// stripStringifyTag removes the ",string" option from a struct tag's value.
-func stripStringifyTag(tag reflect.StructTag) reflect.StructTag {
-	value, hasName := tag.Lookup("json")
-	if !hasName {
-		return tag
-	}
-	parts := strings.Split(value, ",")
-	if len(parts) < 2 {
-		return tag
-	}
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p == "string" {
-			continue
+// copyThroughExportedFields returns a copy function for an embedded field of an unexported struct type,
+// which has a name in its json tag. Such a field can't be set as a whole,
+// so like with encoding/json, only its exported fields are set.
+func copyThroughExportedFields(copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error) func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	return func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+		value := reflect.New(target.Type()).Elem()
+		if err := copyFn(dto, value, reg, codec); err != nil {
+			return err
 		}
-		out = append(out, p)
+		if target.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return nil
+			}
+			if target.IsNil() {
+				return errCannotSetEmbeddedPointer(target.Type())
+			}
+			target, value = target.Elem(), value.Elem()
+		}
+		for i := 0; i < target.NumField(); i++ {
+			if target.Type().Field(i).IsExported() {
+				target.Field(i).Set(value.Field(i))
+			}
+		}
+		return nil
 	}
-	newValue := strings.Join(out, ",")
-	if newValue == value {
-		return tag
+}
+
+// fieldByIndexAlloc is like reflect.Value#FieldByIndex,
+// but it allocates the nil embedded struct pointers on the way, like encoding/json does.
+func fieldByIndexAlloc(v reflect.Value, index []int) (reflect.Value, error) {
+	for i, x := range index {
+		if 0 < i && v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				if !v.CanSet() {
+					return reflect.Value{}, errCannotSetEmbeddedPointer(v.Type())
+				}
+				v.Set(reflect.New(v.Type().Elem()))
+			}
+			v = v.Elem()
+		}
+		v = v.Field(x)
 	}
-	return reflect.StructTag(`json:"` + newValue + `"`)
+	return v, nil
+}
+
+func errCannotSetEmbeddedPointer(ptrType reflect.Type) error {
+	return fmt.Errorf("cannot set embedded pointer to unexported struct: %v", ptrType.Elem())
+}
+
+// jsonStructTag returns the json struct tag of a field in a struct built by reflection,
+// which is the JSON member with the given name.
+func jsonStructTag(name string, stringify bool) reflect.StructTag {
+	value := name
+	if stringify {
+		value += ",string"
+	} else if value == "-" {
+		value += "," // a json tag of only "-" would make encoding/json ignore the field
+	}
+	return reflect.StructTag("json:" + strconv.Quote(value))
 }
 
 // copyTypedFromRaw unmarshals a polymorphic JSON value into target, which
@@ -1243,15 +1269,8 @@ func requiresCodecSeen(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 		if isCustomCodecField(t) {
 			return true
 		}
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			if field.PkgPath != "" {
-				continue
-			}
-			if tag, _, _ := jsonTag.Lookup(field); tag.Ignore {
-				continue
-			}
-			if requiresCodecSeen(field.Type, seen) {
+		for _, field := range jsonFields(t) {
+			if requiresCodecSeen(field.field.Type, seen) {
 				return true
 			}
 		}
@@ -1387,8 +1406,28 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 	// but the @type alias was set to the empty string), hand the raw
 	// bytes unchanged.
 	if isCustomCodecField(field.Type) {
-		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+		var copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
+		copyFn = func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 			raw := dto.Bytes()
+			trimmed := bytes.TrimSpace(raw)
+			if len(trimmed) == 0 {
+				// The JSON has no member for the field.
+				target.SetZero()
+				return nil
+			}
+			if target.Kind() == reflect.Pointer {
+				// Like with encoding/json, null makes the pointer nil, and any other value is decoded into what it points to.
+				if bytes.Equal(trimmed, null) {
+					target.SetZero()
+					return nil
+				}
+				value := reflect.New(target.Type().Elem())
+				if err := copyFn(dto, value.Elem(), reg, codec); err != nil {
+					return err
+				}
+				target.Set(value)
+				return nil
+			}
 			inner := raw
 			var envTypeID TypeID
 			if id, stripped, ok := splitTypedEnvelope(raw); ok {
@@ -1404,10 +1443,6 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 				// and the data uses its current @type, so the field decodes like a top-level value would.
 				return unmarshalReflectWithReg(raw, target, reg, codec)
 			}
-			// Allocate a fresh pointer of the field's concrete type so the
-			// user's Unmarshal closure writes into it. If the field type is
-			// a pointer (e.g. *Foo), reflect.New yields the pointer the user
-			// expects.
 			dest := reflect.New(target.Type())
 			if err := decode(codec, inner, dest.Interface()); err != nil {
 				return err
@@ -1420,10 +1455,7 @@ func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, fu
 	// Fields that hold an interface or a custom codec type deeper inside, like a nested struct, a []Struct or a map[K]Struct,
 	// are captured as raw JSON and decoded through the codec when the value is copied.
 	// Decoding them lazily, instead of planning the nested types upfront, is what lets recursive types decode.
-	// Pointers to structs always take this path, so embedded ones keep being read from under their type's name,
-	// like the marshal side writes them.
-	isPointerToStruct := field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct
-	if isPointerToStruct || requiresCodec(field.Type) {
+	if requiresCodec(field.Type) {
 		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 			raw := dto.Bytes()
 			if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || bytes.Equal(trimmed, null) {
@@ -1624,7 +1656,20 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 	}
 	dtoElem := dto.Elem()
 	for _, fc := range plan.copies {
-		if err := fc.copy(dtoElem.Field(fc.dtoIndex), dst.FieldByIndex(fc.targetIdx), reg, codec); err != nil {
+		dtoField := dtoElem.Field(fc.dtoIndex)
+		var target reflect.Value
+		if fc.throughPointer {
+			if dtoField.Len() == 0 {
+				// The JSON has no member for the field, so the embedded pointers on the way to it are not allocated for it.
+				continue
+			}
+			if target, err = fieldByIndexAlloc(dst, fc.targetIdx); err != nil {
+				return err
+			}
+		} else {
+			target = dst.FieldByIndex(fc.targetIdx)
+		}
+		if err := fc.copy(dtoField, target, reg, codec); err != nil {
 			return err
 		}
 	}
@@ -1873,15 +1918,15 @@ var jsonTag = reflectkit.TagHandler[jsonTagConfig]{
 	Name: "json",
 	Parse: func(field reflect.StructField, tagName, tagValue string) (jsonTagConfig, error) {
 		var c jsonTagConfig
+		if tagValue == "-" {
+			c.Ignore = true
+			return c, nil
+		}
 		var parts = strings.Split(tagValue, ",")
 		if len(parts) == 0 {
 			return c, errMalformedJSONTag
 		}
 		c.Name = parts[0]
-		if c.Name == "-" {
-			c.Name = ""
-			c.Ignore = true
-		}
 		for _, option := range parts[1:] {
 			switch option {
 			case "omitempty":
@@ -1891,7 +1936,7 @@ var jsonTag = reflectkit.TagHandler[jsonTagConfig]{
 			case "string":
 				c.Stringify = true
 			default:
-				return c, fmt.Errorf("%w: %q", errMalformedJSONTag, option)
+				c.Unknown = append(c.Unknown, option)
 			}
 		}
 		return c, nil
@@ -1919,8 +1964,161 @@ type jsonTagConfig struct {
 	// Stringify instructs the encoder to encode the field's value as a JSON string.
 	// This option only applies to fields of string, floating point, integer, or boolean type.
 	Stringify bool
-	// Unknown
+	// Unknown holds the options which are not known, and which are ignored, like with encoding/json.
 	Unknown []string
+}
+
+// jsonField is a member of the JSON object of a struct type.
+type jsonField struct {
+	// name is the name of the JSON member.
+	name string
+	// index is the index sequence of the struct field, see reflect.Value#FieldByIndex.
+	index []int
+	// field is the struct field, which is in an embedded struct when the index sequence has more than one index.
+	field reflect.StructField
+	tag   jsonTagConfig
+	// tagged reports whether the name is from the json tag of the struct field.
+	tagged bool
+	// throughPointer reports whether the struct field is in a struct embedded through a pointer.
+	throughPointer bool
+}
+
+var jsonFieldsCache synckit.Map[reflect.Type, []jsonField]
+
+// jsonFields returns the members of the JSON object of the struct type t, in the order of their struct fields.
+//
+// It follows the rules of encoding/json.
+// The fields of an embedded struct are promoted into the object, unless the embedded field has a name in its json tag.
+// Of the fields with the same name, the least nested one is used.
+// If several of them are equally nested, the only one with its name from its json tag is used,
+// and if there is no such single field, then none of them is.
+func jsonFields(t reflect.Type) []jsonField {
+	return jsonFieldsCache.GetOrInit(t, func() []jsonField {
+		return dominantJSONFields(collectJSONFields(t))
+	})
+}
+
+// collectJSONFields returns all the fields of the struct type t which could be a member of its JSON object.
+// It walks the embedded structs breadth first, like encoding/json does.
+func collectJSONFields(t reflect.Type) []jsonField {
+	type embedded struct {
+		typ            reflect.Type
+		index          []int
+		throughPointer bool
+	}
+	var (
+		fields  []jsonField
+		visited = map[reflect.Type]bool{}
+		current []embedded
+		next    = []embedded{{typ: t}}
+		// count and nextCount are how many times a struct type is embedded at the current and the next depth.
+		count, nextCount map[reflect.Type]int
+	)
+	for 0 < len(next) {
+		current, next = next, nil
+		count, nextCount = nextCount, map[reflect.Type]int{}
+		for _, e := range current {
+			// The fields of a struct type which is already embedded at a lower depth are hidden by those.
+			if visited[e.typ] {
+				continue
+			}
+			visited[e.typ] = true
+			for i := 0; i < e.typ.NumField(); i++ {
+				sf := e.typ.Field(i)
+				ft := sf.Type
+				if ft.Name() == "" && ft.Kind() == reflect.Pointer {
+					ft = ft.Elem()
+				}
+				// An embedded struct of an unexported type still has its exported fields promoted.
+				if !sf.IsExported() && !(sf.Anonymous && ft.Kind() == reflect.Struct) {
+					continue
+				}
+				tag, _, _ := jsonTag.Lookup(sf)
+				if tag.Ignore {
+					continue
+				}
+				name := tag.Name
+				if !isValidJSONTagName(name) {
+					name = ""
+				}
+				index := append(slices.Clone(e.index), i)
+				if name == "" && sf.Anonymous && ft.Kind() == reflect.Struct {
+					nextCount[ft]++
+					if nextCount[ft] == 1 {
+						next = append(next, embedded{
+							typ:            ft,
+							index:          index,
+							throughPointer: e.throughPointer || sf.Type.Kind() == reflect.Pointer,
+						})
+					}
+					continue
+				}
+				field := jsonField{
+					name:           cmp.Or(name, sf.Name),
+					index:          index,
+					field:          sf,
+					tag:            tag,
+					tagged:         name != "",
+					throughPointer: e.throughPointer,
+				}
+				fields = append(fields, field)
+				if 1 < count[e.typ] {
+					// The struct type is embedded more than once at this depth,
+					// and the duplicate makes its fields conflict with each other.
+					fields = append(fields, field)
+				}
+			}
+		}
+	}
+	return fields
+}
+
+// dominantJSONFields keeps only the dominant field of each name, see jsonFields, in the order of their struct fields.
+func dominantJSONFields(fields []jsonField) []jsonField {
+	// Sorted by name, then by depth, then the ones with their name from their json tag first.
+	slices.SortFunc(fields, func(a, b jsonField) int {
+		if c := strings.Compare(a.name, b.name); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(len(a.index), len(b.index)); c != 0 {
+			return c
+		}
+		if a.tagged != b.tagged {
+			if a.tagged {
+				return -1
+			}
+			return 1
+		}
+		return slices.Compare(a.index, b.index)
+	})
+	out := make([]jsonField, 0, len(fields))
+	for i, n := 0, 0; i < len(fields); i += n {
+		for n = 1; i+n < len(fields) && fields[i+n].name == fields[i].name; n++ {
+		}
+		if 1 < n && len(fields[i].index) == len(fields[i+1].index) && fields[i].tagged == fields[i+1].tagged {
+			continue
+		}
+		out = append(out, fields[i])
+	}
+	slices.SortFunc(out, func(a, b jsonField) int {
+		return slices.Compare(a.index, b.index)
+	})
+	return out
+}
+
+// isValidJSONTagName reports whether encoding/json uses name from a json tag as the name of a JSON member.
+func isValidJSONTagName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", c):
+		case !unicode.IsLetter(c) && !unicode.IsDigit(c):
+			return false
+		}
+	}
+	return true
 }
 
 func hasJSONOption(tag, option string) bool {

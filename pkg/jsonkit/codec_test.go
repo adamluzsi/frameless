@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -670,6 +672,37 @@ func mustMarshalJSON(t *testcase.T, v any) string {
 	return string(data)
 }
 
+// assertEncodesLikeEncodingJSON asserts that the Codec writes v as the same JSON as encoding/json does,
+// and that it reads that JSON back the same way as encoding/json does.
+func assertEncodesLikeEncodingJSON[T any](t *testcase.T, c *jsonkit.Codec, v T) {
+	t.Helper()
+	exp, err := json.Marshal(v)
+	assert.Must(t).NoError(err)
+
+	got, err := c.Marshal(v)
+	assert.Must(t).NoError(err)
+	assert.Equal(t, string(exp), string(got))
+
+	assertDecodesLikeEncodingJSON[T](t, c, exp)
+}
+
+// assertDecodesLikeEncodingJSON asserts that the Codec reads data into a T the same way as encoding/json does.
+func assertDecodesLikeEncodingJSON[T any](t *testcase.T, c *jsonkit.Codec, data []byte) {
+	t.Helper()
+	var exp, got T
+	assert.Must(t).NoError(json.Unmarshal(data, &exp))
+	assert.Must(t).NoError(c.Unmarshal(data, &got))
+	assert.Equal(t, exp, got)
+}
+
+// jsonMemberNames returns the names of the members of the JSON object in data.
+func jsonMemberNames(t *testcase.T, data []byte) []string {
+	t.Helper()
+	var object map[string]json.RawMessage
+	assert.Must(t).NoError(json.Unmarshal(data, &object))
+	return slices.Collect(maps.Keys(object))
+}
+
 func TestLinesCodec_smoke(tt *testing.T) {
 	s := testcase.NewSpec(tt)
 
@@ -873,6 +906,124 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 
+	// The Codec follows the rules of encoding/json for embedded fields,
+	// so a struct with embedded fields has the same JSON as with encoding/json.
+	s.Test("embedded structs have their fields promoted, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_Embedding{
+			Name:                 t.Random.String(),
+			MT_EmbeddedValue:     MT_EmbeddedValue{ID: t.Random.UUID(), Note: t.Random.String()},
+			MT_EmbeddedPointer:   &MT_EmbeddedPointer{Count: t.Random.Int()},
+			mtEmbeddedUnexported: mtEmbeddedUnexported{Hidden: true},
+			MT_Labels:            MT_Labels{t.Random.String()},
+		})
+	})
+
+	s.Test("a nil embedded struct pointer is left out, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_Embedding{Name: t.Random.String()})
+
+		// a member of the embedded struct allocates it, even when its value is null
+		assertDecodesLikeEncodingJSON[MT_Embedding](t, c.Get(t), []byte(`{"Count":null}`))
+	})
+
+	s.Test("conflicting field names are resolved like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_Shadowing{
+			MT_EmbeddedValue: MT_EmbeddedValue{ID: t.Random.UUID(), Note: t.Random.String()},
+			MT_ConflictA: MT_ConflictA{
+				Dup:       t.Random.String(),
+				Winner:    t.Random.String(),
+				MT_Shared: MT_Shared{Shared: t.Random.String()},
+			},
+			MT_ConflictB: MT_ConflictB{
+				Dup:       t.Random.String(),
+				Tagged:    t.Random.String(),
+				MT_Shared: MT_Shared{Shared: t.Random.String()},
+			},
+			ID: t.Random.UUID(),
+		})
+
+		assertDecodesLikeEncodingJSON[MT_Shadowing](t, c.Get(t), []byte(mustMarshalJSON(t, map[string]string{
+			"ID":     t.Random.UUID(),
+			"note":   t.Random.String(),
+			"Dup":    t.Random.String(),
+			"Winner": t.Random.String(),
+			"Shared": t.Random.String(),
+		})))
+	})
+
+	s.Test("an embedded pointer to the struct itself is not followed, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_SelfEmbedding{
+			MT_SelfEmbedding: &MT_SelfEmbedding{V: t.Random.Int()},
+			V:                t.Random.Int(),
+		})
+	})
+
+	s.Test("embedded structs with a name in their json tag are fields with that name, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_TaggedEmbedding{
+			MT_EmbeddedValue:     MT_EmbeddedValue{ID: t.Random.UUID(), Note: t.Random.String()},
+			mtEmbeddedUnexported: mtEmbeddedUnexported{Hidden: true},
+		})
+	})
+
+	s.Test("an embedded pointer to an unexported struct type can't be allocated, like with encoding/json", func(t *testcase.T) {
+		data := []byte(`{"Hidden":true}`)
+		assert.Must(t).Error(json.Unmarshal(data, new(MT_UnexportedEmbeddedPointer)))
+
+		assert.Error(t, c.Get(t).Unmarshal(data, new(MT_UnexportedEmbeddedPointer)))
+	})
+
+	// encoding/json panics on decoding such a field while it is nil.
+	s.Test("a tagged embedded pointer to an unexported struct type is decoded only when it is already allocated", func(t *testcase.T) {
+		data := []byte(`{"hidden":{"Hidden":true}}`)
+		assert.Error(t, c.Get(t).Unmarshal(data, new(MT_TaggedEmbeddedPointer)))
+
+		secret := t.Random.String()
+		got := MT_TaggedEmbeddedPointer{mtEmbeddedUnexported: &mtEmbeddedUnexported{secret: secret}}
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, mtEmbeddedUnexported{Hidden: true, secret: secret}, *got.mtEmbeddedUnexported,
+			"like with encoding/json, only the exported fields are set")
+
+		assert.NoError(t, c.Get(t).Unmarshal([]byte(`{"hidden":null}`), &got))
+		assert.Equal(t, mtEmbeddedUnexported{Hidden: true, secret: secret}, *got.mtEmbeddedUnexported,
+			"like with encoding/json, null leaves it as it is")
+	})
+
+	s.Test("an interface field promoted from an embedded struct of an unexported type, in a nested struct", func(t *testcase.T) {
+		exp := MT_T21{Inner: MT_T20{mtEmbeddedFooer{Fooer: testent.MakeFoo(t)}}}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got MT_T21
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("an embedded interface is a field named after its type, like with encoding/json", func(t *testcase.T) {
+		exp := MT_EmbeddedInterface{Name: t.Random.String(), Fooer: testent.MakeFoo(t)}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+		assert.ContainsExactly(t, []string{"Name", "Fooer"}, jsonMemberNames(t, data))
+
+		var got MT_EmbeddedInterface
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	// Only a type embedded as the first field gets its methods promoted to the struct type built by reflection,
+	// which is where a promoted MarshalJSON could take over writing the whole struct.
+	s.Test("an embedded interface as the first field is a field named after its type, like with encoding/json", func(t *testcase.T) {
+		exp := MT_EmbeddedInterfaceFirst{Fooer: testent.MakeFoo(t), Name: t.Random.String()}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+		assert.ContainsExactly(t, []string{"Name", "Fooer"}, jsonMemberNames(t, data))
+
+		var got MT_EmbeddedInterfaceFirst
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
 	s.Test("JSON field tags", func(t *testcase.T) {
 		exp := MT_T4{Fooer: testent.MakeFoo(t), Ignored: testent.MakeFoo(t)}
 
@@ -885,6 +1036,14 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
 		assert.Equal(t, exp.Fooer, got.Fooer)
 		assert.Nil(t, got.Ignored)
+	})
+
+	s.Test("JSON member names from field tags are like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_TagNames{
+			Dash:    t.Random.String(),
+			Invalid: t.Random.String(),
+			Unknown: t.Random.String(),
+		})
 	})
 
 	s.Test("nil interface containers", func(t *testcase.T) {
@@ -1276,6 +1435,102 @@ type MT_T18_Base struct{ ID string }
 type MT_T19 struct {
 	Name string
 	MT_T1
+}
+
+// MT_Embedding embeds structs in the ways whose fields encoding/json promotes into the outer JSON object,
+// and a named non-struct type, which encoding/json treats as a field named after its type.
+type MT_Embedding struct {
+	Name string
+	MT_EmbeddedValue
+	*MT_EmbeddedPointer
+	mtEmbeddedUnexported
+	MT_Labels
+}
+
+type MT_EmbeddedValue struct {
+	ID   string
+	Note string `json:"note,omitempty"`
+}
+
+type MT_EmbeddedPointer struct{ Count int }
+
+type mtEmbeddedUnexported struct {
+	Hidden bool
+	secret string
+}
+
+type MT_Labels []string
+
+// MT_Shadowing has conflicting field names, which encoding/json resolves by their depth and json tags.
+type MT_Shadowing struct {
+	MT_EmbeddedValue
+	MT_ConflictA
+	MT_ConflictB
+	ID string // hides MT_EmbeddedValue.ID, as it is less nested, even though it comes later
+}
+
+type MT_ConflictA struct {
+	Dup    string // conflicts with MT_ConflictB.Dup at the same depth, so neither of them is used
+	Winner string
+	MT_Shared
+}
+
+type MT_ConflictB struct {
+	Dup    string
+	Tagged string `json:"Winner"` // wins over MT_ConflictA.Winner, as only it has its name from a json tag
+	MT_Shared
+}
+
+// MT_Shared is embedded twice at the same depth in MT_Shadowing, so its fields conflict with each other.
+type MT_Shared struct{ Shared string }
+
+// MT_SelfEmbedding embeds a pointer to itself, which makes its embedded fields a cycle.
+type MT_SelfEmbedding struct {
+	*MT_SelfEmbedding
+	V int
+}
+
+// MT_TaggedEmbedding embeds structs with a name in their json tag,
+// which makes them fields with that name, instead of having their fields promoted.
+type MT_TaggedEmbedding struct {
+	MT_EmbeddedValue     `json:"value"`
+	mtEmbeddedUnexported `json:"hidden"`
+}
+
+type MT_UnexportedEmbeddedPointer struct {
+	*mtEmbeddedUnexported
+}
+
+type MT_TaggedEmbeddedPointer struct {
+	*mtEmbeddedUnexported `json:"hidden"`
+}
+
+// MT_T20 embeds a struct of an unexported type, which has an interface field promoted from it.
+type MT_T20 struct {
+	mtEmbeddedFooer
+}
+
+type mtEmbeddedFooer struct{ Fooer testent.Fooer }
+
+type MT_T21 struct {
+	Inner MT_T20
+}
+
+type MT_EmbeddedInterface struct {
+	Name string
+	testent.Fooer
+}
+
+type MT_EmbeddedInterfaceFirst struct {
+	testent.Fooer
+	Name string
+}
+
+// MT_TagNames has json tags with names which encoding/json handles in a special way.
+type MT_TagNames struct {
+	Dash    string `json:"-,"`             // the member is named "-"
+	Invalid string `json:"in\\valid"`      // the name is not valid, so the member is named after the field
+	Unknown string `json:"unknown,inline"` // an unknown option is ignored
 }
 
 type MT_T4 struct {
@@ -2118,6 +2373,55 @@ func TestCodecRegister(t *testing.T) {
 			ByName: map[string]testent.Foo{t.Random.HexN(8): testent.MakeFoo(t)},
 			Inner:  Inner{Foo: testent.MakeFoo(t)},
 		}
+
+		data, err := c.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got T
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	// Like with encoding/json, the fields of an embedded struct are promoted into the JSON object of the outer struct,
+	// so the custom codec of an embedded type is not used.
+	s.Test("an embedded registered type has its fields promoted, like with encoding/json", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister(&c, "foo", fooCodec.Get(t))()
+
+		type T struct {
+			Name string
+			testent.Foo
+		}
+
+		assertEncodesLikeEncodingJSON(t, &c, T{Name: t.Random.String(), Foo: testent.MakeFoo(t)})
+	})
+
+	s.Test("a struct field of the registered type is decoded as its zero value when its member is missing", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister(&c, "foo", fooCodec.Get(t))()
+
+		type T struct {
+			Name string
+			Foo  testent.Foo `json:",omitzero"`
+		}
+		exp := T{Name: t.Random.String()}
+
+		data, err := c.Marshal(exp)
+		assert.NoError(t, err)
+		assert.ContainsExactly(t, []string{"Name"}, jsonMemberNames(t, data))
+
+		var got T
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("a pointer struct field of the registered type round-trips, also when it is nil", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister(&c, "foo", fooCodec.Get(t))()
+
+		type T struct{ Set, Nil *testent.Foo }
+		foo := testent.MakeFoo(t)
+		exp := T{Set: &foo}
 
 		data, err := c.Marshal(exp)
 		assert.NoError(t, err)
