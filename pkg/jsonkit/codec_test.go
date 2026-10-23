@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -456,6 +457,48 @@ func TestCodec(t *testing.T) {
 				})
 
 				itIgnoresTheWhitespaceAroundTheJSON(s)
+			})
+
+			// A JSON array carries no type information, so like with encoding/json, an `any` holds it as a []any.
+			// Its elements are still decoded by their @type, like the values of a JSON object are.
+			s.And("it is an element of a JSON array", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(`[` + value.Get(t) + `]`)
+				})
+
+				s.Then("the array is decoded into a slice of `any`, which holds the registered type", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal[any](t, []any{fooer.Get(t)}, *ptr.Get(t).(*any))
+				})
+
+				itIgnoresTheWhitespaceAroundTheJSON(s)
+
+				s.And("the array is an element of another JSON array", func(s *testcase.Spec) {
+					data.Let(s, func(t *testcase.T) []byte {
+						return []byte(`[` + string(data.Super(t)) + `]`)
+					})
+
+					s.Then("each array is decoded into a slice of `any`, and the innermost one holds the registered type", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+						assert.Equal[any](t, []any{[]any{fooer.Get(t)}}, *ptr.Get(t).(*any))
+					})
+				})
+
+				s.And("the destination is a struct field with an `any` type", func(s *testcase.Spec) {
+					ptr.Let(s, func(t *testcase.T) any {
+						return new(struct{ V any })
+					})
+					data.Let(s, func(t *testcase.T) []byte {
+						return []byte(`{"V":` + string(data.Super(t)) + `}`)
+					})
+
+					s.Then("the array is decoded into a slice of `any`, which holds the registered type", func(t *testcase.T) {
+						assert.NoError(t, act(t))
+						assert.Equal[any](t, []any{fooer.Get(t)}, ptr.Get(t).(*struct{ V any }).V)
+					})
+
+					itIgnoresTheWhitespaceAroundTheJSON(s)
+				})
 			})
 		})
 
@@ -1584,6 +1627,25 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 
+	s.Test("a slice of `any` in an `any` keeps the types of its elements", func(t *testcase.T) {
+		exp := struct{ V any }{V: []any{
+			testent.MakeFoo(t),
+			TypeA{V: t.Random.String()},
+			map[string]any{t.Random.HexN(4): TypeB{V: t.Random.Int()}},
+			[]any{TypeA{V: t.Random.String()}, []any{TypeB{V: t.Random.Int()}}},
+			t.Random.String(),
+			float64(t.Random.Int()),
+			t.Random.Bool(),
+			nil,
+		}}
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got struct{ V any }
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
 	s.Test("ordinary values coexist with polymorphic values", func(t *testcase.T) {
 		exp := MT_T7{
 			Name:    t.Random.String(),
@@ -2377,6 +2439,51 @@ func TestCodec_jsonMarshaler(t *testing.T) {
 		})
 	})
 
+	s.Test("jsonkit.Array of interfaces behind a pointer is encoded with the Codec's own registry", func(t *testcase.T) {
+		var isolated jsonkit.Codec // the implementations are registered only on this Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[wfCircle](&isolated, "circle"))
+		t.Defer(jsonkit.CodecRegisterTypeID[wfSquare](&isolated, "square"))
+
+		shapes := jsonkit.Array[wfShape]{wfCircle{R: t.Random.Float64()}, wfSquare{S: t.Random.Float64()}}
+		roundTrip(t, &isolated, struct{ Shapes *jsonkit.Array[wfShape] }{Shapes: &shapes})
+		roundTrip(t, &isolated, &shapes)
+
+		// Like with encoding/json, a JSON array in an interface is read back as a []any.
+		data, err := isolated.Marshal(struct{ Shapes any }{Shapes: &shapes})
+		assert.NoError(t, err)
+		var got struct{ Shapes any }
+		assert.NoError(t, isolated.Unmarshal(data, &got))
+		assert.Equal[any](t, []any{shapes[0], shapes[1]}, got.Shapes)
+	})
+
+	// Like jsonkit.Array, jsonkit.Interface's own MarshalJSON and UnmarshalJSON can only use the package level registry,
+	// so the Codec processes a jsonkit.Interface as the interface value it holds.
+	s.Test("jsonkit.Interface is encoded with the Codec's own registry", func(t *testcase.T) {
+		var isolated jsonkit.Codec // the implementations are registered only on this Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[wfCircle](&isolated, "circle"))
+		t.Defer(jsonkit.CodecRegisterTypeID[wfSquare](&isolated, "square"))
+
+		circle := jsonkit.Interface[wfShape]{V: wfCircle{R: t.Random.Float64()}}
+		roundTrip(t, &isolated, circle)
+		roundTrip(t, &isolated, &circle)
+		roundTrip(t, &isolated, struct{ Shape jsonkit.Interface[wfShape] }{Shape: circle})
+		roundTrip(t, &isolated, struct{ Shape *jsonkit.Interface[wfShape] }{Shape: &circle})
+		roundTrip(t, &isolated, []jsonkit.Interface[wfShape]{circle, {V: wfSquare{S: t.Random.Float64()}}, {}})
+
+		data, err := isolated.Marshal(circle)
+		assert.NoError(t, err)
+		assert.Contains(t, string(data), `"@type":"circle"`)
+	})
+
+	s.Test("jsonkit.Interface reads what its own MarshalJSON writes for a nil value", func(t *testcase.T) {
+		data, err := json.Marshal(jsonkit.Interface[wfShape]{})
+		assert.NoError(t, err)
+
+		got := jsonkit.Interface[wfShape]{V: wfCircle{R: t.Random.Float64()}}
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Nil(t, got.V)
+	})
+
 	s.Test("json.Marshaler returned wire format takes precedence over @type wrapping", func(t *testcase.T) {
 		str := t.Random.String()
 
@@ -2843,6 +2950,43 @@ func TestCodecRegisterMigration(t *testing.T) {
 		jsonkit.CodecRegisterMigration(&c, "legacy-foo", func(c *jsonkit.Codec, data []byte, p *testent.Foo) error { return nil })()
 		var got testent.Fooer
 		assert.Error(t, c.Unmarshal(legacyData.Get(t), &got))
+	})
+
+	s.Test("a type which is not a struct is migrated too, whatever the destination", func(t *testcase.T) {
+		type legacyDTO struct {
+			Items []string `json:"legacy_items"`
+		}
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[MT_CustomSlice](&c, "custom-slice"))
+		t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-slice", func(c *jsonkit.Codec, data []byte, p *MT_CustomSlice) error {
+			var dto legacyDTO
+			if err := json.Unmarshal(data, &dto); err != nil {
+				return err
+			}
+			*p = dto.Items
+			return nil
+		}))
+
+		type Box struct {
+			Any   any
+			Value MT_CustomSlice
+			Slice []MT_CustomSlice
+		}
+		var (
+			exp    = MT_CustomSlice(random.Slice(t.Random.IntBetween(1, 3), t.Random.String))
+			legacy = mustMarshalJSON(t, map[string]any{"@type": "legacy-slice", "legacy_items": []string(exp)})
+		)
+
+		var got Box
+		assert.NoError(t, c.Unmarshal([]byte(`{"Any":`+legacy+`,"Value":`+legacy+`,"Slice":[`+legacy+`]}`), &got))
+		assert.Equal(t, Box{Any: exp, Value: exp, Slice: []MT_CustomSlice{exp}}, got)
+
+		// and what is written under the current type ID still decodes
+		current, err := c.Marshal(Box{Any: exp, Value: exp, Slice: []MT_CustomSlice{exp}})
+		assert.NoError(t, err)
+		got = Box{}
+		assert.NoError(t, c.Unmarshal(current, &got))
+		assert.Equal(t, Box{Any: exp, Value: exp, Slice: []MT_CustomSlice{exp}}, got)
 	})
 }
 
@@ -3461,41 +3605,226 @@ func TestCodecRegister(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 
-	// A type's own json.Marshaler takes precedence over the registered
-	// custom codec. If a user adds json.Marshaler to a type that was
-	// also CodecRegister'd, the type's own MarshalJSON wins. This
-	// matches the existing behaviour for plain @type registration
-	// and ensures that retrofitting a type with a custom MarshalJSON
-	// doesn't silently bypass the type's intended wire format.
-	s.Test("json.Marshaler on the type wins over the custom codec", func(t *testcase.T) {
-		type T struct{ V string }
+	// Like with encoding/json/v2, where the marshalers given as options take precedence over the type's own methods,
+	// the custom codec registered on a Codec wins over the json.Marshaler and json.Unmarshaler of the type,
+	// wherever the value sits.
+	s.Context("the registered type has its own json.Marshaler and json.Unmarshaler too", func(s *testcase.Spec) {
+		type DTO struct {
+			Custom string `json:"custom"`
+		}
+		type Box struct {
+			Value   MT_OwnAndCustomJSON
+			Pointer *MT_OwnAndCustomJSON
+			Any     any
+			Slice   []MT_OwnAndCustomJSON
+			Map     map[string]MT_OwnAndCustomJSON
+		}
+		const typeID = "own-and-custom"
 
-		var c jsonkit.Codec
-		defer jsonkit.CodecRegister[T](&c, "marshaler_t", jsonkit.TypeCodec[T]{
-			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
-				return json.Marshal(map[string]string{"via": "codec", "v": v.V})
-			},
-			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
-				var raw struct {
-					V string `json:"v"`
-				}
-				if err := json.Unmarshal(data, &raw); err != nil {
-					return err
-				}
-				*p = T{V: raw.V}
-				return nil
-			},
-		})()
+		codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+			var c jsonkit.Codec
+			t.Defer(jsonkit.CodecRegister(&c, typeID, jsonkit.TypeCodec[MT_OwnAndCustomJSON]{
+				MarshalFunc: func(c *jsonkit.Codec, v MT_OwnAndCustomJSON) ([]byte, error) {
+					return json.Marshal(DTO{Custom: v.V})
+				},
+				UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *MT_OwnAndCustomJSON) error {
+					var dto DTO
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					p.V = dto.Custom
+					return nil
+				},
+			}))
+			return &c
+		})
+		value := let.Var(s, func(t *testcase.T) MT_OwnAndCustomJSON {
+			return MT_OwnAndCustomJSON{V: t.Random.String()}
+		})
+		box := let.Var(s, func(t *testcase.T) Box {
+			v := value.Get(t)
+			return Box{
+				Value:   v,
+				Pointer: &v,
+				Any:     v,
+				Slice:   []MT_OwnAndCustomJSON{v},
+				Map:     map[string]MT_OwnAndCustomJSON{t.Random.HexN(4): v},
+			}
+		})
 
-		// T also brings its own json.Marshaler. The type's own
-		// MarshalJSON wins; the registered custom codec must NOT
-		// run, so the wire lacks the "via":"codec" key the custom
-		// closure would emit.
-		exp := MT_TWithMarshaler{V: t.Random.String()}
-		data, err := c.Marshal(exp)
-		assert.NoError(t, err)
-		assert.NotContains(t, string(data), `"via":"codec"`,
-			"the type's own MarshalJSON should take precedence over the custom codec")
+		s.Describe("#Marshal", func(s *testcase.Spec) {
+			input := let.Var(s, func(t *testcase.T) any { return box.Get(t) })
+
+			act := func(t *testcase.T) ([]byte, error) {
+				return codec.Get(t).Marshal(input.Get(t))
+			}
+
+			s.Then("the custom codec writes the value wherever it sits", func(t *testcase.T) {
+				data, err := act(t)
+				assert.NoError(t, err)
+
+				// the own MarshalJSON writes a JSON string, which can't be read into a DTO
+				var got struct {
+					Value, Pointer, Any DTO
+					Slice               []DTO
+					Map                 map[string]DTO
+				}
+				assert.NoError(t, json.Unmarshal(data, &got))
+				exp := DTO{Custom: value.Get(t).V}
+				assert.Equal(t, exp, got.Value)
+				assert.Equal(t, exp, got.Pointer)
+				assert.Equal(t, exp, got.Any)
+				assert.Equal(t, []DTO{exp}, got.Slice)
+				assert.Equal(t, 1, len(got.Map))
+				for _, v := range got.Map {
+					assert.Equal(t, exp, v)
+				}
+			})
+
+			s.When("the value is the top-level value", func(s *testcase.Spec) {
+				input.Let(s, func(t *testcase.T) any { return value.Get(t) })
+
+				s.Then("the custom codec writes it", func(t *testcase.T) {
+					data, err := act(t)
+					assert.NoError(t, err)
+
+					var got DTO
+					assert.NoError(t, json.Unmarshal(data, &got))
+					assert.Equal(t, DTO{Custom: value.Get(t).V}, got)
+				})
+			})
+
+			s.When("the value is in a registered slice type, which is the top-level value", func(s *testcase.Spec) {
+				type Anys []any
+				codec.Let(s, func(t *testcase.T) *jsonkit.Codec {
+					c := codec.Super(t)
+					t.Defer(jsonkit.CodecRegisterTypeID[Anys](c, "anys"))
+					return c
+				})
+				input.Let(s, func(t *testcase.T) any { return Anys{value.Get(t)} })
+
+				s.Then("the custom codec writes it", func(t *testcase.T) {
+					data, err := act(t)
+					assert.NoError(t, err)
+
+					var got struct {
+						Value []DTO `json:"@value"`
+					}
+					assert.NoError(t, json.Unmarshal(data, &got))
+					assert.Equal(t, []DTO{{Custom: value.Get(t).V}}, got.Value)
+				})
+			})
+		})
+
+		s.Describe("#Unmarshal", func(s *testcase.Spec) {
+			data := let.Var(s, func(t *testcase.T) string {
+				var (
+					custom = mustMarshalJSON(t, DTO{Custom: value.Get(t).V})
+					// an interface value needs its @type
+					typed = mustMarshalJSON(t, map[string]string{"@type": typeID, "custom": value.Get(t).V})
+					key   = mustMarshalJSON(t, slices.Collect(maps.Keys(box.Get(t).Map))[0])
+				)
+				return `{"Value":` + custom + `,"Pointer":` + custom + `,"Any":` + typed +
+					`,"Slice":[` + custom + `],"Map":{` + key + `:` + custom + `}}`
+			})
+
+			act := func(t *testcase.T) (Box, error) {
+				var got Box
+				err := codec.Get(t).Unmarshal([]byte(data.Get(t)), &got)
+				return got, err
+			}
+
+			s.Then("the custom codec reads the value wherever it sits", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, box.Get(t), got)
+			})
+		})
+
+		s.Test("the value round-trips as the top-level value", func(t *testcase.T) {
+			roundTrip(t, codec.Get(t), value.Get(t))
+		})
+
+		// The custom codec belongs to the Codec it was registered on.
+		s.Test("another Codec, without the registration, uses the type's own methods", func(t *testcase.T) {
+			_ = codec.Get(t) // the type has a custom codec in the process
+
+			type Box struct {
+				Value   MT_OwnAndCustomJSON
+				Pointer *MT_OwnAndCustomJSON
+				Slice   []MT_OwnAndCustomJSON
+				Map     map[string]MT_OwnAndCustomJSON
+			}
+			v := value.Get(t)
+
+			var other jsonkit.Codec
+			assertEncodesLikeEncodingJSON(t, &other, v)
+			assertEncodesLikeEncodingJSON(t, &other, Box{
+				Value:   v,
+				Pointer: &v,
+				Slice:   []MT_OwnAndCustomJSON{v},
+				Map:     map[string]MT_OwnAndCustomJSON{t.Random.HexN(4): v},
+			})
+		})
+	})
+
+	// A custom codec is not limited to struct types.
+	s.Context("the registered type is not a struct", func(s *testcase.Spec) {
+		type DTO struct {
+			Items []string `json:"items"`
+		}
+		type Box struct {
+			Value   MT_CustomSlice
+			Pointer *MT_CustomSlice
+			Any     any
+			Slice   []MT_CustomSlice
+			Map     map[string]MT_CustomSlice
+		}
+
+		codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+			var c jsonkit.Codec
+			t.Defer(jsonkit.CodecRegister(&c, "custom-slice", jsonkit.TypeCodec[MT_CustomSlice]{
+				MarshalFunc: func(c *jsonkit.Codec, v MT_CustomSlice) ([]byte, error) {
+					return json.Marshal(DTO{Items: v})
+				},
+				UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *MT_CustomSlice) error {
+					var dto DTO
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					*p = dto.Items
+					return nil
+				},
+			}))
+			return &c
+		})
+		value := let.Var(s, func(t *testcase.T) MT_CustomSlice {
+			return random.Slice(t.Random.IntBetween(1, 3), func() string { return t.Random.String() })
+		})
+
+		s.Test("the value is written with the custom codec", func(t *testcase.T) {
+			data, err := codec.Get(t).Marshal(value.Get(t))
+			assert.NoError(t, err)
+
+			var got DTO
+			assert.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, []string(value.Get(t)), got.Items)
+		})
+
+		s.Test("the value round-trips as the top-level value", func(t *testcase.T) {
+			roundTrip(t, codec.Get(t), value.Get(t))
+		})
+
+		s.Test("the value round-trips wherever it sits", func(t *testcase.T) {
+			v := value.Get(t)
+			roundTrip(t, codec.Get(t), Box{
+				Value:   v,
+				Pointer: &v,
+				Any:     v,
+				Slice:   []MT_CustomSlice{v},
+				Map:     map[string]MT_CustomSlice{t.Random.HexN(4): v},
+			})
+		})
 	})
 
 	// Two codecs each registering the same concrete type with their
@@ -3675,26 +4004,25 @@ func TestCodecRegister(t *testing.T) {
 	})
 }
 
-// MT_TWithMarshaler is a test type that implements its own json.Marshaler
-// and json.Unmarshaler. Used by the "json.Marshaler on the type wins over
-// the custom codec" test to assert the codec defers to the type's own
-// wire format when both a json.Marshaler and a CodecRegister entry exist.
-type MT_TWithMarshaler struct{ V string }
+// MT_OwnAndCustomJSON has its own json.Marshaler and json.Unmarshaler, which write it as a JSON string.
+// The tests register a custom codec for it, which writes it as a JSON object.
+type MT_OwnAndCustomJSON struct{ V string }
 
-func (MT_TWithMarshaler) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]string{"own": "marshaler"})
+func (v MT_OwnAndCustomJSON) MarshalJSON() ([]byte, error) {
+	return json.Marshal("own:" + v.V)
 }
 
-func (p *MT_TWithMarshaler) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		V string `json:"v"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+func (v *MT_OwnAndCustomJSON) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	p.V = raw.V
+	v.V = strings.TrimPrefix(s, "own:")
 	return nil
 }
+
+// MT_CustomSlice is a type which is not a struct, which the tests register a custom codec for.
+type MT_CustomSlice []string
 
 // TestCodec_customCodecEnvelopeShape pins the rule that the polymorphic
 // wrapper around a custom codec's wire output must match the wire's shape:
@@ -3980,6 +4308,43 @@ func TestCodec_customUnmarshalReceivesOriginatingCodec(t *testing.T) {
 		var got struct{ V any }
 		assert.NoError(t, c.Unmarshal(data, &got))
 		assert.Equal[any](t, MT_Inners{{Marker: marker}}, got.V)
+	})
+
+	// Companion scenario for the values of a JSON array or object without @type, which an `any` holds.
+	// Their @type tells their type, and the custom unmarshal of that type must receive the codec there too.
+	s.Test("generic JSON dispatch propagates the codec to the custom unmarshal of the values with @type", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister[MT_Inner](&c, "inner",
+			jsonkit.TypeCodec[MT_Inner]{
+				MarshalFunc: func(_ *jsonkit.Codec, v MT_Inner) ([]byte, error) {
+					return json.Marshal(map[string]string{"marker": v.Marker})
+				},
+				UnmarshalFunc: func(supplied *jsonkit.Codec, data []byte, p *MT_Inner) error {
+					if supplied == nil {
+						return fmt.Errorf("supplied codec is nil during dispatch")
+					}
+					var dto struct {
+						Marker string `json:"marker"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					p.Marker = dto.Marker
+					return nil
+				},
+			},
+		)()
+
+		exp := struct{ V any }{V: []any{
+			MT_Inner{Marker: t.Random.HexN(8)},
+			map[string]any{t.Random.HexN(4): MT_Inner{Marker: t.Random.HexN(8)}},
+		}}
+		data, err := c.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got struct{ V any }
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
 	})
 }
 

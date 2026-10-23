@@ -98,32 +98,37 @@ func (v typed) MarshalJSON() ([]byte, error) {
 		data []byte
 		err  error
 	)
-	switch rVal.Kind() {
-	case reflect.Slice:
+	var entry *customCodecEntry
+	if rVal.IsValid() {
+		entry = v.reg.LookupCustomCodec(rVal.Type())
+	}
+	switch {
+	case entry != nil:
+		// The concrete type has a CodecRegister-style custom
+		// Marshal closure, which wins over the type's own json.Marshaler.
+		// Invoke it directly so this typed
+		// envelope is the single source of the @type field —
+		// recursing through marshalPlaceholderWithReg would
+		// also add @type, producing a duplicate @type field on
+		// the wire. The codec built here is a local shim that
+		// exposes the registry to the closure; the closure is
+		// not expected to retain it.
+		shim := &Codec{typeIDRegistry: v.reg}
+		data, err = entry.Marshal(shim, v.Value)
+	case rVal.Kind() == reflect.Slice:
 		var ary jsonArray
 		ary.ptr = reflectkit.PointerOf(rVal)
 		ary.reg = v.reg
 		data, err = json.Marshal(ary)
-	case reflect.Struct:
+	case rVal.Kind() == reflect.Struct:
 		// If the value's concrete type brings its own json.Marshaler,
 		// preserve that wire format. stdlib's json.Marshal will dispatch
 		// through it; the codec's reflection path would lose any custom
 		// encoding. Without its own Marshaler, route through the codec's
 		// reflection-based marshalling so interface-typed fields get the
 		// @type/@value envelope stdlib cannot produce.
-		if rVal.CanInterface() && rVal.Type().Implements(jsonMarshalerType) {
+		if rVal.CanInterface() && hasOwnJSONMarshaler(rVal.Type()) {
 			data, err = json.Marshal(v.Value)
-		} else if entry := v.reg.LookupCustomCodec(rVal.Type()); entry != nil {
-			// The concrete type has a CodecRegister-style custom
-			// Marshal closure. Invoke it directly so this typed
-			// envelope is the single source of the @type field —
-			// recursing through marshalPlaceholderWithReg would
-			// also add @type, producing a duplicate @type field on
-			// the wire. The codec built here is a local shim that
-			// exposes the registry to the closure; the closure is
-			// not expected to retain it.
-			shim := &Codec{typeIDRegistry: v.reg}
-			data, err = entry.Marshal(shim, v.Value)
 		} else {
 			shadow, sErr := marshalPlaceholderWithReg(rVal, nil, v.reg, nil, false)
 			if sErr != nil {
@@ -218,11 +223,14 @@ func (v *typed) UnmarshalJSON(data []byte) error {
 		return v.unmarshalObject(data)
 	}
 
-	var val typed
-	if err := json.Unmarshal(data, &val.Value); err != nil {
+	// A JSON value which is not an object has no @type, and carries no type information,
+	// so like with encoding/json, only an empty interface can hold it, like a JSON array as a []any.
+	// The values with a @type nested in a JSON array are still decoded by their @type.
+	value, err := unmarshalGenericJSON(data, v.reg, v.codec)
+	if err != nil {
 		return err
 	}
-	*v = val
+	v.Value = value
 	return nil
 }
 
@@ -335,8 +343,10 @@ func (v *typed) unmarshalObject(data []byte) error {
 		if TypeID(v.Type.String()) != typeID {
 			return fmt.Errorf("%s is not a recognised primitive type", typeID)
 		}
+		// Like an `any` holding a []any, which Interface[any] writes as {"@type":"interface {}","@value":[...]}.
+		// The values with a @type nested in it are still decoded by their @type.
 		ptr := reflect.New(v.Type)
-		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
+		if err := unmarshalReflectWithReg(data, ptr.Elem(), v.reg, v.codec); err != nil {
 			return err
 		}
 		value = ptr.Elem()

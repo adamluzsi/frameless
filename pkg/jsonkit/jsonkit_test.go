@@ -140,6 +140,26 @@ func TestInterface(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
+	t.Run("empty interface type with a slice which holds registered types", func(t *testing.T) {
+		var exp jsonkit.Interface[any]
+		exp.V = []any{TypeA{V: rnd.String()}, []any{TypeB{V: rnd.Int()}}, rnd.String()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("empty interface type with a JSON array of @type envelopes", func(t *testing.T) {
+		exp := TypeA{V: rnd.String()}
+		data, err := json.Marshal([]map[string]string{{"@type": "type_a", "V": exp.V}})
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal[any](t, []any{exp}, got.V)
+	})
 	t.Run("interface T type with base-type based implementation", func(t *testing.T) {
 		var exp jsonkit.Interface[Greeter]
 		exp.V = TypeD(rnd.String())
