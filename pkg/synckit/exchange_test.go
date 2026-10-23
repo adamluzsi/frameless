@@ -977,6 +977,130 @@ func TestBroadcast(t *testing.T) {
 			})
 		})
 
+		// A subscriber busy with an earlier message is not receiving, so the publish
+		// waits until it can hand the message over (back pressure).
+		s.When("a subscriber is busy with an earlier message", func(s *testcase.Spec) {
+			var (
+				release = let.Var(s, func(t *testcase.T) chan struct{} {
+					return make(chan struct{})
+				})
+				// leaves tells whether the busy subscriber stops consuming once it is
+				// released, like a `break` out of its for range loop.
+				leaves = let.VarOf(s, false)
+			)
+			s.Before(func(t *testcase.T) {
+				var (
+					bc         = subject.Get(t)
+					release    = release.Get(t)
+					leaves     = leaves.Get(t)
+					earlier    = t.Random.UUID()
+					processing = make(chan struct{})
+				)
+				// not t.Go, as a t.Go job which finishes during a t.Eventually trips a data race inside testcase.
+				busy := synckit.Go(t.Context(), func(ctx context.Context) error {
+					var first = true
+					for msg, err := range bc.Subscribe(ctx) {
+						if err != nil {
+							return err
+						}
+						if first {
+							first = false
+							close(processing)
+							select {
+							case <-release:
+							case <-ctx.Done():
+								return nil
+							}
+						}
+						if err := msg.ACK(); err != nil {
+							return err
+						}
+						if leaves {
+							return nil
+						}
+					}
+					return nil
+				})
+				t.Cleanup(func() {
+					busy.Cancel()
+					assert.NoError(t, busy.Wait())
+				})
+				waitForSubscribers(t, 2)
+
+				assert.Within(t, deadline, func(ctx context.Context) {
+					assert.NoError(t, bc.Publish(ctx, earlier))
+				})
+				assert.Within(t, deadline, func(context.Context) {
+					<-processing
+				})
+			})
+
+			// publishing starts the act in the background, and ensures that it is
+			// waiting on the busy subscriber.
+			publishing := func(t *testcase.T) (*assert.Async, *error) {
+				subject.Get(t)
+				ctx.Get(t)
+				data.Get(t)
+				var err error
+				w := assert.NotWithin(t, timeout, func(context.Context) {
+					err = act(t)
+				}, "expected the publish to wait for the busy subscriber")
+				return w, &err
+			}
+
+			s.Then("the publish hands the message over once the subscriber is done with the earlier one", func(t *testcase.T) {
+				w, err := publishing(t)
+
+				close(release.Get(t))
+
+				assert.Within(t, deadline, func(context.Context) {
+					w.Wait()
+				})
+				assert.NoError(t, *err)
+				res.Get(t).Eventually(t, func(tb testing.TB, got []string) {
+					assert.Contains(tb, got, data.Get(t))
+				})
+			})
+
+			s.Then("new subscribers can still join while the publish is waiting", func(t *testcase.T) {
+				publishing(t)
+
+				bc := subject.Get(t)
+				t.Go(func(ctx context.Context) error {
+					for msg, err := range bc.Subscribe(ctx) {
+						if err != nil {
+							return err
+						}
+						if err := msg.ACK(); err != nil {
+							return err
+						}
+					}
+					return nil
+				})
+
+				waitForSubscribers(t, 3)
+			})
+
+			s.And("the subscriber leaves the subscription instead of taking the message", func(s *testcase.Spec) {
+				leaves.LetValue(s, true)
+
+				s.Then("the publish carries on without the departed subscriber", func(t *testcase.T) {
+					w, err := publishing(t)
+
+					close(release.Get(t))
+
+					assert.Within(t, deadline, func(context.Context) {
+						w.Wait()
+					}, "the publish must not wait for a subscriber which is no longer there")
+					assert.NoError(t, *err)
+					res.Get(t).Eventually(t, func(tb testing.TB, got []string) {
+						assert.Contains(tb, got, data.Get(t))
+					})
+					waitForSubscribers(t, 1)
+				})
+			})
+		})
+
 		// The no-subscriber scenario uses a fresh broadcast so the default
 		// subscriber above is not involved.
 		s.Test("with no subscriber consuming, publishing is a no-op and a later subscriber does not receive the message", func(t *testcase.T) {

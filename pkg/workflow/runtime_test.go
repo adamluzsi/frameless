@@ -908,8 +908,7 @@ func TestRuntime(t *testing.T) {
 			})
 
 			s.Before(func(t *testcase.T) {
-				t.Go(runtime.Get(t).Run)
-
+				// the Runtime is already running in the background, see wftest.Runtime
 				assert.NoError(t, runtime.Get(t).Spawn(t.Context(), processID.Get(t), parentDef.Get(t)))
 
 				t.Eventually(func(t *testcase.T) {
@@ -938,6 +937,40 @@ func TestRuntime(t *testing.T) {
 
 				t.Eventually(func(t *testcase.T) {
 					assert.True(t, isCancelled.Get(t))
+				})
+			})
+
+			// With a single worker which is not restarted after a failure,
+			// a termination which the worker would take for a failure leaves the queue without a worker.
+			s.And("the Runtime has a single worker, which is not restarted after a failure", func(s *testcase.Spec) {
+				runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+					rt := runtime.Super(t)
+					rt.NumQueueSubscriber = 1
+					rt.RetryStrategy = singleAttempt{}
+					return rt
+				})
+
+				isNextExecuted := let.VarOf(s, false)
+				_, nextPAID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+					return func(ctx context.Context) error {
+						isNextExecuted.Set(t, true)
+						return nil
+					}
+				})
+
+				s.Then("the worker carries on with other Processes, as a termination is not a failure", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isCancelled.Get(t))
+					})
+
+					var next = mustProcessID(t)
+					assert.NoError(t, runtime.Get(t).Spawn(t.Context(), next, workflow.Execute{Participant: nextPAID.Get(t)}))
+
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isNextExecuted.Get(t),
+							"expected the worker to execute the next Process after the termination")
+					})
 				})
 			})
 

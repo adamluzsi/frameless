@@ -32,7 +32,7 @@ func (fan *Fan[T]) init() {
 
 func (fan *Fan[T]) Publish(ctx context.Context, v T) error {
 	fan.init()
-	return fan.exchangeBase.publish(ctx, fan.channel, v)
+	return fan.exchangeBase.publish(ctx, fan.channel, nil, v)
 }
 
 func (fan *Fan[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
@@ -46,30 +46,52 @@ type Broadcast[T any] struct {
 	exchangeBase[T]
 
 	m sync.RWMutex
-	s map[int]chan T
+	s map[int]broadcastSubscriber[T]
+}
+
+// broadcastSubscriber is the receiving end of a Broadcast subscription.
+type broadcastSubscriber[T any] struct {
+	ch chan T
+	// left is closed when the subscriber leaves its subscription,
+	// so a publish no longer waits to hand a message over to it.
+	left chan struct{}
 }
 
 var _ pubsub.Publisher[string] = (*Broadcast[string])(nil)
 
 func (b *Broadcast[T]) Publish(ctx context.Context, data T) error {
-	b.m.RLock()
-	defer b.m.RUnlock()
-	for _, ch := range b.s {
-		if err := b.exchangeBase.publish(ctx, ch, data); err != nil {
+	// The lock is not held while waiting on the subscribers,
+	// so subscribers can join or leave while a publish waits on a busy one.
+	for _, sub := range b.subscribers() {
+		if err := b.exchangeBase.publish(ctx, sub.ch, sub.left, data); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func (b *Broadcast[T]) subscribers() []broadcastSubscriber[T] {
+	b.m.RLock()
+	defer b.m.RUnlock()
+	var subs = make([]broadcastSubscriber[T], 0, len(b.s))
+	for _, sub := range b.s {
+		subs = append(subs, sub)
+	}
+	return subs
+}
+
 var _ pubsub.Subscriber[string] = (*Broadcast[string])(nil)
 
 func (b *Broadcast[T]) Subscribe(ctx context.Context) pubsub.Subscription[T] {
 	return func(yield func(pubsub.Message[T], error) bool) {
-		var ch = make(chan T)
-		defer close(ch)
-		defer register(&b.m, &b.s, ch)()
-		for v, err := range b.exchangeBase.subscribe(ctx, ch) {
+		// sub.ch is never closed, as a publish may still try to send on it after the subscriber left.
+		var sub = broadcastSubscriber[T]{
+			ch:   make(chan T),
+			left: make(chan struct{}),
+		}
+		defer register(&b.m, &b.s, sub)()
+		defer close(sub.left)
+		for v, err := range b.exchangeBase.subscribe(ctx, sub.ch) {
 			if !yield(v, err) {
 				return
 			}
@@ -110,7 +132,10 @@ func (ex *exchangeBase[T]) init() {
 	})
 }
 
-func (ex *exchangeBase[T]) publish(ctx context.Context, ch chan<- T, data T) error {
+// publish hands data over to the receiver of ch.
+// When the receiver signals through left that it is gone, there is no one to hand data over to.
+// A nil left means the receiver never leaves.
+func (ex *exchangeBase[T]) publish(ctx context.Context, ch chan<- T, left <-chan struct{}, data T) error {
 	ex.init()
 	if ctx == nil {
 		ctx = context.Background()
@@ -123,6 +148,7 @@ func (ex *exchangeBase[T]) publish(ctx context.Context, ch chan<- T, data T) err
 		return ctx.Err()
 	case <-ex.closed:
 		return context.Canceled
+	case <-left:
 	case ch <- data:
 	}
 	return nil

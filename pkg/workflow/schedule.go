@@ -331,8 +331,10 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 				goto waiting
 			case (ProcessCancel{}).NotificationType():
 				if sch.ProcessID.Equal(ch.GetProcessID()) {
-					_ = msg.ACK()
+					// Cancel before the ACK: an ACK may end msg.Context(), the parent of executeCTX,
+					// which would cancel executeCTX without ErrProcessCancel as its cause.
 					cancel(ErrProcessCancel)
+					_ = msg.ACK()
 					return nil
 				}
 				goto waiting
@@ -345,9 +347,11 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 
 	var err = rt.Execute(executeCTX, sch.ProcessID)
-	if errors.Is(err, ErrProcessCancel) {
+	if errors.Is(context.Cause(executeCTX), ErrProcessCancel) {
 		// ProcessCancel is not a real problematic error,
-		// but a control flow, for process termination
+		// but a control flow, for process termination.
+		// Execute reports a cancellation with the context's error,
+		// so the termination is recognised by the context's cause.
 		return nil
 	}
 
