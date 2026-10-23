@@ -190,6 +190,12 @@ func (c Codec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(placeholder.Interface())
 }
 
+// Unmarshal decodes data into the value ptr points to, like json.Unmarshal does:
+// a struct keeps the fields without a member in the JSON, a pointer keeps pointing to the value it points to,
+// a map keeps its other entries, and the elements of a slice or an array are decoded in place.
+//
+// Unlike with encoding/json, an interface value is decoded by its @type,
+// and it replaces the value the interface holds, instead of being decoded into it.
 func (c Codec) Unmarshal(data []byte, ptr any) error {
 	if ptr == nil {
 		return fmt.Errorf("Unmarshal: nil destination")
@@ -815,47 +821,42 @@ func hasOwnJSONUnmarshaler(t reflect.Type) bool {
 	return !isArrayOfInterfaces(t)
 }
 
-// unmarshalPlan describes how to unmarshal JSON into a target struct value
-// using a generated DTO and stdlib json.Unmarshal.
+// unmarshalPlan describes how to decode JSON into a struct which needs the Codec, see requiresCodec.
+// The JSON is first decoded by encoding/json into a DTO struct, which has a field for each JSON member of the struct,
+// then each member is decoded into the struct field it belongs to.
 type unmarshalPlan struct {
 	dtoType reflect.Type
-	copies  []fieldCopy
+	fields  []fieldPlan
 }
 
-type fieldCopy struct {
+type fieldPlan struct {
 	dtoIndex  int
 	targetIdx []int
-	// throughPointer reports whether the target field is in a struct embedded through a pointer,
-	// which is allocated only when the JSON has a member for the field, like with encoding/json.
-	throughPointer bool
-	copy           func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
+	// plain reports whether encoding/json decodes the member on its own.
+	// Then the DTO field has the type and the ,string option of the struct field,
+	// and it is set from the struct field before the decoding,
+	// so the member is decoded into the value the struct field already holds, like with encoding/json.
+	plain bool
+	// decode decodes the member into the struct field, when it is not plain.
+	// Then the DTO field is a json.RawMessage, which is empty when the JSON has no member for the field.
+	decode func(data []byte, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
 }
 
-// unmarshalPlanCache memoizes unmarshalPlan per struct reflect.Type.
-// We use a plain map guarded by a mutex; the cache is read-only after
-// population so building plans (which may recurse via dtoFieldFor) does
-// not need to re-acquire the cache lock.
+// unmarshalPlanCache memoizes the unmarshalPlan of the struct types.
 var unmarshalPlanCache synckit.Map[reflect.Type, *unmarshalPlan]
 
 // getUnmarshalPlan returns a cached or freshly built unmarshalPlan for rt.
-func getUnmarshalPlan(rt reflect.Type) (*unmarshalPlan, error) {
+func getUnmarshalPlan(rt reflect.Type) *unmarshalPlan {
 	if plan := unmarshalPlanCache.Get(rt); plan != nil {
-		return plan, nil
+		return plan
 	}
-	plan, err := buildUnmarshalPlan(rt)
-	if err != nil {
-		return nil, err
-	}
+	plan := buildUnmarshalPlan(rt)
 	unmarshalPlanCache.Set(rt, plan)
-	return plan, nil
+	return plan
 }
 
-// invalidateUnmarshalPlanCache removes any cached unmarshal plan whose
-// struct type might transitively contain a now-custom-codec-registered
-// type as a field. Without this, a plan cached before CodecRegister was
-// called would silently route the field through the default decode path
-// and produce zero values for any concrete-type field whose wire was
-// encoded with a custom Marshal closure.
+// invalidateUnmarshalPlanCache drops what is cached about how to decode the types,
+// as registering a custom codec for a type changes how the types holding it are decoded.
 //
 // We invalidate the whole cache rather than tracking reverse
 // dependencies. The cache is built lazily, plans are cheap to rebuild,
@@ -863,85 +864,59 @@ func getUnmarshalPlan(rt reflect.Type) (*unmarshalPlan, error) {
 // that subsequent unmarshals rebuild plans they would otherwise reuse,
 // which is negligible for typical payloads.
 func invalidateUnmarshalPlanCache() {
-	unmarshalPlanCache.Do(func(entries map[reflect.Type]*unmarshalPlan) error {
-		for k := range entries {
-			delete(entries, k)
-		}
-		return nil
-	})
+	unmarshalPlanCache.Reset()
+	requiresCodecCache.Reset()
 }
 
-// buildUnmarshalPlan constructs the DTO type and per-field copy closures
-// that copy values from a populated DTO into the target struct.
-func buildUnmarshalPlan(rt reflect.Type) (*unmarshalPlan, error) {
-	fields := jsonFields(rt)
-	dtoFields := make([]reflect.StructField, 0, len(fields))
-	copies := make([]fieldCopy, 0, len(fields))
+func buildUnmarshalPlan(rt reflect.Type) *unmarshalPlan {
+	var (
+		fields    = jsonFields(rt)
+		dtoFields = make([]reflect.StructField, 0, len(fields))
+		plans     = make([]fieldPlan, 0, len(fields))
+	)
 	for _, field := range fields {
-		dtoFieldType, copyFn, ok := dtoFieldFor(field.field, field.tag)
-		if !ok {
-			continue
+		var (
+			fp       = fieldPlan{dtoIndex: len(dtoFields), targetIdx: field.index}
+			dtoField = reflect.StructField{
+				Name: "F" + strconv.Itoa(len(dtoFields)),
+				Type: rawMessageType,
+				Tag:  jsonStructTag(field.name, false),
+				// A DTO field is never embedded, as the methods of an embedded type would be promoted to the DTO.
+			}
+			// An unexported field is an embedded struct with a name in its json tag,
+			// which can't be set as a whole, so it is decoded in place, like with encoding/json.
+			codecFree = field.field.IsExported() && !requiresCodec(field.field.Type)
+		)
+		switch {
+		case codecFree && !field.throughPointer:
+			fp.plain = true
+			dtoField.Type = field.field.Type
+			dtoField.Tag = jsonStructTag(field.name, field.tag.Stringify)
+		case codecFree:
+			// The field is in a struct embedded through a pointer, which is allocated only when the JSON has a member for the field,
+			// so the member is captured as raw JSON, which tells whether the JSON has it.
+			fp.decode = decodeWithEncodingJSON(field.field.Type, field.tag.Stringify)
+		default:
+			fp.decode = unmarshalReflectWithReg
 		}
-		if !field.field.IsExported() {
-			copyFn = copyThroughExportedFields(copyFn)
-		}
-		if field.throughPointer {
-			// The field is captured as raw JSON, which tells whether the JSON has a member for it.
-			dtoFieldType, copyFn = rawMessageType, copyFromRawAs(dtoFieldType, copyFn)
-		}
-		dtoFields = append(dtoFields, reflect.StructField{
-			Name: "F" + strconv.Itoa(len(dtoFields)),
-			Type: dtoFieldType,
-			Tag:  jsonStructTag(field.name, false),
-			// A DTO field is never embedded, as the methods of an embedded type would be promoted to the DTO.
-		})
-		copies = append(copies, fieldCopy{
-			dtoIndex:       len(dtoFields) - 1,
-			targetIdx:      field.index,
-			throughPointer: field.throughPointer,
-			copy:           copyFn,
-		})
+		dtoFields = append(dtoFields, dtoField)
+		plans = append(plans, fp)
 	}
-	dtoType := reflect.StructOf(dtoFields)
-	return &unmarshalPlan{dtoType: dtoType, copies: copies}, nil
+	return &unmarshalPlan{dtoType: reflect.StructOf(dtoFields), fields: plans}
 }
 
-// copyFromRawAs returns a copy function for a json.RawMessage DTO field,
-// which decodes the raw JSON into a dtoType value, and copies it with copyFn.
-func copyFromRawAs(dtoType reflect.Type, copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error) func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-	return func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-		value := reflect.New(dtoType)
-		if err := json.Unmarshal(dto.Bytes(), value.Interface()); err != nil {
-			return err
-		}
-		return copyFn(value.Elem(), target, reg, codec)
-	}
-}
-
-// copyThroughExportedFields returns a copy function for an embedded field of an unexported struct type,
-// which has a name in its json tag. Such a field can't be set as a whole,
-// so like with encoding/json, only its exported fields are set.
-func copyThroughExportedFields(copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error) func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-	return func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-		value := reflect.New(target.Type()).Elem()
-		if err := copyFn(dto, value, reg, codec); err != nil {
-			return err
-		}
-		if target.Kind() == reflect.Pointer {
-			if value.IsNil() {
-				return nil
-			}
-			if target.IsNil() {
-				return errCannotSetEmbeddedPointer(target.Type())
-			}
-			target, value = target.Elem(), value.Elem()
-		}
-		for i := 0; i < target.NumField(); i++ {
-			if target.Type().Field(i).IsExported() {
-				target.Field(i).Set(value.Field(i))
-			}
-		}
-		return nil
+// decodeWithEncodingJSON returns a decode function of a fieldPlan, which decodes the member with encoding/json,
+// with the ,string option of the field when stringify is set.
+func decodeWithEncodingJSON(t reflect.Type, stringify bool) func(data []byte, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	// The member is decoded into the field of a wrapper struct, as that is where encoding/json applies the ,string option.
+	wrapperType := reflect.StructOf([]reflect.StructField{{Name: "V", Type: t, Tag: jsonStructTag("V", stringify)}})
+	return func(data []byte, target reflect.Value, _ *_TypeRegistry, _ *Codec) error {
+		wrapper := reflect.New(wrapperType).Elem()
+		wrapper.Field(0).Set(target)
+		err := json.Unmarshal(slices.Concat([]byte(`{"V":`), data, []byte(`}`)), wrapper.Addr().Interface())
+		// What encoding/json decoded before an error is kept, like when it decodes the field itself.
+		target.Set(wrapper.Field(0))
+		return err
 	}
 }
 
@@ -979,24 +954,27 @@ func jsonStructTag(name string, stringify bool) reflect.StructTag {
 	return reflect.StructTag("json:" + strconv.Quote(value))
 }
 
-// copyTypedFromRaw unmarshals a polymorphic JSON value into target, which
-// must be an interface-typed reflect.Value. It uses typed.UnmarshalJSON
-// with the correct target interface type so that the @type/@value envelope
-// is dispatched correctly. For struct implementations that have interface
-// fields (or other nested polymorphic data), it routes through the DTO
-// path so stdlib isn't asked to unmarshal directly into the original
-// struct type. Slice/map/array implementations that contain interface
-// elements are dispatched element-by-element so each element gets its own
-// typed dispatch.
-func copyTypedFromRaw(raw []byte, target reflect.Value) error {
-	return copyTypedFromRawWithReg(raw, target, nil, nil)
-}
-
+// copyTypedFromRawWithReg decodes a JSON value into target, which is an interface-typed reflect.Value.
+// Unlike encoding/json, the value the interface holds is replaced instead of decoded into,
+// as the @type envelope of the JSON tells what the new value is.
+// A registered struct type is decoded with its custom codec or migration, if it has one,
+// and a registered slice, array or map type is decoded with the Codec,
+// so the interface values nested in them are decoded by their @type too.
 func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, null) {
 		target.SetZero()
 		return nil
+	}
+	// A JSON object without a @type is not a polymorphic value, but a generic JSON object,
+	// which only an empty interface can hold, as a map[string]any.
+	// Its values are still decoded by their @type, when they have one.
+	if target.NumMethod() == 0 && isNestedObjectWithoutType(trimmed) {
+		value, err := unmarshalGenericJSON(trimmed, reg, codec)
+		if err != nil {
+			return err
+		}
+		return setDecoded(target, reflect.ValueOf(value))
 	}
 	envTypeID, inner, ok := splitTypedEnvelope(raw)
 	if !ok {
@@ -1011,7 +989,7 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 	case reflect.Struct:
 		return copyTypedStructWithReg(inner, rType, target, reg, codec, TypeID(envTypeID))
 	case reflect.Slice, reflect.Array, reflect.Map:
-		return copyTypedContainerWithReg(inner, rType, target, reg, codec)
+		return copyTypedContainerWithReg(raw, inner, rType, target, reg, codec)
 	}
 	return applyTypedValueWithReg(raw, target, reg, codec)
 }
@@ -1044,103 +1022,29 @@ func copyTypedStructWithReg(inner []byte, rType reflect.Type, target reflect.Val
 	return setDecoded(target, concrete)
 }
 
-// copyTypedContainer dispatches a slice/array/map polymorphic value element
-// by element. Each element of the JSON array/object is itself a polymorphic
-// value and is routed through copyTypedFromRaw so it gets typed dispatch.
-func copyTypedContainer(inner []byte, rType reflect.Type, target reflect.Value) error {
-	return copyTypedContainerWithReg(inner, rType, target, nil, nil)
-}
-
-func copyTypedContainerWithReg(inner []byte, rType reflect.Type, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+// copyTypedContainerWithReg decodes the registered slice, array or map type rType from its @type envelope in raw,
+// whose payload is inner, and sets it to target, which is an interface-typed reflect.Value.
+func copyTypedContainerWithReg(raw, inner []byte, rType reflect.Type, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 	trimmed := bytes.TrimSpace(inner)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, null) {
 		// Preserve the typed-nil of the registered type so a nil polymorphic
 		// value stays distinguishable from a plain nil interface.
 		return setDecoded(target, reflect.Zero(rType))
 	}
-	// Strip the leading "@type" field if the inner still carries it
-	// (splitTypedEnvelope returns the whole raw for flat envelopes).
-	stripped := stripTypeField(inner)
-	// Build a destination of the registered type. For maps, use the registered
-	// map type's key/value; for slices/arrays, the registered element type.
+	if len(inner) == len(raw) {
+		// splitTypedEnvelope returns the whole object for a flat envelope,
+		// which keeps the @type next to the entries of a map: {"@type":"...","key":...}.
+		inner = stripTypeField(inner)
+	}
 	dest := reflect.New(rType)
-	if err := decodeContainerElementsWithReg(stripped, dest, reg, codec); err != nil {
+	if err := unmarshalReflectWithReg(inner, dest.Elem(), reg, codec); err != nil {
 		return err
 	}
 	concrete := dest.Elem()
 	if !concrete.Type().Implements(target.Type()) && reflect.PointerTo(concrete.Type()).Implements(target.Type()) {
-		pv := reflect.New(concrete.Type())
-		pv.Elem().Set(concrete)
-		concrete = pv
+		concrete = dest
 	}
 	return setDecoded(target, concrete)
-}
-
-// decodeContainerElements populates the registered container type's elements
-// from a JSON array (for slices/arrays) or object (for maps), routing each
-// element through copyTypedFromRaw.
-func decodeContainerElements(jsonBytes []byte, dest reflect.Value) error {
-	return decodeContainerElementsWithReg(jsonBytes, dest, nil, nil)
-}
-
-func decodeContainerElementsWithReg(jsonBytes []byte, dest reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-	switch dest.Kind() {
-	case reflect.Pointer:
-		return decodeContainerElementsWithReg(jsonBytes, dest.Elem(), reg, codec)
-	case reflect.Slice:
-		var raws []json.RawMessage
-		if err := json.Unmarshal(jsonBytes, &raws); err != nil {
-			return err
-		}
-		out := reflect.MakeSlice(dest.Type(), len(raws), len(raws))
-		elemType := dest.Type().Elem()
-		for i, raw := range raws {
-			elem := reflect.New(elemType).Elem()
-			if err := copyTypedFromRawWithReg(raw, elem, reg, codec); err != nil {
-				return err
-			}
-			out.Index(i).Set(elem)
-		}
-		dest.Set(out)
-		return nil
-	case reflect.Array:
-		var raws []json.RawMessage
-		if err := json.Unmarshal(jsonBytes, &raws); err != nil {
-			return err
-		}
-		if len(raws) != dest.Len() {
-			return fmt.Errorf("cannot unmarshal array of length %d into %s", len(raws), dest.Type())
-		}
-		elemType := dest.Type().Elem()
-		for i, raw := range raws {
-			elem := reflect.New(elemType).Elem()
-			if err := copyTypedFromRawWithReg(raw, elem, reg, codec); err != nil {
-				return err
-			}
-			dest.Index(i).Set(elem)
-		}
-		return nil
-	case reflect.Map:
-		if dest.Type().Key().Kind() != reflect.String {
-			return fmt.Errorf("non-string-keyed maps not supported for typed dispatch: %s", dest.Type())
-		}
-		var raws map[string]json.RawMessage
-		if err := json.Unmarshal(jsonBytes, &raws); err != nil {
-			return err
-		}
-		out := reflect.MakeMapWithSize(dest.Type(), len(raws))
-		elemType := dest.Type().Elem()
-		for k, raw := range raws {
-			elem := reflect.New(elemType).Elem()
-			if err := copyTypedFromRawWithReg(raw, elem, reg, codec); err != nil {
-				return err
-			}
-			out.SetMapIndex(reflect.ValueOf(k), elem)
-		}
-		dest.Set(out)
-		return nil
-	}
-	return fmt.Errorf("unsupported container kind: %s", dest.Kind())
 }
 
 // applyTypedValue delegates to typed.UnmarshalJSON for non-struct or unknown
@@ -1243,13 +1147,26 @@ func containsInterfaceElement(t reflect.Type) bool {
 	return false
 }
 
-// requiresCodec reports whether decoding a value of type t needs the Codec,
-// because it holds an interface or a type with a custom codec somewhere inside,
-// which encoding/json can't decode on its own.
-// Unlike containsInterfaceElement, it also looks into struct fields, and it handles recursive types.
+// requiresCodec reports whether decoding a value of type t needs the Codec, because encoding/json can't decode it on its own.
+// A value which doesn't need the Codec is handed to encoding/json, which decodes it the encoding/json way, as it is.
+//
+// It needs the Codec, when it holds somewhere inside
+//   - an interface, which is decoded by its @type,
+//   - a type with a custom codec or migration,
+//   - or a struct embedded through a pointer to an unexported struct type, with a name in its json tag,
+//     as encoding/json panics on decoding into it while the pointer is nil.
 func requiresCodec(t reflect.Type) bool {
-	return requiresCodecSeen(t, map[reflect.Type]struct{}{})
+	if v, ok := requiresCodecCache.Lookup(t); ok {
+		return v
+	}
+	// Not computed under the lock of the cache,
+	// as invalidateUnmarshalPlanCache resets the cache while holding the lock of the custom codec markers.
+	v := requiresCodecSeen(t, map[reflect.Type]struct{}{})
+	requiresCodecCache.Set(t, v)
+	return v
 }
+
+var requiresCodecCache synckit.Map[reflect.Type, bool]
 
 func requiresCodecSeen(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	if _, ok := seen[t]; ok {
@@ -1270,6 +1187,9 @@ func requiresCodecSeen(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 			return true
 		}
 		for _, field := range jsonFields(t) {
+			if !field.field.IsExported() && field.field.Type.Kind() == reflect.Pointer {
+				return true
+			}
 			if requiresCodecSeen(field.field.Type, seen) {
 				return true
 			}
@@ -1278,224 +1198,12 @@ func requiresCodecSeen(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	return false
 }
 
-// dtoTypeFor returns the corresponding DTO type for a target container type
-// whose element chain contains an interface. Each container level is
-// replaced by its RawMessage counterpart.
-func dtoTypeFor(t reflect.Type) reflect.Type {
-	switch t.Kind() {
-	case reflect.Interface:
-		return rawMessageType
-	case reflect.Pointer:
-		return reflect.PointerTo(dtoTypeFor(t.Elem()))
-	case reflect.Slice:
-		return reflect.SliceOf(dtoTypeFor(t.Elem()))
-	case reflect.Array:
-		return reflect.ArrayOf(t.Len(), dtoTypeFor(t.Elem()))
-	case reflect.Map:
-		return reflect.MapOf(t.Key(), dtoTypeFor(t.Elem()))
-	case reflect.Chan:
-		return reflect.ChanOf(t.ChanDir(), dtoTypeFor(t.Elem()))
-	}
-	return t
-}
-
-// copyContainer copies a DTO container value (whose leaves are json.RawMessage)
-// back into the target container, recursively decoding each leaf with
-// copyTypedFromRaw.
-func copyContainer(dto, target reflect.Value) error {
-	return copyContainerWithReg(dto, target, nil, nil)
-}
-
-func copyContainerWithReg(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-	if dto.IsValid() && dto.Kind() == reflect.Interface && dto.IsNil() {
-		target.SetZero()
-		return nil
-	}
-	switch target.Kind() {
-	case reflect.Pointer:
-		if dto.IsNil() {
-			target.SetZero()
-			return nil
-		}
-		if target.IsNil() {
-			target.Set(reflect.New(target.Type().Elem()))
-		}
-		return copyContainerWithReg(dto.Elem(), target.Elem(), reg, codec)
-	case reflect.Slice:
-		if dto.IsNil() {
-			target.SetZero()
-			return nil
-		}
-		out := reflect.MakeSlice(target.Type(), dto.Len(), dto.Len())
-		for i := 0; i < dto.Len(); i++ {
-			elem := reflect.New(target.Type().Elem()).Elem()
-			if err := copyContainerWithReg(dto.Index(i), elem, reg, codec); err != nil {
-				return err
-			}
-			out.Index(i).Set(elem)
-		}
-		target.Set(out)
-		return nil
-	case reflect.Array:
-		for i := 0; i < target.Len(); i++ {
-			elem := reflect.New(target.Type().Elem()).Elem()
-			if err := copyContainerWithReg(dto.Index(i), elem, reg, codec); err != nil {
-				return err
-			}
-			target.Index(i).Set(elem)
-		}
-		return nil
-	case reflect.Map:
-		if dto.IsNil() {
-			target.SetZero()
-			return nil
-		}
-		out := reflect.MakeMapWithSize(target.Type(), dto.Len())
-		iter := dto.MapRange()
-		for iter.Next() {
-			elem := reflect.New(target.Type().Elem()).Elem()
-			if err := copyContainerWithReg(iter.Value(), elem, reg, codec); err != nil {
-				return err
-			}
-			out.SetMapIndex(iter.Key(), elem)
-		}
-		target.Set(out)
-		return nil
-	case reflect.Interface:
-		return copyTypedFromRawWithReg(dto.Bytes(), target, reg, codec)
-	}
-	return fmt.Errorf("copyContainer: unsupported kind %s", target.Kind())
-}
-
-// dtoFieldFor returns the DTO field type and copy-back closure for a target field.
-// The bool result reports whether the field should be included in the DTO.
-func dtoFieldFor(field reflect.StructField, tag jsonTagConfig) (reflect.Type, func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error, bool) {
-	if field.Type.Kind() == reflect.Interface {
-		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			return copyTypedFromRawWithReg(dto.Bytes(), target, reg, codec)
-		}
-		return rawMessageType, copyFn, true
-	}
-	if hasOwnJSONUnmarshaler(field.Type) {
-		// encoding/json decodes the field with the type's own json.Unmarshaler.
-		return field.Type, func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			target.Set(dto)
-			return nil
-		}, true
-	}
-	if containsInterfaceElement(field.Type) {
-		dtoType := dtoTypeFor(field.Type)
-		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			return copyContainerWithReg(dto, target, reg, codec)
-		}
-		return dtoType, copyFn, true
-	}
-	// A concrete struct field whose type was registered via CodecRegister
-	// needs to be decoded through the user's custom Unmarshal closure,
-	// not through the default reflect-based copy. The default path
-	// would do `target.Set(dto)` where `dto` is a freshly json.Unmarshal-ed
-	// value of the concrete type, but the wire format the user encoded
-	// with the custom Marshal usually does NOT match the concrete type's
-	// own field names (a typical CodecRegister use case is wiring a DTO
-	// shape that differs from the entity shape).
-	//
-	// The wire at this point includes the @type envelope added by the
-	// marshal side. Strip the envelope via splitTypedEnvelope and hand
-	// the inner JSON to the user's Unmarshal closure. If no envelope is
-	// present (e.g. a top-level marshal where allowEnvelopeWrap was true
-	// but the @type alias was set to the empty string), hand the raw
-	// bytes unchanged.
-	if isCustomCodecField(field.Type) {
-		var copyFn func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error
-		copyFn = func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			raw := dto.Bytes()
-			trimmed := bytes.TrimSpace(raw)
-			if len(trimmed) == 0 {
-				// The JSON has no member for the field.
-				target.SetZero()
-				return nil
-			}
-			if target.Kind() == reflect.Pointer {
-				// Like with encoding/json, null makes the pointer nil, and any other value is decoded into what it points to.
-				if bytes.Equal(trimmed, null) {
-					target.SetZero()
-					return nil
-				}
-				value := reflect.New(target.Type().Elem())
-				if err := copyFn(dto, value.Elem(), reg, codec); err != nil {
-					return err
-				}
-				target.Set(value)
-				return nil
-			}
-			inner := raw
-			var envTypeID TypeID
-			if id, stripped, ok := splitTypedEnvelope(raw); ok {
-				inner = stripped
-				envTypeID = TypeID(id)
-			}
-			decode := reg.lookupDecoder(target.Type(), envTypeID)
-			if decode == nil {
-				decode = typeIDRegistry.lookupDecoder(target.Type(), envTypeID)
-			}
-			if decode == nil {
-				// Nothing is registered to decode this @type, e.g. the type only has migrations
-				// and the data uses its current @type, so the field decodes like a top-level value would.
-				return unmarshalReflectWithReg(raw, target, reg, codec)
-			}
-			dest := reflect.New(target.Type())
-			if err := decode(codec, inner, dest.Interface()); err != nil {
-				return err
-			}
-			target.Set(dest.Elem())
-			return nil
-		}
-		return rawMessageType, copyFn, true
-	}
-	// Fields that hold an interface or a custom codec type deeper inside, like a nested struct, a []Struct or a map[K]Struct,
-	// are captured as raw JSON and decoded through the codec when the value is copied.
-	// Decoding them lazily, instead of planning the nested types upfront, is what lets recursive types decode.
-	if requiresCodec(field.Type) {
-		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			raw := dto.Bytes()
-			if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || bytes.Equal(trimmed, null) {
-				target.SetZero()
-				return nil
-			}
-			value := reflect.New(target.Type()).Elem()
-			if err := unmarshalReflectWithReg(raw, value, reg, codec); err != nil {
-				return err
-			}
-			target.Set(value)
-			return nil
-		}
-		return rawMessageType, copyFn, true
-	}
-	if tag.Stringify && isStringifyKind(field.Type.Kind()) {
-		copyFn := func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-			s := dto.String()
-			return setStringifiedPrimitive(target, s)
-		}
-		return reflect.TypeOf(""), copyFn, true
-	}
-	return field.Type, func(dto, target reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-		target.Set(dto)
-		return nil
-	}, true
-}
-
-// isCustomCodecField reports whether a struct field's type was ever
-// registered through CodecRegister on any codec in the process. The check is performed at
-// plan-build time using the package-wide marker set populated by CodecRegister,
-// so the plan can route the field through the custom Unmarshal closure rather
-// than the default reflect-based copy.
+// isCustomCodecField reports whether a struct type, or the struct type a pointer points to,
+// has a custom codec or a migration registered on any codec in the process.
 //
-// We use a process-wide marker (not a per-codec registry) because the unmarshal
-// plan is built once per reflect.Type and cached for reuse across codecs. If
-// a type was CodecRegister'd on any codec, every plan for that type must
-// produce a DTO shape compatible with custom Unmarshal (i.e. RawMessage for
-// the field), so the runtime copyFn can decide per-codec whether to invoke
-// the custom closure or fall back to a clear error.
+// We use a process-wide marker (not a per-codec registry) because what
+// requiresCodec and the unmarshal plans tell about a type is cached once per reflect.Type,
+// and reused across codecs.
 func isCustomCodecField(t reflect.Type) bool {
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -1504,54 +1212,6 @@ func isCustomCodecField(t reflect.Type) bool {
 		return false
 	}
 	return typeIDRegistry.LookupCustomCodec(t) != nil || hasCustomCodecMarker(t)
-}
-
-func isStringifyKind(k reflect.Kind) bool {
-	switch k {
-	case reflect.String, reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
-		return true
-	}
-	return false
-}
-
-func setStringifiedPrimitive(dst reflect.Value, s string) error {
-	switch dst.Kind() {
-	case reflect.String:
-		dst.SetString(s)
-		return nil
-	case reflect.Bool:
-		v, err := strconv.ParseBool(s)
-		if err != nil {
-			return err
-		}
-		dst.SetBool(v)
-		return nil
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v, err := strconv.ParseInt(s, 10, dst.Type().Bits())
-		if err != nil {
-			return err
-		}
-		dst.SetInt(v)
-		return nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		v, err := strconv.ParseUint(s, 10, dst.Type().Bits())
-		if err != nil {
-			return err
-		}
-		dst.SetUint(v)
-		return nil
-	case reflect.Float32, reflect.Float64:
-		v, err := strconv.ParseFloat(s, dst.Type().Bits())
-		if err != nil {
-			return err
-		}
-		dst.SetFloat(v)
-		return nil
-	}
-	return fmt.Errorf("unsupported stringify kind: %s", dst.Kind())
 }
 
 // wrapPolymorphic wraps an inner JSON value with a @type envelope when the
@@ -1619,6 +1279,8 @@ func unmarshalStruct(data []byte, dst reflect.Value) error {
 	return unmarshalStructWithReg(data, dst, nil, nil)
 }
 
+// unmarshalStructWithReg decodes data into the struct dst, which keeps the fields without a member in the JSON,
+// like with encoding/json.
 func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, codec *Codec) error {
 	// If the destination type itself has a custom codec registered on the
 	// current codec, invoke it instead of going through the DTO path. The
@@ -1628,7 +1290,10 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 	// fields. Stripping the @type envelope (if present) and handing the
 	// inner JSON to the user's Unmarshal closure is what makes the
 	// round-trip work.
-	if reg.hasDecoder(dst.Type()) {
+	//
+	// Like encoding/json, which doesn't use the UnmarshalJSON of a value it can't interface,
+	// such a value is decoded field by field.
+	if dst.CanInterface() && reg.hasDecoder(dst.Type()) {
 		raw := data
 		var envTypeID TypeID
 		if id, stripped, ok := splitTypedEnvelope(raw); ok {
@@ -1636,9 +1301,12 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 			envTypeID = TypeID(id)
 		}
 		// A type that only has migrations has no decoder for its current @type,
-		// so such data falls through to the default DTO path below.
+		// so such data falls through to the default decoding below.
 		if decode := reg.lookupDecoder(dst.Type(), envTypeID); decode != nil {
+			// The closure gets the value dst already holds,
+			// like the UnmarshalJSON method of a value, which encoding/json decodes into.
 			dest := reflect.New(dst.Type())
+			dest.Elem().Set(dst)
 			if err := decode(codec, raw, dest.Interface()); err != nil {
 				return err
 			}
@@ -1646,34 +1314,42 @@ func unmarshalStructWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, 
 			return nil
 		}
 	}
-	plan, err := getUnmarshalPlan(dst.Type())
-	if err != nil {
-		return err
+	if dst.CanInterface() && !requiresCodec(dst.Type()) {
+		return json.Unmarshal(data, dst.Addr().Interface())
 	}
-	dto := reflect.New(plan.dtoType)
-	if err := json.Unmarshal(data, dto.Interface()); err != nil {
-		return err
-	}
-	dtoElem := dto.Elem()
-	for _, fc := range plan.copies {
-		dtoField := dtoElem.Field(fc.dtoIndex)
-		var target reflect.Value
-		if fc.throughPointer {
-			if dtoField.Len() == 0 {
-				// The JSON has no member for the field, so the embedded pointers on the way to it are not allocated for it.
-				continue
-			}
-			if target, err = fieldByIndexAlloc(dst, fc.targetIdx); err != nil {
-				return err
-			}
-		} else {
-			target = dst.FieldByIndex(fc.targetIdx)
-		}
-		if err := fc.copy(dtoField, target, reg, codec); err != nil {
-			return err
+	var (
+		plan = getUnmarshalPlan(dst.Type())
+		dto  = reflect.New(plan.dtoType).Elem()
+	)
+	for _, fp := range plan.fields {
+		if fp.plain {
+			dto.Field(fp.dtoIndex).Set(dst.FieldByIndex(fp.targetIdx))
 		}
 	}
-	return nil
+	// Like with encoding/json, an error doesn't undo what is already decoded,
+	// and the error of a field doesn't stop the decoding of the other fields.
+	// The first error is returned.
+	decodeErr := json.Unmarshal(data, dto.Addr().Interface())
+	for _, fp := range plan.fields {
+		dtoField := dto.Field(fp.dtoIndex)
+		if fp.plain {
+			dst.FieldByIndex(fp.targetIdx).Set(dtoField)
+			continue
+		}
+		if dtoField.Len() == 0 {
+			// The JSON has no member for the field, so the field keeps its value,
+			// and the embedded pointers on the way to it are not allocated for it.
+			continue
+		}
+		target, err := fieldByIndexAlloc(dst, fp.targetIdx)
+		if err == nil {
+			err = fp.decode(dtoField.Bytes(), target, reg, codec)
+		}
+		if decodeErr == nil {
+			decodeErr = err
+		}
+	}
+	return decodeErr
 }
 
 func unmarshalReflect(data []byte, dst reflect.Value) error {
@@ -1766,150 +1442,153 @@ func unmarshalGenericJSON(data []byte, reg *_TypeRegistry, codec *Codec) (any, e
 	return v, nil
 }
 
+// unmarshalReflectWithReg decodes data into dst, which keeps what the JSON doesn't change, like with encoding/json:
+// a struct keeps the fields without a member in the JSON, a pointer keeps pointing to the value it points to,
+// a map keeps its other entries, and the elements of a slice or an array are decoded in place.
+// An interface is the exception, as its value is replaced by the one its @type tells.
 func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, codec *Codec) error {
-	if dst.Kind() == reflect.Interface {
-		// If the JSON is a nested object without a @type discriminator,
-		// the value is not a polymorphic registered type but a generic
-		// JSON object (e.g. a nested map produced by a parent map's
-		// iteration). Build the result recursively so that deeper
-		// @type envelopes are still dispatched correctly: each level
-		// either gets @type-dispatched to the registered concrete type,
-		// or stays as a map[string]any / []any / primitive when no
-		// @type is present.
-		//
-		// Only an empty interface (e.g. any) can hold such a generic value.
-		// A non-empty interface goes through the typed dispatch below,
-		// which reports the missing @type.
-		if dst.NumMethod() == 0 && isNestedObjectWithoutType(data) {
-			value, err := unmarshalGenericJSON(data, reg, codec)
-			if err != nil {
-				return err
+	switch dst.Kind() {
+	case reflect.Interface:
+		return copyTypedFromRawWithReg(data, dst, reg, codec)
+	case reflect.Pointer:
+		if isJSONNull(data) {
+			// A pointer which can't be set is an embedded pointer to an unexported struct type,
+			// which encoding/json leaves as it is too, unless it is nil, where encoding/json panics.
+			if dst.CanSet() {
+				dst.SetZero()
 			}
-			return setDecoded(dst, reflect.ValueOf(value))
-		}
-		var value typed
-		value.Type = dst.Type()
-		value.Force = true
-		value.reg = reg
-		value.codec = codec
-		if err := value.UnmarshalJSON(data); err != nil {
-			return err
-		}
-		return setDecoded(dst, reflect.ValueOf(value.Value))
-	}
-	if dst.Kind() == reflect.Pointer {
-		if bytes.Equal(bytes.TrimSpace(data), null) {
-			dst.SetZero()
 			return nil
 		}
 		if dst.IsNil() {
+			if !dst.CanSet() {
+				return errCannotSetEmbeddedPointer(dst.Type())
+			}
 			dst.Set(reflect.New(dst.Type().Elem()))
 		}
 		return unmarshalReflectWithReg(data, dst.Elem(), reg, codec)
 	}
-	if dst.CanAddr() && hasOwnJSONUnmarshaler(dst.Type()) {
+	// Like encoding/json, which doesn't use the UnmarshalJSON of a value it can't interface.
+	if dst.CanAddr() && dst.CanInterface() && hasOwnJSONUnmarshaler(dst.Type()) {
 		return json.Unmarshal(data, dst.Addr().Interface())
 	}
-
-	switch dst.Kind() {
-	case reflect.Struct:
+	if dst.Kind() == reflect.Struct {
 		return unmarshalStructWithReg(data, dst, reg, codec)
-	case reflect.Slice:
-		if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-			dst.SetZero()
-			return nil
-		}
-		// The wire for a registered slice type may carry a typed envelope
-		// ({"@type":"...","@value":[…]}) rather than a bare array, e.g.
-		// when an empty workflow.Sequence round-trips into its concrete
-		// type. Strip the envelope so the slice unmarshaller sees a bare
-		// array payload.
-		if envTypeID, inner, ok := splitTypedEnvelope(data); ok && len(envTypeID) > 0 {
-			rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
-			if registered && rType == dst.Type() {
-				data = inner
-			}
-		}
-		var array []json.RawMessage
-		if err := json.Unmarshal(data, &array); err != nil {
-			return err
-		}
-		value := reflect.MakeSlice(dst.Type(), len(array), len(array))
-		for i, raw := range array {
-			if err := unmarshalReflectWithReg(raw, value.Index(i), reg, codec); err != nil {
-				return err
-			}
-		}
-		dst.Set(value)
-		return nil
-	case reflect.Array:
-		if envTypeID, inner, ok := splitTypedEnvelope(data); ok && len(envTypeID) > 0 {
-			rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
-			if registered && rType == dst.Type() {
-				data = inner
-			}
-		}
-		var array []json.RawMessage
-		if err := json.Unmarshal(data, &array); err != nil {
-			return err
-		}
-		if len(array) != dst.Len() {
-			return fmt.Errorf("cannot unmarshal array of length %d into %s", len(array), dst.Type())
-		}
-		for i, raw := range array {
-			if err := unmarshalReflectWithReg(raw, dst.Index(i), reg, codec); err != nil {
-				return err
-			}
-		}
-		return nil
-	case reflect.Map:
-		if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-			dst.SetZero()
-			return nil
-		}
-		if envTypeID, inner, ok := splitTypedEnvelope(data); ok && len(envTypeID) > 0 {
-			rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
-			if registered && rType == dst.Type() {
-				if len(inner) == len(data) {
-					// splitTypedEnvelope returns the whole object for a flat envelope,
-					// which keeps the @type next to the entries: {"@type":"...","key":...}.
-					inner = stripTypeField(inner)
-				}
-				data = inner
-			}
-		}
-		if dst.Type().Key().Kind() != reflect.String {
-			return json.Unmarshal(data, dst.Addr().Interface())
-		}
-		var object map[string]json.RawMessage
-		if err := json.Unmarshal(data, &object); err != nil {
-			return err
-		}
-		value := reflect.MakeMapWithSize(dst.Type(), len(object))
-		for key, raw := range object {
-			elem := reflect.New(dst.Type().Elem()).Elem()
-			if err := unmarshalReflectWithReg(raw, elem, reg, codec); err != nil {
-				return err
-			}
-			value.SetMapIndex(reflect.ValueOf(key).Convert(dst.Type().Key()), elem)
-		}
-		dst.Set(value)
-		return nil
-	default:
-		// Concrete named primitive kinds (e.g. wftemplate.Condition
-		// which is `type Condition string`) are registered globally so
-		// their marshalled wire is a typed envelope. Strip the envelope
-		// before delegating to stdlib json.Unmarshal so the named
-		// primitive is populated from the inner @value (or, for a flat
-		// envelope, from the same object minus @type).
-		if envTypeID, inner, ok := splitTypedEnvelope(data); ok && len(envTypeID) > 0 {
-			rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID))
-			if registered && rType == dst.Type() {
-				data = inner
-			}
-		}
+	}
+	data = stripOwnTypedEnvelope(data, dst.Type(), reg)
+	if !requiresCodec(dst.Type()) {
 		return json.Unmarshal(data, dst.Addr().Interface())
 	}
+	switch dst.Kind() {
+	case reflect.Slice:
+		return unmarshalSliceWithReg(data, dst, reg, codec)
+	case reflect.Array:
+		return unmarshalArrayWithReg(data, dst, reg, codec)
+	case reflect.Map:
+		return unmarshalMapWithReg(data, dst, reg, codec)
+	}
+	return json.Unmarshal(data, dst.Addr().Interface())
+}
+
+// stripOwnTypedEnvelope returns the payload of data, when data is the @type envelope of t itself,
+// like a registered slice type, which the Codec writes with its @type, when it is the top-level value.
+func stripOwnTypedEnvelope(data []byte, t reflect.Type, reg *_TypeRegistry) []byte {
+	envTypeID, inner, ok := splitTypedEnvelope(data)
+	if !ok {
+		return data
+	}
+	if rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID)); !registered || rType != t {
+		return data
+	}
+	if t.Kind() == reflect.Map && len(inner) == len(data) {
+		// splitTypedEnvelope returns the whole object for a flat envelope,
+		// which keeps the @type next to the entries: {"@type":"...","key":...}.
+		return stripTypeField(inner)
+	}
+	return inner
+}
+
+// unmarshalSliceWithReg decodes a JSON array into the slice dst, like encoding/json does:
+// the elements dst already has are decoded into, and dst is grown or cut to the length of the JSON array.
+func unmarshalSliceWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	if isJSONNull(data) {
+		dst.SetZero()
+		return nil
+	}
+	var elems []json.RawMessage
+	if err := json.Unmarshal(data, &elems); err != nil {
+		return err
+	}
+	if len(elems) == 0 {
+		dst.Set(reflect.MakeSlice(dst.Type(), 0, 0))
+		return nil
+	}
+	var decodeErr error
+	for i, elem := range elems {
+		if dst.Cap() <= i {
+			dst.Grow(1)
+		}
+		if dst.Len() <= i {
+			dst.SetLen(i + 1)
+		}
+		if err := unmarshalReflectWithReg(elem, dst.Index(i), reg, codec); decodeErr == nil {
+			decodeErr = err
+		}
+	}
+	dst.SetLen(len(elems))
+	return decodeErr
+}
+
+// unmarshalArrayWithReg decodes a JSON array into the array dst, like encoding/json does:
+// the elements of dst are decoded into, the rest of them are zeroed, and the extra JSON elements are skipped.
+func unmarshalArrayWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	if isJSONNull(data) {
+		return nil
+	}
+	var elems []json.RawMessage
+	if err := json.Unmarshal(data, &elems); err != nil {
+		return err
+	}
+	var decodeErr error
+	for i := 0; i < dst.Len(); i++ {
+		if len(elems) <= i {
+			dst.Index(i).SetZero()
+			continue
+		}
+		if err := unmarshalReflectWithReg(elems[i], dst.Index(i), reg, codec); decodeErr == nil {
+			decodeErr = err
+		}
+	}
+	return decodeErr
+}
+
+// unmarshalMapWithReg decodes a JSON object into the map dst, like encoding/json does:
+// dst keeps its other entries, and each entry in the JSON gets a newly decoded value.
+func unmarshalMapWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry, codec *Codec) error {
+	if isJSONNull(data) {
+		dst.SetZero()
+		return nil
+	}
+	// The keys are decoded by encoding/json, which knows the kinds of keys a JSON object can have.
+	entries := reflect.New(reflect.MapOf(dst.Type().Key(), rawMessageType))
+	if err := json.Unmarshal(data, entries.Interface()); err != nil {
+		return err
+	}
+	if dst.IsNil() {
+		dst.Set(reflect.MakeMapWithSize(dst.Type(), entries.Elem().Len()))
+	}
+	var decodeErr error
+	for iter := entries.Elem().MapRange(); iter.Next(); {
+		value := reflect.New(dst.Type().Elem()).Elem()
+		if err := unmarshalReflectWithReg(iter.Value().Bytes(), value, reg, codec); decodeErr == nil {
+			decodeErr = err
+		}
+		dst.SetMapIndex(iter.Key(), value)
+	}
+	return decodeErr
+}
+
+func isJSONNull(data []byte) bool {
+	return bytes.Equal(bytes.TrimSpace(data), null)
 }
 
 const errMalformedJSONTag errorkitlite.Error = "malformed JSON struct tag value"

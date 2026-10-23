@@ -340,6 +340,60 @@ func TestCodec(t *testing.T) {
 
 		itIgnoresTheWhitespaceAroundTheJSON(s)
 
+		// JSON without @type carries no type information,
+		// so wherever the `any` is, the Codec decodes it the same way as encoding/json does.
+		thenItIsDecodedLikeWithEncodingJSON := func(t *testcase.T) {
+			exp := reflect.New(reflect.TypeOf(ptr.Get(t)).Elem()).Interface()
+			assert.Must(t).NoError(json.Unmarshal(data.Get(t), exp))
+
+			assert.NoError(t, act(t))
+			assert.Equal(t, exp, ptr.Get(t))
+		}
+
+		s.When("the destination is a struct field with an `any` type", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(struct{ V any })
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"V":` + value.Get(t) + `}`)
+			})
+
+			s.Then("JSON without @type is decoded the same way as encoding/json does", thenItIsDecodedLikeWithEncodingJSON)
+		})
+
+		s.When("the destination is a struct field with a map of `any`", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(struct{ V map[string]any })
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"V":{"k":` + value.Get(t) + `}}`)
+			})
+
+			s.Then("JSON without @type is decoded the same way as encoding/json does", thenItIsDecodedLikeWithEncodingJSON)
+		})
+
+		s.When("the destination is a struct field with a slice of `any`", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(struct{ V []any })
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"V":[` + value.Get(t) + `]}`)
+			})
+
+			s.Then("JSON without @type is decoded the same way as encoding/json does", thenItIsDecodedLikeWithEncodingJSON)
+		})
+
+		s.When("the destination is a map of `any` with integer keys", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				return new(map[int]any)
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(`{"` + strconv.Itoa(t.Random.Int()) + `":` + value.Get(t) + `}`)
+			})
+
+			s.Then("JSON without @type is decoded the same way as encoding/json does", thenItIsDecodedLikeWithEncodingJSON)
+		})
+
 		s.When("the JSON value is a @type envelope of a registered type", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
 				c := subject.Super(t)
@@ -635,6 +689,246 @@ func TestCodec(t *testing.T) {
 
 			itRejectsValuesTheInterfaceCannotHold(s)
 		})
+
+		// Like encoding/json, Unmarshal decodes the JSON into the value the destination already holds,
+		// instead of replacing that value as a whole.
+		s.When("the destination already holds a value", func(s *testcase.Spec) {
+			// existing makes a pointer to the value, which the destination holds before the decoding.
+			// Each call makes a new copy of the same value,
+			// so the Codec and encoding/json can each decode into a copy of their own.
+			existing := let.Var(s, func(t *testcase.T) func() any {
+				v := makeMTMerge(t)
+				return func() any {
+					c := v.clone()
+					return &c
+				}
+			})
+			ptr.Let(s, func(t *testcase.T) any {
+				return existing.Get(t)()
+			})
+			data.Let(s, func(t *testcase.T) []byte {
+				return []byte(mustMarshalJSON(t, map[string]any{
+					"Text":   t.Random.String(),
+					"Quoted": strconv.Itoa(t.Random.Int()),
+				}))
+			})
+
+			thenItDecodesLikeEncodingJSON := func(t *testcase.T) {
+				exp := existing.Get(t)()
+				assert.Must(t).NoError(json.Unmarshal(data.Get(t), exp))
+
+				assert.NoError(t, act(t))
+				assert.Equal(t, exp, ptr.Get(t))
+			}
+
+			s.Then("the fields without a member in the JSON keep their value, like with encoding/json", thenItDecodesLikeEncodingJSON)
+
+			s.And("the JSON has null members", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					members := map[string]any{}
+					for _, field := range reflect.VisibleFields(reflect.TypeOf(MT_Merge{})) {
+						members[field.Name] = nil
+					}
+					return []byte(mustMarshalJSON(t, members))
+				})
+
+				s.Then("null makes the interfaces, pointers, maps and slices nil, and leaves the other fields as they are, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("the JSON has objects with only some of the members for the struct fields", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, map[string]any{
+						"Pointer":     map[string]any{"A": t.Random.String()},
+						"Nested":      map[string]any{"B": t.Random.Int()},
+						"PlainNested": map[string]any{"A": t.Random.String()},
+					}))
+				})
+
+				s.Then("the members are decoded into the structs the fields already hold, like with encoding/json", thenItDecodesLikeEncodingJSON)
+
+				s.Then("the pointer field keeps pointing to the struct it pointed to, like with encoding/json", func(t *testcase.T) {
+					pointer := ptr.Get(t).(*MT_Merge).Pointer
+
+					assert.NoError(t, act(t))
+					assert.True(t, pointer == ptr.Get(t).(*MT_Merge).Pointer)
+				})
+			})
+
+			s.And("the JSON has members for the container fields", func(s *testcase.Spec) {
+				data.Let(s, func(t *testcase.T) []byte {
+					v := existing.Get(t)().(*MT_Merge)
+					return []byte(mustMarshalJSON(t, map[string]any{
+						// a new entry, and one for a key the map already has
+						"Map":         map[string]int{t.Random.HexN(8): t.Random.Int(), firstKey(v.Map): t.Random.Int()},
+						"EmbeddedMap": map[string]int{t.Random.HexN(8): t.Random.Int(), firstKey(v.EmbeddedMap): t.Random.Int()},
+						"Greeters":    map[string]any{t.Random.HexN(8): nil, firstKey(v.Greeters): nil},
+						"Leaves":      map[string]any{t.Random.HexN(8): makePartialLeafJSON(t), firstKey(v.Leaves): makePartialLeafJSON(t)},
+						// fewer or more elements than the slice and the array have
+						"Slice": random.Slice(t.Random.IntBetween(1, len(v.Slice)+2), func() any { return makePartialLeafJSON(t) }),
+						"Array": random.Slice(t.Random.IntBetween(1, len(v.Array)+1), func() any { return makePartialLeafJSON(t) }),
+					}))
+				})
+
+				s.Then("the maps keep their other entries, and the elements of the slices and arrays are decoded in place, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("the JSON has a member for the interface field", func(s *testcase.Spec) {
+				greeter := let.Var(s, makeGreeter)
+				data.Let(s, func(t *testcase.T) []byte {
+					g := greeter.Get(t)
+					value, err := subject.Get(t).Marshal(&g)
+					assert.Must(t).NoError(err)
+					return []byte(`{"Greeter":` + string(value) + `}`)
+				})
+
+				s.Then("the interface field gets the decoded value in place of the one it held", func(t *testcase.T) {
+					exp := existing.Get(t)().(*MT_Merge)
+					exp.Greeter = greeter.Get(t)
+
+					assert.NoError(t, act(t))
+					assert.Equal[any](t, exp, ptr.Get(t))
+				})
+			})
+
+			s.And("it is a slice, and the JSON array has fewer elements", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := random.Slice(t.Random.IntBetween(2, 3), func() MT_MergeLeaf { return makeMTMergeLeaf(t) })
+					return func() any {
+						c := slices.Clone(v)
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, []any{makePartialLeafJSON(t)}))
+				})
+
+				s.Then("its elements are decoded in place, and it is cut to the length of the JSON array, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is a slice, and the JSON array has more elements", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := random.Slice(t.Random.IntBetween(1, 2), func() MT_MergeLeaf { return makeMTMergeLeaf(t) })
+					return func() any {
+						c := slices.Clone(v)
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, random.Slice(3, func() any { return makePartialLeafJSON(t) })))
+				})
+
+				s.Then("its elements are decoded in place, and it grows to the length of the JSON array, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is a nil slice, and the JSON array is empty", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					return func() any { return new([]MT_MergeLeaf) }
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(`[]`)
+				})
+
+				s.Then("it becomes an empty slice, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is an array, and the JSON array has fewer elements", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := [2]MT_MergeLeaf{makeMTMergeLeaf(t), makeMTMergeLeaf(t)}
+					return func() any {
+						c := v
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, []any{makePartialLeafJSON(t)}))
+				})
+
+				s.Then("its elements are decoded in place, and the rest of them are zeroed, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is an array, and the JSON array has more elements", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := [2]MT_MergeLeaf{makeMTMergeLeaf(t), makeMTMergeLeaf(t)}
+					return func() any {
+						c := v
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, random.Slice(3, func() any { return makePartialLeafJSON(t) })))
+				})
+
+				s.Then("its elements are decoded in place, and the extra JSON elements are skipped, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is a map", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := random.Map(t.Random.IntBetween(1, 3), func() (string, MT_MergeLeaf) {
+						return t.Random.HexN(8), makeMTMergeLeaf(t)
+					})
+					return func() any {
+						c := maps.Clone(v)
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					v := *existing.Get(t)().(*map[string]MT_MergeLeaf)
+					return []byte(mustMarshalJSON(t, map[string]any{
+						t.Random.HexN(8): makePartialLeafJSON(t),
+						firstKey(v):      makePartialLeafJSON(t),
+					}))
+				})
+
+				s.Then("it keeps its other entries, and the entries in the JSON get a newly decoded value, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is a struct which needs no Codec", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := MT_PlainLeaf{A: t.Random.String(), B: t.Random.Int()}
+					return func() any {
+						c := v
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, makePartialLeafJSON(t)))
+				})
+
+				s.Then("the fields without a member in the JSON keep their value, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is a map of values which need no Codec", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := random.Map(t.Random.IntBetween(1, 3), func() (string, int) {
+						return t.Random.HexN(8), t.Random.Int()
+					})
+					return func() any {
+						c := maps.Clone(v)
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, map[string]int{t.Random.HexN(8): t.Random.Int()}))
+				})
+
+				s.Then("it keeps its other entries, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+
+			s.And("it is an array of values which need no Codec, and the JSON array has fewer elements", func(s *testcase.Spec) {
+				existing.Let(s, func(t *testcase.T) func() any {
+					v := [3]int{t.Random.Int(), t.Random.Int(), t.Random.Int()}
+					return func() any {
+						c := v
+						return &c
+					}
+				})
+				data.Let(s, func(t *testcase.T) []byte {
+					return []byte(mustMarshalJSON(t, []int{t.Random.Int()}))
+				})
+
+				s.Then("the rest of its elements are zeroed, like with encoding/json", thenItDecodesLikeEncodingJSON)
+			})
+		})
 	})
 }
 
@@ -689,7 +983,18 @@ func assertEncodesLikeEncodingJSON[T any](t *testcase.T, c *jsonkit.Codec, v T) 
 // assertDecodesLikeEncodingJSON asserts that the Codec reads data into a T the same way as encoding/json does.
 func assertDecodesLikeEncodingJSON[T any](t *testcase.T, c *jsonkit.Codec, data []byte) {
 	t.Helper()
-	var exp, got T
+	assertDecodesIntoLikeEncodingJSON(t, c, data, func() T {
+		var zero T
+		return zero
+	})
+}
+
+// assertDecodesIntoLikeEncodingJSON asserts that the Codec reads data into the value made by makeDestination
+// the same way as encoding/json does.
+// makeDestination is called for both of them, so each of them decodes into a value of its own.
+func assertDecodesIntoLikeEncodingJSON[T any](t *testcase.T, c *jsonkit.Codec, data []byte, makeDestination func() T) {
+	t.Helper()
+	exp, got := makeDestination(), makeDestination()
 	assert.Must(t).NoError(json.Unmarshal(data, &exp))
 	assert.Must(t).NoError(c.Unmarshal(data, &got))
 	assert.Equal(t, exp, got)
@@ -701,6 +1006,117 @@ func jsonMemberNames(t *testcase.T, data []byte) []string {
 	var object map[string]json.RawMessage
 	assert.Must(t).NoError(json.Unmarshal(data, &object))
 	return slices.Collect(maps.Keys(object))
+}
+
+// MT_Merge has a field of each kind, which encoding/json decodes into the value it already holds in its own way.
+// Its Greeter field makes the Codec decode it with its own reflection based decoding, instead of handing it to encoding/json.
+type MT_Merge struct {
+	Greeter     Greeter
+	Text        string
+	Number      int
+	Quoted      int `json:",string"`
+	Pointer     *MT_MergeLeaf
+	Map         map[string]int
+	Greeters    map[string]Greeter
+	Leaves      map[string]MT_MergeLeaf
+	Slice       []MT_MergeLeaf
+	Array       [2]MT_MergeLeaf
+	Nested      MT_MergeLeaf
+	PlainNested MT_PlainLeaf
+	*MT_MergeEmbedded
+}
+
+// MT_MergeEmbedded is embedded through a pointer in MT_Merge, so its fields are promoted through the pointer.
+type MT_MergeEmbedded struct {
+	EmbeddedText string
+	EmbeddedMap  map[string]int
+}
+
+// clone makes a deep copy of v, so decoding into the copy leaves v as it is.
+func (v MT_Merge) clone() MT_Merge {
+	if v.Pointer != nil {
+		p := *v.Pointer
+		v.Pointer = &p
+	}
+	if v.MT_MergeEmbedded != nil {
+		e := *v.MT_MergeEmbedded
+		e.EmbeddedMap = maps.Clone(e.EmbeddedMap)
+		v.MT_MergeEmbedded = &e
+	}
+	v.Map = maps.Clone(v.Map)
+	v.Greeters = maps.Clone(v.Greeters)
+	v.Leaves = maps.Clone(v.Leaves)
+	v.Slice = slices.Clone(v.Slice)
+	return v
+}
+
+// MT_MergeLeaf has a Greeter field, which makes the Codec decode it with its own reflection based decoding.
+type MT_MergeLeaf struct {
+	Greeter Greeter
+	A       string
+	B       int
+}
+
+// MT_PlainLeaf needs no Codec, so the Codec can hand it to encoding/json.
+type MT_PlainLeaf struct {
+	A string
+	B int
+}
+
+func makeMTMerge(t *testcase.T) MT_Merge {
+	leaf := makeMTMergeLeaf(t)
+	return MT_Merge{
+		Greeter: makeGreeter(t),
+		Text:    t.Random.String(),
+		Number:  t.Random.Int(),
+		Quoted:  t.Random.Int(),
+		Pointer: &leaf,
+		Map: random.Map(t.Random.IntBetween(1, 3), func() (string, int) {
+			return t.Random.HexN(8), t.Random.Int()
+		}),
+		Greeters: random.Map(t.Random.IntBetween(1, 3), func() (string, Greeter) {
+			return t.Random.HexN(8), makeGreeter(t)
+		}),
+		Leaves: random.Map(t.Random.IntBetween(1, 3), func() (string, MT_MergeLeaf) {
+			return t.Random.HexN(8), makeMTMergeLeaf(t)
+		}),
+		Slice:       random.Slice(t.Random.IntBetween(1, 3), func() MT_MergeLeaf { return makeMTMergeLeaf(t) }),
+		Array:       [2]MT_MergeLeaf{makeMTMergeLeaf(t), makeMTMergeLeaf(t)},
+		Nested:      makeMTMergeLeaf(t),
+		PlainNested: MT_PlainLeaf{A: t.Random.String(), B: t.Random.Int()},
+		MT_MergeEmbedded: &MT_MergeEmbedded{
+			EmbeddedText: t.Random.String(),
+			EmbeddedMap: random.Map(t.Random.IntBetween(1, 3), func() (string, int) {
+				return t.Random.HexN(8), t.Random.Int()
+			}),
+		},
+	}
+}
+
+func makeMTMergeLeaf(t *testcase.T) MT_MergeLeaf {
+	return MT_MergeLeaf{Greeter: makeGreeter(t), A: t.Random.String(), B: t.Random.Int()}
+}
+
+// makePartialLeafJSON makes the JSON object of an MT_MergeLeaf or an MT_PlainLeaf with only some of their members.
+// It has no Greeter member, which encoding/json could not decode.
+func makePartialLeafJSON(t *testcase.T) map[string]any {
+	return random.Pick(t.Random,
+		map[string]any{},
+		map[string]any{"A": t.Random.String()},
+		map[string]any{"B": t.Random.Int()},
+	)
+}
+
+func makeGreeter(t *testcase.T) Greeter {
+	return random.Pick[Greeter](t.Random,
+		TypeA{V: t.Random.String()},
+		TypeB{V: t.Random.Int()},
+	)
+}
+
+// firstKey returns the smallest key of the non-empty map m.
+func firstKey[V any](m map[string]V) string {
+	return slices.Min(slices.Collect(maps.Keys(m)))
 }
 
 func TestLinesCodec_smoke(tt *testing.T) {
@@ -923,6 +1339,10 @@ func TestCodec_marshaling(t *testing.T) {
 
 		// a member of the embedded struct allocates it, even when its value is null
 		assertDecodesLikeEncodingJSON[MT_Embedding](t, c.Get(t), []byte(`{"Count":null}`))
+
+		// the same for a struct which needs the Codec, as its MT_T1 has an interface field
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_T18{Name: t.Random.String()})
+		assertDecodesLikeEncodingJSON[MT_T18](t, c.Get(t), []byte(`{"ID":null}`))
 	})
 
 	s.Test("conflicting field names are resolved like with encoding/json", func(t *testcase.T) {
@@ -971,20 +1391,48 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.Error(t, c.Get(t).Unmarshal(data, new(MT_UnexportedEmbeddedPointer)))
 	})
 
+	s.Test("the members after a field in a nil embedded pointer to an unexported struct type are still decoded, like with encoding/json", func(t *testcase.T) {
+		data := []byte(mustMarshalJSON(t, map[string]any{"Hidden": true, "Name": t.Random.String()}))
+
+		var exp, got MT_UnexportedEmbeddedPointerAndName
+		assert.Must(t).Error(json.Unmarshal(data, &exp))
+		assert.Error(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
 	// encoding/json panics on decoding such a field while it is nil.
 	s.Test("a tagged embedded pointer to an unexported struct type is decoded only when it is already allocated", func(t *testcase.T) {
 		data := []byte(`{"hidden":{"Hidden":true}}`)
 		assert.Error(t, c.Get(t).Unmarshal(data, new(MT_TaggedEmbeddedPointer)))
 
 		secret := t.Random.String()
-		got := MT_TaggedEmbeddedPointer{mtEmbeddedUnexported: &mtEmbeddedUnexported{secret: secret}}
-		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
-		assert.Equal(t, mtEmbeddedUnexported{Hidden: true, secret: secret}, *got.mtEmbeddedUnexported,
-			"like with encoding/json, only the exported fields are set")
+		allocated := func() MT_TaggedEmbeddedPointer {
+			return MT_TaggedEmbeddedPointer{mtEmbeddedUnexported: &mtEmbeddedUnexported{secret: secret}}
+		}
+		// like with encoding/json, only the exported fields are set, and null leaves it as it is
+		for _, data := range [][]byte{data, []byte(`{"hidden":null}`)} {
+			exp, got := allocated(), allocated()
+			assert.Must(t).NoError(json.Unmarshal(data, &exp))
+			assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+			// assert.Equal can't compare structs with an unexported pointer field, so the structs they point to are compared.
+			assert.Equal(t, *exp.mtEmbeddedUnexported, *got.mtEmbeddedUnexported)
+		}
+	})
 
-		assert.NoError(t, c.Get(t).Unmarshal([]byte(`{"hidden":null}`), &got))
-		assert.Equal(t, mtEmbeddedUnexported{Hidden: true, secret: secret}, *got.mtEmbeddedUnexported,
-			"like with encoding/json, null leaves it as it is")
+	s.Test("an embedded time.Time has its MarshalJSON and UnmarshalJSON promoted, which take over the whole struct, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_EmbeddedTime{Time: t.Random.Time(), Note: t.Random.String()})
+	})
+
+	// An unexported embedded field can't be interfaced, so encoding/json can't call the UnmarshalJSON of its value.
+	s.Test("a tagged embedded struct of an unexported type is decoded field by field, even when it has its own UnmarshalJSON, like with encoding/json", func(t *testcase.T) {
+		var _ json.Unmarshaler = &mtEmbeddedUnmarshalerA{}
+		assert.False(t, reflect.TypeFor[*MT_TaggedEmbeddedUnmarshalers]().Implements(reflect.TypeFor[json.Unmarshaler]()),
+			"the UnmarshalJSON of the embedded structs are not promoted")
+
+		assertDecodesLikeEncodingJSON[MT_TaggedEmbeddedUnmarshalers](t, c.Get(t), []byte(mustMarshalJSON(t, map[string]any{
+			"a": map[string]string{"A": t.Random.String()},
+			"b": map[string]string{"B": t.Random.String()},
+		})))
 	})
 
 	s.Test("an interface field promoted from an embedded struct of an unexported type, in a nested struct", func(t *testcase.T) {
@@ -1266,6 +1714,50 @@ func TestCodec_marshaling(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 
+	s.Test("the ,string option applies to strings and to the pointers of the types it applies to, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), makeMTStringified(t))
+		// the Greeter field makes the Codec decode it with its own reflection based decoding
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_StringifiedWithCodec{MT_Stringified: makeMTStringified(t)})
+		stringified := makeMTStringified(t)
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_StringifiedThroughPointer{MT_Stringified: &stringified})
+	})
+
+	s.Test("a quoted null makes a pointer with the ,string option nil, like with encoding/json", func(t *testcase.T) {
+		data := []byte(`{"P":"null","F":null,"S":"null"}`)
+		allocated := func() MT_Stringified {
+			p, f, s := t.Random.Int(), t.Random.Float64(), t.Random.String()
+			return MT_Stringified{P: &p, F: &f, S: &s}
+		}
+
+		assertDecodesIntoLikeEncodingJSON(t, c.Get(t), data, allocated)
+		assertDecodesIntoLikeEncodingJSON(t, c.Get(t), data, func() MT_StringifiedWithCodec {
+			return MT_StringifiedWithCodec{MT_Stringified: allocated()}
+		})
+		assertDecodesIntoLikeEncodingJSON(t, c.Get(t), data, func() MT_StringifiedThroughPointer {
+			stringified := allocated()
+			return MT_StringifiedThroughPointer{MT_Stringified: &stringified}
+		})
+	})
+
+	s.Test("a byte slice is a base64 encoded string, like with encoding/json", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, c.Get(t), []byte(t.Random.String()))
+		assertEncodesLikeEncodingJSON(t, c.Get(t), MT_Bytes{
+			Data: []byte(t.Random.String()),
+			List: [][]byte{[]byte(t.Random.String())},
+		})
+	})
+
+	s.Test("a map with integer keys and interface values", func(t *testcase.T) {
+		exp := map[int]Greeter{t.Random.Int(): makeGreeter(t)}
+
+		data, err := c.Get(t).Marshal(exp)
+		assert.NoError(t, err)
+
+		var got map[int]Greeter
+		assert.NoError(t, c.Get(t).Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+
 	// s.Test("interface decode", func(t *testcase.T) {
 	// 	// TODO
 	// })
@@ -1499,6 +1991,83 @@ type MT_TaggedEmbedding struct {
 
 type MT_UnexportedEmbeddedPointer struct {
 	*mtEmbeddedUnexported
+}
+
+// MT_UnexportedEmbeddedPointerAndName has a field after the fields of its embedded pointer to an unexported struct type,
+// and its Greeter field makes the Codec decode it with its own reflection based decoding.
+type MT_UnexportedEmbeddedPointerAndName struct {
+	*mtEmbeddedUnexported
+	Name    string
+	Greeter Greeter
+}
+
+// MT_EmbeddedTime has the MarshalJSON and UnmarshalJSON methods of time.Time promoted.
+type MT_EmbeddedTime struct {
+	time.Time
+	Note string
+}
+
+// MT_TaggedEmbeddedUnmarshalers embeds structs of unexported types, which have their own UnmarshalJSON,
+// and its Greeter field makes the Codec decode it with its own reflection based decoding.
+// They are embedded at the same depth, so their UnmarshalJSON methods are not promoted,
+// as neither of them would take over the whole struct then.
+type MT_TaggedEmbeddedUnmarshalers struct {
+	mtEmbeddedUnmarshalerA `json:"a"`
+	mtEmbeddedUnmarshalerB `json:"b"`
+	Greeter                Greeter
+}
+
+type mtEmbeddedUnmarshalerA struct{ A string }
+
+func (v *mtEmbeddedUnmarshalerA) UnmarshalJSON(data []byte) error {
+	v.A = "decoded by its own UnmarshalJSON"
+	return nil
+}
+
+type mtEmbeddedUnmarshalerB struct{ B string }
+
+func (v *mtEmbeddedUnmarshalerB) UnmarshalJSON(data []byte) error {
+	v.B = "decoded by its own UnmarshalJSON"
+	return nil
+}
+
+// MT_Stringified has fields with the ,string option,
+// which encoding/json applies to the pointers of the types it applies to as well.
+type MT_Stringified struct {
+	P   *int     `json:",string"`
+	F   *float64 `json:",string"`
+	S   *string  `json:",string"`
+	I   int      `json:",string"`
+	Str string   `json:",string"`
+}
+
+func makeMTStringified(t *testcase.T) MT_Stringified {
+	var v = MT_Stringified{I: t.Random.Int(), Str: t.Random.String()}
+	if t.Random.Bool() {
+		p, f, s := t.Random.Int(), t.Random.Float64(), t.Random.String()
+		v.P, v.F, v.S = &p, &f, &s
+	}
+	return v
+}
+
+// MT_StringifiedWithCodec has the fields of MT_Stringified promoted,
+// and its Greeter field makes the Codec decode it with its own reflection based decoding.
+type MT_StringifiedWithCodec struct {
+	Greeter Greeter
+	MT_Stringified
+}
+
+// MT_StringifiedThroughPointer has the fields of MT_Stringified promoted through an embedded pointer.
+type MT_StringifiedThroughPointer struct {
+	Greeter Greeter
+	*MT_Stringified
+}
+
+// MT_Bytes has byte slices, and its Greeter field makes the Codec decode it with its own reflection based decoding.
+type MT_Bytes struct {
+	Greeter Greeter
+	Data    []byte
+	List    [][]byte
 }
 
 type MT_TaggedEmbeddedPointer struct {
@@ -2328,6 +2897,37 @@ func TestCodecRegister(t *testing.T) {
 			assert.NoError(t, c.Unmarshal(data, &got))
 			assert.Equal(t, exp, got)
 		})
+	})
+
+	// Like the UnmarshalJSON method of a value, which encoding/json decodes into.
+	s.Test("the registered Unmarshal gets the value the destination already holds", func(t *testcase.T) {
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister(&c, "foo", jsonkit.TypeCodec[testent.Foo]{
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *testent.Foo) error {
+				// it decodes only some of the fields
+				var dto struct{ Foo string }
+				if err := json.Unmarshal(data, &dto); err != nil {
+					return err
+				}
+				p.Foo = dto.Foo
+				return nil
+			},
+		})()
+
+		var (
+			existing = MakeFoo(t)
+			exp      = existing
+		)
+		exp.Foo = t.Random.String()
+		foo := mustMarshalJSON(t, map[string]string{"Foo": exp.Foo})
+
+		got := existing
+		assert.NoError(t, c.Unmarshal([]byte(foo), &got))
+		assert.Equal(t, exp, got)
+
+		box := struct{ Foo testent.Foo }{Foo: existing}
+		assert.NoError(t, c.Unmarshal([]byte(`{"Foo":`+foo+`}`), &box))
+		assert.Equal(t, exp, box.Foo)
 	})
 
 	s.Test("nested-1", func(t *testcase.T) {
