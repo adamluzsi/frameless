@@ -442,8 +442,11 @@ func TestFan(t *testing.T) {
 
 		s.Then("it can be called concurrently", func(t *testcase.T) {
 			subject.Get(t)
-			var close = func() { assert.NoError(t, act(t)) }
-			testcase.Race(close, close, close, close)
+			var closers []func()
+			for range runtime.NumCPU() {
+				closers = append(closers, func() { assert.NoError(t, act(t)) })
+			}
+			testcase.Race(closers...)
 		})
 
 		s.Then("it will cancel waiting publish", func(t *testcase.T) {
@@ -465,6 +468,46 @@ func TestFan(t *testing.T) {
 			})
 
 			assert.ErrorIs(t, gotErr, context.Canceled)
+		})
+
+		s.Then("it ends a later subscription right away, as the message of the cancelled publish never requires processing", func(t *testcase.T) {
+			f := subject.Get(t)
+
+			w := assert.NotWithin(t, timeout, func(context.Context) {
+				_ = f.Publish(t.Context(), t.Random.UUID())
+			})
+			assert.NoError(t, act(t))
+			assert.Within(t, deadline, func(context.Context) {
+				w.Wait()
+			})
+
+			assert.Within(t, deadline, func(context.Context) {
+				for range f.Subscribe(t.Context()) {
+				}
+			})
+		})
+
+		s.When("a publish gave up waiting for a subscriber earlier", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				ctx, cancel := context.WithTimeout(t.Context(), timeout)
+				defer cancel()
+				assert.ErrorIs(t, subject.Get(t).Publish(ctx, t.Random.UUID()), context.DeadlineExceeded)
+			})
+
+			s.Then("it ends the subscriptions, as the message of that publish never requires processing", func(t *testcase.T) {
+				f := subject.Get(t)
+
+				w := assert.NotWithin(t, timeout, func(context.Context) {
+					for range f.Subscribe(t.Context()) {
+					}
+				})
+
+				assert.NoError(t, act(t))
+
+				assert.Within(t, deadline, func(context.Context) {
+					w.Wait()
+				})
+			})
 		})
 
 		s.Then("it will cancel subscription when nothing requires processing", func(t *testcase.T) {
@@ -1412,8 +1455,11 @@ func TestBroadcast(t *testing.T) {
 
 		s.Then("it can be called concurrently", func(t *testcase.T) {
 			subject.Get(t)
-			var close = func() { assert.NoError(t, act(t)) }
-			testcase.Race(close, close, close, close)
+			var closers []func()
+			for range runtime.NumCPU() {
+				closers = append(closers, func() { assert.NoError(t, act(t)) })
+			}
+			testcase.Race(closers...)
 		})
 
 		s.Then("it unblocks a publish that is waiting on a busy subscriber", func(t *testcase.T) {
@@ -1717,7 +1763,8 @@ func TestBroadcast(t *testing.T) {
 
 	s.Test("nack w cancel should not result in any issue", func(t *testcase.T) {
 		var b synckit.Broadcast[int]
-		job := t.Go(func(ctx context.Context) error {
+		// not t.Go, as a t.Go job which finishes during a t.Eventually trips a data race inside testcase.
+		job := synckit.Go(t.Context(), func(ctx context.Context) error {
 			for msg, err := range b.Subscribe(ctx) {
 				assert.NoError(t, err)
 				assert.Within(t, timeout, func(ctx context.Context) {
@@ -1727,6 +1774,7 @@ func TestBroadcast(t *testing.T) {
 			}
 			return nil
 		})
+		t.Cleanup(func() { job.Cancel() })
 
 		t.Eventually(func(t *testcase.T) {
 			assert.Equal(t, b.Len(), 1)
@@ -1734,7 +1782,7 @@ func TestBroadcast(t *testing.T) {
 
 		assert.NoError(t, b.Publish(t.Context(), 42)) // send first message in the broadcast
 
-		job.Wait()
+		assert.NoError(t, job.Wait())
 
 		assert.Within(t, timeout, func(ctx context.Context) {
 			b.Cancel() // cancel

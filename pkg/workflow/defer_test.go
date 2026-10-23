@@ -239,7 +239,8 @@ func TestDefer(t *testing.T) {
 				}
 			}
 		}
-		childBusy := let.Phaser(s)
+		// eagerly loaded, so it is initialised on the test goroutine instead of the participant's, see TestRuntime_phaserLazyInitRace.
+		childBusy := let.Phaser(s).EagerLoading(s)
 		_, childStep := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
 			return func(ctx context.Context) error {
 				childBusy.Get(t).Wait()

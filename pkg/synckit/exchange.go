@@ -361,6 +361,8 @@ func (ex *exchangeBase[T]) Len() int {
 
 func (ex *exchangeBase[T]) Close() error {
 	ex.init()
+	ex.mutex.Lock()
+	defer ex.mutex.Unlock()
 	select {
 	case <-ex.closed:
 	default:

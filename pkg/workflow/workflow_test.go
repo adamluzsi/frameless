@@ -321,7 +321,8 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 
 	s.When("definition execution is interrupted midterm", func(s *testcase.Spec) {
-		phaser := let.Phaser(s)
+		// eagerly loaded, so it is initialised on the test goroutine instead of the participant's, see TestRuntime_phaserLazyInitRace.
+		phaser := let.Phaser(s).EagerLoading(s)
 
 		bar.Let(s, func(t *testcase.T) func(ctx context.Context) error {
 			fn := bar.Super(t)

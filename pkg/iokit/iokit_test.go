@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -998,8 +999,18 @@ func TestKeepAliveReader(t *testing.T) {
 		keepAliveTime = testcase.Let(s, func(t *testcase.T) time.Duration {
 			return time.Duration(t.Random.IntBetween(int(time.Hour), int(24*time.Hour)))
 		})
+		background = testcase.Let(s, func(t *testcase.T) goroutineLabel {
+			return goroutineLabel{Key: "KeepAliveReader", Value: t.Random.UUID()}
+		})
 		subject = testcase.Let(s, func(t *testcase.T) io.ReadCloser {
-			return iokit.NewKeepAliveReader(stub.Get(t), keepAliveTime.Get(t))
+			var r io.ReadCloser
+			// the goroutines that the reader starts inherit the label,
+			// which tells them apart from the rest of the goroutines in the test binary.
+			background.Get(t).Do(func() {
+				r = iokit.NewKeepAliveReader(stub.Get(t), keepAliveTime.Get(t))
+			})
+			t.Cleanup(func() { _ = r.Close() })
+			return r
 		})
 	)
 
@@ -1009,6 +1020,12 @@ func TestKeepAliveReader(t *testing.T) {
 		assert.Equal(t, got, stub.Get(t).Data)
 	})
 
+	s.Test("the keep alive runs in the background while the reader is open", func(t *testcase.T) {
+		subject.Get(t)
+
+		assert.NotEqual(t, 0, background.Get(t).NumGoroutine())
+	})
+
 	s.When("reader is closed", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			assert.NoError(t, subject.Get(t).Close())
@@ -1016,6 +1033,12 @@ func TestKeepAliveReader(t *testing.T) {
 
 		s.Then("source reader is closed as well", func(t *testcase.T) {
 			assert.True(t, stub.Get(t).IsClosed())
+		})
+
+		s.Then("the background goroutines of the keep alive are released", func(t *testcase.T) {
+			assert.Eventually(t, time.Second, func(it testing.TB) {
+				assert.Equal(it, 0, background.Get(t).NumGoroutine())
+			})
 		})
 
 		s.Then("triggering won't happen anymore", func(t *testcase.T) {
@@ -1152,6 +1175,38 @@ func TestKeepAliveReader(t *testing.T) {
 			})
 		})
 	})
+}
+
+// goroutineLabel tells apart the goroutines started by a piece of code from the rest of the goroutines,
+// as a goroutine inherits the pprof labels of the goroutine which started it.
+type goroutineLabel struct{ Key, Value string }
+
+// Do runs fn with the label, so the goroutines that fn starts carry it as well.
+func (l goroutineLabel) Do(fn func()) {
+	pprof.Do(context.Background(), pprof.Labels(l.Key, l.Value), func(context.Context) { fn() })
+}
+
+// NumGoroutine counts the goroutines which carry the label.
+func (l goroutineLabel) NumGoroutine() int {
+	var profile bytes.Buffer
+	if err := pprof.Lookup("goroutine").WriteTo(&profile, 1); err != nil {
+		panic(err)
+	}
+	var (
+		label = fmt.Sprintf("%q:%q", l.Key, l.Value)
+		total int
+		count int
+	)
+	// each record starts with "<count> @ <stack pcs>", and is followed by "# labels: {...}" when it has labels.
+	for _, line := range strings.Split(profile.String(), "\n") {
+		if n, err := fmt.Sscanf(line, "%d @", &count); err == nil && n == 1 {
+			continue
+		}
+		if strings.HasPrefix(line, "# labels: ") && strings.Contains(line, label) {
+			total += count
+		}
+	}
+	return total
 }
 
 func TestPeekRune(t *testing.T) {

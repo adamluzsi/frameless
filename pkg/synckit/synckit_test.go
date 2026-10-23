@@ -121,7 +121,9 @@ func TestRWLockerFactory(t *testing.T) {
 		})
 
 		s.Context("but for another key", func(s *testcase.Spec) {
-			othKey := let.String(s)
+			othKey := testcase.Let(s, func(t *testcase.T) string {
+				return random.Unique(t.Random.String, key.Get(t))
+			})
 
 			s.Then("write lockers for a different key will able to lock", func(t *testcase.T) {
 				l := lockerFor(t, othKey.Get(t))
@@ -130,7 +132,7 @@ func TestRWLockerFactory(t *testing.T) {
 					l.Lock()
 					t.Defer(l.Unlock)
 				})
-			}, testcase.Flaky(3))
+			})
 
 			s.Then("read lockers for a different key will able to lock", func(t *testcase.T) {
 				l := rLockerFor(t, othKey.Get(t))
@@ -191,7 +193,9 @@ func TestRWLockerFactory(t *testing.T) {
 		})
 
 		s.Context("but for another key", func(s *testcase.Spec) {
-			othKey := let.String(s)
+			othKey := testcase.Let(s, func(t *testcase.T) string {
+				return random.Unique(t.Random.String, key.Get(t))
+			})
 
 			s.Then("write lockers for a different key will able to lock", func(t *testcase.T) {
 				l := lockerFor(t, othKey.Get(t))
@@ -2201,8 +2205,10 @@ func TestGroup(t *testing.T) {
 		})
 
 		s.When("a nested Go call is made within the initial Go call", func(s *testcase.Spec) {
-			p1 := let.Phaser(s)
-			p2 := let.Phaser(s)
+			// eagerly loaded, so their t.Cleanup is registered on the test goroutine,
+			// and not on a task goroutine, where it would race with T#Eventually.
+			p1 := let.Phaser(s).EagerLoading(s)
+			p2 := let.Phaser(s).EagerLoading(s)
 
 			fn.Let(s, func(t *testcase.T) func(context.Context) error {
 				return func(ctx context.Context) error {
@@ -2934,11 +2940,13 @@ func ExamplePhaser() {
 func TestPhaser(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	// eagerly loaded, so its t.Cleanup is registered on the test goroutine,
+	// and not on a waiter goroutine, where it would race with T#Eventually.
 	phaser := testcase.Let(s, func(t *testcase.T) *synckit.Phaser {
 		var p synckit.Phaser
 		t.Cleanup(p.Finish)
 		return &p
-	})
+	}).EagerLoading(s)
 
 	s.Test("smoke #Wait #Finish", func(t *testcase.T) {
 		go func() { phaser.Get(t).Wait() }()
@@ -3370,7 +3378,9 @@ func TestGo(t *testing.T) {
 	})
 
 	s.When("the job is long-lived", func(s *testcase.Spec) {
-		phaser := let.Phaser(s)
+		// eagerly loaded, so its t.Cleanup is registered on the test goroutine,
+		// and not on the job's goroutine, where it would race with T#Eventually.
+		phaser := let.Phaser(s).EagerLoading(s)
 
 		Func.Let(s, func(t *testcase.T) func(context.Context) error {
 			return func(ctx context.Context) error {
@@ -3433,7 +3443,9 @@ func TestGo(t *testing.T) {
 
 		ctxErr := let.VarOf[error](s, nil)
 
-		phaser := let.Phaser(s)
+		// eagerly loaded, so its t.Cleanup is registered on the test goroutine,
+		// and not on the job's goroutine, where it would race with T#Eventually.
+		phaser := let.Phaser(s).EagerLoading(s)
 
 		Func.Let(s, func(t *testcase.T) func(context.Context) error {
 			return func(ctx context.Context) error {

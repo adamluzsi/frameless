@@ -39,8 +39,9 @@ func TestSpawn(t *testing.T) {
 		expVal1 = let.String(s)
 		expVal2 = let.Int(s)
 
-		blockingParticipantID     = wftest.LetParticipantID(s)
-		blockingParticipantPhaser = let.Phaser(s)
+		blockingParticipantID = wftest.LetParticipantID(s)
+		// eagerly loaded, so it is initialised on the test goroutine instead of the participant's, see TestRuntime_phaserLazyInitRace.
+		blockingParticipantPhaser = let.Phaser(s).EagerLoading(s)
 		_                         = wftest.LetParticipantWithID(s, blockingParticipantID, func(t *testcase.T) func(ctx context.Context) error {
 			return func(ctx context.Context) error {
 				blockingParticipantPhaser.Get(t).Wait()
@@ -550,8 +551,9 @@ func TestJoin(t *testing.T) {
 		act := c.ActExecute
 
 		s.When("spawn(s) was used previously as part of the workflow", func(s *testcase.Spec) {
-			fooPhaser := let.Phaser(s)
-			barPhaser := let.Phaser(s)
+			// eagerly loaded, so they are initialised on the test goroutine instead of the participants', see TestRuntime_phaserLazyInitRace.
+			fooPhaser := let.Phaser(s).EagerLoading(s)
+			barPhaser := let.Phaser(s).EagerLoading(s)
 
 			_, fooParticipant := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
 				return func(ctx context.Context) error {
