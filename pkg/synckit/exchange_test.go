@@ -440,6 +440,12 @@ func TestFan(t *testing.T) {
 			return subject.Get(t).Close()
 		})
 
+		s.Then("it can be called concurrently", func(t *testcase.T) {
+			subject.Get(t)
+			var close = func() { assert.NoError(t, act(t)) }
+			testcase.Race(close, close, close, close)
+		})
+
 		s.Then("it will cancel waiting publish", func(t *testcase.T) {
 			f := subject.Get(t)
 
@@ -562,6 +568,79 @@ func TestFan(t *testing.T) {
 				"the in-flight message context must not be cancelled while Close is called")
 			assert.NoError(t, ctxErrAfterClose,
 				"the in-flight message context must remain valid after Close returned")
+		})
+
+		// An in-flight message is still a value which may require processing,
+		// as its subscriber may NACK it back for redelivery to another subscriber.
+		s.When("a subscriber holds an in-flight message while another subscriber is idle", func(s *testcase.Spec) {
+			var (
+				inflight = let.UUID(s)
+				// release lets the busy subscriber NACK the in-flight message and leave.
+				release = let.Var(s, func(t *testcase.T) chan struct{} {
+					return make(chan struct{})
+				})
+				idle = subscribe(s)
+			)
+			s.Before(func(t *testcase.T) {
+				var (
+					fan        = subject.Get(t)
+					release    = release.Get(t)
+					processing = make(chan struct{})
+				)
+				busy := synckit.Go(t.Context(), func(ctx context.Context) error {
+					for msg, err := range fan.Subscribe(ctx) {
+						if err != nil {
+							return err
+						}
+						close(processing)
+						select {
+						case <-release:
+						case <-ctx.Done():
+						}
+						return msg.NACK()
+					}
+					return nil
+				})
+				t.Cleanup(func() {
+					busy.Cancel()
+					_ = busy.Wait()
+				})
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, fan.Len(), 1)
+				})
+				// as Fan is unicast, the message goes to the busy subscriber, which is the only one yet.
+				assert.Within(t, deadline, func(ctx context.Context) {
+					assert.NoError(t, fan.Publish(ctx, inflight.Get(t)))
+				})
+				assert.Within(t, deadline, func(context.Context) {
+					<-processing
+				})
+				idle.Get(t)
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, fan.Len(), 2)
+				})
+			})
+
+			s.Then("the idle subscription stays to take over the in-flight message when it gets NACK-ed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				close(release.Get(t))
+
+				idle.Get(t).Eventually(t, func(tb testing.TB, got []string) {
+					assert.Contains(tb, got, inflight.Get(t),
+						"the NACK-ed message must not be lost by ending the subscription of the idle subscriber")
+				})
+			})
+
+			s.Then("the subscriptions end once the in-flight message is settled", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				close(release.Get(t))
+
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, subject.Get(t).Len(), 0)
+				})
+			})
 		})
 	})
 
@@ -1266,11 +1345,75 @@ func TestBroadcast(t *testing.T) {
 				})
 			})
 		})
+
+		s.When("a subscriber NACKs a message and leaves, while another subscriber keeps consuming", func(s *testcase.Spec) {
+			var (
+				nacked    = let.UUID(s)
+				remaining = subscribe(s)
+			)
+			s.Before(func(t *testcase.T) {
+				var (
+					bc     = subject.Get(t)
+					leaver = act(t)
+				)
+				remaining.Get(t)
+				job := synckit.Go(t.Context(), func(context.Context) error {
+					for msg, err := range leaver {
+						if err != nil {
+							return err
+						}
+						return msg.NACK()
+					}
+					return nil
+				})
+				waitForSubscribers(t, 2)
+
+				assert.Within(t, deadline, func(ctx context.Context) {
+					assert.NoError(t, bc.Publish(ctx, nacked.Get(t)))
+				})
+				assert.Within(t, deadline, func(context.Context) {
+					assert.NoError(t, job.Wait())
+				})
+			})
+
+			s.Then("the remaining subscriber receives the message only once, as it already received its own copy", func(t *testcase.T) {
+				// the remaining subscriber is done with a message once the next one is handed over to it,
+				// so publishing at least two later messages ensures it has nothing more to receive in between.
+				later := random.Slice(t.Random.IntBetween(2, 5), t.Random.UUID)
+				for _, v := range later {
+					assert.Within(t, deadline, func(ctx context.Context) {
+						assert.NoError(t, subject.Get(t).Publish(ctx, v))
+					})
+				}
+
+				expected := append([]string{nacked.Get(t)}, later...)
+				remaining.Get(t).Eventually(t, func(tb testing.TB, got []string) {
+					assert.Equal(tb, got, expected)
+				})
+			})
+
+			s.Then("a later subscription takes over the NACK-ed message, like the subscriber would re-subscribe", func(t *testcase.T) {
+				assert.Within(t, deadline, func(context.Context) {
+					for msg, err := range act(t) {
+						assert.NoError(t, err)
+						assert.Equal(t, msg.Data(), nacked.Get(t))
+						assert.NoError(t, msg.ACK())
+						break
+					}
+				})
+			})
+		})
 	})
 
 	s.Describe("#Close", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) error {
 			return subject.Get(t).Close()
+		})
+
+		s.Then("it can be called concurrently", func(t *testcase.T) {
+			subject.Get(t)
+			var close = func() { assert.NoError(t, act(t)) }
+			testcase.Race(close, close, close, close)
 		})
 
 		s.Then("it unblocks a publish that is waiting on a busy subscriber", func(t *testcase.T) {
