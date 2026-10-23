@@ -354,7 +354,9 @@ its path under the fixed ID `template-condition` (not the `@type` tag). See
 `name` is the spawn identifier, and is what a later `Join` refers to. It
 doesn't have to be unique: a spawn is identified by where it is in the
 definition, so one in a loop body spawns a child per round, and a `Join` by
-name waits for the child of that name spawned the latest. `def` is a nested
+name waits for the child of that name spawned the closest to it (the innermost
+visible one, else the one sharing the longest path, else the latest; see
+`workflow.Join`). `def` is a nested
 definition. `vars` is a `VarMapping` (`parent → child`) and is omitted when
 empty.
 

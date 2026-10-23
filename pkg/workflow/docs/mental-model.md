@@ -429,8 +429,10 @@ This keeps "what was committed" aligned with "what the log says is done."
 - **Lifecycle outcomes are events** (`EventCompleted`, `EventTerminated`), not
   fields.
 - **Deferred definitions run LIFO** before the outcome is recorded.
-- **Child processes are identified by `SpawnName`** within the parent, which is
-  what `Join` addresses.
+- **Child processes are identified by the `Path` of their `Spawn`** within the
+  parent, so a `Spawn` in a loop body spawns a child per round. A `Join`
+  addresses them by `SpawnName`, and joins the one closest to it, like a Go
+  name refers to the closest declaration.
 
 ---
 

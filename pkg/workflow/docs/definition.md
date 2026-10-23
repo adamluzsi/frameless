@@ -393,20 +393,38 @@ workflow.Join{Spawn: "fulfilment", // wait for it, then collect its results
 
 `Join` returns `Suspend{}` until the child (or every child) has recorded
 `EventCompleted`, then records an `EventJoin` and lets the sequence continue.
-An unknown `Spawn` name is an error, not a silent pass. When more children were
-spawned by the name, the `Join` waits for the one spawned the latest, so a
-`Spawn` and a `Join` in the same loop body pair up round by round:
+An unknown `Spawn` name is an error, not a silent pass.
+
+When more children were spawned by the name, the `Join` waits for the one
+**closest** to it, the way a Go variable name refers to the closest
+declaration:
+
+1. A `Spawn` declares its name in the variable scope it is in, so it is
+   *visible* to the `Join`s in that scope and in the scopes nested in it. Of the
+   visible spawns, the one in the innermost scope wins.
+2. If none is visible, for example from after the loop or `If` that holds the
+   `Spawn`, the spawn that shares the longest `Path` with the `Join` wins.
+3. Of the spawns that are equally close, the one spawned the latest wins.
+
+So a `Spawn` and a `Join` in the same loop body pair up round by round, while a
+`Join` after the loop joins a child of that name spawned before the loop, or
+the last round's child if there is none:
 
 ```go
-workflow.ForEach{Over: "orders", V: "order", Do: workflow.Sequence{
-	workflow.Spawn{Name: "fulfilment",
-		Definition: workflow.Execute{Participant: "ship",
-			Input:  []workflow.VarName{"order"},
-			Output: []workflow.VarName{"tracking"}},
-		Vars: workflow.VarMapping{"order": "order"}},
-	workflow.Join{Spawn: "fulfilment", // the child of this round
-		Collect: workflow.VarMapping{"tracking": "tracking"}},
-}}
+workflow.Sequence{
+	workflow.Spawn{Name: "fulfilment", // first := spawn()
+		Definition: workflow.Execute{Participant: "pack"}},
+	workflow.ForEach{Over: "orders", V: "order", Do: workflow.Sequence{
+		workflow.Spawn{Name: "fulfilment",
+			Definition: workflow.Execute{Participant: "ship",
+				Input:  []workflow.VarName{"order"},
+				Output: []workflow.VarName{"tracking"}},
+			Vars: workflow.VarMapping{"order": "order"}},
+		workflow.Join{Spawn: "fulfilment", // the child of this round
+			Collect: workflow.VarMapping{"tracking": "tracking"}},
+	}},
+	workflow.Join{Spawn: "fulfilment"}, // the one spawned before the loop
+}
 ```
 
 `Collect` is a `VarMapping` too, but it reads the other way, **child → parent**:

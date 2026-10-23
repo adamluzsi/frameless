@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -84,7 +85,7 @@ func (spawn Spawn) withName(ctx context.Context) context.Context {
 
 // SpawnName is a human friendly user given identifier name for referencing an eventually spawned sub process.
 // It doesn't have to be unique among the children of a process,
-// a Join by name waits for the child of that name spawned the latest.
+// a Join by name joins the child of that name spawned the closest to it, see Join#Spawn.
 //
 // Its main purpose is to enable parent-child life-cycle coordination.
 type SpawnName string
@@ -294,12 +295,59 @@ func (e EventSpawn) GetEventID() EventID     { return e.EventID }
 func (e EventSpawn) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
 
+// spawnRank is how close a Spawn is to a Join of its name, see Join#Spawn.
+// The Join joins the child of the closest Spawn.
+type spawnRank struct {
+	// visible tells that the Spawn is in the variable scope of the Join, or in one enclosing it.
+	visible bool
+	// depth is how close the Spawn is among the ones equally visible:
+	// the depth of its variable scope for a visible Spawn, as the innermost one is the closest,
+	// and the length of the Path it shares with the Join otherwise.
+	depth int
+}
+
+// rankSpawn ranks the Spawn which recorded the event, for the Join at the given Path.
+//
+// A Spawn declares its name in its variable scope, the way a Go variable is declared in its block,
+// so it is visible to the Joins in that variable scope, and in the ones nested in it.
+func rankSpawn(e EventSpawn, join Path) spawnRank {
+	if len(e.Path) == 0 {
+		// The event was recorded before Spawns had a Path,
+		// so the Spawn is only known by its name, which is the least close.
+		return spawnRank{}
+	}
+	if scope := e.Path.VarScope(); join.MatchPrefix(scope) {
+		return spawnRank{visible: true, depth: len(scope)}
+	}
+	return spawnRank{depth: commonPrefixLen(e.Path, join)}
+}
+
+func (r spawnRank) compare(oth spawnRank) int {
+	if r.visible != oth.visible {
+		if r.visible {
+			return 1
+		}
+		return -1
+	}
+	return cmp.Compare(r.depth, oth.depth)
+}
+
 // ---
 
 type Join struct {
 	// Spawn [optional] will configure Join to Join a specific Spawn back by its name.
-	// When more children were spawned by that name, like by a Spawn in the body of a loop,
-	// it joins the one spawned the latest, so a Join in the same round as the Spawn joins the child of that round.
+	//
+	// When more children were spawned by that name, it joins the one closest to the Join,
+	// the way a Go variable name refers to the declaration closest to where it is used:
+	//   - A Spawn declares its name in the variable scope it is in,
+	//     so it is visible to the Joins of that variable scope, and of the ones nested in it.
+	//     Of the visible Spawns, the one of the innermost variable scope is joined,
+	//     so a Join in the body of a loop joins the child of its own round,
+	//     rather than one spawned before the loop.
+	//   - When none is visible, like from after the loop or the If that holds the Spawn,
+	//     the Spawn which shares the longest Path with the Join is joined.
+	//   - Of the Spawns equally close, the one spawned the latest is joined,
+	//     so a Join after a loop joins the child of the last round.
 	Spawn SpawnName
 	// Collect [optional] collects the results of the joined child into the parent's variables.
 	// It is a VarMapping ([FROM] child [TO] parent), so for each {childKey: parentKey} entry,
@@ -352,9 +400,10 @@ func (d Join) joinChild(ctx context.Context, parentID ProcessID) (rErr error) {
 	var currentPath = CurrentPath(ctx)
 
 	var (
-		child EventSpawn
-		found bool
-		done  bool
+		child   EventSpawn
+		closest spawnRank
+		found   bool
+		done    bool
 	)
 scan:
 	for event, err := range repo.FindByProcessID(ctx, parentID) {
@@ -363,9 +412,13 @@ scan:
 		}
 		switch event := event.(type) {
 		case EventSpawn:
-			if event.Name == d.Spawn {
-				child = event
-				found = true
+			if event.Name != d.Spawn {
+				continue
+			}
+			// The event log is in the order of the Spawns,
+			// so of the Spawns equally close, the latest is kept.
+			if rank := rankSpawn(event, currentPath); !found || 0 <= rank.compare(closest) {
+				child, closest, found = event, rank, true
 			}
 		case EventJoin:
 			if event.Path.Equal(currentPath) {

@@ -43,6 +43,15 @@ func (p Path) MatchPrefix(prefix Path) bool {
 	return slicekit.MatchPrefix(p, prefix)
 }
 
+// commonPrefixLen is the number of leading Scopes the two Paths share.
+func commonPrefixLen(a, b Path) int {
+	var n int
+	for n < len(a) && n < len(b) && a[n].Equal(b[n]) {
+		n++
+	}
+	return n
+}
+
 // VarScope returns the innermost variable scope the Path is in,
 // which is the Path up to and including its last Var Scope.
 //

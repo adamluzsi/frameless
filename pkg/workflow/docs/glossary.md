@@ -301,8 +301,12 @@ in the same transaction as the `EventJoin`, so a replay never collects again.
 **SpawnName** is the human-friendly handle for a child, and it exists purely so
 a later `Join` can name which child it is waiting for. It doesn't have to be
 unique: a `Spawn` is identified by its `Path`, so a `Spawn` in a loop body
-spawns a child per round, and a `Join` by name waits for the child of that name
-spawned the latest.
+spawns a child per round. A `Join` by name waits for the child of that name
+spawned the closest to it, the way a Go variable name refers to the closest
+declaration. A `Spawn` is visible to the `Join`s in its variable scope and in
+the ones nested in it, and the innermost visible one wins. If none is visible,
+the one sharing the longest `Path` with the `Join` wins. On a tie, the latest
+wins.
 
 ### RuntimeSignal
 

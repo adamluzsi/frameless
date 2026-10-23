@@ -680,6 +680,10 @@ func TestJoin(t *testing.T) {
 				before = let.Var(s, func(t *testcase.T) workflow.Definition {
 					return workflow.Sequence{}
 				})
+				// spawn is where the parent spawns the child.
+				spawn = let.Var(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Spawn{Name: "child", Definition: child.Get(t)}
+				})
 				// join is where the parent joins the child, which is right after spawning it.
 				join = let.Var(s, func(t *testcase.T) workflow.Definition {
 					return subject.Get(t)
@@ -698,7 +702,7 @@ func TestJoin(t *testing.T) {
 			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 				return workflow.Sequence{
 					before.Get(t),
-					workflow.Spawn{Name: "child", Definition: child.Get(t)},
+					spawn.Get(t),
 					join.Get(t),
 					after.Get(t),
 				}
@@ -819,6 +823,92 @@ func TestJoin(t *testing.T) {
 				})
 			})
 
+			s.When("the Spawn is in a variable scope of its own, like a branch of an If", func(s *testcase.Spec) {
+				// if true {
+				// 	go child()
+				// }
+				// parentKey := child() // the Join after the If
+				// see(parentKey)
+				spawn.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.If{
+						Cond: wftemplate.Condition("true"),
+						Then: spawn.Super(t),
+					}
+				})
+
+				s.Then("the Join after it still finds the child, as the only one spawned by that name", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, []any{childValue.Get(t)}, seen.Get(t))
+				})
+
+				s.And("a child of the same name is spawned before, outside of that scope", func(s *testcase.Spec) {
+					// first := child() // the child sets outerValue
+					// if true {
+					// 	first := child() // shadows the outer one, but only within the If
+					// }
+					// parentKey := first // the Join after the If
+					// see(parentKey)
+					outerValue := let.Var(s, func(t *testcase.T) string {
+						return random.Unique(t.Random.String, childValue.Get(t))
+					})
+					before.Let(s, func(t *testcase.T) workflow.Definition {
+						return workflow.Spawn{
+							Name:       "child",
+							Definition: workflow.SetVar{Name: childKey.Get(t), Value: outerValue.Get(t)},
+						}
+					})
+
+					s.Then("the Join joins the outer one, as the one in the If is local to it, even if it is the latest", func(t *testcase.T) {
+						joined(t)
+
+						assert.Equal(t, []any{outerValue.Get(t)}, seen.Get(t))
+					})
+				})
+			})
+
+			s.When("the Join is deferred, and none of the Spawns of its name is visible to it", func(s *testcase.Spec) {
+				// if true {
+				// 	if true {
+				// 		go child() // the child sets childValue
+				// 	}
+				// 	defer func() {
+				// 		parentKey := child() // the Join, which runs once the Process ended
+				// 		see(parentKey)
+				// 	}()
+				// }
+				// if true {
+				// 	go child() // the child sets otherValue, spawned the latest, but farther from the Join
+				// }
+				otherValue := let.Var(s, func(t *testcase.T) string {
+					return random.Unique(t.Random.String, childValue.Get(t))
+				})
+				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.If{
+							Cond: wftemplate.Condition("true"),
+							Then: workflow.Sequence{
+								workflow.If{Cond: wftemplate.Condition("true"), Then: spawn.Get(t)},
+								workflow.Defer{Definition: workflow.Sequence{join.Get(t), after.Get(t)}},
+							},
+						},
+						workflow.If{
+							Cond: wftemplate.Condition("true"),
+							Then: workflow.Spawn{
+								Name:       "child",
+								Definition: workflow.SetVar{Name: childKey.Get(t), Value: otherValue.Get(t)},
+							},
+						},
+					}
+				})
+
+				s.Then("it joins the child of the Spawn sharing the longest Path with it, rather than the latest", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, []any{childValue.Get(t)}, seen.Get(t))
+				})
+			})
+
 			s.When("the Spawn and the Join are in the body of a loop", func(s *testcase.Spec) {
 				// for _, item := range items {
 				// 	parentKey := child(item) // the child gives back what it got
@@ -839,10 +929,9 @@ func TestJoin(t *testing.T) {
 				child.Let(s, func(t *testcase.T) workflow.Definition {
 					return workflow.Sequence{} // the item it got is forwarded as childKey, which the Join collects
 				})
-				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
-					return workflow.Sequence{
-						workflow.SetVar{Name: "items", Value: items.Get(t)},
-						workflow.ForEach{
+				var (
+					loop = let.Var(s, func(t *testcase.T) workflow.Definition {
+						return workflow.ForEach{
 							Over: "items",
 							V:    "item",
 							Do: workflow.Sequence{
@@ -855,7 +944,17 @@ func TestJoin(t *testing.T) {
 								// A participant call is recorded, so the rounds replayed while a later Join waits don't see again.
 								workflow.Execute{Participant: see.Get(t), Input: []workflow.VarName{parentKey.Get(t)}},
 							},
-						},
+						}
+					})
+					// seeAfterLoop is the see(parentKey) after the loop.
+					seeAfterLoop = let.Var(s, func(t *testcase.T) workflow.Definition {
+						return workflow.Execute{Participant: see.Get(t), Input: []workflow.VarName{parentKey.Get(t)}}
+					})
+				)
+				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.SetVar{Name: "items", Value: items.Get(t)},
+						loop.Get(t),
 					}
 				})
 
@@ -863,6 +962,62 @@ func TestJoin(t *testing.T) {
 					joined(t)
 
 					assert.Equal(t, items.Get(t), saw.Get(t))
+				})
+
+				s.And("the child is joined after the loop too", func(s *testcase.Spec) {
+					// for _, item := range items {
+					// 	parentKey := child(item)
+					// 	see(parentKey)
+					// }
+					// parentKey := child() // the Join after the loop
+					// see(parentKey)
+					c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+						return workflow.Sequence{
+							workflow.SetVar{Name: "items", Value: items.Get(t)},
+							loop.Get(t),
+							join.Get(t),
+							seeAfterLoop.Get(t),
+						}
+					})
+
+					s.Then("it joins the child of the last round, as no child of that name is spawned outside of the loop", func(t *testcase.T) {
+						joined(t)
+
+						exp := append(slicekit.Clone(items.Get(t)), items.Get(t)[len(items.Get(t))-1])
+						assert.Equal(t, exp, saw.Get(t))
+					})
+				})
+
+				s.And("a child of the same name is spawned before the loop, and joined after it", func(s *testcase.Spec) {
+					// first := child(firstValue)
+					// for _, item := range items {
+					// 	parentKey := child(item)
+					// 	see(parentKey)
+					// }
+					// parentKey := first // the Join after the loop
+					// see(parentKey)
+					firstValue := let.UUID(s)
+					c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+						return workflow.Sequence{
+							workflow.SetVar{Name: "items", Value: items.Get(t)},
+							workflow.SetVar{Name: "first", Value: firstValue.Get(t)},
+							workflow.Spawn{
+								Name:       "child",
+								Definition: child.Get(t),
+								Vars:       workflow.VarMapping{"first": childKey.Get(t)},
+							},
+							loop.Get(t),
+							join.Get(t),
+							seeAfterLoop.Get(t),
+						}
+					})
+
+					s.Then("the rounds join their own child, while the Join after the loop joins the one spawned before it", func(t *testcase.T) {
+						joined(t)
+
+						exp := append(slicekit.Clone(items.Get(t)), firstValue.Get(t))
+						assert.Equal(t, exp, saw.Get(t))
+					})
 				})
 			})
 
