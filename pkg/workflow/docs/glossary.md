@@ -169,7 +169,7 @@ type Event interface {
 | `EventDeclareVar`    | `workflow::event::var::declare`   | A variable came into existence in a scope, with no value yet.    |
 | `EventSetVar`        | `workflow::event::var::set`       | A variable was assigned a value.                                 |
 | `EventDeleteVar`     | `workflow::event::var::delete`    | A variable binding was removed.                                  |
-| `EventSpawn`         | `workflow::event::spawn`          | A sub-workflow was requested; links parent to `ChildID`.        |
+| `EventSpawn`         | `workflow::event::spawn`          | A sub-workflow was requested; links parent to `ChildID`, at the `Path` of the `Spawn`. |
 | `EventJoin`          | `workflow::event::join`           | A parent observed its children as complete; recorded together with the variables it collected. |
 | `EventSleepCompleted` | `workflow::event::sleep::completed` | A `Sleep` woke up; a replay passes it without asking its condition. |
 | `EventCompleted`     | `workflow::completed`             | The definition finished successfully.                            |
@@ -298,9 +298,11 @@ an `EventCompleted`, then records an `EventJoin`. With `Collect`, it also
 assigns the listed root-scope variables of the child to the parent's variables,
 in the same transaction as the `EventJoin`, so a replay never collects again.
 
-**SpawnName** is the human-friendly handle for a child — unique among a given
-process' children — and it exists purely so a later `Join` can name which child
-it is waiting for.
+**SpawnName** is the human-friendly handle for a child, and it exists purely so
+a later `Join` can name which child it is waiting for. It doesn't have to be
+unique: a `Spawn` is identified by its `Path`, so a `Spawn` in a loop body
+spawns a child per round, and a `Join` by name waits for the child of that name
+spawned the latest.
 
 ### RuntimeSignal
 

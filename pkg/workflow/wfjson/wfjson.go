@@ -1113,6 +1113,7 @@ type workflowSpawnEventDTO struct {
 	ChildID   workflow.ProcessID `json:"child_id"`
 	Name      string             `json:"name,omitzero"`
 	Timestamp time.Time          `json:"timestamp"`
+	Path      PathDTO            `json:"path,omitempty"`
 }
 
 func (WorkflowEventSpawn) Marshal(c *jsonkit.Codec, v workflow.EventSpawn) ([]byte, error) {
@@ -1122,6 +1123,7 @@ func (WorkflowEventSpawn) Marshal(c *jsonkit.Codec, v workflow.EventSpawn) ([]by
 		ChildID:   v.ChildID,
 		Name:      string(v.Name),
 		Timestamp: v.Timestamp,
+		Path:      ToPathDTO(v.Path),
 	})
 }
 
@@ -1135,6 +1137,7 @@ func (WorkflowEventSpawn) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.E
 	p.ChildID = dto.ChildID
 	p.Name = workflow.SpawnName(dto.Name)
 	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
 	return nil
 }
 

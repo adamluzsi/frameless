@@ -468,6 +468,18 @@ func TestCompat_v1WireFormat(t *testing.T) {
 			`{"@type":"workflow::event::spawn","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","child_id":"00000000-0000-4000-8000-000000000003","name":"child1","timestamp":"2026-01-02T03:04:05Z"}`)
 	})
 
+	// An EventSpawn tells the Spawn that recorded it by its path,
+	// while the one recorded before that has none, and keeps its wire form above.
+	s.Test("EventSpawn with a Path", func(t *testcase.T) {
+		assertMatchesV1Snapshot(t, codec.Get(t),
+			workflow.EventSpawn{
+				EventID: evID.Get(t), ProcessID: pid.Get(t), ChildID: childID.Get(t),
+				Name: "child1", Timestamp: ts.Get(t),
+				Path: workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "spawn"}, {Name: "child1"}},
+			},
+			`{"@type":"workflow::event::spawn","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","child_id":"00000000-0000-4000-8000-000000000003","name":"child1","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"sequence"},{"name":"[0]","var":true},{"name":"spawn"},{"name":"child1"}]}`)
+	})
+
 	s.Test("EventJoin", func(t *testcase.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.EventJoin{

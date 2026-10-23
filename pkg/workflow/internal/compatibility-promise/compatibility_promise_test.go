@@ -47,8 +47,9 @@ type scenario struct {
 	// They are the variables of the root scope;
 	// the ones of a nested scope, like a loop body, are checked where they are read, with compat::see.
 	Vars map[workflow.VarName]any
-	// ChildVars are the variables of each spawned child, by its spawn name, once the resumed Process has completed.
-	ChildVars map[workflow.SpawnName]map[workflow.VarName]any
+	// ChildVars are the variables of each spawned child once the resumed Process has completed,
+	// listed by spawn name, in the order the children of a name were spawned.
+	ChildVars map[workflow.SpawnName][]map[workflow.VarName]any
 }
 
 // scenarios is append-only: a recorded scenario is a promise.
@@ -170,7 +171,7 @@ var scenarios = []scenario{
 			workflow.Execute{Participant: stepA},
 		},
 		ResumedCalls: []string{string(stepA)},
-		ChildVars:    map[workflow.SpawnName]map[workflow.VarName]any{"child": nil},
+		ChildVars:    map[workflow.SpawnName][]map[workflow.VarName]any{"child": {nil}},
 	},
 	{
 		// The parent waits on the child across the upgrade,
@@ -192,8 +193,8 @@ var scenarios = []scenario{
 		},
 		ResumedCalls: []string{string(greet), string(stepA)},
 		Vars:         map[workflow.VarName]any{"name": "world"},
-		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
-			"greeter": {"name": "world", "greeting": "hello world"},
+		ChildVars: map[workflow.SpawnName][]map[workflow.VarName]any{
+			"greeter": {{"name": "world", "greeting": "hello world"}},
 		},
 	},
 	{
@@ -266,8 +267,8 @@ var scenarios = []scenario{
 		},
 		ResumedCalls: []string{seen("hello world")},
 		Vars:         map[workflow.VarName]any{"name": "world", "reply": "hello world"},
-		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
-			"greeter": {"name": "world", "greeting": "hello world"},
+		ChildVars: map[workflow.SpawnName][]map[workflow.VarName]any{
+			"greeter": {{"name": "world", "greeting": "hello world"}},
 		},
 	},
 	{
@@ -284,8 +285,8 @@ var scenarios = []scenario{
 		},
 		ResumedCalls: []string{seen("hello hello")},
 		Vars:         map[workflow.VarName]any{"reply": "hello hello"},
-		ChildVars: map[workflow.SpawnName]map[workflow.VarName]any{
-			"greeter": {"greeting": "hello"},
+		ChildVars: map[workflow.SpawnName][]map[workflow.VarName]any{
+			"greeter": {{"greeting": "hello"}},
 		},
 	},
 	{
@@ -304,6 +305,37 @@ var scenarios = []scenario{
 		},
 		ResumedCalls: []string{seen("hello world")},
 		Vars:         map[workflow.VarName]any{"name": "world"},
+	},
+	{
+		// Every round spawns a greeter of its own, and collects the greeting of the child it spawned.
+		// The first round was done before the upgrade,
+		// so the resumed Process replays it, and spawns the child of the second round only.
+		Name: "foreach-joining-a-child-per-round-across-the-upgrade",
+		Definition: workflow.Sequence{
+			workflow.SetVar{Name: "names", Value: []string{"alice", "bob"}},
+			workflow.ForEach{
+				Over: "names",
+				V:    "name",
+				Do: workflow.Sequence{
+					workflow.Spawn{
+						Name:       "greeter",
+						Definition: workflow.Execute{Participant: greet, Input: []workflow.VarName{"name"}, Output: []workflow.VarName{"greeting"}},
+						Vars:       workflow.VarMapping{"name": "name"},
+					},
+					workflow.Join{Spawn: "greeter", Collect: workflow.VarMapping{"greeting": "greeting"}},
+					workflow.Execute{Participant: see, Input: []workflow.VarName{"greeting"}},
+					workflow.Execute{Participant: awaitUpgrade},
+				},
+			},
+		},
+		ResumedCalls: []string{string(greet), seen("hello bob")},
+		Vars:         map[workflow.VarName]any{"names": []string{"alice", "bob"}},
+		ChildVars: map[workflow.SpawnName][]map[workflow.VarName]any{
+			"greeter": {
+				{"name": "alice", "greeting": "hello alice"},
+				{"name": "bob", "greeting": "hello bob"},
+			},
+		},
 	},
 }
 
@@ -663,20 +695,23 @@ func TestCompatibilityPromise(t *testing.T) {
 
 					children, err := childrenOf(t.Context(), events.Get(t), stored.Get(t).ProcessID)
 					assert.NoError(t, err)
-					var got = map[workflow.SpawnName]map[workflow.VarName]any{}
+					var got = map[workflow.SpawnName][]map[workflow.VarName]any{}
 					for _, child := range children {
 						vars, err := workflow.Vars{
 							ProcessID:        child.ChildID,
 							EventsRepository: events.Get(t),
 						}.ToMap(t.Context())
 						assert.NoError(t, err)
-						got[child.Name] = vars
+						got[child.Name] = append(got[child.Name], vars)
 					}
 
-					var expected = map[workflow.SpawnName]map[workflow.VarName]any{}
-					for name, vars := range sc.ChildVars {
-						expected[name] = map[workflow.VarName]any{}
-						maps.Copy(expected[name], vars)
+					var expected = map[workflow.SpawnName][]map[workflow.VarName]any{}
+					for name, children := range sc.ChildVars {
+						for _, vars := range children {
+							var childVars = map[workflow.VarName]any{}
+							maps.Copy(childVars, vars)
+							expected[name] = append(expected[name], childVars)
+						}
 					}
 					assert.Equal(t, asJSON(t, expected), asJSON(t, got))
 				})

@@ -20,7 +20,11 @@ import (
 // the participant call remains idempotent, and spawn will be eventually executed by the runtime.
 type Spawn struct {
 	// Name is an user given, human friendly Name
-	// which can be used later for parent-child coordination.
+	// which can be used later for parent-child coordination, see Join#Spawn.
+	//
+	// A Spawn is identified by where it is in the definition, and not by its Name alone,
+	// so two Spawns of the same Name spawn a child each,
+	// and a Spawn in the body of a loop spawns a child in every round.
 	Name SpawnName
 	// Definition is the Process Definition it meant to serve
 	Definition Definition
@@ -79,7 +83,8 @@ func (spawn Spawn) withName(ctx context.Context) context.Context {
 }
 
 // SpawnName is a human friendly user given identifier name for referencing an eventually spawned sub process.
-// If not zero, then it must be uniquely named between the spawned sub processes of a given process.
+// It doesn't have to be unique among the children of a process,
+// a Join by name waits for the child of that name spawned the latest.
 //
 // Its main purpose is to enable parent-child life-cycle coordination.
 type SpawnName string
@@ -201,15 +206,20 @@ func transferVars(mapping VarMapping, fromCtx context.Context, from Vars, toCtx 
 	return nil
 }
 
+// ensureSpawnEvent finds the EventSpawn the Spawn recorded at the current Path,
+// or records one with a new child otherwise.
+//
+// A Spawn is identified by where it is in the definition, and not by its Name alone,
+// so every round of a loop spawns a child of its own,
+// while a replayed round finds the child it spawned before.
 func (spawn Spawn) ensureSpawnEvent(ctx context.Context, rt Runtime, parentID ProcessID) (EventSpawn, error) {
+	var path = CurrentPath(ctx)
 	for event, err := range rt.Events.FindByProcessID(ctx, parentID) {
 		if err != nil {
 			return EventSpawn{}, err
 		}
-		if spawnEvent, ok := event.(EventSpawn); ok {
-			if spawn.Name == spawnEvent.Name {
-				return spawnEvent, nil
-			}
+		if spawnEvent, ok := event.(EventSpawn); ok && spawnEvent.recordedBy(spawn.Name, path) {
+			return spawnEvent, nil
 		}
 	}
 	eventID, err := MakeEventID() // maybe not the right place to issue the event ID
@@ -226,6 +236,7 @@ func (spawn Spawn) ensureSpawnEvent(ctx context.Context, rt Runtime, parentID Pr
 		ChildID:   childID,
 		Name:      spawn.Name,
 		Timestamp: timeNow(),
+		Path:      path,
 	}
 	var event Event = e
 	return e, rt.Events.Create(ctx, &event)
@@ -260,9 +271,23 @@ type EventSpawn struct {
 	Name SpawnName
 	// Timestamp is when the spawn request was registered
 	Timestamp time.Time
+	// Path is where the Spawn is in the definition of the parent,
+	// which identifies the Spawn that recorded the event.
+	Path Path
 }
 
 var _ Event = EventSpawn{}
+
+// recordedBy tells whether the event was recorded by the Spawn of the given name at the given Path.
+//
+// An EventSpawn recorded before Spawns were identified by their Path has none,
+// so it is matched by its Name, as it was when it got recorded.
+func (e EventSpawn) recordedBy(name SpawnName, path Path) bool {
+	if len(e.Path) == 0 {
+		return e.Name == name
+	}
+	return e.Path.Equal(path)
+}
 
 func (e EventSpawn) EventType() EventType    { return "workflow::spawn" }
 func (e EventSpawn) GetEventID() EventID     { return e.EventID }
@@ -273,6 +298,8 @@ func (e EventSpawn) GetTimestamp() time.Time { return e.Timestamp }
 
 type Join struct {
 	// Spawn [optional] will configure Join to Join a specific Spawn back by its name.
+	// When more children were spawned by that name, like by a Spawn in the body of a loop,
+	// it joins the one spawned the latest, so a Join in the same round as the Spawn joins the child of that round.
 	Spawn SpawnName
 	// Collect [optional] collects the results of the joined child into the parent's variables.
 	// It is a VarMapping ([FROM] child [TO] parent), so for each {childKey: parentKey} entry,

@@ -812,6 +812,7 @@ func Codec(codec workflow.Codec) contract.Contract {
 			ChildID:   childID,
 			Name:      workflow.SpawnName(t.Random.String()),
 			Timestamp: randomEventTimestamp(t),
+			Path:      randomPath(t),
 		}
 	})
 

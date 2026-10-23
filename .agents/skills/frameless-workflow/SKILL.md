@@ -428,7 +428,6 @@ The current code has a few spots that don't follow the model. Treat them as open
 - `ForEach` adds no `foreach` path segment.
 - Built-in `Error()` strings differ from their wire tags.
 - The active binding and `Defer` unwinding are ordered by timestamp.
-- `Spawn` identity is per name, not per path.
 
 ## Test at the right layer
 

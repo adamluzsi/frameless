@@ -144,6 +144,14 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Name:      "child1",
 			Timestamp: ts,
 		}},
+		{"EventSpawn with a Path", workflow.EventSpawn{
+			EventID:   evID,
+			ProcessID: pid,
+			ChildID:   childPID,
+			Name:      "child1",
+			Timestamp: ts,
+			Path:      workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "spawn"}, {Name: "child1"}},
+		}},
 		{"EventJoin", workflow.EventJoin{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			Children: []workflow.ProcessID{childPID},

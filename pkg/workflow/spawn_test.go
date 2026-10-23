@@ -199,6 +199,73 @@ func TestSpawn(t *testing.T) {
 				}
 			})
 		})
+
+		s.When("the Spawn is in the body of a loop", func(s *testcase.Spec) {
+			// for _, item := range items {
+			// 	go child(item) // every round starts a goroutine of its own
+			// }
+			var (
+				items = let.Var(s, func(t *testcase.T) []string {
+					return random.Slice(t.Random.IntBetween(2, 5), t.Random.UUID)
+				})
+				suspended      = let.VarOf(s, false)
+				_, suspendOnce = wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+					return func(ctx context.Context) error {
+						if suspended.Get(t) {
+							return nil
+						}
+						suspended.Set(t, true)
+						return workflow.Suspend{}
+					}
+				})
+			)
+			c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{
+					workflow.SetVar{Name: "items", Value: items.Get(t)},
+					workflow.ForEach{
+						Over: "items",
+						V:    "item",
+						Do: workflow.Spawn{
+							Name:       subject.Get(t).Name,
+							Definition: workflow.Sequence{},
+							Vars:       workflow.VarMapping{"item": "item"},
+						},
+					},
+					// The Process suspends after the loop, so resuming it replays the loop.
+					workflow.Execute{Participant: suspendOnce.Get(t)},
+				}
+			})
+			// spawned lists the item each child got, in the order the children were spawned.
+			spawned := func(t *testcase.T) []any {
+				t.Helper()
+				var got []any
+				for _, event := range c.ProcessEvents(t, c.ProcessID.Get(t)) {
+					if spawn, ok := event.(workflow.EventSpawn); ok {
+						got = append(got, getVar(t, c.Runtime.Get(t), spawn.ChildID, "item"))
+					}
+				}
+				return got
+			}
+			expected := func(t *testcase.T) []any {
+				return slicekit.Map(items.Get(t), func(item string) any { return item })
+			}
+
+			s.Then("every round spawns a child of its own, which gets the item of its round", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+				assert.Equal(t, expected(t), spawned(t))
+			})
+
+			s.Then("resuming the Process replays the loop, rather than spawning the children of its rounds again", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				t.Eventually(func(t *testcase.T) {
+					assert.NoError(t, act(t))
+				})
+				c.ProcessCompletionIs(t, c.ProcessID.Get(t), true)
+
+				assert.Equal(t, expected(t), spawned(t))
+			})
+		})
 	})
 }
 
@@ -749,6 +816,53 @@ func TestJoin(t *testing.T) {
 
 						assert.Equal(t, []any{childValue.Get(t), childValue.Get(t)}, seen.Get(t))
 					})
+				})
+			})
+
+			s.When("the Spawn and the Join are in the body of a loop", func(s *testcase.Spec) {
+				// for _, item := range items {
+				// 	parentKey := child(item) // the child gives back what it got
+				// 	see(parentKey)
+				// }
+				var (
+					items = let.Var(s, func(t *testcase.T) []string {
+						return random.Slice(t.Random.IntBetween(2, 5), t.Random.UUID)
+					})
+					saw    = let.VarOf[[]string](s, nil)
+					_, see = wftest.LetParticipant(s, func(t *testcase.T) func(context.Context, string) error {
+						return func(_ context.Context, v string) error {
+							testcase.Append(t, saw, v)
+							return nil
+						}
+					})
+				)
+				child.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{} // the item it got is forwarded as childKey, which the Join collects
+				})
+				c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
+					return workflow.Sequence{
+						workflow.SetVar{Name: "items", Value: items.Get(t)},
+						workflow.ForEach{
+							Over: "items",
+							V:    "item",
+							Do: workflow.Sequence{
+								workflow.Spawn{
+									Name:       "child",
+									Definition: child.Get(t),
+									Vars:       workflow.VarMapping{"item": childKey.Get(t)},
+								},
+								join.Get(t),
+								// A participant call is recorded, so the rounds replayed while a later Join waits don't see again.
+								workflow.Execute{Participant: see.Get(t), Input: []workflow.VarName{parentKey.Get(t)}},
+							},
+						},
+					}
+				})
+
+				s.Then("every round joins the child it spawned, and collects from it", func(t *testcase.T) {
+					joined(t)
+
+					assert.Equal(t, items.Get(t), saw.Get(t))
 				})
 			})
 

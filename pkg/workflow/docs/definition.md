@@ -362,8 +362,13 @@ workflow.Spawn{
 ```
 
 A spawn creates a **separate process** with its own ID, its own event history
-and its own variables. `Name` must be unique among a process' children; it is
-what a later `Join` refers to.
+and its own variables. `Name` is what a later `Join` refers to.
+
+A spawn is identified by **where it is** in the definition, like a participant
+call, so its `EventSpawn` records the `Path` of the `Spawn`. Each `Spawn`
+spawns a child of its own, even when two share a `Name`, and a `Spawn` in a
+loop body spawns one child per round. A replay finds the child a round spawned
+before, rather than spawning it again.
 
 `Vars` is a `VarMapping`, which reads **parent → child**: the parent's
 `order_id` lands in the child as `order`. Parent variables that are not set yet
@@ -388,7 +393,21 @@ workflow.Join{Spawn: "fulfilment", // wait for it, then collect its results
 
 `Join` returns `Suspend{}` until the child (or every child) has recorded
 `EventCompleted`, then records an `EventJoin` and lets the sequence continue.
-An unknown `Spawn` name is an error, not a silent pass.
+An unknown `Spawn` name is an error, not a silent pass. When more children were
+spawned by the name, the `Join` waits for the one spawned the latest, so a
+`Spawn` and a `Join` in the same loop body pair up round by round:
+
+```go
+workflow.ForEach{Over: "orders", V: "order", Do: workflow.Sequence{
+	workflow.Spawn{Name: "fulfilment",
+		Definition: workflow.Execute{Participant: "ship",
+			Input:  []workflow.VarName{"order"},
+			Output: []workflow.VarName{"tracking"}},
+		Vars: workflow.VarMapping{"order": "order"}},
+	workflow.Join{Spawn: "fulfilment", // the child of this round
+		Collect: workflow.VarMapping{"tracking": "tracking"}},
+}}
+```
 
 `Collect` is a `VarMapping` too, but it reads the other way, **child → parent**:
 the child's `tracking` is assigned to the parent's `tracking_number`, the way a

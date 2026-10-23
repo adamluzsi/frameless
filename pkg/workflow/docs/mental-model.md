@@ -532,8 +532,6 @@ without a migration story (§13).
 - **Not everything orders by `EventID`.** `Runtime.execute` picks the active
   binding by `Timestamp`, and `Defer` unwinds in repository (timestamp) order.
   Both rely on timestamps agreeing with creation order.
-- **`Spawn` identity is per process, not per path.** This is by design for
-  `Join`, but a `Spawn` inside a loop body spawns only once.
 
 ---
 

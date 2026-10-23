@@ -351,9 +351,12 @@ its path under the fixed ID `template-condition` (not the `@type` tag). See
 }
 ```
 
-`name` is the spawn identifier; it must be unique among the parent's children
-and is what a later `Join` refers to. `def` is a nested definition. `vars` is
-a `VarMapping` (`parent → child`) and is omitted when empty.
+`name` is the spawn identifier, and is what a later `Join` refers to. It
+doesn't have to be unique: a spawn is identified by where it is in the
+definition, so one in a loop body spawns a child per round, and a `Join` by
+name waits for the child of that name spawned the latest. `def` is a nested
+definition. `vars` is a `VarMapping` (`parent → child`) and is omitted when
+empty.
 
 ### `workflow.Join`
 
