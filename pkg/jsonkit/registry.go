@@ -100,11 +100,12 @@ func (r *_TypeRegistry) SetMigration(id TypeID, entry *migrationEntry) func() {
 	}
 	r.migration[id] = entry
 	addCustomCodecMarker(entry.Type)
-	return func() {
+	return sync.OnceFunc(func() {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
 		delete(r.migration, id)
-	}
+		removeCustomCodecMarker(entry.Type)
+	})
 }
 
 // hasDecoder reports whether t has a custom codec or any migration in this registry.
@@ -171,21 +172,22 @@ func (r *_TypeRegistry) SetCustomCodec(dtoType reflect.Type, entry *customCodecE
 	// invoking the custom closure and reporting a clear error when the
 	// current codec does not have a registration for this type.
 	addCustomCodecMarker(dtoType)
-	return func() {
+	// The marker counts the registrations, so restoring drops only this one,
+	// whether it restores a previous registration or not.
+	return sync.OnceFunc(func() {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
+		defer removeCustomCodecMarker(dtoType)
 		if prev == nil {
 			delete(r.customCodec, dtoType)
 			delete(r.byType, dtoType)
 			delete(r.byTypeID, entry.TypeID)
-			removeCustomCodecMarker(dtoType)
 			return
 		}
 		r.customCodec[dtoType] = prev
 		r.byType[dtoType] = prev.TypeID
 		r.byTypeID[prev.TypeID] = dtoType
-		addCustomCodecMarker(dtoType)
-	}
+	})
 }
 
 // LookupCustomCodec returns the custom codec entry registered for the given
@@ -333,26 +335,28 @@ func base(typ reflect.Type) reflect.Type {
 	return typ
 }
 
-// customCodecTypes is a process-wide set of reflect.Types that have been
-// registered through CodecRegister on at least one codec in the process.
-// unmarshalPlan consults this set to decide whether a struct field whose
+// customCodecMarker counts the registrations of each reflect.Type
+// through CodecRegister and CodecRegisterMigration, across all codecs in the process.
+// unmarshalPlan consults it to decide whether a struct field whose
 // concrete type might be codec-registered should be rendered as
 // json.RawMessage in the DTO, so the runtime copyFn can invoke the custom
 // Unmarshal closure when the current codec has the entry.
 //
-// The set only needs to track "could this type have a custom codec?"; the
+// It only needs to track "could this type have a custom codec?"; the
 // runtime copyFn still consults the codec's own registry to decide whether
-// to invoke the closure. The set's sole purpose is to make the unmarshal
+// to invoke the closure. Its sole purpose is to make the unmarshal
 // plan structure accommodate both shapes.
+// It counts, instead of only marking, the registrations,
+// so a type stays marked until the last codec which has a registration for it removes it.
 var (
 	customCodecMarkerMu sync.RWMutex
-	customCodecMarker   = map[reflect.Type]struct{}{}
+	customCodecMarker   = map[reflect.Type]int{}
 )
 
 func addCustomCodecMarker(t reflect.Type) {
 	customCodecMarkerMu.Lock()
 	defer customCodecMarkerMu.Unlock()
-	customCodecMarker[base(t)] = struct{}{}
+	customCodecMarker[base(t)]++
 	// Invalidate any cached unmarshal plan that might embed the now
 	// custom-codec-aware type as a concrete struct field. The plan
 	// embeds the DTO shape, which depends on whether the type is
@@ -364,15 +368,22 @@ func addCustomCodecMarker(t reflect.Type) {
 	invalidateUnmarshalPlanCache()
 }
 
+// removeCustomCodecMarker drops a registration of t from customCodecMarker.
+// The cached unmarshal plans are kept, as decoding a type through the Codec,
+// which then finds no custom codec for it, decodes it the default way.
 func removeCustomCodecMarker(t reflect.Type) {
 	customCodecMarkerMu.Lock()
 	defer customCodecMarkerMu.Unlock()
-	delete(customCodecMarker, base(t))
+	t = base(t)
+	if customCodecMarker[t] <= 1 {
+		delete(customCodecMarker, t)
+		return
+	}
+	customCodecMarker[t]--
 }
 
 func hasCustomCodecMarker(t reflect.Type) bool {
 	customCodecMarkerMu.RLock()
 	defer customCodecMarkerMu.RUnlock()
-	_, ok := customCodecMarker[base(t)]
-	return ok
+	return 0 < customCodecMarker[base(t)]
 }

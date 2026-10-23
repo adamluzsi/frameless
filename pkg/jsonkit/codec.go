@@ -48,6 +48,10 @@ func CodecRegisterTypeID[T any](codec *Codec, id TypeID, aliases ...TypeID) func
 // the closures win over the json.Marshaler and json.Unmarshaler of T, wherever the value sits.
 // Codecs without the registration keep using T's own methods.
 //
+// The Codec writes the @type next to the members of the JSON object the Marshal closure returns,
+// or as {"@type":"...","@value":...} around any other JSON value.
+// Either way, the Unmarshal closure gets back what the Marshal closure wrote, without the @type.
+//
 // The closure's T can be either the value type or a pointer to it. The codec
 // takes care of the matching between an incoming value's runtime kind and the
 // closure's expected T so a registration like CodecRegister[*T] still accepts
@@ -136,7 +140,8 @@ func CodecRegister[T any](codec *Codec, id TypeID, tc ITypeCodec[T]) func() {
 }
 
 // CodecRegisterMigration migrates data stored under a retired @type into T when it is read.
-// Values tagged with fromID are decoded by migrate, which receives the payload with the @type envelope stripped,
+// Values tagged with fromID are decoded by migrate, which receives the payload of the @type envelope:
+// the members of a {"@type":"...",...} JSON object without the @type, or the @value of a {"@type":"...","@value":...} one,
 // and maps the legacy shape onto T.
 // Marshalling keeps emitting T's own type ID, so migrated data is written back in the current format.
 //
@@ -617,18 +622,12 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 	// codec owns the marshaling, the reflection path is what produces a
 	// codec-isolated wire.
 	// A pointer to a wrapper reaches these branches through the pointer case below.
-	if v.CanInterface() && isArrayOfInterfaces(v.Type()) {
+	if v.CanInterface() && isArrayWrapper(v.Type()) {
 		// Recurse on the underlying []T (the slice that Array[T] is
 		// defined as), keeping the registry. allowEnvelopeWrap=false so
 		// the inner reflection path picks the right marshaling branch.
 		underlying := v.Convert(reflect.SliceOf(v.Type().Elem()))
-		return marshalPlaceholderWithReg(
-			underlying,
-			v.Type().Elem(),
-			reg,
-			codec,
-			false,
-		)
+		return marshalPlaceholderWithReg(underlying, nil, reg, codec, false)
 	}
 	if v.CanInterface() && isInterfaceWrapper(v.Type()) {
 		return marshalPlaceholderWithReg(v.Field(0), v.Type().Field(0).Type, reg, codec, false)
@@ -807,14 +806,14 @@ func marshalSequencePlaceholderWithReg(v reflect.Value, array bool, reg *_TypeRe
 	return shadow, nil
 }
 
-// isArrayOfInterfaces reports whether t is a jsonkit.Array[T] with an interface T.
+// isArrayWrapper reports whether t is a jsonkit.Array[T].
 // Its own MarshalJSON and UnmarshalJSON can only use the package level registry,
+// which matters also when T is not an interface, as T can still hold interface values,
 // so the Codec processes it as the []T it is defined as, which keeps the Codec's own registry in use.
-func isArrayOfInterfaces(t reflect.Type) bool {
+func isArrayWrapper(t reflect.Type) bool {
 	return t.Kind() == reflect.Slice &&
 		t.PkgPath() == "go.llib.dev/frameless/pkg/jsonkit" &&
-		strings.HasPrefix(t.Name(), "Array[") &&
-		t.Elem().Kind() == reflect.Interface
+		strings.HasPrefix(t.Name(), "Array[")
 }
 
 // isInterfaceWrapper reports whether t is a jsonkit.Interface[I] with an interface I.
@@ -831,7 +830,7 @@ func isInterfaceWrapper(t reflect.Type) bool {
 // isJSONKitWrapper reports whether t is a jsonkit wrapper type, which the Codec processes as the value it wraps,
 // instead of with its own json.Marshaler and json.Unmarshaler.
 func isJSONKitWrapper(t reflect.Type) bool {
-	return isArrayOfInterfaces(t) || isInterfaceWrapper(t)
+	return isArrayWrapper(t) || isInterfaceWrapper(t)
 }
 
 // hasOwnJSONMarshaler reports whether the Codec encodes a value of type t with t's own json.Marshaler,
@@ -1012,7 +1011,10 @@ func copyTypedFromRawWithReg(raw []byte, target reflect.Value, reg *_TypeRegistr
 	if !registered {
 		return applyTypedValueWithReg(raw, target, reg, codec)
 	}
-	if rType.Kind() == reflect.Struct || reg.lookupDecoder(rType, TypeID(envTypeID)) != nil {
+	if reg.lookupDecoder(rType, TypeID(envTypeID)) != nil {
+		return copyTypedValueWithReg(typedEnvelopePayload(raw, inner), rType, target, reg, codec, TypeID(envTypeID))
+	}
+	if rType.Kind() == reflect.Struct {
 		return copyTypedValueWithReg(inner, rType, target, reg, codec, TypeID(envTypeID))
 	}
 	switch rType.Kind() {
@@ -1030,11 +1032,11 @@ func copyTypedStruct(inner []byte, rType reflect.Type, target reflect.Value) err
 // copyTypedValueWithReg decodes the registered type rType from inner, the payload of its @type envelope,
 // and sets it to target, which is an interface-typed reflect.Value.
 // It is used for the struct types, and for the types which have a custom codec or a migration for the @type.
+// For the latter, inner is without the @type, see typedEnvelopePayload.
 func copyTypedValueWithReg(inner []byte, rType reflect.Type, target reflect.Value, reg *_TypeRegistry, codec *Codec, envTypeID TypeID) error {
 	value := reflect.New(rType)
 	// If the registered type has a user-supplied Unmarshal closure, prefer
-	// it over the DTO path. The closure expects the inner JSON bytes (with
-	// the @type envelope stripped), and is responsible for populating the
+	// it over the DTO path. The closure is responsible for populating the
 	// concrete type however the user wired it (often via a DTO shape that
 	// does not match the concrete type's own fields).
 	if decode := reg.lookupDecoder(rType, envTypeID); decode != nil {
@@ -1062,11 +1064,7 @@ func copyTypedContainerWithReg(raw, inner []byte, rType reflect.Type, target ref
 		// value stays distinguishable from a plain nil interface.
 		return setDecoded(target, reflect.Zero(rType))
 	}
-	if len(inner) == len(raw) {
-		// splitTypedEnvelope returns the whole object for a flat envelope,
-		// which keeps the @type next to the entries of a map: {"@type":"...","key":...}.
-		inner = stripTypeField(inner)
-	}
+	inner = typedEnvelopePayload(raw, inner)
 	dest := reflect.New(rType)
 	if err := unmarshalReflectWithReg(inner, dest.Elem(), reg, codec); err != nil {
 		return err
@@ -1096,42 +1094,70 @@ func applyTypedValueWithReg(raw []byte, target reflect.Value, reg *_TypeRegistry
 	return setDecoded(target, reflect.ValueOf(t.Value))
 }
 
-// stripTypeField removes the "@type" field from a JSON object so that the
-// remaining bytes can be parsed as if it were a plain container. Used when
-// splitTypedEnvelope returned the whole raw for a flat envelope and we
-// still need to deserialize the inner container. Returns the input bytes
-// when stripping is not applicable.
+// stripTypeField returns the JSON object raw without its @type member,
+// and keeps its other members as they are, in their order, duplicates included,
+// so a member with another @ prefixed name, like "@context", stays as well.
+// Like the @type discriminator, which is read the encoding/json way, where member names match case-insensitively,
+// a member named "@TYPE" is a @type member too.
+// raw is returned as it is, when it is not a JSON object.
 func stripTypeField(raw []byte) []byte {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return raw
 	}
-	// Walk the object and emit a copy with the @type field omitted.
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &probe); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	if _, err := dec.Token(); err != nil {
 		return raw
 	}
-	first := true
-	for k, v := range probe {
-		if strings.HasPrefix(k, "@") {
-			continue
-		}
-		if !first {
-			buf.WriteByte(',')
-		}
-		first = false
-		keyBytes, err := json.Marshal(k)
+	out := []byte{'{'}
+	for dec.More() {
+		token, err := dec.Token()
 		if err != nil {
 			return raw
 		}
-		buf.Write(keyBytes)
-		buf.WriteByte(':')
-		buf.Write(v)
+		name, ok := token.(string)
+		if !ok {
+			return raw
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return raw
+		}
+		if strings.EqualFold(name, "@type") {
+			continue
+		}
+		nameJSON, err := json.Marshal(name)
+		if err != nil {
+			return raw
+		}
+		if 1 < len(out) {
+			out = append(out, ',')
+		}
+		out = append(out, nameJSON...)
+		out = append(out, ':')
+		out = append(out, value...)
 	}
-	buf.WriteByte('}')
-	return buf.Bytes()
+	// The closing brace, after which there must be nothing else.
+	if _, err := dec.Token(); err != nil {
+		return raw
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return raw
+	}
+	return append(out, '}')
+}
+
+// typedEnvelopePayload returns the payload of the @type envelope raw, for which splitTypedEnvelope returned inner:
+// the @value of a {"@type":"...","@value":...} envelope,
+// or the members of a flat {"@type":"...",...} envelope, without the @type,
+// which has done its job by telling the type of the value.
+func typedEnvelopePayload(raw, inner []byte) []byte {
+	// splitTypedEnvelope returns the whole object for a flat envelope,
+	// while the @value of a wrapped envelope is always shorter than the envelope.
+	if len(inner) != len(raw) {
+		return inner
+	}
+	return stripTypeField(inner)
 }
 
 // splitTypedEnvelope parses a JSON object that may carry a "@type" field
@@ -1468,20 +1494,25 @@ func unmarshalReflectWithReg(data []byte, dst reflect.Value, reg *_TypeRegistry,
 	// Like encoding/json, which doesn't use the UnmarshalJSON of a value it can't interface,
 	// a value which can't be set is decoded the default way.
 	if dst.CanSet() && reg.hasDecoder(dst.Type()) {
-		raw := data
-		var envTypeID TypeID
-		if id, stripped, ok := splitTypedEnvelope(raw); ok {
-			raw = stripped
+		var (
+			payload   = data
+			envTypeID TypeID
+		)
+		if id, inner, ok := splitTypedEnvelope(data); ok {
+			payload = inner
 			envTypeID = TypeID(id)
 		}
 		// A type that only has migrations has no decoder for its current @type,
 		// so such data falls through to the default decoding below.
 		if decode := reg.lookupDecoder(dst.Type(), envTypeID); decode != nil {
+			if envTypeID != "" {
+				payload = typedEnvelopePayload(data, payload)
+			}
 			// The closure gets the value dst already holds,
 			// like the UnmarshalJSON method of a value, which encoding/json decodes into.
 			dest := reflect.New(dst.Type())
 			dest.Elem().Set(dst)
-			if err := decode(codec, raw, dest.Interface()); err != nil {
+			if err := decode(codec, payload, dest.Interface()); err != nil {
 				return err
 			}
 			dst.Set(dest.Elem())
@@ -1523,12 +1554,8 @@ func stripOwnTypedEnvelope(data []byte, t reflect.Type, reg *_TypeRegistry) []by
 	if rType, registered := lookupTypeByIDForCodec(reg, TypeID(envTypeID)); !registered || rType != t {
 		return data
 	}
-	if t.Kind() == reflect.Map && len(inner) == len(data) {
-		// splitTypedEnvelope returns the whole object for a flat envelope,
-		// which keeps the @type next to the entries: {"@type":"...","key":...}.
-		return stripTypeField(inner)
-	}
-	return inner
+	// A registered map is written as a flat envelope, with the @type next to its entries: {"@type":"...","key":...}.
+	return typedEnvelopePayload(data, inner)
 }
 
 // unmarshalSliceWithReg decodes a JSON array into the slice dst, like encoding/json does:

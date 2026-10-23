@@ -578,6 +578,38 @@ func TestCodec(t *testing.T) {
 			})
 		})
 
+		// The Codec writes a registered map as a flat envelope, with its @type next to its entries.
+		s.When("the JSON value is a flat @type envelope of a registered map which has an entry with a @ prefixed key", func(s *testcase.Spec) {
+			entries := let.Var(s, func(t *testcase.T) map[string]int {
+				return map[string]int{
+					"@" + t.Random.HexN(4): t.Random.Int(),
+					t.Random.HexN(4):       t.Random.Int(),
+				}
+			})
+			value.Let(s, func(t *testcase.T) string {
+				var v any = entries.Get(t)
+				data, err := subject.Get(t).Marshal(&v)
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("the entry is kept, as only the @type is not an entry of the map", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, entries.Get(t), *ptr.Get(t).(*any))
+			})
+
+			s.And("the destination is the registered map type itself", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					return new(map[string]int)
+				})
+
+				s.Then("the entry is kept, as only the @type is not an entry of the map", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, entries.Get(t), *ptr.Get(t).(*map[string]int))
+				})
+			})
+		})
+
 		s.When("the JSON value is a @type envelope of a registered map with interface values", func(s *testcase.Spec) {
 			subject.Let(s, func(t *testcase.T) *jsonkit.Codec {
 				c := subject.Super(t)
@@ -2456,6 +2488,39 @@ func TestCodec_jsonMarshaler(t *testing.T) {
 		assert.Equal[any](t, []any{shapes[0], shapes[1]}, got.Shapes)
 	})
 
+	// The elements of a jsonkit.Array can hold interface values, even when they are not interfaces themselves.
+	s.Test("jsonkit.Array of structs with an interface field is encoded with the Codec's own registry", func(t *testcase.T) {
+		var isolated jsonkit.Codec // the implementations are registered only on this Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[wfCircle](&isolated, "circle"))
+		t.Defer(jsonkit.CodecRegisterTypeID[wfSquare](&isolated, "square"))
+
+		type Holder struct{ Shape wfShape }
+		holders := jsonkit.Array[Holder]{
+			{Shape: wfCircle{R: t.Random.Float64()}},
+			{Shape: wfSquare{S: t.Random.Float64()}},
+		}
+		roundTrip(t, &isolated, holders)
+		roundTrip(t, &isolated, &holders)
+		roundTrip(t, &isolated, struct{ Holders jsonkit.Array[Holder] }{Holders: holders})
+		roundTrip(t, &isolated, struct{ Holders *jsonkit.Array[Holder] }{Holders: &holders})
+		roundTrip(t, &isolated, []jsonkit.Array[Holder]{holders, nil})
+	})
+
+	s.Test("jsonkit.Array of values without interfaces is encoded like encoding/json does", func(t *testcase.T) {
+		assertEncodesLikeEncodingJSON(t, &c, jsonkit.Array[string]{t.Random.String(), t.Random.String()})
+		assertEncodesLikeEncodingJSON(t, &c, jsonkit.Array[string](nil))
+		assertEncodesLikeEncodingJSON(t, &c, jsonkit.Array[MT_JM_Inner]{{V: t.Random.String()}})
+		assertEncodesLikeEncodingJSON(t, &c, struct{ Numbers jsonkit.Array[int] }{Numbers: jsonkit.Array[int]{t.Random.Int()}})
+	})
+
+	// The Codec writes a registered map in an interface as a flat envelope, with the @type next to the members its MarshalJSON wrote.
+	s.Test("interface holding a registered map with its own json.Unmarshaler reads back the members its MarshalJSON wrote", func(t *testcase.T) {
+		var isolated jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[MT_OwnJSONMap](&isolated, "own_json_map"))
+
+		roundTrip(t, &isolated, struct{ V any }{V: MT_OwnJSONMap{t.Random.HexN(4): t.Random.String()}})
+	})
+
 	// Like jsonkit.Array, jsonkit.Interface's own MarshalJSON and UnmarshalJSON can only use the package level registry,
 	// so the Codec processes a jsonkit.Interface as the interface value it holds.
 	s.Test("jsonkit.Interface is encoded with the Codec's own registry", func(t *testcase.T) {
@@ -2987,6 +3052,32 @@ func TestCodecRegisterMigration(t *testing.T) {
 		got = Box{}
 		assert.NoError(t, c.Unmarshal(current, &got))
 		assert.Equal(t, Box{Any: exp, Value: exp, Slice: []MT_CustomSlice{exp}}, got)
+	})
+
+	// The @type has done its job by telling which migration reads the legacy value,
+	// so the migration reads the members of the legacy value, and nothing else.
+	s.Test("the migration gets the members of the legacy value, in their order, whatever the destination", func(t *testcase.T) {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[MT_Pairs](&c, "pairs"))
+		t.Defer(jsonkit.CodecRegisterMigration(&c, "legacy-pairs", unmarshalMTPairs))
+
+		exp := makeMTPairs(t)
+		members, err := marshalMTPairs(nil, exp)
+		assert.Must(t).NoError(err)
+		legacy := `{"@type":"legacy-pairs",` + string(bytes.TrimPrefix(members, []byte("{")))
+
+		type Box struct {
+			Any   any
+			Value MT_Pairs
+			Slice []MT_Pairs
+		}
+		var got Box
+		assert.NoError(t, c.Unmarshal([]byte(`{"Any":`+legacy+`,"Value":`+legacy+`,"Slice":[`+legacy+`]}`), &got))
+		assert.Equal(t, Box{Any: exp, Value: exp, Slice: []MT_Pairs{exp}}, got)
+
+		var top MT_Pairs
+		assert.NoError(t, c.Unmarshal([]byte(legacy), &top))
+		assert.Equal(t, exp, top)
 	})
 }
 
@@ -3827,6 +3918,111 @@ func TestCodecRegister(t *testing.T) {
 		})
 	})
 
+	// The Codec adds the @type next to the members of the JSON object the custom codec writes.
+	// The @type has done its job by telling which custom codec reads the value,
+	// so the custom codec reads back the members it wrote, and nothing else.
+	s.Context("the custom codec writes the value as a JSON object with arbitrary members", func(s *testcase.Spec) {
+		type Box struct {
+			Value   MT_Pairs
+			Pointer *MT_Pairs
+			Any     any
+			Slice   []MT_Pairs
+			Map     map[string]MT_Pairs
+		}
+
+		codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+			var c jsonkit.Codec
+			t.Defer(jsonkit.CodecRegister(&c, "pairs", jsonkit.TypeCodec[MT_Pairs]{
+				MarshalFunc:   marshalMTPairs,
+				UnmarshalFunc: unmarshalMTPairs,
+			}))
+			return &c
+		})
+		value := let.Var(s, makeMTPairs)
+
+		s.Test("the registered Unmarshal gets the members it wrote, in their order", func(t *testcase.T) {
+			roundTrip(t, codec.Get(t), value.Get(t))
+		})
+
+		s.Test("the registered Unmarshal gets the members it wrote, wherever the value sits", func(t *testcase.T) {
+			v := value.Get(t)
+			roundTrip(t, codec.Get(t), Box{
+				Value:   v,
+				Pointer: &v,
+				Any:     v,
+				Slice:   []MT_Pairs{v},
+				Map:     map[string]MT_Pairs{t.Random.HexN(4): v},
+			})
+		})
+	})
+
+	// The registrations of a type on independent Codecs don't affect each other,
+	// so removing the registration from one of them keeps the other one's working.
+	s.Test("unregistering from a Codec leaves another Codec's registration of the same type in use", func(t *testcase.T) {
+		type T struct{ V string }
+		type DTO struct {
+			X string `json:"x"`
+		}
+		tc := jsonkit.TypeCodec[T]{
+			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+				return json.Marshal(DTO{X: v.V})
+			},
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+				var dto DTO
+				if err := json.Unmarshal(data, &dto); err != nil {
+					return err
+				}
+				p.V = dto.X
+				return nil
+			},
+		}
+
+		var kept, removed jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister(&kept, "kept_t", tc))
+		jsonkit.CodecRegister(&removed, "removed_t", tc)()
+
+		type Box struct {
+			Value T
+			Slice []T
+		}
+		roundTrip(t, &kept, Box{
+			Value: T{V: t.Random.String()},
+			Slice: []T{{V: t.Random.String()}},
+		})
+	})
+
+	// Like when the function is deferred, and also called on the way.
+	s.Test("unregistering more than once still leaves another Codec's registration of the same type in use", func(t *testcase.T) {
+		type T struct{ V string }
+		type DTO struct {
+			X string `json:"x"`
+		}
+		tc := jsonkit.TypeCodec[T]{
+			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+				return json.Marshal(DTO{X: v.V})
+			},
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+				var dto DTO
+				if err := json.Unmarshal(data, &dto); err != nil {
+					return err
+				}
+				p.V = dto.X
+				return nil
+			},
+		}
+
+		var kept, removed jsonkit.Codec
+		t.Defer(jsonkit.CodecRegister(&kept, "kept_t", tc))
+		unregister := jsonkit.CodecRegister(&removed, "removed_t", tc)
+		unregister()
+		unregister()
+		removeMigration := jsonkit.CodecRegisterMigration(&removed, "legacy_t", tc.UnmarshalFunc)
+		removeMigration()
+		removeMigration()
+
+		roundTrip(t, &kept, struct{ Value T }{Value: T{V: t.Random.String()}})
+	})
+
 	// Two codecs each registering the same concrete type with their
 	// own TypeID must not bleed into each other. Marshaling through
 	// codec A produces codec-A's wire, and codec B refuses to decode
@@ -4023,6 +4219,90 @@ func (v *MT_OwnAndCustomJSON) UnmarshalJSON(data []byte) error {
 
 // MT_CustomSlice is a type which is not a struct, which the tests register a custom codec for.
 type MT_CustomSlice []string
+
+// MT_OwnJSONMap is a map type with its own json.Marshaler and json.Unmarshaler,
+// which write its entries as the members of a JSON object, with their values prefixed by "own:".
+type MT_OwnJSONMap map[string]string
+
+func (m MT_OwnJSONMap) MarshalJSON() ([]byte, error) {
+	prefixed := make(map[string]string, len(m))
+	for k, v := range m {
+		prefixed[k] = "own:" + v
+	}
+	return json.Marshal(prefixed)
+}
+
+func (m *MT_OwnJSONMap) UnmarshalJSON(data []byte) error {
+	var prefixed map[string]string
+	if err := json.Unmarshal(data, &prefixed); err != nil {
+		return err
+	}
+	*m = make(MT_OwnJSONMap, len(prefixed))
+	for k, v := range prefixed {
+		(*m)[k] = strings.TrimPrefix(v, "own:")
+	}
+	return nil
+}
+
+// MT_Pairs is an ordered list of key/value pairs,
+// which marshalMTPairs writes as a JSON object, with a member for each pair, in their order,
+// and unmarshalMTPairs reads back, like an ordered dictionary.
+// The tests register them as the custom codec or the migration of MT_Pairs.
+type MT_Pairs []MT_Pair
+
+type MT_Pair struct{ Key, Value string }
+
+func makeMTPairs(t *testcase.T) MT_Pairs {
+	pairs := random.Slice(t.Random.IntBetween(2, 4), func() MT_Pair {
+		return MT_Pair{Key: t.Random.HexN(8), Value: t.Random.String()}
+	})
+	// A member with a @ prefixed name, like the @context of JSON-LD, is just another member.
+	return append(pairs, MT_Pair{Key: "@" + t.Random.HexN(4), Value: t.Random.String()})
+}
+
+func marshalMTPairs(_ *jsonkit.Codec, pairs MT_Pairs) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, pair := range pairs {
+		if 0 < i {
+			buf.WriteByte(',')
+		}
+		key, err := json.Marshal(pair.Key)
+		if err != nil {
+			return nil, err
+		}
+		value, err := json.Marshal(pair.Value)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(key)
+		buf.WriteByte(':')
+		buf.Write(value)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
+func unmarshalMTPairs(_ *jsonkit.Codec, data []byte, p *MT_Pairs) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	var pairs MT_Pairs
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		var value string
+		if err := dec.Decode(&value); err != nil {
+			return fmt.Errorf("member %v: %w", key, err)
+		}
+		pairs = append(pairs, MT_Pair{Key: key.(string), Value: value})
+	}
+	*p = pairs
+	return nil
+}
 
 // TestCodec_customCodecEnvelopeShape pins the rule that the polymorphic
 // wrapper around a custom codec's wire output must match the wire's shape:

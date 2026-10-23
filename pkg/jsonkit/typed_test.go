@@ -50,6 +50,21 @@ func TestWithType_json(t *testing.T) {
 		roundTrip(t, exp, new(jsonkit.WithType[map[string]int]))
 	})
 
+	// An interface holding a map is written as a flat envelope, with the @type next to the entries of the map.
+	s.Test("interface containing a map with an entry with a @ prefixed key", func(t *testcase.T) {
+		exp := jsonkit.WithType[any]{V: map[string]int{
+			"@" + t.Random.HexN(4): t.Random.Int(),
+			t.Random.HexN(4):       t.Random.Int(),
+		}}
+		roundTrip(t, exp, new(jsonkit.WithType[any]))
+	})
+
+	s.Test("interface containing a map with its own json.Unmarshaler, which reads back the members its MarshalJSON wrote", func(t *testcase.T) {
+		t.Defer(jsonkit.RegisterTypeID[MT_OwnJSONMap]("own_json_map"))
+		exp := jsonkit.WithType[any]{V: MT_OwnJSONMap{t.Random.HexN(4): t.Random.String()}}
+		roundTrip(t, exp, new(jsonkit.WithType[any]))
+	})
+
 	s.Test("primitive slice", func(t *testcase.T) {
 		exp := jsonkit.WithType[withTypeSlice]{V: withTypeSlice{
 			t.Random.Int(),
