@@ -48,6 +48,9 @@ func CodecRegisterTypeID[T any](codec *Codec, id TypeID, aliases ...TypeID) func
 // the closures win over the json.Marshaler and json.Unmarshaler of T, wherever the value sits.
 // Codecs without the registration keep using T's own methods.
 //
+// Like a json.Marshaler, the Marshal closure writes a single JSON value, and writes null when there is no value.
+// Anything else, including writing nothing, makes the Codec's Marshal fail.
+//
 // The Codec writes the @type next to the members of the JSON object the Marshal closure returns,
 // or as {"@type":"...","@value":...} around any other JSON value.
 // Either way, the Unmarshal closure gets back what the Marshal closure wrote, without the @type.
@@ -57,6 +60,9 @@ func CodecRegisterTypeID[T any](codec *Codec, id TypeID, aliases ...TypeID) func
 // closure's expected T so a registration like CodecRegister[*T] still accepts
 // value-typed T (we allocate a fresh *T and copy) and a registration like
 // CodecRegister[T] still accepts *T (we dereference it).
+//
+// Registering, like with CodecRegisterTypeID and CodecRegisterMigration, is part of setting up the Codec,
+// so it is done before the Codec is used, as it is not safe to do while the same Codec is in use.
 //
 // The returned function restores the previous registration (typically a
 // no-op), so test setups can register types in a t.Cleanup-friendly way.
@@ -78,42 +84,49 @@ func CodecRegister[T any](codec *Codec, id TypeID, tc ITypeCodec[T]) func() {
 	// (e.g. Foo), but the user's closure may be parameterised on either
 	// the base (Foo) or a pointer to it (*Foo). The adapter normalises
 	// so a registration with either shape accepts values of either shape.
+	marshal := func(c *Codec, v any) ([]byte, error) {
+		if !wantPtr {
+			// userT is Foo (value type); closure wants Foo.
+			rv := reflect.ValueOf(v)
+			if rv.Kind() == reflect.Pointer {
+				// A *Foo reached via an interface field — the
+				// codec may unmarshal a pointer-wrapped leaf back
+				// to a value Foo via the type alias, so we
+				// dereference here and let the closure produce a
+				// Foo wire.
+				if rv.IsNil() {
+					return []byte("null"), nil
+				}
+				if rv.Elem().Type() == baseT {
+					return tc.Marshal(c, rv.Elem().Interface().(T))
+				}
+				return tc.Marshal(c, rv.Convert(baseT).Interface().(T))
+			}
+			return tc.Marshal(c, v.(T))
+		}
+		// userT is *Foo; closure wants *Foo.
+		rv := reflect.ValueOf(v)
+		if rv.Type() == userT {
+			return tc.Marshal(c, v.(T))
+		}
+		// v is value-typed Foo; allocate *Foo and copy.
+		ptr := reflect.New(baseT)
+		if rv.Type() == baseT {
+			ptr.Elem().Set(rv)
+		} else {
+			ptr.Elem().Set(rv.Convert(baseT))
+		}
+		var arg T = ptr.Interface().(T)
+		return tc.Marshal(c, arg)
+	}
 	entry := &customCodecEntry{
 		TypeID: id,
 		Marshal: func(c *Codec, v any) ([]byte, error) {
-			if !wantPtr {
-				// userT is Foo (value type); closure wants Foo.
-				rv := reflect.ValueOf(v)
-				if rv.Kind() == reflect.Pointer {
-					// A *Foo reached via an interface field — the
-					// codec may unmarshal a pointer-wrapped leaf back
-					// to a value Foo via the type alias, so we
-					// dereference here and let the closure produce a
-					// Foo wire.
-					if rv.IsNil() {
-						return []byte("null"), nil
-					}
-					if rv.Elem().Type() == baseT {
-						return tc.Marshal(c, rv.Elem().Interface().(T))
-					}
-					return tc.Marshal(c, rv.Convert(baseT).Interface().(T))
-				}
-				return tc.Marshal(c, v.(T))
+			data, err := marshal(c, v)
+			if err != nil {
+				return nil, err
 			}
-			// userT is *Foo; closure wants *Foo.
-			rv := reflect.ValueOf(v)
-			if rv.Type() == userT {
-				return tc.Marshal(c, v.(T))
-			}
-			// v is value-typed Foo; allocate *Foo and copy.
-			ptr := reflect.New(baseT)
-			if rv.Type() == baseT {
-				ptr.Elem().Set(rv)
-			} else {
-				ptr.Elem().Set(rv.Convert(baseT))
-			}
-			var arg T = ptr.Interface().(T)
-			return tc.Marshal(c, arg)
+			return compactCustomCodecOutput(baseT, data)
 		},
 		Unmarshal: func(c *Codec, data []byte, p any) error {
 			if !wantPtr {
@@ -137,6 +150,18 @@ func CodecRegister[T any](codec *Codec, id TypeID, tc ITypeCodec[T]) func() {
 		},
 	}
 	return codec.typeIDRegistry.SetCustomCodec(baseT, entry)
+}
+
+// compactCustomCodecOutput validates and compacts the JSON a custom codec of the type t wrote,
+// like encoding/json does with the JSON of a json.Marshaler,
+// so the Codec can add the @type to it as it is.
+// Like with a json.Marshaler, it has to be a single JSON value, so nothing, or only whitespace, is an error.
+func compactCustomCodecOutput(t reflect.Type, data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, data); err != nil {
+		return nil, fmt.Errorf("jsonkit: the custom codec of %s wrote invalid JSON: %w", t, err)
+	}
+	return buf.Bytes(), nil
 }
 
 // CodecRegisterMigration migrates data stored under a retired @type into T when it is read.
@@ -537,7 +562,7 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 				if err != nil {
 					return reflect.Value{}, err
 				}
-				if len(bytes.TrimSpace(data)) == 0 || bytes.Equal(bytes.TrimSpace(data), null) {
+				if bytes.Equal(data, null) {
 					return reflect.ValueOf(json.RawMessage("null")), nil
 				}
 				innerData = data
@@ -593,7 +618,7 @@ func marshalPlaceholderWithReg(v reflect.Value, declared reflect.Type, reg *_Typ
 			if err != nil {
 				return reflect.Value{}, err
 			}
-			if len(bytes.TrimSpace(data)) == 0 || bytes.Equal(bytes.TrimSpace(data), null) {
+			if bytes.Equal(data, null) {
 				return reflect.Zero(rawMessageType), nil
 			}
 			if entry.TypeID != "" {
@@ -876,8 +901,9 @@ func getUnmarshalPlan(rt reflect.Type) *unmarshalPlan {
 	if plan := unmarshalPlanCache.Get(rt); plan != nil {
 		return plan
 	}
+	gen := customCodecGeneration()
 	plan := buildUnmarshalPlan(rt)
-	unmarshalPlanCache.Set(rt, plan)
+	cacheIfCurrent(&unmarshalPlanCache, rt, plan, gen)
 	return plan
 }
 
@@ -1218,8 +1244,9 @@ func requiresCodec(t reflect.Type) bool {
 	}
 	// Not computed under the lock of the cache,
 	// as invalidateUnmarshalPlanCache resets the cache while holding the lock of the custom codec markers.
+	gen := customCodecGeneration()
 	v := requiresCodecSeen(t, map[reflect.Type]struct{}{})
-	requiresCodecCache.Set(t, v)
+	cacheIfCurrent(&requiresCodecCache, t, v, gen)
 	return v
 }
 

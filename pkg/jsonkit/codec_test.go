@@ -3528,6 +3528,32 @@ func TestCodecRegister(t *testing.T) {
 		assert.Equal(t, T{}, got)
 	})
 
+	// Like encoding/json with a json.Marshaler which writes null,
+	// a value in an interface field which the custom codec writes as null is a plain null, without a @type around it.
+	s.Test("marshal returning null literal for a value in an interface field writes the field as null", func(t *testcase.T) {
+		type T struct{ V string }
+		type Box struct{ Any any }
+
+		var c jsonkit.Codec
+		defer jsonkit.CodecRegister[T](&c, "null_in_any_t", jsonkit.TypeCodec[T]{
+			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+				return []byte("null"), nil
+			},
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+				*p = T{}
+				return nil
+			},
+		})()
+
+		data, err := c.Marshal(Box{Any: T{V: t.Random.String()}})
+		assert.NoError(t, err)
+		assert.Equal(t, `{"Any":null}`, string(data))
+
+		var got Box
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, Box{}, got)
+	})
+
 	// Marshal errors from the user's closure must bubble up verbatim
 	// through the codec. The codec must not swallow them or replace
 	// them with a generic "missing @type id" message.
@@ -3547,6 +3573,70 @@ func TestCodecRegister(t *testing.T) {
 
 		_, err := c.Marshal(T{V: t.Random.String()})
 		assert.ErrorIs(t, err, sentinel)
+	})
+
+	// Like encoding/json with the JSON of a json.Marshaler, the Codec checks the JSON the custom codec writes,
+	// which has to be a single JSON value, wherever the value sits.
+	// A custom codec writes null to tell that there is no value.
+	s.Context("the custom codec writes something which is not a JSON value", func(s *testcase.Spec) {
+		type T struct{ V string }
+		type Box struct {
+			Value T
+			Any   any
+		}
+
+		output := let.Var(s, func(t *testcase.T) []byte {
+			return []byte(`{"v":`)
+		})
+		codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+			var c jsonkit.Codec
+			t.Defer(jsonkit.CodecRegister(&c, "invalid_t", jsonkit.TypeCodec[T]{
+				MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+					return output.Get(t), nil
+				},
+				UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+					return nil
+				},
+			}))
+			return &c
+		})
+		value := let.Var(s, func(t *testcase.T) any {
+			v := T{V: t.Random.String()}
+			return random.Pick[any](t.Random, v, &v, Box{Value: v}, Box{Any: v})
+		})
+
+		act := func(t *testcase.T) error {
+			_, err := codec.Get(t).Marshal(value.Get(t))
+			return err
+		}
+
+		thenItIsAnErrorWhichTellsTheType := func(s *testcase.Spec) {
+			s.Then("Marshal returns an error which tells the type", func(t *testcase.T) {
+				err := act(t)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), reflect.TypeFor[T]().String())
+			})
+		}
+
+		thenItIsAnErrorWhichTellsTheType(s)
+
+		s.When("it writes nothing", func(s *testcase.Spec) {
+			output.Let(s, func(t *testcase.T) []byte { return nil })
+
+			thenItIsAnErrorWhichTellsTheType(s)
+		})
+
+		s.When("it writes an empty byte slice", func(s *testcase.Spec) {
+			output.Let(s, func(t *testcase.T) []byte { return []byte{} })
+
+			thenItIsAnErrorWhichTellsTheType(s)
+		})
+
+		s.When("it writes only whitespace", func(s *testcase.Spec) {
+			output.Let(s, func(t *testcase.T) []byte { return []byte(makeJSONWhitespace(t)) })
+
+			thenItIsAnErrorWhichTellsTheType(s)
+		})
 	})
 
 	// Unmarshal errors from the user's closure must bubble up verbatim
@@ -3954,6 +4044,178 @@ func TestCodecRegister(t *testing.T) {
 				Map:     map[string]MT_Pairs{t.Random.HexN(4): v},
 			})
 		})
+	})
+
+	// Like encoding/json with the JSON of a json.Marshaler,
+	// the Codec takes the JSON the custom codec writes, whatever insignificant whitespace it has.
+	s.Context("the custom codec writes JSON with insignificant whitespace in it", func(s *testcase.Spec) {
+		type Struct struct{ X string }
+		type Name string
+		type Box struct {
+			Value   Struct
+			Pointer *Struct
+			Any     any
+			Slice   []Struct
+			Map     map[string]Struct
+			Zero    Struct
+			Name    Name
+			AnyName any
+		}
+
+		codec := let.Var(s, func(t *testcase.T) *jsonkit.Codec {
+			// spacedObject writes a JSON object, which has a member with the value unless it is empty,
+			// with whitespace around each of its tokens.
+			spacedObject := func(member, value string) []byte {
+				ws := func() string { return makeJSONWhitespace(t) }
+				if value == "" {
+					return []byte(ws() + "{" + ws() + "}" + ws())
+				}
+				return []byte(ws() + "{" + ws() + mustMarshalJSON(t, member) + ws() + ":" + ws() + mustMarshalJSON(t, value) + ws() + "}" + ws())
+			}
+
+			var c jsonkit.Codec
+			t.Defer(jsonkit.CodecRegister(&c, "spaced-struct", jsonkit.TypeCodec[Struct]{
+				MarshalFunc: func(c *jsonkit.Codec, v Struct) ([]byte, error) {
+					return spacedObject("x", v.X), nil
+				},
+				UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *Struct) error {
+					var dto struct {
+						X string `json:"x"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					*p = Struct{X: dto.X}
+					return nil
+				},
+			}))
+			t.Defer(jsonkit.CodecRegister(&c, "spaced-name", jsonkit.TypeCodec[Name]{
+				MarshalFunc: func(c *jsonkit.Codec, v Name) ([]byte, error) {
+					return spacedObject("name", string(v)), nil
+				},
+				UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *Name) error {
+					var dto struct {
+						Name string `json:"name"`
+					}
+					if err := json.Unmarshal(data, &dto); err != nil {
+						return err
+					}
+					*p = Name(dto.Name)
+					return nil
+				},
+			}))
+			return &c
+		})
+		value := let.Var(s, func(t *testcase.T) Struct {
+			return Struct{X: t.Random.String()}
+		})
+		name := let.Var(s, func(t *testcase.T) Name {
+			return Name(t.Random.String())
+		})
+
+		s.Test("the value round-trips as the top-level value", func(t *testcase.T) {
+			roundTrip(t, codec.Get(t), value.Get(t))
+		})
+
+		s.Test("the zero value round-trips as the top-level value", func(t *testcase.T) {
+			roundTrip(t, codec.Get(t), Struct{})
+		})
+
+		s.Test("the value round-trips wherever it sits", func(t *testcase.T) {
+			v := value.Get(t)
+			roundTrip(t, codec.Get(t), Box{
+				Value:   v,
+				Pointer: &v,
+				Any:     v,
+				Slice:   []Struct{v},
+				Map:     map[string]Struct{t.Random.HexN(4): v},
+				Name:    name.Get(t),
+				AnyName: name.Get(t),
+			})
+		})
+
+		s.Test("the @type is written next to the members the custom codec writes", func(t *testcase.T) {
+			data, err := codec.Get(t).Marshal(value.Get(t))
+			assert.NoError(t, err)
+			assert.ContainsExactly(t, []string{"@type", "x"}, jsonMemberNames(t, data))
+
+			data, err = codec.Get(t).Marshal(Box{Any: value.Get(t), AnyName: name.Get(t)})
+			assert.NoError(t, err)
+			var box struct{ Any, AnyName json.RawMessage }
+			assert.NoError(t, json.Unmarshal(data, &box))
+			assert.ContainsExactly(t, []string{"@type", "x"}, jsonMemberNames(t, box.Any))
+			assert.ContainsExactly(t, []string{"@type", "name"}, jsonMemberNames(t, box.AnyName))
+		})
+	})
+
+	// The Codec caches what it works out about how to decode a type, for every Codec in the process.
+	// A registration made meanwhile must not leave behind a cached answer which doesn't know about it.
+	// The window for that is short, so the registration is raced many times against the first decoding of a type
+	// which has many fields to work through after the field of the registered type.
+	s.Test("a registration made while another Codec decodes a type holding the registered type is used afterwards", func(t *testcase.T) {
+		type T struct{ V string }
+		tc := jsonkit.TypeCodec[T]{
+			MarshalFunc: func(c *jsonkit.Codec, v T) ([]byte, error) {
+				return json.Marshal(map[string]string{"custom": v.V})
+			},
+			UnmarshalFunc: func(c *jsonkit.Codec, data []byte, p *T) error {
+				var dto struct {
+					Custom string `json:"custom"`
+				}
+				if err := json.Unmarshal(data, &dto); err != nil {
+					return err
+				}
+				*p = T{V: dto.Custom}
+				return nil
+			},
+		}
+		// holderOf makes a struct type with the head fields, then a field of T, then many fields of different types.
+		holderOf := func(head ...reflect.StructField) reflect.Type {
+			fields := append(head, reflect.StructField{Name: "Value", Type: reflect.TypeFor[T]()})
+			for i := 1; i <= 256; i++ {
+				fields = append(fields, reflect.StructField{
+					Name: "F" + strconv.Itoa(i),
+					Type: reflect.PointerTo(reflect.ArrayOf(i, reflect.TypeFor[byte]())),
+					Tag:  `json:",omitempty"`,
+				})
+			}
+			return reflect.StructOf(fields)
+		}
+		holders := []reflect.Type{
+			holderOf(),
+			// The interface field makes the Codec decode the holder field by field.
+			holderOf(reflect.StructField{Name: "Any", Type: reflect.TypeFor[any]()}),
+		}
+		for range 32 {
+			for _, holder := range holders {
+				// Registering a custom codec drops what the Codec has cached,
+				// so the holder is decoded as if for the first time.
+				jsonkit.CodecRegister(&jsonkit.Codec{}, "race-reset", tc)()
+
+				var (
+					c          jsonkit.Codec
+					other      jsonkit.Codec
+					unregister func()
+				)
+				testcase.Race(func() {
+					assert.NoError(t, other.Unmarshal([]byte(`{}`), reflect.New(holder).Interface()))
+				}, func() {
+					unregister = jsonkit.CodecRegister(&c, "race", tc)
+				})
+				t.Defer(unregister)
+
+				exp := T{V: t.Random.UUID()}
+				in := reflect.New(holder).Elem()
+				in.FieldByName("Value").Set(reflect.ValueOf(exp))
+				data, err := c.Marshal(in.Interface())
+				assert.NoError(t, err)
+				out := reflect.New(holder)
+				assert.NoError(t, c.Unmarshal(data, out.Interface()))
+				// The next round starts without the registration of T.
+				unregister()
+				assert.Equal(t, exp, out.Elem().FieldByName("Value").Interface().(T))
+			}
+		}
 	})
 
 	// The registrations of a type on independent Codecs don't affect each other,

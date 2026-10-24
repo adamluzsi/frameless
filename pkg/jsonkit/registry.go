@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/synckit"
 )
 
 var (
@@ -351,12 +352,16 @@ func base(typ reflect.Type) reflect.Type {
 var (
 	customCodecMarkerMu sync.RWMutex
 	customCodecMarker   = map[reflect.Type]int{}
+	// customCodecMarkerGeneration counts the registrations which dropped what the Codec has cached about the types,
+	// so what was worked out before one of them is not cached after it, see cacheIfCurrent.
+	customCodecMarkerGeneration uint64
 )
 
 func addCustomCodecMarker(t reflect.Type) {
 	customCodecMarkerMu.Lock()
 	defer customCodecMarkerMu.Unlock()
 	customCodecMarker[base(t)]++
+	customCodecMarkerGeneration++
 	// Invalidate any cached unmarshal plan that might embed the now
 	// custom-codec-aware type as a concrete struct field. The plan
 	// embeds the DTO shape, which depends on whether the type is
@@ -386,4 +391,27 @@ func hasCustomCodecMarker(t reflect.Type) bool {
 	customCodecMarkerMu.RLock()
 	defer customCodecMarkerMu.RUnlock()
 	return 0 < customCodecMarker[base(t)]
+}
+
+// customCodecGeneration returns the current generation of the custom codec markers,
+// which is to be taken before working out something to cache with cacheIfCurrent.
+func customCodecGeneration() uint64 {
+	customCodecMarkerMu.RLock()
+	defer customCodecMarkerMu.RUnlock()
+	return customCodecMarkerGeneration
+}
+
+// cacheIfCurrent caches v, which was worked out about the type t in the generation gen,
+// unless a registration has happened since then.
+// Such a registration has dropped the cache already, and v may not know about it,
+// so caching v would keep a stale answer until the next registration.
+//
+// The cache is set while holding the lock of the markers, which addCustomCodecMarker holds while dropping the cache,
+// so a registration either happens before the check, or drops v after it was cached.
+func cacheIfCurrent[V any](cache *synckit.Map[reflect.Type, V], t reflect.Type, v V, gen uint64) {
+	customCodecMarkerMu.RLock()
+	defer customCodecMarkerMu.RUnlock()
+	if gen == customCodecMarkerGeneration {
+		cache.Set(t, v)
+	}
 }
