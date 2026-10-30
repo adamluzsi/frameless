@@ -1,0 +1,356 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::var::set",
+				"name": "name",
+				"value": "world"
+			},
+			{
+				"$type": "workflow::var::set",
+				"name": "i",
+				"value": 0
+			},
+			{
+				"$type": "workflow::for",
+				"cond": {
+					"$type": "workflow::template::condition",
+					"$value": "lt .i 2"
+				},
+				"post": {
+					"$type": "workflow::op::increment",
+					"name": "i"
+				},
+				"do": {
+					"$type": "workflow::sequence",
+					"$value": [
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::greet",
+							"input": [
+								"name"
+							],
+							"output": [
+								"greeting"
+							]
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::see",
+							"input": [
+								"greeting"
+							]
+						}
+					]
+				}
+			}
+		]
+	},
+	"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a18427-09d8-7476-83e6-5827ed7a98a9",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368279Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::var::set",
+						"name": "name",
+						"value": "world"
+					},
+					{
+						"$type": "workflow::var::set",
+						"name": "i",
+						"value": 0
+					},
+					{
+						"$type": "workflow::for",
+						"cond": {
+							"$type": "workflow::template::condition",
+							"$value": "lt .i 2"
+						},
+						"post": {
+							"$type": "workflow::op::increment",
+							"name": "i"
+						},
+						"do": {
+							"$type": "workflow::sequence",
+							"$value": [
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::greet",
+									"input": [
+										"name"
+									],
+									"output": [
+										"greeting"
+									]
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::see",
+									"input": [
+										"greeting"
+									]
+								}
+							]
+						}
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09d8-74ed-aef7-fbeb97d096d6",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368307Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "name"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09d8-74f5-8c4e-c59cce5e5217",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368307001Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "name",
+			"value": "world"
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09d8-753b-8361-8a6c760e3fff",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368327Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "i"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09d8-7543-a670-f19573ce1b43",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368327001Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "i",
+			"value": 0
+		},
+		{
+			"$type": "workflow::event::condition",
+			"event_id": "01a18427-09d8-7649-bacd-697c00c1a18e",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"condition_id": "template-condition",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "template-condition"
+				}
+			],
+			"input": null,
+			"answer": true,
+			"timestamp": "2026-10-28T20:15:13.368393Z"
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a18427-09d8-772e-9ab8-c5c38dbc64e7",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368449Z",
+			"participant_id": "compat::greet",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "body",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"input": [
+				"world"
+			],
+			"output": [
+				"hello world"
+			]
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09d8-77b5-8e15-6ffdca85c40c",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368482Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "body",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09d8-77c2-adc9-4ea7bc1ef57a",
+			"process_id": "01a18427-09d8-746a-af45-06c4b4c38ee6",
+			"timestamp": "2026-10-28T20:15:13.368482001Z",
+			"path": [
+				{
+					"name": "01a18427-09d8-7476-83e6-5827ed7a98a9"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "body",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting",
+			"value": "hello world"
+		}
+	]
+}

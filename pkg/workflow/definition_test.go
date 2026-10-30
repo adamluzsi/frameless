@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/workflow"
@@ -13,14 +14,15 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 )
 
 func ExampleIf() {
 	var _ workflow.Definition = workflow.If{
 		Cond: wftemplate.Condition(".X == .Y"),
-		Then: workflow.ExecuteParticipant{ID: "run-on-true"},
-		Else: workflow.ExecuteParticipant{ID: "run-on-false"},
+		Then: workflow.Execute{Participant: "run-on-true"},
+		Else: workflow.Execute{Participant: "run-on-false"},
 	}
 }
 
@@ -90,7 +92,7 @@ func TestIf(t *testing.T) {
 					})
 				)
 				Then.Let(s, func(t *testcase.T) workflow.Definition {
-					return workflow.ExecuteParticipant{ID: pid.Get(t)}
+					return workflow.Execute{Participant: pid.Get(t)}
 				})
 
 				s.Then("If/Then is called", func(t *testcase.T) {
@@ -128,7 +130,7 @@ func TestIf(t *testing.T) {
 					})
 				)
 				Else.Let(s, func(t *testcase.T) workflow.Definition {
-					return workflow.ExecuteParticipant{ID: pid.Get(t)}
+					return workflow.Execute{Participant: pid.Get(t)}
 				})
 
 				s.Then("Else path is executed", func(t *testcase.T) {
@@ -153,8 +155,8 @@ func TestIf(t *testing.T) {
 
 			pdef := workflow.If{
 				Cond: wftemplate.Condition(strconv.FormatBool(t.Random.Bool())),
-				Then: workflow.ExecuteParticipant{ID: "then"},
-				Else: workflow.ExecuteParticipant{ID: "else"},
+				Then: workflow.Execute{Participant: "then"},
+				Else: workflow.Execute{Participant: "else"},
 			}
 
 			var count int
@@ -199,13 +201,244 @@ func TestIf(t *testing.T) {
 
 		})
 	})
+
+	// The variables of an If are scoped the way Go scopes them:
+	//
+	//	x := "outer"
+	//	if v := cond(); v { // the If is a block of its own, where the condition is evaluated
+	//		y := "then"     // y belongs to Then
+	//		x = "then"      // writes through to the outer x
+	//	} else {
+	//		z := "else"     // z belongs to Else
+	//		x = "else"
+	//	}
+	//	// neither v, y nor z exist here
+	s.Context("var-scope", func(s *testcase.Spec) {
+		var (
+			seen = let.VarOf[[]any](s, nil)
+			// taken tells which branch the If takes: Then when true, Else otherwise.
+			taken = let.Var(s, func(t *testcase.T) bool {
+				return t.Random.Bool()
+			})
+		)
+		cond := func(t *testcase.T) workflow.Condition {
+			return wftemplate.Condition(strconv.FormatBool(taken.Get(t)))
+		}
+		branch := func(t *testcase.T) string {
+			if taken.Get(t) {
+				return "then"
+			}
+			return "else"
+		}
+		// inBranch makes an If which runs the definition in the branch it takes,
+		// so the behaviour holds for Then and Else alike.
+		inBranch := func(t *testcase.T, def workflow.Definition) workflow.If {
+			var d = workflow.If{Cond: cond(t)}
+			if taken.Get(t) {
+				d.Then = def
+			} else {
+				d.Else = def
+			}
+			return d
+		}
+
+		s.Test("a variable declared in a branch is local to the branch", func(t *testcase.T) {
+			// if cond {
+			// 	y := "declared-in-then"
+			// 	see(y)
+			// } else {
+			// 	z := "declared-in-else"
+			// 	see(z)
+			// }
+			// see(y)
+			// see(z)
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.If{
+					Cond: cond(t),
+					Then: workflow.Sequence{
+						workflow.SetVar{Name: "y", Value: "declared-in-then"},
+						peekVar(t, seen, "y"),
+					},
+					Else: workflow.Sequence{
+						workflow.SetVar{Name: "z", Value: "declared-in-else"},
+						peekVar(t, seen, "z"),
+					},
+				},
+				peekVar(t, seen, "y"),
+				peekVar(t, seen, "z"),
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{"declared-in-" + branch(t), undeclared, undeclared}, seen.Get(t),
+				"the branch sees what it declared, but neither y nor z exist after the If")
+		})
+
+		s.Test("an assignment in a branch to a variable from outside of it writes through", func(t *testcase.T) {
+			// x := "outer"
+			// if cond {
+			// 	x = "assigned-in-then"
+			// } else {
+			// 	x = "assigned-in-else"
+			// }
+			// // x == "assigned-in-<the taken branch>"
+			pid, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "x", Value: "outer"},
+				workflow.If{
+					Cond: cond(t),
+					Then: workflow.SetVar{Name: "x", Value: "assigned-in-then"},
+					Else: workflow.SetVar{Name: "x", Value: "assigned-in-else"},
+				},
+			})
+			assert.NoError(t, err)
+
+			assert.Equal[any](t, "assigned-in-"+branch(t), getVar(t, c.Runtime.Get(t), pid, "x"),
+				"the branch assigns to the variable it refers to, rather than declaring one of its own")
+		})
+
+		s.Test("a re-declaration in a branch shadows the outer variable within the branch only", func(t *testcase.T) {
+			// x := "outer"
+			// if cond {
+			// 	x := "inner"
+			// 	see(x)
+			// }
+			// see(x)
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.SetVar{Name: "x", Value: "outer"},
+				inBranch(t, workflow.Sequence{
+					workflow.DeclareVar{Name: "x"},
+					workflow.SetVar{Name: "x", Value: "inner"},
+					peekVar(t, seen, "x"),
+				}),
+				peekVar(t, seen, "x"),
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{"inner", "outer"}, seen.Get(t),
+				"the inner x is gone with the branch, and the outer one kept its value")
+		})
+
+		s.Test("a sibling If doesn't see the variables of the branch before it", func(t *testcase.T) {
+			// if cond {
+			// 	y := "declared-in-first-if"
+			// }
+			// if cond {
+			// 	see(y)
+			// }
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				inBranch(t, workflow.SetVar{Name: "y", Value: "declared-in-first-if"}),
+				inBranch(t, peekVar(t, seen, "y")),
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared}, seen.Get(t),
+				"the branches of two Ifs are two blocks, even though their names are the same")
+		})
+
+		s.Test("what the condition declares belongs to the If, so the branches see it, but nothing after the If does", func(t *testcase.T) {
+			// if v := cond(); v {
+			// 	see(v)
+			// } else {
+			// 	see(v)
+			// }
+			// see(v)
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				workflow.If{
+					Cond: wftest.Stub{StubEvaluate: func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+						vars, err := workflow.GetVars(ctx)
+						if err != nil {
+							return false, err
+						}
+						return taken.Get(t), vars.Set(ctx, "v", "declared-by-cond")
+					}},
+					Then: peekVar(t, seen, "v"),
+					Else: peekVar(t, seen, "v"),
+				},
+				peekVar(t, seen, "v"),
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{"declared-by-cond", undeclared}, seen.Get(t))
+		})
+
+		s.Test("a Defer in a branch sees the variables of the branch", func(t *testcase.T) {
+			// if cond {
+			// 	y := "declared-in-branch"
+			// 	defer func() { see(y) }()
+			// }
+			// see(y)
+			_, err := execProcess(t, c.Runtime.Get(t), workflow.Sequence{
+				inBranch(t, workflow.Sequence{
+					workflow.SetVar{Name: "y", Value: "declared-in-branch"},
+					workflow.Defer{Definition: peekVar(t, seen, "y")},
+				}),
+				peekVar(t, seen, "y"),
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, []any{undeclared, "declared-in-branch"}, seen.Get(t),
+				"the deferred step runs once the Process ends, and still refers to the y of the branch")
+		})
+
+		s.Context("a resumed Process replays the branch with the same variables", func(s *testcase.Spec) {
+			var (
+				produced  = let.VarOf[[]string](s, nil)
+				calls     = let.VarOf[[]string](s, nil)
+				suspended = let.VarOf(s, false)
+			)
+			c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
+				return workflow.Participants{
+					"produce": func(ctx context.Context) (string, error) {
+						v := t.Random.UUID()
+						testcase.Append(t, produced, v)
+						return v, nil
+					},
+					"see": func(ctx context.Context, v string) error {
+						testcase.Append(t, calls, v)
+						return nil
+					},
+					"suspend-once": func(ctx context.Context) error {
+						if suspended.Get(t) {
+							return nil
+						}
+						suspended.Set(t, true)
+						return workflow.Suspend{}
+					},
+				}
+			})
+
+			s.Test("the variables of the branch keep their value across the suspension", func(t *testcase.T) {
+				// if cond {
+				// 	y := produce()
+				// 	suspend()
+				// 	see(y)
+				// }
+				rt := c.Runtime.Get(t)
+				pid, err := execProcess(t, rt, inBranch(t, workflow.Sequence{
+					workflow.Execute{Participant: "produce", Output: []workflow.VarName{"y"}},
+					workflow.Execute{Participant: "suspend-once"},
+					workflow.Execute{Participant: "see", Input: []workflow.VarName{"y"}},
+				}))
+				assert.Must(t).ErrorIs(err, workflow.Suspend{})
+				assert.Must(t).NoError(rt.Execute(t.Context(), pid))
+
+				assert.Equal(t, 1, len(produced.Get(t)),
+					"y is produced once, and the resumed execution replays it")
+				assert.Equal(t, produced.Get(t), calls.Get(t),
+					"the resumed branch sees the very y it declared before the suspension")
+
+				_, ok, err := getVars(t, rt, pid).Lookup(t.Context(), "y")
+				assert.NoError(t, err)
+				assert.False(t, ok, "the variables of the branch don't outlive the If")
+			})
+		})
+	})
 }
 
 func ExampleSequence() {
 	_ = workflow.Sequence{
-		workflow.ExecuteParticipant{ID: "foo"},
-		workflow.ExecuteParticipant{ID: "bar"},
-		workflow.ExecuteParticipant{ID: "baz"},
+		workflow.Execute{Participant: "foo"},
+		workflow.Execute{Participant: "bar"},
+		workflow.Execute{Participant: "baz"},
 	}
 }
 
@@ -259,7 +492,7 @@ func TestSequence(t *testing.T) {
 
 			sequence.Let(s, func(t *testcase.T) workflow.Sequence {
 				return workflow.Sequence{
-					workflow.ExecuteParticipant{ID: pid.Get(t)},
+					workflow.Execute{Participant: pid.Get(t)},
 				}
 			})
 
@@ -316,9 +549,9 @@ func TestSequence(t *testing.T) {
 
 			sequence.Let(s, func(t *testcase.T) workflow.Sequence {
 				return workflow.Sequence{
-					&workflow.ExecuteParticipant{ID: fooPid.Get(t)},
-					&workflow.ExecuteParticipant{ID: barPid.Get(t)},
-					&workflow.ExecuteParticipant{ID: bazPid.Get(t)},
+					&workflow.Execute{Participant: fooPid.Get(t)},
+					&workflow.Execute{Participant: barPid.Get(t)},
+					&workflow.Execute{Participant: bazPid.Get(t)},
 				}
 			})
 
@@ -359,7 +592,7 @@ func TestSequence(t *testing.T) {
 
 func ExampleSleep() {
 	_ = workflow.Sleep{
-		While: workflow.ExecuteCondition{ID: "wait-while-something"},
+		While: workflow.Execute{Condition: "wait-while-something"},
 	}
 }
 
@@ -378,90 +611,281 @@ func TestSleep(t *testing.T) {
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
-		var (
-			ctx     = let.Context(s)
-			process = wftest.LetProcessID(s)
-		)
-		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
+		process := wftest.LetProcessID(s)
+		act := func(t *testcase.T) error {
+			return subject.Get(t).Execute(wftest.Runtime.Get(t).Context(t.Context()), process.Get(t))
+		}
+		s.Before(func(t *testcase.T) {
+			// A Sleep tells its attempts apart by the second they happen in.
+			// Each spec starts at the beginning of a second, so its attempts share that second,
+			// until the spec moves on to the next one.
+			// Time keeps flowing, as a frozen clock would also leave the event IDs unordered.
+			timecop.Travel(t, clock.Now().Truncate(time.Second).Add(time.Second))
+		})
+		nextSecond := func(t *testcase.T) {
+			timecop.Travel(t, clock.Now().Truncate(time.Second).Add(time.Second))
+		}
+		setReady := func(t *testcase.T, v bool) {
+			vars := workflow.Vars{ProcessID: process.Get(t), EventsRepository: wftest.EventRepository.Get(t)}
+			assert.Must(t).NoError(vars.Set(t.Context(), "ready", v))
+		}
+		completions := func(t *testcase.T) []workflow.EventSleepCompleted {
+			return eventsOfType[workflow.EventSleepCompleted](t, wftest.EventRepository.Get(t), process.Get(t))
+		}
+		condition := let.Var[workflow.Condition](s, func(t *testcase.T) workflow.Condition {
+			return wftemplate.Condition(".ready")
+		})
+		until.Let(s, func(t *testcase.T) workflow.Condition { return condition.Get(t) })
+		// wakeUp is the answer of the condition that lets the Sleep wake up.
+		wakeUp := let.VarOf(s, true)
+
+		s.Then("it continues once its condition lets it wake up", func(t *testcase.T) {
+			setReady(t, wakeUp.Get(t))
+			assert.NoError(t, act(t))
 		})
 
-		s.When("While condition is true (Continue=false)", func(s *testcase.Spec) {
-			while.Let(s, func(t *testcase.T) workflow.Condition {
-				return wftest.Stub{
-					StubEvaluate: func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
-						return true, nil
-					},
-				}
-			})
-
-			s.Test("Suspend error expected", func(t *testcase.T) {
-				err := act(t)
-				assert.ErrorIs(t, err, workflow.Suspend{})
-			})
+		s.Then("it suspends while its condition doesn't let it wake up, and asks again on the next attempt", func(t *testcase.T) {
+			setReady(t, !wakeUp.Get(t))
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			nextSecond(t)
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			setReady(t, wakeUp.Get(t))
+			nextSecond(t)
+			assert.NoError(t, act(t))
 		})
 
-		s.When("While condition is false (Continue=true)", func(s *testcase.Spec) {
-			while.Let(s, func(t *testcase.T) workflow.Condition {
-				return wftest.Stub{
-					StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
-						return false, nil
-					},
-				}
-			})
-
-			s.Test("no error expected", func(t *testcase.T) {
-				assert.NoError(t, act(t))
-			})
+		s.Then("once woken up, it is passed on replay, even after its condition changed back", func(t *testcase.T) {
+			setReady(t, wakeUp.Get(t))
+			assert.NoError(t, act(t))
+			setReady(t, !wakeUp.Get(t))
+			nextSecond(t)
+			assert.NoError(t, act(t))
 		})
 
-		s.When("Until condition is true (Continue=true)", func(s *testcase.Spec) {
-			until.Let(s, func(t *testcase.T) workflow.Condition {
-				return wftest.Stub{
-					StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
-						return true, nil
-					},
-				}
-			})
+		s.Then("its wake-up is recorded as its completion, at its position", func(t *testcase.T) {
+			setReady(t, !wakeUp.Get(t))
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			assert.Empty(t, completions(t), "a suspended attempt doesn't complete the Sleep")
 
-			s.Test("no error expected", func(t *testcase.T) {
-				assert.NoError(t, act(t))
-			})
+			setReady(t, wakeUp.Get(t))
+			nextSecond(t)
+			before := clock.Now()
+			assert.NoError(t, act(t))
+			after := clock.Now()
+			assert.NoError(t, act(t)) // replay
+
+			got := completions(t)
+			assert.Must(t).Equal(len(got), 1)
+			assert.NotEmpty(t, got[0].EventID)
+			assert.Equal(t, got[0].ProcessID, process.Get(t))
+			assert.Equal(t, got[0].Path, pathOf("sleep"))
+			assert.False(t, got[0].Timestamp.Before(before) || got[0].Timestamp.After(after),
+				"the completion is timestamped at the wake-up")
 		})
 
-		s.When("Until condition is false (Continue=false)", func(s *testcase.Spec) {
-			until.Let(s, func(t *testcase.T) workflow.Condition {
-				return wftest.Stub{
-					StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
-						return false, nil
-					},
-				}
-			})
+		s.Then("the answers of an attempt are recorded under the second of the attempt", func(t *testcase.T) {
+			setReady(t, !wakeUp.Get(t))
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			first := strconv.FormatInt(clock.Now().Unix(), 10)
+			nextSecond(t)
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			second := strconv.FormatInt(clock.Now().Unix(), 10)
 
-			s.Test("Suspend error expected", func(t *testcase.T) {
+			events := conditionEvents(t, wftest.EventRepository.Get(t), process.Get(t))
+			assert.Must(t).Equal(len(events), 2)
+			for i, attempt := range []string{first, second} {
+				assert.Must(t).True(2 <= len(events[i].Path))
+				assert.Equal(t, events[i].Path[:2], pathOf("sleep", attempt))
+			}
+		})
+
+		s.Then("attempts within the same second share the answers of its condition, so it wakes up no sooner than the next second", func(t *testcase.T) {
+			setReady(t, !wakeUp.Get(t))
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			setReady(t, wakeUp.Get(t))
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			nextSecond(t)
+			assert.NoError(t, act(t))
+		})
+
+		s.When("While is used instead of Until", func(s *testcase.Spec) {
+			until.LetValue(s, nil)
+			while.Let(s, func(t *testcase.T) workflow.Condition { return condition.Get(t) })
+			wakeUp.LetValue(s, false)
+
+			s.Then("it suspends while its condition holds, and once it doesn't, it is passed for good", func(t *testcase.T) {
+				setReady(t, !wakeUp.Get(t))
 				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				setReady(t, wakeUp.Get(t))
+				nextSecond(t)
+				assert.NoError(t, act(t))
+				setReady(t, !wakeUp.Get(t))
+				nextSecond(t)
+				assert.NoError(t, act(t))
+				assert.Equal(t, len(completions(t)), 1)
 			})
 		})
 
-		s.When("condition evaluation fails", func(s *testcase.Spec) {
+		s.When("the condition is an Execute with a registered ConditionID", func(s *testcase.Spec) {
+			cid := LetConditionID(s)
+			evaluations := let.VarOf(s, 0)
+			wftest.Conditions.Let(s, func(t *testcase.T) workflow.Conditions {
+				return workflow.Conditions{cid.Get(t): func(_ context.Context, ready bool) (bool, error) {
+					evaluations.Set(t, evaluations.Get(t)+1)
+					return ready, nil
+				}}
+			})
+			condition.Let(s, func(t *testcase.T) workflow.Condition {
+				return workflow.Execute{Condition: cid.Get(t), Input: []workflow.VarName{"ready"}}
+			})
+
+			s.Then("the registry is asked on every attempt until the Sleep wakes up, and no more after", func(t *testcase.T) {
+				setReady(t, false)
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				setReady(t, true)
+				nextSecond(t)
+				assert.NoError(t, act(t))
+				setReady(t, false)
+				nextSecond(t)
+				assert.NoError(t, act(t))
+				assert.Equal(t, evaluations.Get(t), 2)
+			})
+
+			s.And("an earlier version recorded an answer at the position of the Sleep that kept it asleep", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					setReady(t, true)
+					// the input matches the current variables, so this answer would be replayed if it were looked up
+					var event workflow.Event = workflow.EventCondition{
+						EventID: mustEventID(t), ProcessID: process.Get(t), Timestamp: clock.Now(),
+						ConditionID: cid.Get(t),
+						Path:        pathOf("sleep", string(cid.Get(t))),
+						Input:       []any{true}, Answer: false,
+					}
+					assert.Must(t).NoError(wftest.EventRepository.Get(t).Create(t.Context(), &event))
+				})
+
+				s.Then("the condition is asked again rather than keeping the process asleep for ever", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, evaluations.Get(t), 1)
+				})
+			})
+		})
+
+		s.When("the condition does not record its answers", func(s *testcase.Spec) {
+			condition.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftest.Stub{StubEvaluate: func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+					vars := workflow.Vars{ProcessID: pid, EventsRepository: wftest.EventRepository.Get(t)}
+					ready, err := vars.Get(ctx, "ready")
+					return ready == true, err
+				}}
+			})
+
+			s.Then("it is asked on every attempt, even within the same second", func(t *testcase.T) {
+				setReady(t, false)
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				setReady(t, true)
+				assert.NoError(t, act(t))
+			})
+
+			s.Then("once woken up, the Sleep is passed on replay without asking it again", func(t *testcase.T) {
+				setReady(t, true)
+				assert.NoError(t, act(t))
+				setReady(t, false)
+				nextSecond(t)
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the condition is built on another condition that records its answers", func(s *testcase.Spec) {
+			cid := LetConditionID(s)
+			// the condition inverts .ready, and records its own answer through EvaluateWith
+			condition.Let(s, func(t *testcase.T) workflow.Condition {
+				inner := wftemplate.Condition(".ready")
+				return wftest.Stub{StubEvaluate: func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+					return workflow.Execute{}.EvaluateWith(ctx, pid, cid.Get(t), func(ctx context.Context, pid workflow.ProcessID) (bool, error) {
+						ok, err := inner.Evaluate(ctx, pid)
+						return !ok, err
+					})
+				}}
+			})
+
+			s.Then("the nested conditions are asked again on the next attempt too", func(t *testcase.T) {
+				setReady(t, true)
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				setReady(t, false)
+				nextSecond(t)
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the condition fails", func(s *testcase.Spec) {
 			expErr := let.Error(s)
-
-			s.Before(func(t *testcase.T) {
-				faultyCondition := wftest.Stub{
-					StubEvaluate: func(ctx context.Context, p workflow.ProcessID) (bool, error) {
-						return false, expErr.Get(t)
-					},
-				}
-				if t.Random.Bool() {
-					while.Set(t, faultyCondition)
-				} else {
-					until.Set(t, faultyCondition)
-				}
+			condition.Let(s, func(t *testcase.T) workflow.Condition {
+				return wftest.Stub{StubEvaluate: func(context.Context, workflow.ProcessID) (bool, error) {
+					return false, expErr.Get(t)
+				}}
 			})
 
-			s.Then("fault propagated back", func(t *testcase.T) {
+			s.Then("the error is returned, and the Sleep is not completed", func(t *testcase.T) {
 				assert.ErrorIs(t, act(t), expErr.Get(t))
+				assert.Empty(t, completions(t))
 			})
+		})
+
+		s.When("neither While nor Until is given", func(s *testcase.Spec) {
+			until.LetValue(s, nil)
+
+			s.Then("it suspends on every attempt, as nothing could wake it up", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				nextSecond(t)
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+				assert.Empty(t, completions(t))
+			})
+		})
+	})
+
+	s.Describe("resuming a process after its Sleep woke up", func(s *testcase.Spec) {
+		process := wftest.LetProcessID(s)
+		act := func(t *testcase.T) error {
+			return wftest.Runtime.Get(t).Execute(t.Context(), process.Get(t))
+		}
+		until.LetValue(s, wftemplate.Condition(".ready"))
+		suspendCalls := let.VarOf(s, 0)
+		wftest.LetParticipantWithID(s, let.VarOf(s, workflow.ParticipantID("suspend-once")), func(t *testcase.T) func(context.Context) error {
+			return func(context.Context) error {
+				suspendCalls.Set(t, suspendCalls.Get(t)+1)
+				if suspendCalls.Get(t) == 1 {
+					return workflow.Suspend{}
+				}
+				return nil
+			}
+		})
+		afterCalls := let.VarOf(s, 0)
+		wftest.LetParticipantWithID(s, let.VarOf(s, workflow.ParticipantID("after")), func(t *testcase.T) func(context.Context) error {
+			return func(context.Context) error {
+				afterCalls.Set(t, afterCalls.Get(t)+1)
+				return nil
+			}
+		})
+		s.Before(func(t *testcase.T) {
+			vars := workflow.Vars{ProcessID: process.Get(t), EventsRepository: wftest.EventRepository.Get(t)}
+			assert.Must(t).NoError(vars.Set(t.Context(), "ready", true))
+			definition := workflow.Sequence{
+				*subject.Get(t),
+				// the variable the Sleep waited for changes back before the process suspends
+				workflow.SetVar{Name: "ready", Value: false},
+				workflow.Execute{Participant: "suspend-once"},
+				workflow.Execute{Participant: "after"},
+			}
+			assert.Must(t).NoError(wftest.Runtime.Get(t).Bind(t.Context(), process.Get(t), definition))
+		})
+
+		s.Then("the Sleep does not fall asleep again, and the process continues where it suspended", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), workflow.Suspend{})
+			timecop.Travel(t, time.Second) // the process resumes in a later second
+			assert.NoError(t, act(t))
+			assert.Equal(t, suspendCalls.Get(t), 2)
+			assert.Equal(t, afterCalls.Get(t), 1)
 		})
 	})
 }

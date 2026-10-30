@@ -1,9 +1,9 @@
 module restapi
 
-go 1.24
+go 1.27
 
-toolchain go1.24.0
+require go.llib.dev/frameless v0.340.1
 
-require go.llib.dev/frameless v0.298.2
+require go.llib.dev/testcase v0.195.0 // indirect
 
-require go.llib.dev/testcase v0.179.1 // indirect
+replace go.llib.dev/frameless => ../..

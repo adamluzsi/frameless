@@ -1,0 +1,292 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::spawn",
+				"name": "greeter",
+				"def": {
+					"$type": "workflow::var::set",
+					"name": "greeting",
+					"value": "hello"
+				}
+			},
+			{
+				"$type": "workflow::join",
+				"spawn": "greeter",
+				"collect": {
+					"greeting": "reply"
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::greet",
+				"input": [
+					"reply"
+				],
+				"output": [
+					"reply"
+				]
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::see",
+				"input": [
+					"reply"
+				]
+			}
+		]
+	},
+	"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a18427-09f2-7039-be31-cb4f5b527a3b",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394014Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::spawn",
+						"name": "greeter",
+						"def": {
+							"$type": "workflow::var::set",
+							"name": "greeting",
+							"value": "hello"
+						}
+					},
+					{
+						"$type": "workflow::join",
+						"spawn": "greeter",
+						"collect": {
+							"greeting": "reply"
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::greet",
+						"input": [
+							"reply"
+						],
+						"output": [
+							"reply"
+						]
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::see",
+						"input": [
+							"reply"
+						]
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::spawn",
+			"event_id": "01a18427-09f2-70d9-85b0-86c78ea778d7",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"child_id": "01a18427-09f2-70d9-a945-c00713f0b66f",
+			"name": "greeter",
+			"timestamp": "2026-10-28T20:15:13.394053Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "spawn"
+				},
+				{
+					"name": "greeter"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09f2-74ed-a06f-e8201fc2a717",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394308Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			],
+			"name": "reply"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09f2-74f5-bec6-5363e654ff0c",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394308001Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			],
+			"name": "reply",
+			"value": "hello"
+		},
+		{
+			"$type": "workflow::event::join",
+			"event_id": "01a18427-09f2-74fd-8afe-e956d5480d25",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394312Z",
+			"children": [
+				"01a18427-09f2-70d9-a945-c00713f0b66f"
+			],
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "join"
+				},
+				{
+					"name": "greeter"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a18427-09f2-7610-921b-ab138848d683",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394379Z",
+			"participant_id": "compat::greet",
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"input": [
+				"hello"
+			],
+			"output": [
+				"hello hello"
+			]
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09f2-7693-bdb1-edbec9f6dd12",
+			"process_id": "01a18427-09f2-7031-9b96-7c7c7c48fad6",
+			"timestamp": "2026-10-28T20:15:13.394411001Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7039-be31-cb4f5b527a3b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "reply",
+			"value": "hello hello"
+		},
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a18427-09f2-7112-aa6f-27ccc0d44273",
+			"process_id": "01a18427-09f2-70d9-a945-c00713f0b66f",
+			"timestamp": "2026-10-28T20:15:13.394067Z",
+			"definition": {
+				"$type": "workflow::var::set",
+				"name": "greeting",
+				"value": "hello"
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09f2-724d-9103-094d1070d749",
+			"process_id": "01a18427-09f2-70d9-a945-c00713f0b66f",
+			"timestamp": "2026-10-28T20:15:13.394144Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7112-aa6f-27ccc0d44273"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "greeting"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09f2-7255-8d91-46e04666b7d1",
+			"process_id": "01a18427-09f2-70d9-a945-c00713f0b66f",
+			"timestamp": "2026-10-28T20:15:13.394144001Z",
+			"path": [
+				{
+					"name": "01a18427-09f2-7112-aa6f-27ccc0d44273"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "greeting",
+			"value": "hello"
+		},
+		{
+			"$type": "workflow::event::completed",
+			"event_id": "01a18427-09f2-72c0-a80a-cc241803eaff",
+			"process_id": "01a18427-09f2-70d9-a945-c00713f0b66f",
+			"timestamp": "2026-10-28T20:15:13.394172Z"
+		}
+	]
+}

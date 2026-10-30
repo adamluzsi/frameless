@@ -12,7 +12,10 @@ import (
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
+	"go.llib.dev/frameless/pkg/jsonkit"
+	"go.llib.dev/frameless/port/codec"
 )
 
 type Config struct {
@@ -68,7 +71,10 @@ func MakeUsersAPI(c Config) httpkit.RESTHandler[mydomain.User, mydomain.UserID] 
 
 		ErrorHandler: errorHandler,
 
-		Mapping: dtoUserMapping,
+		MediaType: mediatype.JSON,
+		Codecs: httpkit.Codecs{
+			mediatype.JSON: dtoCodec[mydomain.User, UserJSONDTO]{Mapping: dtoUserMapping, Codec: &jsonkit.Codec{}},
+		},
 
 		ResourceContext: func(ctx context.Context, id mydomain.UserID) (context.Context, error) {
 			req, _ := httpkit.LookupRequest(ctx)
@@ -109,13 +115,25 @@ type UserJSONDTO struct {
 
 func MakeNotesAPI(c Config) httpkit.RESTHandler[mydomain.Note, mydomain.NoteID] {
 	return httpkit.RESTHandler[mydomain.Note, mydomain.NoteID]{
-		Create:     c.NoteRepository.Create,
+		// Codecs don't receive the request context,
+		// so the Note is scoped to the authorised user here instead of in the DTO mapping.
+		Create: func(ctx context.Context, ptr *mydomain.Note) error {
+			userID, ok := ctxUserID.Lookup(ctx)
+			if !ok {
+				return ErrUnauthorized
+			}
+			ptr.UserID = userID
+			return c.NoteRepository.Create(ctx, ptr)
+		},
 		Index:      c.NoteRepository.FindAll,
 		Show:       c.NoteRepository.FindByID,
 		Destroy:    c.NoteRepository.DeleteByID,
 		DestroyAll: c.NoteRepository.DeleteAll,
 
-		Mapping: dtoNoteMapping,
+		MediaType: mediatype.JSON,
+		Codecs: httpkit.Codecs{
+			mediatype.JSON: dtoCodec[mydomain.Note, NoteJSONDTO]{Mapping: dtoNoteMapping, Codec: &jsonkit.Codec{}},
+		},
 	}
 }
 
@@ -128,21 +146,61 @@ type NoteJSONDTO struct {
 
 var dtoNoteMapping = dtokit.Mapping[mydomain.Note, NoteJSONDTO]{
 	ToENT: func(ctx context.Context, dto NoteJSONDTO) (mydomain.Note, error) {
-		ent := mydomain.Note{
+		return mydomain.Note{
 			ID:    dto.ID,
 			Title: dto.Title,
 			Body:  dto.Body,
-		}
-
-		userID, ok := ctxUserID.Lookup(ctx)
-		if !ok {
-			return mydomain.Note{}, ErrUnauthorized
-		}
-		ent.UserID = userID
-
-		return ent, nil
+		}, nil
 	},
 	ToDTO: func(ctx context.Context, ent mydomain.Note) (NoteJSONDTO, error) {
 		return NoteJSONDTO(ent), nil
 	},
+}
+
+// dtoCodec makes a codec.Codec encode ENT values through their DTO,
+// as httpkit.RESTHandler marshals and unmarshals the ENT type itself with its Codecs.
+type dtoCodec[ENT, DTO any] struct {
+	Mapping dtokit.Mapping[ENT, DTO]
+	Codec   codec.Codec
+}
+
+func (c dtoCodec[ENT, DTO]) Marshal(v any) ([]byte, error) {
+	ctx := context.Background()
+	switch v := v.(type) {
+	case ENT:
+		dto, err := c.Mapping.MapToDTO(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		return c.Codec.Marshal(dto)
+	case []ENT:
+		dtos := make([]DTO, 0, len(v))
+		for _, ent := range v {
+			dto, err := c.Mapping.MapToDTO(ctx, ent)
+			if err != nil {
+				return nil, err
+			}
+			dtos = append(dtos, dto)
+		}
+		return c.Codec.Marshal(dtos)
+	default:
+		return c.Codec.Marshal(v)
+	}
+}
+
+func (c dtoCodec[ENT, DTO]) Unmarshal(data []byte, ptr any) error {
+	p, ok := ptr.(*ENT)
+	if !ok {
+		return c.Codec.Unmarshal(data, ptr)
+	}
+	var dto DTO
+	if err := c.Codec.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	ent, err := c.Mapping.MapToENT(context.Background(), dto)
+	if err != nil {
+		return err
+	}
+	*p = ent
+	return nil
 }

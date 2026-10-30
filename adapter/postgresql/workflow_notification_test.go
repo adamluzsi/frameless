@@ -238,6 +238,52 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 			})
 		})
 
+		s.When("a caller-owned publishing transaction holds the channel past one renewal timeout", func(s *testcase.Spec) {
+			// Renewals start every lease/3 and each attempt gives up after lease/3.
+			// The local deadline is at 90% of the lease, which leaves room for a retry.
+			lease := let.VarOf(s, 1500*time.Millisecond)
+			subject.Let(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+				b := subject.Super(t)
+				b.StatelessSubscribe.LeaseDuration = lease.Get(t)
+				return b
+			})
+			publisher := let.Var(s, func(t *testcase.T) *postgresql.WorkflowNotificationBroadcast {
+				b := subject.Get(t)
+				p := &postgresql.WorkflowNotificationBroadcast{Connection: queueV2ConnectPool(t, b.Connection.DB.Config()), Name: b.Name}
+				assert.Must(t).NoError(p.Migrate(ctx.Get(t)))
+				return p
+			})
+
+			s.Then("retries the renewal before its local deadline, and keeps the registration and the unread events", func(t *testcase.T) {
+				b, p := subject.Get(t), publisher.Get(t)
+				sub := act(t)
+				subscribed := time.Now()
+				assert.Must(t).NoError(b.Publish(ctx.Get(t), batch.Get(t)[0]))
+
+				tx, err := p.Connection.BeginTx(ctx.Get(t))
+				assert.Must(t).NoError(err)
+				t.Cleanup(func() { _ = p.Connection.RollbackTx(tx) })
+				// The channel row stays locked until this transaction commits.
+				assert.Must(t).NoError(p.Publish(tx, batch.Get(t)[1]))
+				var holder int
+				assert.Must(t).NoError(p.Connection.QueryRowContext(tx, `SELECT pg_backend_pid()`).Scan(&holder))
+				assert.Eventually(t, lease.Get(t), func(it testing.TB) {
+					var blocked bool
+					assert.NoError(it, p.Connection.QueryRowContext(tx, `SELECT EXISTS (
+						SELECT 1 FROM pg_locks WHERE NOT granted AND $1::integer = ANY(pg_blocking_pids(pid)))`, holder).Scan(&blocked))
+					assert.True(it, blocked, "the subscriber's renewal must wait for the channel lock")
+				})
+				// Outlast that renewal attempt's own timeout, but release well before the local deadline.
+				time.Sleep(lease.Get(t)/3 + 50*time.Millisecond)
+				assert.Must(t).NoError(p.Connection.CommitTx(tx))
+
+				time.Sleep(time.Until(subscribed.Add(lease.Get(t))))
+				workflowNotificationRows(t, b, 1, 2)
+				assert.Equal(t, sub.Receive(t).Data(), batch.Get(t)[0])
+				assert.Equal(t, sub.Receive(t).Data(), batch.Get(t)[1])
+			})
+		})
+
 		for _, tc := range []struct {
 			name                  string
 			configured, effective time.Duration
@@ -386,7 +432,9 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 				assert.Must(t).NoError(act(t))
 				var data []byte
 				assert.Must(t).NoError(b.Connection.DB.QueryRow(ctx.Get(t), `SELECT data FROM frameless_workflow_notification_events WHERE channel = $1`, workflowNotificationChannel(b.Name)).Scan(&data))
-				want, err := b.Codec.Marshal(event.Get(t))
+				// the notification is written as the workflow.Notification holds it
+				notification := event.Get(t)
+				want, err := b.Codec.Marshal(&notification)
 				assert.NoError(t, err)
 				assert.Equal(t, data, want)
 				assert.Equal(t, sub.Receive(t).Data(), event.Get(t))
@@ -400,7 +448,8 @@ func workflowNotificationSpec(s *testcase.Spec, subject testcase.Var[*postgresql
 				s.Then("rejects the publish without leaving a feed event", func(t *testcase.T) {
 					b := subject.Get(t)
 					_ = workflowNotificationSubscribe(t, ctx.Get(t), b)
-					data, err := b.Codec.Marshal(event.Get(t))
+					notification := event.Get(t)
+					data, err := b.Codec.Marshal(&notification)
 					assert.Must(t).NoError(err)
 					assert.Must(t).True(len(data) > 8000, "the fixture must exceed the pg_notify payload limit")
 					err = act(t)

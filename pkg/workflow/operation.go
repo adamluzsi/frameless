@@ -18,7 +18,7 @@ type Increment struct{ Name VarName }
 
 var _ Definition = Increment{}
 
-func (Increment) Error() string { return "workflow::op::increment" }
+func (Increment) Error() string { return "workflow:op:increment" }
 
 func (d Increment) Execute(ctx context.Context, pid ProcessID) error {
 	ctx = WithName(ctx, "inc-op")

@@ -463,6 +463,7 @@ func (r *KeepAliveReader) timeout() time.Duration {
 
 func (r *KeepAliveReader) keepAlive() {
 	ticker := clock.NewTicker(r.timeout())
+	defer ticker.Stop()
 	for {
 		select {
 		case <-r.done:

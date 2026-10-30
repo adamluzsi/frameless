@@ -1,0 +1,101 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::b"
+			},
+			{
+				"$type": "workflow::sleep",
+				"while": {
+					"$type": "workflow::execute",
+					"condition": "compat::before-upgrade"
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd36-7316-a267-c06de9342493",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd36-732a-b15a-1a7fa55395fd",
+			"process_id": "01a1842c-fd36-7316-a267-c06de9342493",
+			"timestamp": "2026-10-28T20:21:43.350199Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::b"
+					},
+					{
+						"$type": "workflow::sleep",
+						"while": {
+							"$type": "workflow::execute",
+							"condition": "compat::before-upgrade"
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd36-738d-92b8-daf6e282c0e7",
+			"process_id": "01a1842c-fd36-7316-a267-c06de9342493",
+			"timestamp": "2026-10-28T20:21:43.350223Z",
+			"participant_id": "compat::b",
+			"path": [
+				{
+					"name": "01a1842c-fd36-732a-b15a-1a7fa55395fd"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::b"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::condition",
+			"event_id": "01a1842c-fd36-73eb-bc60-bc74a814dad7",
+			"process_id": "01a1842c-fd36-7316-a267-c06de9342493",
+			"condition_id": "compat::before-upgrade",
+			"path": [
+				{
+					"name": "01a1842c-fd36-732a-b15a-1a7fa55395fd"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "sleep"
+				},
+				{
+					"name": "1793218903"
+				},
+				{
+					"name": "compat::before-upgrade"
+				}
+			],
+			"input": null,
+			"answer": true,
+			"timestamp": "2026-10-28T20:21:43.350245Z"
+		}
+	]
+}

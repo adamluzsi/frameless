@@ -39,19 +39,16 @@ type EventUseDefinition struct {
 	Definition Definition
 }
 
-// VarMapping is a mapping between a parent and child process variables.
+// VarMapping maps the variables of one process to the variables of another, as {fromName: toName} entries.
 //
-// It goes [FROM] parent [TO] child.
-type VarMapping map[parentVarKey]childVarKey
-
-type parentVarKey = VarName
-type childVarKey = VarName
+// Depending on the context of its usage, the direction of data flow is [FROM] -> [TO]:
+//   - In case of Spawn#Vars, [FROM] parent -> [TO] child, so the entries are {parentKey: childKey}.
+//   - In case of Join#Collect, [FROM] child -> [TO] parent, so the entries are {childKey: parentKey}.
+type VarMapping map[VarName]VarName
 
 var _ Event = EventUseDefinition{}
 
-const typeSetDefinitionEvent EventType = "workflow::set-definition-event"
-
 func (s EventUseDefinition) GetEventID() EventID     { return s.EventID }
-func (s EventUseDefinition) EventType() EventType    { return typeSetDefinitionEvent }
+func (s EventUseDefinition) EventType() EventType    { return "workflow:definition" }
 func (s EventUseDefinition) GetProcessID() ProcessID { return s.ProcessID }
 func (s EventUseDefinition) GetTimestamp() time.Time { return s.Timestamp }

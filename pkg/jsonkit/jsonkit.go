@@ -2,187 +2,48 @@ package jsonkit
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"reflect"
-	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 type Array[T any] []T
 
+// MarshalJSON writes the Array as a JSON array.
+// When T is an interface, the elements are written by a Codec,
+// so a value held by an interface is written the same way as with the Codec, with the package level registry.
+// Like with encoding/json, a nil Array is written as null.
 func (ary Array[T]) MarshalJSON() ([]byte, error) {
 	if !isInterfaceType(reflectkit.TypeOf[T]()) {
-		return json.Marshal([]T(ary))
+		return jsonv2.Marshal([]T(ary), v1Options)
 	}
-
-	var vs = make([]json.RawMessage, len(ary))
-	for i, v := range ary {
-		data, err := json.Marshal(typed{Type: reflectkit.TypeOf[T](), Value: v})
-		if err != nil {
-			return nil, err
-		}
-		vs[i] = data
-	}
-
-	return json.Marshal(vs)
+	return Codec{}.Marshal(ary)
 }
 
+// UnmarshalJSON reads a JSON array into the Array.
+// When T is an interface, the elements are read by a Codec, the same way as with the Codec, with the package level registry.
+// Like with encoding/json, null is read as a nil Array.
 func (ary *Array[T]) UnmarshalJSON(data []byte) error {
 	if !isInterfaceType(reflectkit.TypeOf[T]()) {
 		v := []T(*zerokit.Coalesce(ary, &Array[T]{}))
-		if err := json.Unmarshal(data, &v); err != nil {
+		if err := jsonv2.Unmarshal(data, &v, v1Options); err != nil {
 			return err
 		}
 		*ary = v
 		return nil
 	}
-
-	var raws []json.RawMessage
-	if err := json.Unmarshal(data, &raws); err != nil {
+	// Read into a new Array, so a failed read keeps the Array as it was.
+	var vs Array[T]
+	if err := (Codec{}).Unmarshal(data, &vs); err != nil {
 		return err
 	}
-
-	var vs = make(Array[T], len(raws))
-	for i, data := range raws {
-		var tv = typed{Type: reflectkit.TypeOf[T]()}
-		if err := json.Unmarshal(data, &tv); err != nil {
-			return err
-		}
-		v, err := typeAssert[T](tv.Value)
-		if err != nil {
-			return err
-		}
-		vs[i] = v
-	}
-
 	*ary = vs
 	return nil
-}
-
-type jsonArray struct {
-	// ptr is a *[]T pointer value
-	ptr reflect.Value
-	// reg is the codec's per-instance type registry. May be nil, in which
-	// case the package-level registry is consulted.
-	reg *_TypeRegistry
-	// codec is the originating *Codec when jsonArray is constructed during
-	// unmarshal dispatch. It is forwarded into each per-element typed
-	// dispatch so user-registered custom Unmarshal closures receive the
-	// same codec instance, not a freshly-zero Codec that has lost its
-	// registry.
-	codec *Codec
-}
-
-func (ary jsonArray) MarshalJSON() ([]byte, error) {
-	ET, ok := ary.elemT()
-	if !ok {
-		return nil, fmt.Errorf("unable to determine of type T in slice *[]T: %s", ary.typeName())
-	}
-
-	if !isInterfaceType(ET) {
-		return json.Marshal(ary.ptr.Interface())
-	}
-
-	slice, ok := ary.slice()
-	if !ok {
-		return nil, fmt.Errorf("invalid *[]T type: %s", ary.typeName())
-	}
-
-	var vs = make([]json.RawMessage, slice.Len())
-	for i := 0; i < slice.Len(); i++ {
-		v := slice.Index(i)
-		data, err := json.Marshal(typed{Type: ET, Value: v.Interface(), reg: ary.reg})
-		if err != nil {
-			return nil, err
-		}
-		vs[i] = data
-	}
-
-	return json.Marshal(vs)
-}
-
-func (ary *jsonArray) UnmarshalJSON(data []byte) error {
-	ET, ok := ary.elemT()
-	if !ok {
-		return fmt.Errorf("unable to determine of type T in slice *[]T: %s", ary.typeName())
-	}
-
-	if !isInterfaceType(ET) {
-		ptr := reflectkit.PointerOf(reflect.MakeSlice(reflect.SliceOf(ET), 0, 0))
-		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-			return err
-		}
-		ary.ptr.Elem().Set(ptr.Elem())
-		return nil
-	}
-
-	var raws []json.RawMessage
-	if err := json.Unmarshal(data, &raws); err != nil {
-		return err
-	}
-
-	var vs = reflect.MakeSlice(reflect.SliceOf(ET), 0, len(raws))
-	for _, data := range raws {
-		var tv = typed{Type: ET, reg: ary.reg, codec: ary.codec}
-		if err := json.Unmarshal(data, &tv); err != nil {
-			return err
-		}
-
-		var decValue = reflect.ValueOf(tv.Value)
-		if !decValue.CanConvert(ET) {
-			return fmt.Errorf("unable to convert %s to %s", decValue.Type().String(), ET.String())
-		}
-
-		vs = reflect.Append(vs, decValue.Convert(ET))
-	}
-
-	ary.ptr.Elem().Set(vs)
-	return nil
-}
-
-func (ary jsonArray) slice() (reflect.Value, bool) {
-	ptr := ary.ptr
-	if reflectkit.IsNil(ptr) {
-		return reflect.Value{}, false
-	}
-	if !reflectkit.CanElem(ptr) {
-		return reflect.Value{}, false
-	}
-	slice := ptr.Elem()
-	if slice.Kind() != reflect.Slice {
-		return reflect.Value{}, false
-	}
-	return slice, true
-}
-
-func (ary jsonArray) elemT() (reflect.Type, bool) {
-	ptr := ary.ptr
-	if reflectkit.IsNil(ptr) {
-		return nil, false
-	}
-	T := ptr.Type()
-	if T.Kind() != reflect.Pointer {
-		return nil, false
-	}
-	T = T.Elem()
-	if T.Kind() != reflect.Slice {
-		return nil, false
-	}
-	return T.Elem(), true
-}
-
-func (ary jsonArray) typeName() string {
-	T := ary.ptr.Type()
-	if T == nil {
-		return reflect.Invalid.String()
-	}
-	return T.String()
 }
 
 func isInterfaceType(T reflect.Type) bool {
@@ -198,10 +59,9 @@ func (id TypeID) IsZero() bool {
 	return id == zero
 }
 
-var ptrNestingLoop = resilience.FixedDelay{
-	Delay:   time.Nanosecond,
-	Timeout: time.Second,
-}
+// maxPtrNesting caps how many pointer levels newImpl wraps around the
+// identified type while it looks for one that satisfies the target type.
+const maxPtrNesting = 42
 
 func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	var check func(reflect.Type) bool
@@ -217,9 +77,7 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	}
 
 	ptr := reflect.New(identifiedType)
-	ctx := context.Background()
-	// max pointer to pointer nesting level is limited to 42 levels
-	for range resilience.Retries(ctx, ptrNestingLoop) {
+	for range maxPtrNesting {
 		if check(ptr.Type().Elem()) {
 			return ptr, nil
 		}
@@ -228,31 +86,29 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 		ptr = ptrPtr
 	}
 
-	const format = "unable to find implementation for %s with %s"
-	return reflect.Value{}, fmt.Errorf(format, targetType.String(), identifiedType.String())
+	return reflect.Value{}, errNoImplementation(targetType, identifiedType)
 }
 
-// var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()
-
-func isPrimitive(data []byte) bool {
-	return isString(data) ||
-		isNumber(data) ||
-		isBoolean(data)
+func errNoImplementation(targetType, identifiedType reflect.Type) error {
+	return fmt.Errorf("unable to find implementation for %s with %s", targetType.String(), identifiedType.String())
 }
 
-func isString(data []byte) bool {
-	// A sequence of characters, typically used to represent text.
-	// Strings in JSON must be enclosed in double quotes (").
-	return bytes.HasPrefix(data, quote) && bytes.HasSuffix(data, quote)
-}
-
-func isNumber(data []byte) bool {
-	// Represents both integer and floating-point numbers.
-	// JSON does not distinguish between different numeric types (e.g., int, float).
-	// There's no format for infinity or NaN (Not-a-Number) values in JSON.
-	var n json.Number
-	err := json.Unmarshal(data, &n)
-	return err == nil
+// setDecoded stores a decoded value into dst.
+// An invalid value, such as a decoded JSON null, sets dst to its zero value.
+//
+// A value that dst can't hold is reported as an error instead of a reflect.Value#Set panic.
+// For example, an untyped JSON array decodes into []any, which a non-empty interface can't hold.
+// The same goes for a registered $type that doesn't implement the destination interface.
+func setDecoded(dst, value reflect.Value) error {
+	if !value.IsValid() {
+		dst.SetZero()
+		return nil
+	}
+	if !value.Type().AssignableTo(dst.Type()) {
+		return errNoImplementation(dst.Type(), value.Type())
+	}
+	dst.Set(value)
+	return nil
 }
 
 func isObject(data []byte) bool {
@@ -264,19 +120,6 @@ func isObject(data []byte) bool {
 		bytes.HasSuffix(data, curlyBracketClose)
 }
 
-func isArray(data []byte) bool {
-	// An ordered list of values, which can be of any JSON type.
-	// Arrays are enclosed in square brackets ([]).
-	return bytes.HasPrefix(data, bracketOpen) &&
-		bytes.HasSuffix(data, bracketClose)
-}
-
-func isBoolean(data []byte) bool {
-	// Represents a true or false value.
-	return bytes.Equal(data, trueSym) ||
-		bytes.Equal(data, falseSym)
-}
-
 func isNull(data []byte) bool {
 	// Represents a null value, indicating the absence of any value.
 	return bytes.Equal(data, null)
@@ -284,44 +127,47 @@ func isNull(data []byte) bool {
 
 const ErrNotInterfaceType errorkit.Error = "jsonkit.ErrNotInterfaceType"
 
+// ErrUnknownTypeID is the error of decoding data whose $type names no type of a value that the Codec knows.
+// Either no type is registered under the type ID, or the type ID names an interface type, which no value is of.
+const ErrUnknownTypeID errorkit.Error = "jsonkit: unknown $type"
+
+// ErrKeywordCollision is the error of writing a value whose own member is named like a keyword of the Codec,
+// where it would be read back as a member of the type envelope, instead of as a member of the value,
+// like a member named "$type" of a struct held by an `any`, or a "$type" key of a map written as plain JSON, without an envelope.
+// The Codec#TypeKeyword, Codec#ValueKeyword and Codec#MapKeyword name the members of the type envelope otherwise.
+// It is also the error of a Codec where two of these keywords are the same.
+const ErrKeywordCollision errorkit.Error = "jsonkit: keyword collision"
+
 type Interface[I any] struct{ V I }
 
+// MarshalJSON writes the value the interface holds with its $type, the same way as with a Codec, with the package level registry.
 func (i Interface[I]) MarshalJSON() ([]byte, error) {
 	if !isInterfaceType(reflectkit.TypeOf[I]()) {
 		return nil, ErrNotInterfaceType
 	}
-	return json.Marshal(typed{
-		Type:  reflectkit.TypeOf[I](),
-		Value: i.V,
-		Force: true,
-	})
+	return Codec{}.Marshal(i)
 }
 
+// UnmarshalJSON reads the value by its $type, the same way as with a Codec, with the package level registry.
 func (i *Interface[I]) UnmarshalJSON(data []byte) error {
 	if !isInterfaceType(reflectkit.TypeOf[I]()) {
 		return ErrNotInterfaceType
 	}
-	var t = typed{
-		Type:  reflectkit.TypeOf[I](),
-		Value: nil,
-		Force: true,
-	}
-	if err := json.Unmarshal(data, &t); err != nil {
+	// Read into a new Interface, so a failed read keeps the Interface as it was.
+	var got Interface[I]
+	if err := (Codec{}).Unmarshal(data, &got); err != nil {
 		return err
 	}
-	value, err := typeAssert[I](t.Value)
-	if err != nil {
-		return fmt.Errorf("unexpected value unmarshaled (%w): %#v", err, t.Value)
-	}
-	*i = Interface[I]{V: value}
+	*i = got
 	return nil
 }
 
+// typeAssert asserts that a decoded value is a T, following the same rules as setDecoded.
+// A nil value, such as a decoded JSON null, is the zero value of T.
 func typeAssert[T any](v any) (T, error) {
-	value, ok := v.(T)
-	if !ok && !isInterfaceType(reflectkit.TypeOf[T]()) {
-		return *new(T), fmt.Errorf("type assertion failed, expected %s got %T",
-			reflectkit.TypeOf[T]().String(), v)
+	var value T
+	if err := setDecoded(reflect.ValueOf(&value).Elem(), reflect.ValueOf(v)); err != nil {
+		return *new(T), err
 	}
 	return value, nil
 }

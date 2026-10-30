@@ -1,9 +1,14 @@
 package wfcontract
 
 import (
+	"cmp"
 	"context"
+	"fmt"
 	"iter"
+	"slices"
 	"sort"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +17,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wfjson"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
@@ -259,6 +265,14 @@ func MakeEvent(tb testing.TB, processID workflow.ProcessID) workflow.Event {
 				return t.Random.String()
 			}),
 		}
+	}, func() workflow.Event {
+		return workflow.EventError{
+			EventID:       wftest.MakeEventID(t),
+			ProcessID:     processID,
+			Timestamp:     clock.Now().UTC(),
+			Error:         t.Random.Error().Error(),
+			ParticipantID: "participant-id",
+		}
 	})()
 }
 
@@ -393,9 +407,15 @@ func NotificationBroadcast(
 	return s.AsSuite("NotificationBroadcast")
 }
 
-func Definition(mk func(tb testing.TB, c DefinitionContext) workflow.Definition) contract.Contract {
+// Definition is the contract of a workflow.Definition implementation.
+//
+// It asserts that the definition, and the events it records, round-trip through
+// the codec of DefinitionConfig, which is a wfjson codec by default,
+// as the runtime persists both with its codec.
+func Definition(mk func(tb testing.TB, c DefinitionContext) workflow.Definition, opts ...DefinitionOption) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := wftest.LetC(s)
+	o := option.ToConfig(opts)
 
 	processID := let.Var(s, func(t *testcase.T) workflow.ProcessID {
 		id, err := workflow.MakeProcessID()
@@ -403,21 +423,28 @@ func Definition(mk func(tb testing.TB, c DefinitionContext) workflow.Definition)
 		return id
 	})
 
+	subDefs := let.Var(s, func(t *testcase.T) *subDefinitions {
+		return &subDefinitions{}
+	})
+
 	defContext := let.Var(s, func(t *testcase.T) DefinitionContext {
-		return DefinitionContext{
-			tb:        t,
-			processID: processID.Get(t),
-		}
+		return DefinitionContext{subDefinitions: subDefs.Get(t)}
 	})
 
 	def := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return mk(t, defContext.Get(t))
 	})
 
+	s.Test("it round-trips through the codec", func(t *testcase.T) {
+		t.OnFail(func() { t.Log(codecHint) })
+		assertRoundTripDefinition(t, o.Codec, def.Get(t))
+	})
+
 	s.Describe("Execute", func(s *testcase.Spec) {
 		var (
 			Context = let.Var(s, func(t *testcase.T) context.Context {
-				return c.Runtime.Get(t).Context(t.Context())
+				ctx := c.Runtime.Get(t).Context(t.Context())
+				return workflow.ContextWithParticipants(ctx, subDefs.Get(t))
 			})
 			ProcessID = processID.Bind(s)
 		)
@@ -440,39 +467,166 @@ func Definition(mk func(tb testing.TB, c DefinitionContext) workflow.Definition)
 			assert.NoError(t, act(t))
 			assert.ContainsExactly(t, firstPassEvents, c.ProcessEvents(t, ProcessID.Get(t)))
 		})
+
+		s.Then("the events it records round-trip through the codec", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			t.OnFail(func() { t.Log(codecHint) })
+			for _, event := range c.ProcessEvents(t, ProcessID.Get(t)) {
+				assertRoundTripEvent(t, o.Codec, event)
+			}
+		})
+
+		s.Then("its sub definitions are executed within the process of the definition", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			events := c.ProcessEvents(t, ProcessID.Get(t))
+			for _, exec := range subDefs.Get(t).Executions() {
+				recorded := slices.ContainsFunc(events, func(event workflow.Event) bool {
+					call, ok := event.(workflow.EventParticipant)
+					return ok && call.ParticipantID == exec.ID && call.Path.Equal(exec.Path)
+				})
+				assert.True(t, recorded, assert.MessageF(
+					"the sub definition at %q was executed outside of the process of the definition; "+
+						"execute it with the ProcessID that %T was executed with",
+					formatPath(exec.DefinitionPath()), def.Get(t)))
+			}
+		})
+
+		// The contract executes the definition at the root path,
+		// so an empty path is the path of the definition itself.
+		s.Then("its sub definitions are executed below the path of the definition", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			for _, exec := range subDefs.Get(t).Executions() {
+				assert.NotEmpty(t, exec.DefinitionPath(), assert.MessageF(
+					"a sub definition of %T was executed at the path of the definition itself; "+
+						"give it a path segment of its own with workflow.WithName", def.Get(t)))
+			}
+		})
+
+		// The Path is the identity of a step in the event history. Two
+		// executions at the same Path look like a single step to the runtime,
+		// so the replay guards of the second one find the records of the first.
+		//
+		// Only an equal Path is a collision: a sub definition may run within the
+		// Path of another, as For runs its Do within the Path of its Post.
+		s.Then("its sub definitions are executed at distinct paths", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			execs := subDefs.Get(t).Executions()
+			for i, exec := range execs {
+				path := exec.DefinitionPath()
+				for _, prev := range execs[:i] {
+					assert.False(t, path.Equal(prev.DefinitionPath()), assert.MessageF(
+						"two sub definition executions of %T share the path %q; "+
+							"give each sub definition a distinct path segment with workflow.WithName",
+						def.Get(t), formatPath(path)))
+				}
+			}
+		})
 	})
 
 	return s.AsSuite("Definition")
 }
 
+const codecHint = "The runtime persists the definition and the events it records with its workflow.Codec. " +
+	"Register your types on the codec, and pass it to the contract with wfcontract.DefinitionConfig{Codec: codec}."
+
 type DefinitionContext struct {
-	tb        testing.TB
-	processID workflow.ProcessID
+	subDefinitions *subDefinitions
+}
+
+type DefinitionOption option.Option[DefinitionConfig]
+
+type DefinitionConfig struct {
+	// Codec is the codec that the definition and its events must round-trip through.
+	// It defaults to wfjson.NewCodec().
+	Codec workflow.Codec
+}
+
+func (c *DefinitionConfig) Init() {
+	c.Codec = wfjson.NewCodec()
+}
+
+func (c DefinitionConfig) Configure(t *DefinitionConfig) {
+	t.Codec = cmp.Or(c.Codec, t.Codec)
 }
 
 // MakeDefinition can be used in case your definition requires sub definitions as its dependency.
+//
+// The sub definition is a workflow.Execute of a participant that only the contract knows about,
+// so it round-trips through any codec that supports the built-in definitions.
+// The contract asserts that the sub definition is executed within the process of the definition,
+// below the path of the definition, and that no two executions of sub definitions share a path.
 func (dc DefinitionContext) MakeDefinition(tb testing.TB) workflow.Definition {
-	return definitionStub{
-		ExecuteFunc: func(ctx context.Context, id workflow.ProcessID) error {
-			if !dc.processID.IsZero() {
-				assert.Equal(dc.tb, id, dc.processID)
-			} else {
-				assert.NotEmpty(dc.tb, id)
-			}
-			assert.NotEmpty(dc.tb, workflow.CurrentPath(ctx))
-			return nil
-		},
+	return workflow.Execute{Participant: dc.subDefinitions.Make()}
+}
+
+// subDefinitions makes the sub definitions of DefinitionContext#MakeDefinition,
+// and serves as the ParticipantRepository of their participants,
+// which record where they were executed.
+type subDefinitions struct {
+	mutex      sync.Mutex
+	ids        []workflow.ParticipantID
+	executions []subDefinitionExecution
+}
+
+var _ workflow.ParticipantRepository = (*subDefinitions)(nil)
+
+type subDefinitionExecution struct {
+	ID workflow.ParticipantID
+	// Path is the path of the participant call,
+	// which is the path of the sub definition followed by the participant ID.
+	Path workflow.Path
+}
+
+// DefinitionPath is the path that the sub definition was executed at.
+func (e subDefinitionExecution) DefinitionPath() workflow.Path {
+	return e.Path[:len(e.Path)-1]
+}
+
+func (sd *subDefinitions) Make() workflow.ParticipantID {
+	const prefix = "wfcontract::sub-definition"
+	if sd == nil { // a DefinitionContext made outside of the contract
+		return prefix
 	}
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+	id := workflow.ParticipantID(fmt.Sprintf("%s-%d", prefix, len(sd.ids)+1))
+	sd.ids = append(sd.ids, id)
+	return id
 }
 
-type definitionStub struct {
-	ExecuteFunc func(context.Context, workflow.ProcessID) error
+func (sd *subDefinitions) FindByID(_ context.Context, id workflow.ParticipantID) (workflow.Participant, bool, error) {
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+	if !slices.Contains(sd.ids, id) {
+		return workflow.Participant{}, false, nil
+	}
+	return workflow.Participant{ID: id, Func: func(ctx context.Context) error {
+		sd.record(subDefinitionExecution{ID: id, Path: workflow.CurrentPath(ctx)})
+		return nil
+	}}, true, nil
 }
 
-func (definitionStub) Error() string { return "wfcontract.definitionStub" }
+func (sd *subDefinitions) record(exec subDefinitionExecution) {
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+	sd.executions = append(sd.executions, exec)
+}
 
-func (stub definitionStub) Execute(ctx context.Context, pid workflow.ProcessID) error {
-	return stub.ExecuteFunc(ctx, pid)
+func (sd *subDefinitions) Executions() []subDefinitionExecution {
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+	return slices.Clone(sd.executions)
+}
+
+func formatPath(path workflow.Path) string {
+	var names = make([]string, 0, len(path))
+	for _, scope := range path {
+		names = append(names, scope.Name)
+	}
+	return strings.Join(names, "/")
 }
 
 // tbRandom returns the testcase.T's Random source when tb is a testcase TB,

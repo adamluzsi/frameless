@@ -1,0 +1,95 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::b"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::c"
+			}
+		]
+	},
+	"process_id": "01a106ac-6ded-7497-85df-7a3cacc7d90f",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a106ac-6ded-7795-b9df-bd50913aad9c",
+			"process_id": "01a106ac-6ded-7497-85df-7a3cacc7d90f",
+			"timestamp": "2026-10-04T11:28:46.061475Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::b"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::c"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a106ac-6dee-70f9-859f-1ec7e9166e19",
+			"process_id": "01a106ac-6ded-7497-85df-7a3cacc7d90f",
+			"timestamp": "2026-10-04T11:28:46.062062Z",
+			"participant_id": "compat::a",
+			"path": [
+				{
+					"name": "01a106ac-6ded-7795-b9df-bd50913aad9c"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a106ac-6dee-7241-b432-6bf2912f8d89",
+			"process_id": "01a106ac-6ded-7497-85df-7a3cacc7d90f",
+			"timestamp": "2026-10-04T11:28:46.062143Z",
+			"participant_id": "compat::b",
+			"path": [
+				{
+					"name": "01a106ac-6ded-7795-b9df-bd50913aad9c"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::b"
+				}
+			]
+		}
+	]
+}

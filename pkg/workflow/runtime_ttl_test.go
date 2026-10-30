@@ -29,8 +29,8 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 					timecop.Travel(t, replayTime.Get(t))
 					return nil
 				}},
-				workflow.ExecuteParticipant{ID: "first", Output: []workflow.VarName{"value"}},
-				workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
+				workflow.Execute{Participant: "first", Output: []workflow.VarName{"value"}},
+				workflow.Execute{Participant: "second", Input: []workflow.VarName{"value"}},
 			}
 		})
 	)
@@ -184,9 +184,14 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 				return rt
 			})
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.If{
-					Cond: workflow.ExecuteCondition{ID: "choose"},
-					Then: workflow.SetVar{Name: "chosen", Value: true},
+				// chosen := false
+				// if choose() { chosen = true }
+				return workflow.Sequence{
+					workflow.SetVar{Name: "chosen", Value: false},
+					workflow.If{
+						Cond: workflow.Execute{Condition: "choose"},
+						Then: workflow.SetVar{Name: "chosen", Value: true},
+					},
 				}
 			})
 
@@ -207,15 +212,15 @@ func specRuntimeTTL(s *testcase.Spec, runtime testcase.Var[workflow.Runtime]) {
 					testcase.Append(t, calls, "first")
 					return workflow.Sequence{
 						workflow.SetVar{Name: "value", Value: value.Get(t)},
-						workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
-						workflow.ExecuteParticipant{ID: "second", Input: []workflow.VarName{"value"}},
+						workflow.Execute{Participant: "second", Input: []workflow.VarName{"value"}},
+						workflow.Execute{Participant: "second", Input: []workflow.VarName{"value"}},
 					}
 				}
 				return rt
 			})
 			ttl.LetValue(s, time.Minute)
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: "first"}
+				return workflow.Execute{Participant: "first"}
 			})
 
 			s.Then("finishes the follow-up before yielding so replay cannot skip unfinished work", func(t *testcase.T) {

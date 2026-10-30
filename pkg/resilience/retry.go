@@ -4,7 +4,7 @@ import (
 	"context"
 	"iter"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"time"
 
@@ -195,10 +195,8 @@ func (rs Jitter) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
 	}
 }
 
-var jitterRandom = rand.New(rand.NewSource(time.Now().Unix()))
-
 func (rs Jitter) waitTime() time.Duration {
-	return time.Duration(jitterRandom.Intn(int(rs.getMaxWaitTime()) + 1))
+	return rand.N(rs.getMaxWaitTime() + 1)
 }
 
 func (rs Jitter) getMaxWaitTime() time.Duration {

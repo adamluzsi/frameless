@@ -73,7 +73,10 @@ func (r *WorkflowEventRepository) Create(ctx context.Context, ptr *workflow.Even
 		return err
 	}
 	event := *ptr
-	data, err := r.codec().Marshal(event)
+	// Like the events are read back into a workflow.Event, they are written as a workflow.Event holds them,
+	// so a codec which writes the type of a value where an interface holds it, like wfjson, writes it.
+	// It is given through a pointer rather than a jsonkit.Interface, as r.Codec can be any workflow.Codec.
+	data, err := r.codec().Marshal(ptr)
 	if err != nil {
 		return fmt.Errorf("marshal workflow event: %w", err)
 	}

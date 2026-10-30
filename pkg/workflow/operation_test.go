@@ -177,8 +177,7 @@ func TestIncrement(t *testing.T) {
 		//
 		// Go's ++ operator is defined for every numeric type, so the increment
 		// operator is specified against that same set rather than against int
-		// alone. float64 in particular is not academic: a value that has been
-		// through a JSON-backed event repository comes back as a float64.
+		// alone.
 		var whenVariableIs = func(desc string, val func(t *testcase.T) any, next func(v any) any) {
 			s.When("the variable holds a "+desc, func(s *testcase.Spec) {
 				value.Let(s, func(t *testcase.T) any { return val(t) })

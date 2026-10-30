@@ -3,3 +3,6 @@
 *_mock_test.go
 
 pkg/jsonkit/jsontoken/testdata/spike/
+
+# `go build ./...` in an example module writes the binary of its only main package.
+/examples/cli-app/mycli

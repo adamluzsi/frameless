@@ -3,13 +3,21 @@ package jsontoken_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
+	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/testing/testent"
@@ -521,7 +529,277 @@ func TestScanner(t *testing.T) {
 				})
 			})
 		})
+
+		s.When("the input has content after the JSON value", func(s *testcase.Spec) {
+			value := let.Var(s, func(t *testcase.T) string {
+				return random.Pick(t.Random, mapkit.Values(Samples, sort.Strings)...)
+			})
+			extra := let.Var(s, func(t *testcase.T) string {
+				return " " + t.Random.StringNWithCharset(t.Random.IntBetween(1, 16), random.CharsetAlpha()) + "é"
+			})
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				return bufio.NewReader(strings.NewReader(value.Get(t) + extra.Get(t)))
+			})
+
+			s.Then("the content after the JSON value is left unread in the input", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal(t, extra.Get(t), readRemainingRunes(t, input.Get(t)))
+			})
+
+			s.And("the input is seekable", func(s *testcase.Spec) {
+				input.Let(s, func(t *testcase.T) jsontoken.Input {
+					return strings.NewReader(value.Get(t) + extra.Get(t))
+				})
+
+				s.Then("the content after the JSON value is left unread in the input", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, extra.Get(t), readRemainingRunes(t, input.Get(t)))
+				})
+			})
+
+			s.And("the input is an io.ByteScanner", func(s *testcase.Spec) {
+				input.Let(s, func(t *testcase.T) jsontoken.Input {
+					return bytes.NewBufferString(value.Get(t) + extra.Get(t))
+				})
+
+				s.Then("the content after the JSON value is left unread in the input", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, extra.Get(t), readRemainingRunes(t, input.Get(t)))
+				})
+			})
+
+			s.And("the input only implements the rune reading of jsontoken.Input", func(s *testcase.Spec) {
+				input.Let(s, func(t *testcase.T) jsontoken.Input {
+					return runeOnlyInput{in: strings.NewReader(value.Get(t) + extra.Get(t))}
+				})
+
+				s.Then("the content after the JSON value is left unread in the input", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					assert.Equal(t, extra.Get(t), readRemainingRunes(t, input.Get(t)))
+				})
+			})
+		})
+
+		s.When("the input is empty", func(s *testcase.Spec) {
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				return bufio.NewReader(strings.NewReader(random.Pick(t.Random, "", " ", "\n\t ")))
+			})
+
+			s.Then("it returns without an error", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the JSON value is a number that ends with the input", func(s *testcase.Spec) {
+			number := let.Var(s, func(t *testcase.T) string {
+				return mustMarshal[string](t.Random.Float64() * float64(t.Random.IntBetween(-1000, 1000)))
+			})
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				return bufio.NewReader(strings.NewReader(number.Get(t)))
+			})
+			gotData := let.VarOf[[]byte](s, nil)
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				return []jsontoken.Selector{{
+					Path: jsontoken.Path{jsontoken.KindNumber},
+					Func: func(data []byte) error {
+						gotData.Set(t, data)
+						return nil
+					},
+				}}
+			})
+
+			s.Then("the selector receives the number", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal(t, number.Get(t), string(gotData.Get(t)))
+			})
+		})
+
+		s.When("an object member name contains escape sequences", func(s *testcase.Spec) {
+			name := let.Var(s, func(t *testcase.T) string {
+				return t.Random.StringNWithCharset(t.Random.IntBetween(1, 8), random.CharsetAlpha())
+			})
+			value := let.Var(s, func(t *testcase.T) string {
+				return mustMarshal[string](t.Random.Int())
+			})
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				var escapedName strings.Builder
+				for _, r := range name.Get(t) {
+					fmt.Fprintf(&escapedName, `\u%04x`, r)
+				}
+				data := fmt.Sprintf(`{"%s": %s}`, escapedName.String(), value.Get(t))
+				return bufio.NewReader(strings.NewReader(data))
+			})
+			gotData := let.VarOf[[]byte](s, nil)
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				return []jsontoken.Selector{{
+					Path: jsontoken.Path{jsontoken.KindObject, jsontoken.KindValue{Name: pointer.Of(name.Get(t))}},
+					Func: func(data []byte) error {
+						gotData.Set(t, data)
+						return nil
+					},
+				}}
+			})
+
+			s.Then("the member value can be selected with the decoded name", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal(t, value.Get(t), string(gotData.Get(t)))
+			})
+		})
+
+		s.When("the input is malformed", func(s *testcase.Spec) {
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				sample := random.Pick(t.Random, mapkit.Values(InvalidSamples, sort.Strings)...)
+				return bufio.NewReader(strings.NewReader(sample))
+			})
+
+			s.Then("it fails with a lexing error that wraps the jsontext syntax error", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, jsontoken.ErrMalformed)
+
+				var lexErr jsontoken.LexingError
+				assert.True(t, errors.As(err, &lexErr))
+				assert.NotEmpty(t, lexErr.Path)
+
+				var syntaxErr *jsontext.SyntacticError
+				assert.True(t, errors.As(err, &syntaxErr))
+			})
+
+			s.And("a selector is reading the malformed value", func(s *testcase.Spec) {
+				onErr := let.VarOf[error](s, nil)
+				selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+					return []jsontoken.Selector{{
+						Path: jsontoken.Path{},
+						On: func(src io.Reader) error {
+							_, err := io.ReadAll(src)
+							onErr.Set(t, err)
+							return err
+						},
+					}}
+				})
+
+				s.Then("the selector's reader fails with the lexing error, which is reported only once", func(t *testcase.T) {
+					err := act(t)
+					assert.ErrorIs(t, onErr.Get(t), jsontoken.ErrMalformed)
+
+					var lexErr jsontoken.LexingError
+					assert.True(t, errors.As(err, &lexErr))
+					assert.Equal(t, lexErr.Error(), err.Error())
+				})
+			})
+		})
+
+		s.When("the input ends before the JSON value is complete", func(s *testcase.Spec) {
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				sample := random.Pick(t.Random, `[1, 2 `, `{"foo": `, `{"foo"`, `"foo`, `[[]`, `tru`)
+				return bufio.NewReader(strings.NewReader(sample))
+			})
+
+			s.Then("it fails with an unexpected EOF lexing error", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, jsontoken.ErrMalformed)
+				assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			})
+		})
+
+		s.When("a selector fails", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				return bufio.NewReader(strings.NewReader(jsonArrayWithInt(t.Random, t.Random.IntBetween(1, 7))))
+			})
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				sel := jsontoken.Selector{Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}}}
+				if t.Random.Bool() {
+					sel.Func = func(data []byte) error { return expErr.Get(t) }
+				} else {
+					sel.On = func(src io.Reader) error { return expErr.Get(t) }
+				}
+				return []jsontoken.Selector{sel}
+			})
+
+			s.Then("the selector's error is returned", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), expErr.Get(t))
+			})
+		})
+
+		s.When("the input waits for the Selector.On reader before sending the rest of the value", func(s *testcase.Spec) {
+			// Selector.On readers sharing the same Path are fed through iokit.LockstepReaders,
+			// which only hands over data once its buffer window is full, or the input is done.
+			scanner.Let(s, func(t *testcase.T) *jsontoken.Scanner {
+				return &jsontoken.Scanner{Selectors: selectors.Get(t)}
+			})
+			received := let.Var(s, func(t *testcase.T) chan struct{} {
+				return make(chan struct{})
+			})
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				pr, pw := io.Pipe()
+				t.Defer(pr.Close)
+				go func() {
+					if _, err := io.WriteString(pw, `[{"foo":"bar",`); err != nil {
+						return
+					}
+					select {
+					case <-received.Get(t):
+					case <-time.After(3 * time.Second):
+						pw.CloseWithError(errors.New("the Selector.On reader didn't receive the already scanned data"))
+						return
+					}
+					_, _ = io.WriteString(pw, `"baz":"qux"}]`)
+					_ = pw.Close()
+				}()
+				return bufio.NewReader(pr)
+			})
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				var once sync.Once
+				return []jsontoken.Selector{{
+					Path: random.Pick(t.Random,
+						jsontoken.Path{},
+						jsontoken.Path{jsontoken.KindArray},
+						jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
+					),
+					On: func(src io.Reader) error {
+						var got []byte
+						buf := make([]byte, 8)
+						for {
+							n, err := src.Read(buf)
+							got = append(got, buf[:n]...)
+							if bytes.Contains(got, []byte(`"bar"`)) {
+								once.Do(func() { close(received.Get(t)) })
+							}
+							if errors.Is(err, io.EOF) {
+								return nil
+							}
+							if err != nil {
+								return err
+							}
+						}
+					},
+				}}
+			})
+
+			s.Then("the reader receives the scanned data without waiting for the rest of the input", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
 	})
+}
+
+// runeOnlyInput hides every other method of the underlying reader,
+// so the Scanner can only use ReadRune and UnreadRune.
+type runeOnlyInput struct{ in jsontoken.Input }
+
+func (i runeOnlyInput) ReadRune() (rune, int, error) { return i.in.ReadRune() }
+func (i runeOnlyInput) UnreadRune() error            { return i.in.UnreadRune() }
+
+func readRemainingRunes(tb testing.TB, in jsontoken.Input) string {
+	var out strings.Builder
+	for {
+		r, _, err := in.ReadRune()
+		if errors.Is(err, io.EOF) {
+			return out.String()
+		}
+		assert.Must(tb).NoError(err)
+		out.WriteRune(r)
+	}
 }
 
 func TestScanner_ScanFrom(t *testing.T) {
@@ -608,24 +886,25 @@ func FuzzScanner(f *testing.F) {
 	for _, sample := range ArraySamples {
 		f.Add(sample)
 	}
+	f.Add("\xa5") // invalid UTF-8 can't survive the input correction's json.Marshal
+	f.Add("0 ")   // trailing whitespace is left unread
 	f.Fuzz(func(t *testing.T, in string) {
 		if !json.Valid([]byte(in)) { // correct fuzzing input
 			nin := mustMarshal[[]byte](in)
 			assert.True(t, json.Valid(nin))
-			var got string
-			assert.NoError(t, json.Unmarshal(nin, &got))
-			assert.Equal(t, in, got)
 			in = string(nin)
 		}
 		t.Log(in)
 
 		buf := bufio.NewReader(strings.NewReader(in))
-		buf2 := bufio.NewReader(strings.NewReader(in))
-		bs, _ := io.ReadAll(buf2)
-		assert.Equal(t, string(bs), in)
 		out, err := Scan(buf)
 		assert.NoError(t, err)
-		assert.Equal(t, in, string(out))
+		rest, err := io.ReadAll(buf)
+		assert.NoError(t, err)
+		// the scanned value keeps its leading whitespace,
+		// while the trailing whitespace is left unread for the caller.
+		assert.Equal(t, strings.TrimRight(in, " \t\r\n"), string(out))
+		assert.Equal(t, in, string(out)+string(rest))
 	})
 }
 
@@ -712,14 +991,6 @@ func Benchmark_arrayScan(b *testing.B) {
 	input, err := json.Marshal(exp)
 	assert.NoError(b, err)
 
-	/*
-		$ go test -run x -bench .
-		BenchmarkScan/scan_with_json.Valid-16         	     330	   3381088 ns/op
-		BenchmarkScan/jsontoken.Scan-16               	   21250	     56265 ns/op
-		PASS
-		ok  	go.llib.dev/frameless/pkg/jsonkit/internal/jsontoken	4.666s
-	*/
-
 	var jsonValidScan = func(data []byte) ([]byte, error) {
 		var out []byte
 		for _, b := range data {
@@ -734,57 +1005,63 @@ func Benchmark_arrayScan(b *testing.B) {
 		return out, nil
 	}
 
+	// The results are only verified after the measured loop,
+	// so the benchmarks don't measure the assertions.
+
 	b.Run("scan with json.Valid", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			got, err := jsonValidScan(input)
-			assert.NoError(b, err)
-			assert.Equal(b, got, input)
+		b.SetBytes(int64(len(input)))
+		b.ReportAllocs()
+		var got []byte
+		for b.Loop() {
+			var err error
+			if got, err = jsonValidScan(input); err != nil {
+				b.Fatal(err)
+			}
 		}
+		assert.Equal(b, input, got)
 	})
 
 	b.Run("jsontoken.Scan", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			b.StopTimer()
-			buf := bufio.NewReader(bytes.NewReader(input))
-			b.StartTimer()
-
-			got, err := Scan(buf)
-			assert.NoError(b, err)
-			assert.Equal(b, got, input)
-
-			b.StopTimer()
-			assert.Equal(b, input, got)
-			b.StartTimer()
+		b.SetBytes(int64(len(input)))
+		b.ReportAllocs()
+		var got json.RawMessage
+		for b.Loop() {
+			var err error
+			if got, err = Scan(bufio.NewReader(bytes.NewReader(input))); err != nil {
+				b.Fatal(err)
+			}
 		}
+		assert.Equal(b, got, input)
 	})
 
 	b.Run("json.Decoder", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			b.StopTimer()
+		b.SetBytes(int64(len(input)))
+		b.ReportAllocs()
+		var got []json.RawMessage
+		for b.Loop() {
 			dec := json.NewDecoder(bytes.NewReader(input))
-			b.StartTimer()
 
 			// read open bracket
-			_, err := dec.Token()
-			assert.NoError(b, err)
+			if _, err := dec.Token(); err != nil {
+				b.Fatal(err)
+			}
 
-			var got []json.RawMessage
+			got = nil
 			// while the array contains values
 			for dec.More() {
 				var m json.RawMessage
-				assert.NoError(b, dec.Decode(&m))
+				if err := dec.Decode(&m); err != nil {
+					b.Fatal(err)
+				}
 				got = append(got, m)
 			}
 
 			// read closing bracket
-			_, err = dec.Token()
-			assert.NoError(b, err)
-
-			b.StopTimer()
-			assert.Equal(b, len(exp), len(got))
-			b.StartTimer()
+			if _, err := dec.Token(); err != nil {
+				b.Fatal(err)
+			}
 		}
-
+		assert.Equal(b, len(exp), len(got))
 	})
 }
 
@@ -1236,4 +1513,150 @@ func TestArrayIterator_smoke(t *testing.T) {
 	assert.NoError(t, i.Close())
 
 	assert.Equal(t, exp, got)
+}
+
+func TestArrayIterator(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	input := let.Var(s, func(t *testcase.T) string {
+		return jsonArrayWithAlternatingTypes(t.Random)
+	})
+	subject := let.Var(s, func(t *testcase.T) *jsontoken.ArrayIterator {
+		return &jsontoken.ArrayIterator{
+			Context: context.Background(),
+			Input:   strings.NewReader(input.Get(t)),
+		}
+	})
+
+	act := func(t *testcase.T) ([]json.RawMessage, error) {
+		var vs []json.RawMessage
+		for subject.Get(t).Next() {
+			vs = append(vs, subject.Get(t).Value())
+		}
+		return vs, subject.Get(t).Err()
+	}
+
+	s.Then("it yields the raw JSON of each array element", func(t *testcase.T) {
+		var exp []json.RawMessage
+		assert.Must(t).NoError(json.Unmarshal([]byte(input.Get(t)), &exp))
+
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+	})
+
+	s.When("an array element is malformed", func(s *testcase.Spec) {
+		input.Let(s, func(t *testcase.T) string {
+			return random.Pick(t.Random, mapkit.Values(InvalidSamples, sort.Strings)...)
+		})
+
+		s.Then("it fails with a lexing error", func(t *testcase.T) {
+			_, err := act(t)
+			assert.ErrorIs(t, err, jsontoken.ErrMalformed)
+
+			var lexErr jsontoken.LexingError
+			assert.True(t, errors.As(err, &lexErr))
+		})
+	})
+
+	s.When("the input is not a JSON array", func(s *testcase.Spec) {
+		input.Let(s, func(t *testcase.T) string {
+			return random.Pick(t.Random, `{}`, `"foo"`, `42`, `null`, `true`)
+		})
+
+		s.Then("it fails with a lexing error", func(t *testcase.T) {
+			got, err := act(t)
+			assert.Empty(t, got)
+			assert.ErrorIs(t, err, jsontoken.ErrMalformed)
+
+			var lexErr jsontoken.LexingError
+			assert.True(t, errors.As(err, &lexErr))
+		})
+	})
+}
+
+func TestTrimSpace(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	input := let.Var(s, func(t *testcase.T) []byte {
+		return []byte(" { \"foo\" :\n\t[ 1 , 2 ]\r\n} ")
+	})
+	act := func(t *testcase.T) []byte {
+		return jsontoken.TrimSpace(input.Get(t))
+	}
+
+	s.Then("the insignificant whitespaces are removed", func(t *testcase.T) {
+		assert.Equal(t, `{"foo":[1,2]}`, string(act(t)))
+	})
+
+	s.When("a string contains whitespaces and escaped quotes", func(s *testcase.Spec) {
+		str := let.Var(s, func(t *testcase.T) string {
+			word := func() string { return t.Random.StringNWithCharset(t.Random.IntBetween(1, 8), random.CharsetAlpha()) }
+			return fmt.Sprintf(` %s " %s \ %s  `, word(), word(), word())
+		})
+		input.Let(s, func(t *testcase.T) []byte {
+			return []byte(fmt.Sprintf(`[ %s , %s ]`, mustMarshal[string](str.Get(t)), mustMarshal[string](str.Get(t))))
+		})
+
+		s.Then("the string content is kept intact", func(t *testcase.T) {
+			var got []string
+			assert.Must(t).NoError(json.Unmarshal(act(t), &got))
+			assert.Equal(t, []string{str.Get(t), str.Get(t)}, got)
+		})
+	})
+
+	s.When("a string ends with an escaped backslash", func(s *testcase.Spec) {
+		input.Let(s, func(t *testcase.T) []byte {
+			return []byte(`[ "\\" , " \\\" " , "\\\\" ]`)
+		})
+
+		s.Then("the string is closed by the quote after it", func(t *testcase.T) {
+			assert.Equal(t, `["\\"," \\\" ","\\\\"]`, string(act(t)))
+		})
+	})
+}
+
+func TestLexingError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	cause := let.Error(s)
+	subject := let.Var(s, func(t *testcase.T) jsontoken.LexingError {
+		return jsontoken.LexingError{
+			Message: t.Random.StringNWithCharset(8, random.CharsetAlpha()),
+			Path:    jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{Index: pointer.Of(t.Random.IntBetween(0, 42))}},
+			Err:     cause.Get(t),
+		}
+	})
+
+	s.Test("it is an ErrMalformed", func(t *testcase.T) {
+		assert.ErrorIs(t, subject.Get(t), jsontoken.ErrMalformed)
+	})
+
+	s.Test("it wraps its cause", func(t *testcase.T) {
+		assert.ErrorIs(t, subject.Get(t), cause.Get(t))
+	})
+
+	s.Describe("#Error", func(s *testcase.Spec) {
+		act := func(t *testcase.T) string {
+			return subject.Get(t).Error()
+		}
+
+		s.Then("it describes the error with its message and path", func(t *testcase.T) {
+			got := act(t)
+			assert.Contains(t, got, subject.Get(t).Message)
+			assert.Contains(t, got, subject.Get(t).Path.String())
+		})
+
+		s.When("the message is empty", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) jsontoken.LexingError {
+				err := subject.Super(t)
+				err.Message = ""
+				return err
+			})
+
+			s.Then("the cause's message is used", func(t *testcase.T) {
+				assert.Contains(t, act(t), cause.Get(t).Error())
+			})
+		})
+	})
 }

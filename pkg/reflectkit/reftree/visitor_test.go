@@ -2327,6 +2327,84 @@ func TestRecursionGuard(t *testing.T) {
 		})
 	})
 
+	s.Describe("#Forget", func(s *testcase.Spec) {
+		var (
+			ref = let.Var(s, func(t *testcase.T) *testent.Foo {
+				return pointer.Of(testent.MakeFoo(t))
+			})
+			value = let.Var(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(ref.Get(t))
+			})
+			othValue = let.Var(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(pointer.Of(testent.MakeFoo(t)))
+			})
+		)
+		act := let.Act0(func(t *testcase.T) {
+			subject.Get(t).Forget(value.Get(t))
+		})
+
+		s.Then("a value which was not seen yet stays not seen", func(t *testcase.T) {
+			act(t)
+
+			assert.False(t, subject.Get(t).Seen(value.Get(t)))
+		})
+
+		s.When("the value was seen already", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.False(t, subject.Get(t).Seen(reflect.ValueOf(ref.Get(t))))
+			})
+
+			s.Then("it is reported as not yet seen again", func(t *testcase.T) {
+				act(t)
+
+				assert.False(t, subject.Get(t).Seen(value.Get(t)),
+					"a guard which keeps only the references of the current path,",
+					"like the one of an encoder, which writes a shared reference each time it is referenced,",
+					"forgets a reference, once it stepped out of it")
+			})
+
+			s.Then("it is remembered again on its next visit", func(t *testcase.T) {
+				act(t)
+
+				assert.False(t, subject.Get(t).Seen(value.Get(t)))
+				assert.True(t, subject.Get(t).Seen(value.Get(t)))
+			})
+
+			s.And("an other value was seen as well", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					assert.False(t, subject.Get(t).Seen(othValue.Get(t)))
+				})
+
+				s.Then("the other value is still reported as seen", func(t *testcase.T) {
+					act(t)
+
+					assert.True(t, subject.Get(t).Seen(othValue.Get(t)))
+				})
+			})
+		})
+
+		s.When("the value is invalid", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.Value{}
+			})
+
+			s.Then("it is a no-op", func(t *testcase.T) {
+				assert.NotPanic(t, func() { act(t) })
+			})
+		})
+
+		s.When("the value is not able to take part in a reference cycle", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(testent.MakeFoo(t))
+			})
+
+			s.Then("it is a no-op", func(t *testcase.T) {
+				assert.NotPanic(t, func() { act(t) })
+				assert.False(t, subject.Get(t).Seen(value.Get(t)))
+			})
+		})
+	})
+
 	s.Describe("#Clone", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) *reftree.RecursionGuard {
 			return subject.Get(t).Clone()

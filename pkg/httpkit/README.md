@@ -24,21 +24,16 @@ RESTHandler implements an http.Handler that adheres to the Representational Stat
 func example() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RESTHandler[X, XID]{
-		Create:  fooRepository.Create,
-		Index:   fooRepository.FindAll,
-		Show:    fooRepository.FindByID,
-		Update:  fooRepository.Update,
-		Destroy: fooRepository.DeleteByID,
-
-		Mapping: dtokit.Mapping[X, XDTO]{}, 
+		Create:     fooRepository.Create,
+		Index:      fooRepository.FindAll,
+		Show:       fooRepository.FindByID,
+		Update:     fooRepository.Update,
+		Destroy:    fooRepository.DeleteByID,
+		DestroyAll: fooRepository.DeleteAll,
 
 		MediaType: mediatype.JSON, // we can set the preferred default media type in case the requester don't specify it.
 
-		MediaTypeMappings: httpkit.MediaTypeMappings[X]{ // we can populate this with any media type we want
-			mediatype.JSON: dtokit.Mapping[X, XJSONDTO]{},
-		},
-
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{ // we can populate with any custom codec for any custom media type
+		Codecs: httpkit.Codecs{ // we can populate with any custom codec for any custom media type
 			mediatype.JSON: &jsonkit.Codec{},
 		},
 	}
@@ -47,6 +42,10 @@ func example() {
 	httpkit.Mount(mux, "/foos", fooRestfulResource)
 }
 ```
+
+The codec of a media type defines the wire format of the entity.
+If the API should expose a DTO rather than the entity itself,
+put the mapping into the codec of that media type, for example with `dtokit.Map` before marshalling and after unmarshalling.
 
 #### Automatic Resource Relationships
 
@@ -76,6 +75,7 @@ This approach leverages entity relationships to ensure consistency.
 For example, the UserID field in a Note can be automatically set to match the :user_id value specified in the path.
 
 When a RESTHandler acts as a subresource but is not configured as ScopeAware, it restricts the results to entities related to the parent entity in the scope. For instance, accessing /users/42/notes will return only the Notes associated with the User whose ID is 42.
+The same scope applies to `DELETE /users/42/notes`: it removes only the Notes of User 42, one by one with `Destroy`, and never calls the unscoped `DestroyAll`.
 
 This enhancement ensures that entity relationships are enforced directly within the API structure, promoting both clarity and reliability.
 

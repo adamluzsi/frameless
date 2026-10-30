@@ -3,6 +3,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 )
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -12,7 +14,7 @@ type Sequence []Definition
 
 var _ Definition = (*Sequence)(nil)
 
-func (Sequence) Error() string { return "workflow::sequence" }
+func (Sequence) Error() string { return "workflow:sequence" }
 
 func (seq Sequence) Execute(ctx context.Context, pid ProcessID) error {
 	ctx = WithName(ctx, "sequence")
@@ -30,6 +32,30 @@ func (seq Sequence) Execute(ctx context.Context, pid ProcessID) error {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // If executes Then when Cond is true, Else otherwise.
+//
+// The variables of an If are scoped the way Go scopes them.
+// The If is a variable scope of its own, where Cond is evaluated,
+// and Then and Else are variable scopes nested in it, the blocks of the two branches:
+//
+//	x := "outer"
+//	if v := cond(); v { // what Cond declares belongs to the If, so both branches see it
+//		y := "then"     // y belongs to Then
+//		x = "then"      // x is declared outside of the If, so the assignment writes through
+//	} else {
+//		z := "else"     // z belongs to Else
+//		x = "else"
+//	}
+//	// neither v, y nor z is visible here, and x holds what the taken branch assigned
+//
+// So a step in a branch declares into the branch, unless the variable is already
+// visible from there, and DeclareVar shadows an outer variable within the branch only.
+// To keep a value the branch produces, declare its variable before the If.
+//
+// Keeping the same branch on replay is the responsibility of the Condition.
+// Execute (with ConditionID) and wftemplate.Condition record their answer at the `if/<ID>` path,
+// so a replay takes the same branch even if the variables they read have changed since.
+// A custom Condition can do the same by answering through Execute#EvaluateWith;
+// otherwise it is asked again on every replay.
 type If struct {
 	Cond Condition
 	Then Definition
@@ -38,10 +64,10 @@ type If struct {
 
 var _ Definition = (*If)(nil)
 
-func (If) Error() string { return "workflow::if" }
+func (If) Error() string { return "workflow:if" }
 
 func (d If) Execute(ctx context.Context, pid ProcessID) error {
-	ctx = WithName(ctx, "if")
+	ctx = WithVarScope(ctx, "if")
 	if d.Cond == nil {
 		return ErrFatal.F("missing %s condition", d.Error())
 	}
@@ -51,11 +77,11 @@ func (d If) Execute(ctx context.Context, pid ProcessID) error {
 	}
 	if ok {
 		if d.Then != nil {
-			return d.Then.Execute(WithName(ctx, "then"), pid)
+			return d.Then.Execute(WithVarScope(ctx, "then"), pid)
 		}
 	} else {
 		if d.Else != nil {
-			return d.Else.Execute(WithName(ctx, "else"), pid)
+			return d.Else.Execute(WithVarScope(ctx, "else"), pid)
 		}
 	}
 	return nil
@@ -64,7 +90,18 @@ func (d If) Execute(ctx context.Context, pid ProcessID) error {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Sleep pauses execution until its While condition is false or its Until
-// condition is true. It signals suspension by returning the Sleep error.
+// condition is true. It signals suspension by returning Suspend.
+// A Sleep with neither condition never wakes up.
+//
+// Every attempt asks the condition anew, under the second the attempt happens in.
+// A condition that records its answers, like Execute or wftemplate.Condition,
+// records them per attempt second, so an answer that kept the Sleep asleep
+// is not replayed to the attempts of a later second.
+// Attempts within the same second share those answers, and under a frozen clock the Sleep doesn't wake up.
+//
+// The wake-up is recorded as an EventSleepCompleted at the position of the Sleep.
+// A replay passes a Sleep that already woke up without asking its condition again,
+// even if the answer of its condition has changed since.
 type Sleep struct {
 	While Condition
 	Until Condition
@@ -74,34 +111,78 @@ var _ Definition = Sleep{}
 
 func (d Sleep) Execute(ctx context.Context, pid ProcessID) error {
 	ctx = WithName(ctx, "sleep")
-	var Continue bool
+	var (
+		cond   Condition
+		wakeUp bool // the answer of cond that lets the Sleep wake up
+	)
 	switch {
 	case d.While != nil:
-		ok, err := d.While.Evaluate(ctx, pid)
-		if err != nil {
-			return err
-		}
-		Continue = !ok
+		cond, wakeUp = d.While, false
 	case d.Until != nil:
-		ok, err := d.Until.Evaluate(ctx, pid)
+		cond, wakeUp = d.Until, true
+	default:
+		return Suspend{}
+	}
+	repo, err := LookupEventsRepository(ctx)
+	if err != nil {
+		return err
+	}
+	path := CurrentPath(ctx)
+	for event, err := range repo.FindByProcessID(ctx, pid) {
 		if err != nil {
 			return err
 		}
-		Continue = ok
+		if completed, ok := event.(EventSleepCompleted); ok && completed.Path.Equal(path) {
+			return nil
+		}
 	}
-	if Continue {
-		return nil // OK
+	// A suspension commits what the attempt recorded,
+	// so an attempt at a fixed path would replay the answer that kept the Sleep asleep for ever.
+	attempt := WithName(ctx, strconv.FormatInt(timeNow().Unix(), 10))
+	answer, err := cond.Evaluate(attempt, pid)
+	if err != nil {
+		return err
 	}
-	return Suspend{}
+	if answer != wakeUp {
+		return Suspend{}
+	}
+	eventID, err := MakeEventID()
+	if err != nil {
+		return err
+	}
+	var event Event = EventSleepCompleted{
+		EventID:   eventID,
+		ProcessID: pid,
+		Timestamp: timeNow(),
+		Path:      path,
+	}
+	return repo.Create(ctx, &event)
 }
 
-func (d Sleep) Error() string { return "workflow::sleep" }
+func (d Sleep) Error() string { return "workflow:sleep" }
+
+// EventSleepCompleted records that the Sleep at Path woke up.
+// A Sleep with a recorded completion is passed on replay, without asking its condition again.
+type EventSleepCompleted struct {
+	EventID   EventID `ext:"id"`
+	ProcessID ProcessID
+	Timestamp time.Time
+
+	Path Path
+}
+
+var _ Event = EventSleepCompleted{}
+
+func (e EventSleepCompleted) EventType() EventType    { return "workflow:sleep:completed" }
+func (e EventSleepCompleted) GetEventID() EventID     { return e.EventID }
+func (e EventSleepCompleted) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventSleepCompleted) GetTimestamp() time.Time { return e.Timestamp }
 
 type Suspend struct{}
 
 var _ RuntimeSignal = Suspend{}
 
-func (sig Suspend) Error() string { return "workflow::suspend" }
+func (sig Suspend) Error() string { return "workflow:suspend" }
 
 func (sig Suspend) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) error {
 	return sig

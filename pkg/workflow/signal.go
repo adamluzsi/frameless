@@ -13,7 +13,7 @@ type Complete struct{}
 
 var _ RuntimeSignal = Complete{}
 
-func (sig Complete) Error() string { return "workflow::complete" }
+func (sig Complete) Error() string { return "workflow:complete" }
 
 func (sig Complete) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) error {
 	for event, err := range rt.Events.FindByProcessID(ctx, id) {
@@ -26,6 +26,9 @@ func (sig Complete) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pro
 		if _, ok := event.(EventTerminated); ok {
 			return nil
 		}
+	}
+	if err := runDeferred(ctx, rt, id); err != nil {
+		return err
 	}
 	var eventID, err = MakeEventID()
 	if err != nil {
@@ -77,7 +80,7 @@ type EventCompleted struct {
 
 var _ Event = (*EventCompleted)(nil)
 
-func (EventCompleted) EventType() EventType      { return "completed" }
+func (EventCompleted) EventType() EventType      { return "workflow:completed" }
 func (e EventCompleted) GetEventID() EventID     { return e.EventID }
 func (e EventCompleted) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventCompleted) GetTimestamp() time.Time { return e.Timestamp }
@@ -88,7 +91,7 @@ type Terminate struct{}
 
 var _ RuntimeSignal = Terminate{}
 
-func (sig Terminate) Error() string { return "workflow::terminate" }
+func (sig Terminate) Error() string { return "workflow:terminate" }
 
 func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
 	return sig.sigTERM(ctx, rt, id)
@@ -135,26 +138,41 @@ func (sig Terminate) sigTERM(ctx context.Context, rt Runtime, id ProcessID) (rer
 	return sig.terminate(lockContext, rt, id)
 }
 
-func (sig Terminate) terminate(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
+func (sig Terminate) terminate(ctx context.Context, rt Runtime, id ProcessID) error {
+	ended, children, err := sig.inspect(ctx, rt, id)
+	if err != nil {
+		return err
+	}
+	if ended {
+		return nil
+	}
+	// The children are called off first, so their deferred Definitions unwind before their parent's.
+	for _, childID := range children {
+		if err := sig.RuntimeSignalExecute(ctx, rt, childID); err != nil {
+			return err
+		}
+	}
+	// The deferred Definitions run outside the transaction that records the termination.
+	// Their steps commit as they finish, so a failure midway doesn't roll back the ones that already ran,
+	// and the next attempt resumes the unwinding instead of redoing it.
+	if err := runDeferred(ctx, rt, id); err != nil {
+		return err
+	}
+	return sig.record(ctx, rt, id)
+}
+
+func (sig Terminate) record(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
 	ctx, err := rt.Events.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rerr, rt.Events, ctx)
-	var children []ProcessID
-	for event, err := range rt.Events.FindByProcessID(ctx, id) {
-		if err != nil {
-			return err
-		}
-		if spawn, ok := event.(EventSpawn); ok {
-			children = append(children, spawn.ChildID)
-		}
-		if _, ok := event.(EventCompleted); ok {
-			return nil
-		}
-		if terminated, ok := event.(EventTerminated); ok && terminated.ProcessID.Equal(id) {
-			return nil
-		}
+	ended, _, err := sig.inspect(ctx, rt, id)
+	if err != nil {
+		return err
+	}
+	if ended {
+		return nil
 	}
 	eventID, err := MakeEventID()
 	if err != nil {
@@ -165,15 +183,26 @@ func (sig Terminate) terminate(ctx context.Context, rt Runtime, id ProcessID) (r
 		ProcessID: id,
 		Timestamp: timeNow(),
 	}
-	if err := rt.Events.Create(ctx, &event); err != nil {
-		return err
-	}
-	for _, childID := range children {
-		if err := sig.RuntimeSignalExecute(ctx, rt, childID); err != nil {
-			return err
+	return rt.Events.Create(ctx, &event)
+}
+
+// inspect reports whether the Process already has its outcome on record, and which child Processes it spawned.
+func (sig Terminate) inspect(ctx context.Context, rt Runtime, id ProcessID) (ended bool, children []ProcessID, _ error) {
+	for event, err := range rt.Events.FindByProcessID(ctx, id) {
+		if err != nil {
+			return false, nil, err
+		}
+		if spawn, ok := event.(EventSpawn); ok {
+			children = append(children, spawn.ChildID)
+		}
+		if _, ok := event.(EventCompleted); ok {
+			return true, nil, nil
+		}
+		if terminated, ok := event.(EventTerminated); ok && terminated.ProcessID.Equal(id) {
+			return true, nil, nil
 		}
 	}
-	return nil
+	return false, children, nil
 }
 
 // IsTerminated reports whether pid was called off — terminated without
@@ -213,7 +242,7 @@ type EventTerminated struct {
 
 var _ Event = (*EventTerminated)(nil)
 
-func (EventTerminated) EventType() EventType      { return "terminated" }
+func (EventTerminated) EventType() EventType      { return "workflow:terminated" }
 func (e EventTerminated) GetEventID() EventID     { return e.EventID }
 func (e EventTerminated) GetProcessID() ProcessID { return e.ProcessID }
 func (e EventTerminated) GetTimestamp() time.Time { return e.Timestamp }

@@ -18,6 +18,7 @@ func ExampleStreamProducer() {
 		_ = enc.Encode(v)
 	}
 }
+
 func ExampleStreamConsumer() {
 	var c codec.StreamConsumer
 	var req *http.Request
@@ -25,8 +26,8 @@ func ExampleStreamConsumer() {
 	stream := c.NewStreamDecoder(req.Body)
 
 	for dec, err := range stream {
-		_ = err 
-		var v int 
+		_ = err
+		var v int
 		_ = dec.Decode(&v)
 	}
 }

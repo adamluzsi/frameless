@@ -288,7 +288,7 @@ func TestComplete(t *testing.T) {
 		})
 
 		s.Then("it identifies the signal", func(t *testcase.T) {
-			assert.Equal(t, "workflow::complete", act(t))
+			assert.Equal(t, "workflow:complete", act(t))
 		})
 	})
 
@@ -831,7 +831,7 @@ func TestTerminate(t *testing.T) {
 		})
 
 		s.Then("it identifies the signal", func(t *testcase.T) {
-			assert.Equal(t, "workflow::terminate", act(t))
+			assert.Equal(t, "workflow:terminate", act(t))
 		})
 	})
 

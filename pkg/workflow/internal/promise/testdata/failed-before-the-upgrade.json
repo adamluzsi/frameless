@@ -1,0 +1,88 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::fail-before-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::b"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd65-7d3a-8616-ee43526ab652",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd65-7d46-a986-443e9a447470",
+			"process_id": "01a1842c-fd65-7d3a-8616-ee43526ab652",
+			"timestamp": "2026-10-28T20:21:43.39783Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::fail-before-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::b"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd65-7db9-a2b7-9a87a73faa7b",
+			"process_id": "01a1842c-fd65-7d3a-8616-ee43526ab652",
+			"timestamp": "2026-10-28T20:21:43.397858Z",
+			"participant_id": "compat::a",
+			"path": [
+				{
+					"name": "01a1842c-fd65-7d46-a986-443e9a447470"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::error",
+			"event_id": "01a1842c-fd65-7e0f-98bf-d2d3fd3f5505",
+			"process_id": "01a1842c-fd65-7d3a-8616-ee43526ab652",
+			"timestamp": "2026-10-28T20:21:43.39788Z",
+			"participant_id": "compat::fail-before-upgrade",
+			"path": [
+				{
+					"name": "01a1842c-fd65-7d46-a986-443e9a447470"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::fail-before-upgrade"
+				}
+			],
+			"error": "compat: failing until the upgrade"
+		}
+	]
+}

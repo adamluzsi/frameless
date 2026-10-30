@@ -40,18 +40,18 @@ func Test_e2e(tt *testing.T) {
 		}
 
 		var pdef workflow.Definition = &workflow.Sequence{
-			&workflow.ExecuteParticipant{
-				ID:     "foo",
-				Output: []workflow.VarName{"foo-val"},
+			&workflow.Execute{
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
-			&workflow.ExecuteParticipant{
-				ID:     "bar",
-				Input:  []workflow.VarName{"foo-val"},
-				Output: []workflow.VarName{"bar-val"},
+			&workflow.Execute{
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
-			&workflow.ExecuteParticipant{
-				ID:    "baz",
-				Input: []workflow.VarName{"foo-val", "bar-val"},
+			&workflow.Execute{
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
 		}
 
@@ -109,21 +109,21 @@ func Test_e2e(tt *testing.T) {
 		}
 
 		var def workflow.Definition = &workflow.Sequence{
-			workflow.ExecuteParticipant{
-				ID:     "foo",
-				Output: []workflow.VarName{"foo-val"},
+			workflow.Execute{
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID:     "bar",
-				Input:  []workflow.VarName{"foo-val"},
-				Output: []workflow.VarName{"bar-val"},
+			workflow.Execute{
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID:    "baz",
-				Input: []workflow.VarName{"foo-val", "bar-val"},
+			workflow.Execute{
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID: "flaky",
+			workflow.Execute{
+				Participant: "flaky",
 				//TODO: retry integration maybe?
 			},
 		}
@@ -187,21 +187,21 @@ func Test_e2e(tt *testing.T) {
 		}
 
 		var def workflow.Definition = &workflow.Sequence{
-			workflow.ExecuteParticipant{
-				ID:     "foo",
-				Output: []workflow.VarName{"foo-val"},
+			workflow.Execute{
+				Participant: "foo",
+				Output:      []workflow.VarName{"foo-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID:     "bar",
-				Input:  []workflow.VarName{"foo-val"},
-				Output: []workflow.VarName{"bar-val"},
+			workflow.Execute{
+				Participant: "bar",
+				Input:       []workflow.VarName{"foo-val"},
+				Output:      []workflow.VarName{"bar-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID:    "baz",
-				Input: []workflow.VarName{"foo-val", "bar-val"},
+			workflow.Execute{
+				Participant: "baz",
+				Input:       []workflow.VarName{"foo-val", "bar-val"},
 			},
-			workflow.ExecuteParticipant{
-				ID: "flaky",
+			workflow.Execute{
+				Participant: "flaky",
 				//TODO: retry integration maybe?
 			},
 		}
@@ -229,8 +229,8 @@ func Test_e2e(tt *testing.T) {
 func TestContextWithParticipants(t *testing.T) {
 	rt := workflow.Runtime{Events: &memory.WorkflowEventRepository{}}
 
-	execFoo := workflow.ExecuteParticipant{ID: "foo"}
-	execBar := workflow.ExecuteParticipant{ID: "bar"}
+	execFoo := workflow.Execute{Participant: "foo"}
+	execBar := workflow.Execute{Participant: "bar"}
 
 	procID, err := workflow.MakeProcessID()
 	assert.NoError(t, err)
@@ -296,9 +296,9 @@ func Test_pauseAndContinue(t *testing.T) {
 
 	def := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "foo"},
-			workflow.ExecuteParticipant{ID: "bar"},
-			workflow.ExecuteParticipant{ID: "baz"},
+			workflow.Execute{Participant: "foo"},
+			workflow.Execute{Participant: "bar"},
+			workflow.Execute{Participant: "baz"},
 		}
 	})
 
@@ -321,7 +321,8 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 
 	s.When("definition execution is interrupted midterm", func(s *testcase.Spec) {
-		phaser := let.Phaser(s)
+		// eagerly loaded, so it is initialised on the test goroutine instead of the participant's, see TestRuntime_phaserLazyInitRace.
+		phaser := let.Phaser(s).EagerLoading(s)
 
 		bar.Let(s, func(t *testcase.T) func(ctx context.Context) error {
 			fn := bar.Super(t)
@@ -382,9 +383,14 @@ func Test_pauseAndContinue(t *testing.T) {
 	})
 }
 
+// withPath extends ctx with the Scopes of the given Path, its variable scopes included.
 func withPath(ctx context.Context, path workflow.Path) context.Context {
-	for _, name := range path {
-		ctx = workflow.WithName(ctx, name)
+	for _, scope := range path {
+		if scope.Var {
+			ctx = workflow.WithVarScope(ctx, scope.Name)
+		} else {
+			ctx = workflow.WithName(ctx, scope.Name)
+		}
 	}
 	return ctx
 }

@@ -13,14 +13,14 @@ If you have not run a workflow yet, start with [Getting Started][GETTING_STARTED
 ```go
 def := workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
-	workflow.ExecuteParticipant{
-		ID:     "charge-card",
-		Input:  []workflow.VarName{"order_id"},
-		Output: []workflow.VarName{"receipt"},
+	workflow.Execute{
+		Participant: "charge-card",
+		Input:       []workflow.VarName{"order_id"},
+		Output:      []workflow.VarName{"receipt"},
 	},
-	workflow.ExecuteParticipant{
-		ID:    "email-receipt",
-		Input: []workflow.VarName{"receipt"},
+	workflow.Execute{
+		Participant: "email-receipt",
+		Input:       []workflow.VarName{"receipt"},
 	},
 }
 ```
@@ -56,7 +56,7 @@ workflow.Participants{
 		// Not a failure. "I am finished — and this step needs follow-up stages."
 		return workflow.Spawn{
 			Name:       "fulfilment",
-			Definition: workflow.ExecuteParticipant{ID: "ship"},
+			Definition: workflow.Execute{Participant: "ship"},
 		}
 	},
 }
@@ -67,14 +67,20 @@ Definition attached*, then continues with that Definition in place of the step.
 In the package's own words, `Sequence{StepA, StepB, StepC}` effectively becomes
 `Sequence{StepA, StepB, StepBSubDef, StepC}`.
 
-Because the swap is recorded in the same event, a replay of that step is a
-no-op — the follow-up is dispatched exactly once.
+A cache hit skips the producer function but walks its recorded follow-up
+Definition again, reusing nested cached results and resuming suspended work.
+The follow-up is not dispatched exactly once, nor does it gain independent
+commit boundaries: it runs inside the producer's event transaction. An ordinary
+nested failure can roll back newly recorded producer and nested success events.
+See [Participants][PARTICIPANT] for retry and external-effect guarantees.
 
 ### The price
 
 Every Definition needs an `Error() string`. The convention here is a stable,
-namespaced constant — `"workflow::sequence"`, `"workflow::join"` — never a
-formatted message, because it doubles as a type tag.
+namespaced constant — `"workflow:sequence"`, `"workflow:join"` — never a
+formatted message, because it names the definition in error messages and logs.
+It is not the codec `$type` tag, which is chosen when the type is registered
+(see [Codec][CODEC]).
 
 ---
 
@@ -110,7 +116,7 @@ is reloaded on another node. See [Codec][CODEC].
 
 ## 4. Contract two: it must be idempotent per ProcessID
 
-The runtime may replay any `Execute` call — crash recovery, a retry after a
+The runtime may replay any `Definition#Execute` call — crash recovery, a retry after a
 transient failure, or a scheduler requeue after a `Suspend`. The side effects
 on the process must converge to the same final state.
 
@@ -122,7 +128,10 @@ _ = rt.Execute(ctx, pid) // replays the log — charge-card is NOT called again
 
 You rarely implement this yourself. The built-ins lean on the event history:
 each step records its outcome as an event, and a replay that finds that event
-skips the work and reuses the recorded result.
+skips the recorded call and reuses its result. Any returned definition is still
+walked. External effects can repeat if their success record is not durable
+because of a write/commit failure, crash, or enclosing transaction rollback;
+use stable business idempotency keys or a shared transaction/outbox where applicable.
 
 ---
 
@@ -132,7 +141,7 @@ Every step executes under a **Path**, assembled from the context as the
 definition tree is walked. A recorded participant step looks like this:
 
 ```
-[01a042a6-b503-7e30-a540-796c969d63cd  sequence  [0]  participant  charge-card]
+[01a042a6-b503-7e30-a540-796c969d63cd  sequence  [0]  charge-card]
 ```
 
 | Segment       | Contributed by                                          |
@@ -140,23 +149,54 @@ definition tree is walked. A recorded participant step looks like this:
 | `01a042a6-…`  | the `EventID` of the current `EventUseDefinition`        |
 | `sequence`    | the enclosing `Sequence`                                |
 | `[0]`         | its index inside that `Sequence`                        |
-| `participant` | `ExecuteParticipant`                                    |
-| `charge-card` | the `ParticipantID` it calls                            |
+| `charge-card` | the `Execute`, by the `ParticipantID` it calls          |
 
 `If` contributes `if` plus `then`/`else`, `Spawn` contributes `spawn` plus its
-`Name`, and so on. The identity of a step is therefore *(which definition) +
-(what it is) + (where it sits in the tree)* — no per-process bookkeeping is
-needed from you.
+`Name`, and so on. An `Execute` contributes only its ID: a participant call and
+a condition answer are recorded as different events, so they can't be mistaken
+for each other even under the same ID. The identity of a step is therefore
+*(which definition) + (what it is) + (where it sits in the tree)* — no
+per-process bookkeeping is needed from you.
 
-> **Warning:** the position is part of the identity. Inserting a step at the
-> front of a `Sequence` shifts every later index, so those steps look brand new
-> to the runtime and **re-run** on an in-flight process. Append rather than
-> insert when a process may already be running against the old shape.
+Paths identify steps, not positions on a variable timeline. General `Vars`
+reads see the current state visible in their variable scope, including later
+writes from previous attempts. The executor's historical input comparison for
+cached calls does not turn ordinary variable reads into historical snapshots.
 
-Note the root segment: it is the definition's event ID, not the process ID.
-Binding a *new* definition therefore re-roots every path in the tree, so a
-[`Replace`][SIGNAL] starts the replacement from the beginning rather than
-fast-forwarding through the old definition's recorded steps.
+> **Warning:** the position is part of the identity. A bound definition's data
+> never changes (see below), but a custom definition that assembles its
+> children in Go code does change when you ship new code. Inserting a step at
+> the front of such a `Sequence` shifts every later index, so those steps look
+> brand new to the runtime and **re-run** on an in-flight process. Append
+> rather than insert when a process may already be running against the old
+> shape.
+
+### A bound definition never changes
+
+Once a definition is bound to a process, it is immutable. Nothing edits it in
+place:
+
+- `Bind` is a no-op when the process already has a definition.
+- The only way to change it is to append a new `EventUseDefinition`, either
+  with a [`Replace`][SIGNAL] signal or with a one-shot migration tool. The
+  runtime always executes the latest one.
+- The `EventRepository` port says the same thing. It can create and find
+  events, but it has no `Updater` or `Saver`, so the history is append-only.
+
+The root segment of every path is the binding's `EventID`, not the process ID
+or a version index. A new binding therefore re-roots every path in the tree.
+The replacement starts from its own beginning rather than fast-forwarding
+through the old definition's recorded steps, and its steps can never collide
+with the old ones.
+
+This is why a recorded result can be replayed by its path alone. At a given
+path there is only ever the step that was bound there, so no edited version of
+it can inherit a stale result. A `wftemplate.Condition`, for example, records
+under a fixed ID rather than its expression text.
+
+When the shape of the work can only be decided at run time, let a participant
+return a definition ([Participants][PARTICIPANT] §3). It is recorded with the
+call and replayed from there, so the tree grows by appending, not by editing.
 
 ---
 
@@ -170,20 +210,20 @@ fast-forwarding through the old definition's recorded steps.
 | `workflow.SetVar`             | Assigns a process variable.                                              |
 | `workflow.DeclareVar`         | Brings a process variable into existence, without assigning a value.     |
 | `workflow.DeleteVar`          | Removes a process variable binding.                                      |
-| `workflow.ExecuteParticipant` | Calls one of your registered Go functions.                               |
-| `workflow.ExecuteCondition`   | Evaluates a registered condition. Implements *both* interfaces.           |
+| `workflow.Execute`            | Calls a registered Go function: a participant as a step (`Participant`), or a condition (`Condition`). Implements *both* interfaces. |
 | `workflow.Spawn`              | Launches a sub-workflow as an independent process.                       |
-| `workflow.Join`               | Waits for one, or all, spawned children to complete.                     |
+| `workflow.Join`               | Waits for one, or all, spawned children to complete, and collects the results of a named one. |
+| `workflow.Defer`              | Registers a definition to run when the process ends, like Go's `defer`.  |
 
 ### Sequence — run steps in order
 
 ```go
 workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
-	workflow.ExecuteParticipant{ID: "charge-card",
+	workflow.Execute{Participant: "charge-card",
 		Input:  []workflow.VarName{"order_id"},
 		Output: []workflow.VarName{"receipt"}},
-	workflow.ExecuteParticipant{ID: "email-receipt",
+	workflow.Execute{Participant: "email-receipt",
 		Input: []workflow.VarName{"receipt"}},
 }
 ```
@@ -197,13 +237,13 @@ top, skipping the already-recorded steps until it reaches the pause point.
 
 ```go
 workflow.If{
-	Cond: workflow.ExecuteCondition{
-		ID:    "is-vip",
-		Input: []workflow.VarName{"customer_id"},
+	Cond: workflow.Execute{
+		Condition: "is-vip",
+		Input:     []workflow.VarName{"customer_id"},
 	},
-	Then: workflow.ExecuteParticipant{ID: "apply-vip-discount",
+	Then: workflow.Execute{Participant: "apply-vip-discount",
 		Input: []workflow.VarName{"order_id"}},
-	Else: workflow.ExecuteParticipant{ID: "apply-list-price",
+	Else: workflow.Execute{Participant: "apply-list-price",
 		Input: []workflow.VarName{"order_id"}},
 }
 ```
@@ -212,6 +252,21 @@ workflow.If{
 `Cond` is not: it returns `ErrFatal`, so the process fails without retrying.
 Failing loudly beats silently taking the `Else` branch forever.
 
+The branch is chosen by the condition's answer, and keeping that answer on
+replay is the condition's job: `Execute` with a `Condition` and `wftemplate.Condition`
+record it at the `if/<ID>` path, so a replay walks the same branch again, even
+after a suspension inside it, and even if the variables the condition read have
+changed since. A custom condition that records nothing is asked again on every
+replay. See [Conditions][CONDITION].
+
+The branches are scoped the way Go scopes the blocks of an `if`. The `If` is a
+variable scope of its own, where `Cond` is evaluated, and `Then` and `Else` are
+scopes nested in it. A variable a branch declares, including an `Execute`
+`Output` to a name not visible from there, is gone once the `If` is done, while
+an assignment to a variable declared before the `If` writes through to it. So
+to keep a value a branch produces, declare its variable before the `If`. See
+[Variables § Branches](./vars.md#branches).
+
 ### Sleep — wait for something
 
 ```go
@@ -219,9 +274,15 @@ workflow.Sleep{Until: ApprovalGranted{Order: "order_id"}} // wait until it turns
 workflow.Sleep{While: OrderIsPending{Order: "order_id"}}  // wait while it stays true
 ```
 
-`Sleep` evaluates its condition on every attempt. If it must keep waiting it
-returns `Suspend{}`, a [signal][SIGNAL] the runtime recognises: the process is
-re-queued rather than failed, and comes back after `Runtime#WaitTime`.
+`Sleep` asks its condition on every attempt until the answer lets it wake up.
+Until then it returns `Suspend{}`, a [signal][SIGNAL] the runtime recognises:
+the process is re-queued rather than failed, and comes back after
+`Runtime#WaitTime`. The wake-up is recorded as an `EventSleepCompleted`, so once
+a `Sleep` woke up, a replay passes it without asking its condition again.
+
+Attempts are told apart by the second they happen in: the conditions an attempt
+asks record their answers under `sleep/<unix seconds>`, and attempts within the
+same second share them. A `Sleep` under a frozen clock doesn't wake up.
 
 | Field   | Continues when      |
 | ------- | ------------------- |
@@ -229,9 +290,8 @@ re-queued rather than failed, and comes back after `Runtime#WaitTime`.
 | `While` | the condition is false |
 
 > **Gotcha:** `While` wins if both are set, and a `Sleep{}` with neither set
-> suspends forever. Also, do **not** put a `workflow.ExecuteCondition` inside a
-> `Sleep` — its answer is cached in the event history, so the first `false` is
-> replayed for eternity. See [Conditions][CONDITION].
+> suspends forever. See [Conditions][CONDITION] for how conditions are recorded
+> inside a `Sleep`.
 
 ### DeclareVar / SetVar / DeleteVar — move data between steps
 
@@ -254,38 +314,43 @@ name in the **root scope** so every step of the process can see it.
 `DeleteVar` records an `EventDeleteVar`. All three are guarded so that a replay
 does not apply the mutation twice. Details in [Variables][VARIABLES].
 
-### ExecuteParticipant — call your code
+### Execute — call your code
 
 ```go
-workflow.ExecuteParticipant{
-	ID:     "charge-card",
-	Input:  []workflow.VarName{"order_id"}, // ─► func(ctx, orderID string)
-	Output: []workflow.VarName{"receipt"},  // ─► (receipt string, error)
+workflow.Execute{
+	Participant: "charge-card",
+	Input:       []workflow.VarName{"order_id"}, // ─► func(ctx, orderID string)
+	Output:      []workflow.VarName{"receipt"},  // ─► (receipt string, error)
 }
 ```
 
 `Input` maps positionally onto the arguments after `ctx`; `Output` onto the
 results before the trailing `error`. A missing input variable is an `ErrFatal`,
-and an arity mismatch is `ErrParticipantFuncMappingMismatch` — both explicit
-errors, never a panic. See [Participants][PARTICIPANT].
+while incompatible arity/types or output counts return a nonfatal
+`ErrParticipantSignatureMismatch{ID, Cause}` wrapping
+`ErrParticipantFuncMappingMismatch`. Variadic inputs accept zero optional values,
+individual values, or a matching trailing slice. Invalid mappings return errors,
+not panics. Missing or incompatible registrations wait for availability rather
+than retrying locally; see [Participants][PARTICIPANT].
 
-### ExecuteCondition — as a definition
+The ID that is set decides what `Execute` calls, so set exactly one of them:
 
-```go
-workflow.ExecuteCondition{ID: "is-vip", Input: []workflow.VarName{"customer_id"}}
-```
+| Set             | It is a      | Use it as                               |
+| --------------- | ------------ | --------------------------------------- |
+| `Participant`   | `Definition` | a step, e.g. in a `Sequence`            |
+| `Condition`     | `Condition`  | a condition, e.g. `If#Cond`, `Sleep#Until` |
 
-`ExecuteCondition` satisfies `Definition` as well as `Condition`. Executed as a
-step it evaluates the condition and records the answer as an `EventCondition` —
-and that is all it does. It assigns nothing to a variable, so its only use as a
-step is to pin an answer into the history early. Read it back with `If`.
+Any other combination fails with a fatal `ErrInvalidDefinition`, before
+anything is called or recorded. That includes a `Condition` executed as a
+step, since an answer that is neither stored nor branched on has no effect, and
+`Output` on a condition, since an answer is not stored in variables.
 
 ### Spawn — launch a sub-workflow
 
 ```go
 workflow.Spawn{
 	Name: "fulfilment",
-	Definition: workflow.ExecuteParticipant{ID: "ship",
+	Definition: workflow.Execute{Participant: "ship",
 		Input:  []workflow.VarName{"order"},
 		Output: []workflow.VarName{"tracking"}},
 	Vars: workflow.VarMapping{"order_id": "order"},
@@ -293,8 +358,13 @@ workflow.Spawn{
 ```
 
 A spawn creates a **separate process** with its own ID, its own event history
-and its own variables. `Name` must be unique among a process' children; it is
-what a later `Join` refers to.
+and its own variables. `Name` is what a later `Join` refers to.
+
+A spawn is identified by **where it is** in the definition, like a participant
+call, so its `EventSpawn` records the `Path` of the `Spawn`. Each `Spawn`
+spawns a child of its own, even when two share a `Name`, and a `Spawn` in a
+loop body spawns one child per round. A replay finds the child a round spawned
+before, rather than spawning it again.
 
 `Vars` is a `VarMapping`, which reads **parent → child**: the parent's
 `order_id` lands in the child as `order`. Parent variables that are not set yet
@@ -310,18 +380,91 @@ definition if the value must be there.
 ### Join — wait for the children
 
 ```go
-workflow.Join{SpawnName: "fulfilment"} // wait for one named child
-workflow.Join{}                        // wait for every child spawned so far
+workflow.Join{Spawn: "fulfilment"} // wait for one named child
+workflow.Join{}                    // wait for every child spawned so far
+
+workflow.Join{Spawn: "fulfilment", // wait for it, then collect its results
+	Collect: workflow.VarMapping{"tracking": "tracking_number"}}
 ```
 
 `Join` returns `Suspend{}` until the child (or every child) has recorded
 `EventCompleted`, then records an `EventJoin` and lets the sequence continue.
-An unknown `SpawnName` is an error, not a silent pass.
+An unknown `Spawn` name is an error, not a silent pass.
 
-> **Not implemented yet:** `Join#Collect` is declared, validated and
-> serialised, but `Join#Execute` does not copy anything — child variables do
-> not reach the parent today. Have the child write to a shared store, or read
-> the child's variables yourself via its `EventSpawn#ChildID`.
+When more children were spawned by the name, the `Join` waits for the one
+**closest** to it, the way a Go variable name refers to the closest
+declaration:
+
+1. A `Spawn` declares its name in the variable scope it is in, so it is
+   *visible* to the `Join`s in that scope and in the scopes nested in it. Of the
+   visible spawns, the one in the innermost scope wins.
+2. If none is visible, for example from after the loop or `If` that holds the
+   `Spawn`, the spawn that shares the longest `Path` with the `Join` wins.
+3. Of the spawns that are equally close, the one spawned the latest wins.
+
+So a `Spawn` and a `Join` in the same loop body pair up round by round, while a
+`Join` after the loop joins a child of that name spawned before the loop, or
+the last round's child if there is none:
+
+```go
+workflow.Sequence{
+	workflow.Spawn{Name: "fulfilment", // first := spawn()
+		Definition: workflow.Execute{Participant: "pack"}},
+	workflow.ForEach{Over: "orders", V: "order", Do: workflow.Sequence{
+		workflow.Spawn{Name: "fulfilment",
+			Definition: workflow.Execute{Participant: "ship",
+				Input:  []workflow.VarName{"order"},
+				Output: []workflow.VarName{"tracking"}},
+			Vars: workflow.VarMapping{"order": "order"}},
+		workflow.Join{Spawn: "fulfilment", // the child of this round
+			Collect: workflow.VarMapping{"tracking": "tracking"}},
+	}},
+	workflow.Join{Spawn: "fulfilment"}, // the one spawned before the loop
+}
+```
+
+`Collect` is a `VarMapping` too, but it reads the other way, **child → parent**:
+the child's `tracking` is assigned to the parent's `tracking_number`, the way a
+Go function returns its results to the caller. Some rules:
+
+- Only the child's **root scope** is collected, as that is all that outlives
+  the child. A variable the child declared in a nested scope, like an `If`
+  branch or a loop body, is gone by the time the child completes.
+- The parent variable is assigned like the `Output` of an `Execute` at the
+  place of the `Join`: it writes through to a variable visible from there, or is
+  declared in the `Join`'s own scope otherwise. Declare it before an `If` to
+  use it after the `If`.
+- Only the listed variables are collected. A nil or empty `Collect` collects
+  nothing, and `Collect` requires `Spawn`, as it collects from one child.
+- A child variable that isn't set is skipped silently, so a value the parent
+  assigned before the `Join` remains as a default.
+- The collected values and the `EventJoin` are recorded in one transaction, so
+  a resumed process replays the `Join` and never collects again: a later
+  reassignment of the collected variable stays as it is.
+
+### Defer — clean up when the process ends
+
+```go
+workflow.Sequence{
+	workflow.Execute{Participant: "reserve-seat",
+		Input: []workflow.VarName{"booking_id"}},
+	workflow.Defer{Definition: workflow.Execute{Participant: "release-unpaid-seat",
+		Input: []workflow.VarName{"booking_id"}}},
+}
+```
+
+`Defer` records an `EventDefer`, and the process runs the deferred definition
+when it ends, whether it completes or is terminated. Deferred definitions run
+last-in, first-out, before the outcome is recorded. A process that only
+suspends hasn't ended, so they wait.
+
+Put the `Defer` **right after** the step whose effect it cleans up, the way
+Go's `defer f.Close()` follows a successful `os.Open`. The cleanup is then
+registered only once that step took effect and is on record. A step that fails
+to be recorded is retried rather than cleaned up, so it must stay repeatable,
+and it can undo itself at once with `txkit.OnRollback`. A nil `Definition`
+registers nothing. The details, including where the deferred definition runs
+and how failures resume, are in [Participants][PARTICIPANT].
 
 ---
 
@@ -333,7 +476,7 @@ Implement two methods and you are a first-class citizen of the tree:
 // ChargeOrder is a named, reusable unit: take an amount from one variable,
 // pass it to a registered participant, and record the receipt.
 // The body could also be written as a workflow.Sequence{}, but a named type
-// travels through the codec with a stable @type tag, which makes it auditable
+// travels through the codec with a stable $type tag, which makes it auditable
 // and reviewable in a UI.
 type ChargeOrder struct {
     Amount workflow.VarName
@@ -341,7 +484,7 @@ type ChargeOrder struct {
 
 var _ workflow.Definition = ChargeOrder{}
 
-func (ChargeOrder) Error() string { return "acme::charge-order" }
+func (ChargeOrder) Error() string { return "acme:charge-order" }
 
 func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error {
     // Contribute a path segment so this step is distinct from its siblings
@@ -367,10 +510,10 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     // Delegate the actual side effect to a registered participant. Doing the
     // I/O in a participant keeps the domain work out of the definition tree
     // and gives you its event-cache boundary for free.
-    return workflow.ExecuteParticipant{
-        ID:     "charge-card",
-        Input:  []workflow.VarName{d.Amount},
-        Output: []workflow.VarName{"receipt"},
+    return workflow.Execute{
+        Participant: "charge-card",
+        Input:       []workflow.VarName{d.Amount},
+        Output:      []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```
@@ -390,7 +533,9 @@ Register it with your [Codec][CODEC] before you rely on persistence, and reach
 for the [contract tests][TESTING] to prove the round-trip.
 
 For the full checklist — path identity, scoping, codec registration,
-migration, and testing — see [Custom Definitions][CUSTOM_DEFINITION].
+migration, and testing — see [Custom Definitions][CUSTOM_DEFINITION]. Its §4
+also shows how to keep the side effect in the definition's own code, without
+registering a participant, through `Execute#ExecuteWith`.
 
 ---
 

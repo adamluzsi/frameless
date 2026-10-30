@@ -7,10 +7,10 @@
 ```go
 workflow.Sequence{
 	workflow.SetVar{Name: "order_id", Value: "ORD-42"},
-	workflow.ExecuteParticipant{
-		ID:     "charge-card",
-		Input:  []workflow.VarName{"order_id"}, // read
-		Output: []workflow.VarName{"receipt"},  // write
+	workflow.Execute{
+		Participant: "charge-card",
+		Input:       []workflow.VarName{"order_id"}, // read
+		Output:      []workflow.VarName{"receipt"},  // write
 	},
 }
 ```
@@ -117,18 +117,52 @@ if true {
 _ = x // still "foo"
 ```
 
-Workflow variables behave the same way. A `VarScope` is a path of scope names,
-and a binding is visible from anywhere whose scope has the declaring scope as a
-prefix. So:
+Workflow variables behave the same way. The variable scopes are segments of the
+workflow `Path`, the ones marked as `var`, the way the blocks of a Go function
+are places in its source, and a binding is visible from anywhere within the
+scope it was declared in. So:
 
-- A **declaration** decides which scope a name lives in.
+- A **declaration** decides which scope a name lives in. Every declaration is a
+  variable of its own.
 - A **set** finds the nearest visible declaration and writes through to it —
   which may well be an outer scope.
-- A **delete** removes that same binding.
+- A **delete** removes that same binding. A deleted binding keeps shadowing the
+  outer ones, so the name is simply gone from that scope.
 
-Once a name has been re-declared in a scope you cannot see, later assignments
-belong to *that* hidden binding and are invisible from here, until the name is
-declared again somewhere you can see.
+A set or a delete records the variable scope of the variable it reached as the
+variable scope of its `Path` (`Path#VarScope()`, the path up to its last `var`
+segment). The event is recorded at the location of the step that made it, but
+the scopes nested in the reached variable's scope are not marked as `var` on it.
+A scope holds at most one variable of a name, as re-declaring in the same scope
+replaces it, so the name and the scope tell exactly which variable was meant,
+and a re-declaration elsewhere never steals it:
+
+```go
+x := 1
+{
+	x := 2 // a new variable in the nested scope
+	_ = x
+}
+x = 3 // still the outer x; the nested x keeps 2
+```
+
+The assignments are recorded with the scope of the variable they reached. The
+nested `x := 2` is made in the nested scope, and names it:
+
+```json
+{"$type": "workflow:event:var:set", "path": [{"name": "block", "var": true}, {"name": "set-var"}], "name": "x", "value": 2}
+```
+
+while the outer `x = 3` is made outside of the block, in the root scope, so it
+reaches the outer `x` only:
+
+```json
+{"$type": "workflow:event:var:set", "path": [{"name": "set-var"}], "name": "x", "value": 3}
+```
+
+Had the block assigned to the outer `x` instead (`x = 2`), the assignment
+would be recorded at the block's location, with the block not marked as `var`,
+so its variable scope is the root: `"path": [{"name": "block"}, {"name": "set-var"}]`.
 
 > **Declaring is a step of its own.** `workflow.DeclareVar{Name: "x"}` brings a
 > name into existence in the current scope and assigns nothing. That is what
@@ -136,14 +170,111 @@ declared again somewhere you can see.
 > visible binding, even one an enclosing scope owns, whereas declaring first
 > creates a fresh binding here, so the assignments that follow stay local.
 
+### Branches
+
+The branches of an `If` are blocks, the way they are in Go. The `If` is a scope
+of its own, where `Cond` is evaluated, and `Then` and `Else` are scopes nested
+in it:
+
+```go
+x := "outer"
+if v := cond(); v { // what Cond declares belongs to the If, so both branches see it
+	y := "then"     // y belongs to Then
+	x = "then"      // x is declared outside of the If, so the assignment writes through
+} else {
+	z := "else"     // z belongs to Else
+	x = "else"
+}
+// neither v, y nor z is visible here, and x holds what the taken branch assigned
+```
+
+A `SetVar` in a branch, or an `Execute` `Output`, declares into the branch
+unless the name is already visible from there. So what a branch produces is gone
+once the `If` is done. **To keep it, declare the variable before the `If`**, and
+the branch writes through to it:
+
+```go
+workflow.Sequence{
+	workflow.SetVar{Name: "discount", Value: 0}, // declared before the If, so it outlives it
+	workflow.If{
+		Cond: wftemplate.Condition(`gt .order_total 100`),
+		Then: workflow.Execute{Participant: "calc-discount",
+			Input: []workflow.VarName{"order_total"}, Output: []workflow.VarName{"discount"}},
+	},
+	workflow.Execute{Participant: "charge",
+		Input: []workflow.VarName{"order_total", "discount"}},
+}
+```
+
+A `DeclareVar` in a branch shadows an outer variable within the branch only,
+and two `If`s side by side never share a branch scope, even though their
+branches have the same names.
+
+### Loop variables
+
+The variables of a loop are scoped the way Go scopes them. Every block has a
+scope of its own: the body of a loop gets a fresh one on every iteration, or
+round, and two loops side by side never share one.
+
+`For` is a scope of its own, where `Init` runs, so the loop variable is visible
+to the whole loop and gone after it. Every round is a scope nested in it, where
+`Cond` and `Post` run, and the body, `Do`, is a fresh scope nested in the
+round's:
+
+```go
+for i := 0; i < 3; i++ { // i belongs to the loop
+	x := i                // x belongs to this round's body
+	defer see(x)          // a deferred step sees the x of its own round
+}
+// neither i nor x is visible here
+```
+
+What a round declares in the body is gone by the next round, and `Post`
+doesn't see it either. An assignment to `i`, or to a variable from outside of
+the loop, still writes through.
+
+`ForEach`'s `K` and `V` work like the variables of Go's `for range` loop: every
+iteration has its own, in the iteration's scope.
+
+```go
+item := "outer"
+for _, item := range items { // shadows the outer item
+	item = "changed"          // stays within this iteration
+}
+_ = item // "outer"
+```
+
+- They **shadow** an outer variable of the same name inside the loop body.
+- An **assignment** to them declares them in the iteration's scope first, so
+  it never writes through to the outer variable, and the next iteration starts
+  fresh. That holds on every round of an enclosing `For` too.
+- A **nested loop** still sees the iteration variables of the loops around it.
+- `K` and `V` are looked up from the collection on every read, at the
+  iteration's position, so a body that assigns to the collection variable sees
+  the new element, and once the element is gone from the collection, neither
+  `K` nor `V` is visible. The same holds for a map whose keys print the same
+  (like `1` and `"1"`), as their iterations share a path.
+- A **`Defer`** in the body sees them too, like a deferred closure sees the
+  loop variables of its own iteration in Go. They stay references: the hook
+  looks the element up in the collection when it runs.
+
+The iteration variables themselves are not recorded; only an assignment or a
+deletion made to them adds events. Each iteration of a loop that names `K` or
+`V` records an `EventForEachIteration` instead, at the iteration's path, with
+the loop's collection and variable names, never a value. That is where every
+read finds them, so any step positioned within the iteration sees them,
+whenever it runs.
+
 ### The `Global` escape hatch
 
 ```go
 workflow.DeclareVar{Name: "trace_id", Global: true}
 ```
 
-`Global: true` drops the current variable scope before declaring, so the name
-lands in the **root scope** and stays visible from every scope in the process.
+`Global: true` declares the name in the **root scope**, rather than in the
+current variable scope, so it stays visible from every scope in the process.
+The declaration is still recorded at the location of the step, with none of
+its path segments marked as `var`.
 
 Use it for cross-cutting values — a correlation ID, a tenant — that every step
 should see regardless of where it sits in the tree.
@@ -179,21 +310,53 @@ merely duplicate an event — it would erase whatever the steps after it assigne
 ```go
 workflow.Spawn{
 	Name:       "fulfilment",
-	Definition: workflow.ExecuteParticipant{ID: "ship", Input: []workflow.VarName{"order"}},
+	Definition: workflow.Execute{Participant: "ship", Input: []workflow.VarName{"order"}},
 	Vars:       workflow.VarMapping{"order_id": "order"},
 }
 ```
 
 The parent's `order_id` is written into the child as `order`. A child gets its
 own process, its own history and its own variables — nothing else is shared.
+The parent's variable is looked up from where the `Spawn` is, even from within
+a loop body, while the child's is declared in the child's **root scope**, where
+every step of the child sees it.
 
 Parent variables that are not set yet are **skipped silently**, so put a
 `SetVar` before the `Spawn` if the value must be there.
 
-> **Not implemented yet:** `Join#Collect` is declared and serialised, but
-> `Join#Execute` does not copy anything back. To get a result out of a child
-> today, read the child's variables directly via its `EventSpawn#ChildID`, or
-> have the child write to a store the parent can see.
+`Join#Collect` is the way back, and it reads the other way, **child → parent**:
+
+```go
+workflow.Sequence{
+	workflow.SetVar{Name: "tracking", Value: ""},
+	workflow.Spawn{
+		Name:       "fulfilment",
+		Definition: workflow.Execute{Participant: "ship",
+			Input:  []workflow.VarName{"order"},
+			Output: []workflow.VarName{"tracking"}},
+		Vars: workflow.VarMapping{"order_id": "order"},
+	},
+	workflow.Join{Spawn: "fulfilment", Collect: workflow.VarMapping{"tracking": "tracking"}},
+}
+```
+
+Once the child completed, its `tracking` is assigned to the parent's
+`tracking`. Both directions share the same rules, mirrored:
+
+- The child's variable is looked up from its **root scope**, as a variable it
+  declared in a nested scope is gone by the time it completes.
+- The parent's variable is assigned where the `Join` is: it writes through to a
+  variable visible from there, or it is declared in the `Join`'s scope. So a
+  `Join` in an `If` branch keeps the collected value within the branch, unless
+  the parent declared the variable before the `If`.
+- Child variables that are not set are **skipped silently**, which leaves a
+  value the parent assigned before the `Join` in place, like a default.
+- Only the listed variables are collected; a nil or empty `Collect` collects
+  nothing.
+
+The collected values are recorded together with the `EventJoin`, so the
+collection happens once: a replay of the `Join` doesn't collect again, and an
+assignment the parent made after the `Join` is kept.
 
 ---
 

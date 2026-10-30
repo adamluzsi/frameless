@@ -94,7 +94,7 @@ The following settings belong to `BroadcastStatelessSubscribe` and apply only to
 
 Heartbeats run at one third of the lease duration, including before iteration starts. Claim/cursor/renewal operations are bounded by `min(5 seconds, lease/3)`. A separate five-second cap applies to publishing and schema initialization. Caller deadlines can shorten these limits.
 
-A registration expires in PostgreSQL one lease duration after its last server-applied registration/renewal. The local subscriber stops assuming continuity at 90% of a lease duration from the start of its last confirmed request. Transient renewal failures may be tolerated within that earlier deadline; unverified renewals do not extend it. Expired/missing registrations are never silently recreated: iteration returns `ErrSubscriptionExpired`, and the message context is cancelled. Ordinary caller cancellation retains its own cause.
+A registration expires in PostgreSQL one lease duration after its last server-applied registration/renewal. The local subscriber stops assuming continuity at 90% of a lease duration from the start of its last confirmed request. Transient renewal failures are tolerated within that earlier deadline: after a failed or timed-out renewal, the next attempt follows after `min(PollInterval, lease/3)` rather than a full heartbeat interval, so one slow renewal (for example, one waiting for the channel lock of a publishing transaction) does not expire a healthy subscriber. Unverified renewals do not extend the deadline. Expired/missing registrations are never silently recreated: iteration returns `ErrSubscriptionExpired`, and the message context is cancelled. Ordinary caller cancellation retains its own cause.
 
 Choose a lease comfortably above database, connection-acquisition and scheduler latency. Timing assumes a runnable scheduler and bounded database clock changes/rate differences; notification during a suspended process is not instantaneous.
 
@@ -132,7 +132,7 @@ Normal publishing owns a short transaction. Publishing with an existing transact
 
 ## Tests
 
-`TestBroadcast` runs the pub/sub volatile and broadcast contracts against both transports with non-workflow payloads. It also covers default/custom codecs, encoding errors, delayed fan-out on one connection, and bidirectional interoperability with the workflow wrapper on explicit/default channel names.
+`TestBroadcast` runs the pub/sub volatile and broadcast contracts against both transports with non-workflow payloads. It also covers default/custom codecs, encoding errors, delayed fan-out on one connection, no replay for a LISTEN subscriber that reuses the pool connection of an ended one, and bidirectional interoperability with the workflow wrapper on explicit/default channel names.
 
 `TestWorkflowNotificationBroadcast` runs the existing workflow notification contract against both transports through that wrapper. The polling lifecycle specs additionally cover delayed iteration, multi-subscriber fanout and retention, cancellation, no replay for newcomers, per-channel isolation, a single-connection pool, renewal/expiry, injected codecs, mixed-mode/cross-pool delivery and transactional commit ordering.
 

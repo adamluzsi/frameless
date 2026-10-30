@@ -73,7 +73,10 @@ func (b *Broadcast[E]) Publish(ctx context.Context, event E) error {
 	}
 	b.init()
 
-	payload, err := b.Codec.Marshal(event)
+	// The subscribers read the message back into an E,
+	// so it is written as an E holds it, which keeps the type of the value when E is an interface, like workflow.Notification.
+	// It is given through a pointer rather than a jsonkit.Interface, as that works with any codec.Codec, and with a concrete E too.
+	payload, err := b.Codec.Marshal(&event)
 	if err != nil {
 		return fmt.Errorf("marshal broadcast message: %w", err)
 	}
@@ -165,13 +168,7 @@ func (b *Broadcast[E]) statefulSubscribe(ctx context.Context) pubsub.Subscriptio
 			// cancel in the wake so the goroutine returns promptly.
 			cancelWait()
 			<-done
-			// pgxpool does not call DISCARD ALL on Release, so without an
-			// explicit UNLISTEN the LISTEN registration would survive on the
-			// pooled connection. Any notifications published while the conn is
-			// idle in the pool would then be queued for that backend and
-			// replayed to whichever subscriber later acquires it, breaking
-			// the volatile contract.
-			if _, err := pgxConn.Exec(context.Background(), `UNLISTEN *`); err != nil {
+			if err := resetListenConn(pgxConn); err != nil {
 				logger.Error(ctx, err.Error())
 			}
 			rawConn.Release()
@@ -197,13 +194,37 @@ func (b *Broadcast[E]) statefulSubscribe(ctx context.Context) pubsub.Subscriptio
 
 				var event E
 				if err := b.Codec.Unmarshal([]byte(n.Payload), &event); err != nil {
-					yield(nil, fmt.Errorf("decode broadcast message: %w", err))
+					if !yield(nil, fmt.Errorf("decode broadcast message: %w", err)) {
+						return
+					}
 					continue
 				}
 				if !yield(pubsub.MakeMessage(ctx, event, nil, nil), nil) {
 					return
 				}
 			}
+		}
+	}
+}
+
+// resetListenConn ends the LISTEN session of conn, before it goes back to the pool.
+// pgxpool does not call DISCARD ALL on Release, so whichever subscriber acquires conn next
+// would get the notifications of the ended subscription, breaking the volatile contract:
+//   - Without an UNLISTEN, the LISTEN registration would survive on the pooled connection,
+//     so the notifications published while it is idle in the pool would be queued for it.
+//   - pgx keeps the notifications it reads in a buffer of the connection, like those that arrive during the UNLISTEN,
+//     and WaitForNotification returns them first.
+func resetListenConn(conn *pgx.Conn) error {
+	if _, err := conn.Exec(context.Background(), `UNLISTEN *`); err != nil {
+		return err
+	}
+	// With a context that is already done, WaitForNotification returns the buffered notifications,
+	// and once there are none left, it returns an error without reading the connection.
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	for {
+		if _, err := conn.WaitForNotification(done); err != nil {
+			return nil
 		}
 	}
 }

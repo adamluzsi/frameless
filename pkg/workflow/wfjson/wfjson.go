@@ -13,7 +13,7 @@ import (
 // Each call returns a fresh *jsonkit.Codec whose per-codec registry carries
 // the workflow-specific TypeID aliases and per-type custom codecs. The TypeID
 // values are kept on this codec so it can resolve a Definition / Condition
-// concrete type by its @type tag without depending on the global registry
+// concrete type by its $type tag without depending on the global registry
 // being initialised.
 //
 // Workflow.Runtimes fall back to this when their Codec field is nil, so users
@@ -21,51 +21,105 @@ import (
 func NewCodec() *jsonkit.Codec {
 	var c jsonkit.Codec
 
+	// The type IDs are namespaced, in the form of prefix:name, like workflow:sequence,
+	// where the workflow prefix keeps them apart from the type IDs of other packages.
+	// Each type ID was spelt with a double colon before, like workflow::sequence.
+	// The former type IDs are linked to the current ones as aliases at the end,
+	// so the event logs and definitions written with them are still read.
+
 	// Conditions: wftemplate.Condition is a named primitive (string)
-	// whose @type envelope is handled by jsonkit's reflect-based path,
-	// so CodecRegisterTypeID is enough. ExecuteCondition has a custom
+	// whose $type envelope is handled by jsonkit's reflect-based path,
+	// so CodecRegisterTypeID is enough. workflow.Execute has a custom
 	// codec (DTO shape diverges from the workflow struct shape).
-	jsonkit.CodecRegisterTypeID[wftemplate.Condition](&c, "workflow::template::condition")
+	jsonkit.CodecRegisterTypeID[wftemplate.Condition](&c, "workflow:template:condition")
 
 	// Definitions: every concrete type gets a custom codec because the
-	// wire format (snake_case, DTO shape, nested @type envelopes) is
+	// wire format (snake_case, DTO shape, nested $type envelopes) is
 	// owned by this package and may diverge from the workflow struct
 	// shape over time.
-	jsonkit.CodecRegister[workflow.Sequence](&c, "workflow::sequence", WorkflowSequence{})
-	jsonkit.CodecRegister[workflow.If](&c, "workflow::if", WorkflowIf{})
-	jsonkit.CodecRegister[workflow.Sleep](&c, "workflow::sleep", WorkflowSleep{})
-	jsonkit.CodecRegister[workflow.For](&c, "workflow::for", WorkflowFor{})
-	jsonkit.CodecRegister[workflow.ForEach](&c, "workflow::foreach", WorkflowForEach{})
+	jsonkit.CodecRegister[workflow.Sequence](&c, "workflow:sequence", WorkflowSequence{})
+	jsonkit.CodecRegister[workflow.If](&c, "workflow:if", WorkflowIf{})
+	jsonkit.CodecRegister[workflow.Sleep](&c, "workflow:sleep", WorkflowSleep{})
+	jsonkit.CodecRegister[workflow.For](&c, "workflow:for", WorkflowFor{})
+	jsonkit.CodecRegister[workflow.ForEach](&c, "workflow:foreach", WorkflowForEach{})
 	// Break carries no state, so the reflect-based path is enough: it needs a
 	// wire identity, not a shape.
-	jsonkit.CodecRegisterTypeID[workflow.Break](&c, "workflow::break")
-	jsonkit.CodecRegister[workflow.SetVar](&c, "workflow::var::set", WorkflowSetVar{})
-	jsonkit.CodecRegister[workflow.DeclareVar](&c, "workflow::var::declare", WorkflowDeclareVar{})
-	jsonkit.CodecRegister[workflow.DeleteVar](&c, "workflow::var::delete", WorkflowDeleteVar{})
-	jsonkit.CodecRegister[workflow.Increment](&c, "workflow::op::increment", WorkflowIncrement{})
-	jsonkit.CodecRegister[workflow.Spawn](&c, "workflow::spawn", WorkflowSpawn{})
-	jsonkit.CodecRegister[workflow.ExecuteParticipant](&c, "workflow::participant", WorkflowExecuteParticipant{})
-	jsonkit.CodecRegister[workflow.ExecuteCondition](&c, "workflow::condition", WorkflowExecuteCondition{})
-	jsonkit.CodecRegister[workflow.Join](&c, "workflow::join", WorkflowJoin{})
+	jsonkit.CodecRegisterTypeID[workflow.Break](&c, "workflow:break")
+	jsonkit.CodecRegister[workflow.SetVar](&c, "workflow:var:set", WorkflowSetVar{})
+	jsonkit.CodecRegister[workflow.DeclareVar](&c, "workflow:var:declare", WorkflowDeclareVar{})
+	jsonkit.CodecRegister[workflow.DeleteVar](&c, "workflow:var:delete", WorkflowDeleteVar{})
+	jsonkit.CodecRegister[workflow.Increment](&c, "workflow:op:increment", WorkflowIncrement{})
+	jsonkit.CodecRegister[workflow.Spawn](&c, "workflow:spawn", WorkflowSpawn{})
+	jsonkit.CodecRegister[workflow.Defer](&c, "workflow:defer", WorkflowDefer{})
+	jsonkit.CodecRegister[workflow.Execute](&c, "workflow:execute", WorkflowExecute{})
+
+	jsonkit.CodecRegister[workflow.Join](&c, "workflow:join", WorkflowJoin{})
+
+	// Interfaces: no value is of an interface type, so these name no value,
+	// but the element type of a slice or a map held as `any`, like a []workflow.Definition,
+	// which is written as {"$type":"[]workflow:definition","$value":[...]}, so it is read back as the same type.
+	jsonkit.CodecRegisterTypeID[workflow.Definition](&c, "workflow:definition")
+	jsonkit.CodecRegisterTypeID[workflow.Condition](&c, "workflow:condition")
 
 	// Events: same treatment — custom codecs own the wire format.
-	jsonkit.CodecRegister[workflow.EventCompleted](&c, "workflow::event::completed", WorkflowEventCompleted{})
-	jsonkit.CodecRegister[workflow.EventTerminated](&c, "workflow::event::terminated", WorkflowEventTerminated{})
-	jsonkit.CodecRegister[workflow.EventDeclareVar](&c, "workflow::event::var::declare", WorkflowEventDeclareVar{})
-	jsonkit.CodecRegister[workflow.EventSetVar](&c, "workflow::event::var::set", WorkflowEventSetVar{})
-	jsonkit.CodecRegister[workflow.EventDeleteVar](&c, "workflow::event::var::delete", WorkflowEventDeleteVar{})
-	jsonkit.CodecRegister[workflow.EventParticipant](&c, "workflow::event::participant", WorkflowEventParticipant{})
-	jsonkit.CodecRegister[workflow.EventCondition](&c, "workflow::event::condition", WorkflowEventCondition{})
-	jsonkit.CodecRegister[workflow.EventUseDefinition](&c, "workflow::event::use-definition", WorkflowEventUseDefinition{})
-	jsonkit.CodecRegister[workflow.EventSpawn](&c, "workflow::event::spawn", WorkflowEventSpawn{})
-	jsonkit.CodecRegister[workflow.EventJoin](&c, "workflow::event::join", WorkflowEventJoin{})
+	jsonkit.CodecRegister[workflow.EventCompleted](&c, "workflow:event:completed", WorkflowEventCompleted{})
+	jsonkit.CodecRegister[workflow.EventTerminated](&c, "workflow:event:terminated", WorkflowEventTerminated{})
+	jsonkit.CodecRegister[workflow.EventDeclareVar](&c, "workflow:event:var:declare", WorkflowEventDeclareVar{})
+	jsonkit.CodecRegister[workflow.EventSetVar](&c, "workflow:event:var:set", WorkflowEventSetVar{})
+	jsonkit.CodecRegister[workflow.EventDeleteVar](&c, "workflow:event:var:delete", WorkflowEventDeleteVar{})
+	jsonkit.CodecRegister[workflow.EventParticipant](&c, "workflow:event:participant", WorkflowEventParticipant{})
+	jsonkit.CodecRegister[workflow.EventCondition](&c, "workflow:event:condition", WorkflowEventCondition{})
+	jsonkit.CodecRegister[workflow.EventUseDefinition](&c, "workflow:event:use-definition", WorkflowEventUseDefinition{})
+	jsonkit.CodecRegister[workflow.EventSpawn](&c, "workflow:event:spawn", WorkflowEventSpawn{})
+	jsonkit.CodecRegister[workflow.EventJoin](&c, "workflow:event:join", WorkflowEventJoin{})
+	jsonkit.CodecRegister[workflow.EventSleepCompleted](&c, "workflow:event:sleep:completed", WorkflowEventSleepCompleted{})
+	jsonkit.CodecRegister[workflow.EventDefer](&c, "workflow:event:defer", WorkflowEventDefer{})
+	jsonkit.CodecRegister[workflow.EventForEachIteration](&c, "workflow:event:foreach:iteration", WorkflowEventForEachIteration{})
+	jsonkit.CodecRegister[workflow.EventError](&c, "workflow:event:error", WorkflowEventError{})
 
 	// Schedule-side types: not part of Definition/Condition/Event but
 	// still persisted across the runtime, so they need a stable wire format too.
-	jsonkit.CodecRegister[workflow.ExecutionRequest](&c, "workflow::execution", WorkflowExecutionRequest{})
-	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow::schedule", WorkflowProcessSchedule{})
-	jsonkit.CodecRegister[workflow.ProcessCancel](&c, "workflow::cancel", WorkflowEventProcessCancel{})
+	jsonkit.CodecRegister[workflow.ExecutionRequest](&c, "workflow:execution", WorkflowExecutionRequest{})
+	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow:schedule", WorkflowProcessSchedule{})
+	jsonkit.CodecRegister[workflow.ProcessCancel](&c, "workflow:cancel", WorkflowEventProcessCancel{})
 
+	// Former type IDs: each type ID was spelt with a double colon before, like workflow::sequence.
+	// They are linked to the current type IDs as aliases, so the data written with them is read back as the same type,
+	// while the values are written with the current type IDs.
+	jsonkit.CodecRegisterTypeID[wftemplate.Condition](&c, "workflow:template:condition", "workflow::template::condition")
+	jsonkit.CodecRegisterTypeID[workflow.Sequence](&c, "workflow:sequence", "workflow::sequence")
+	jsonkit.CodecRegisterTypeID[workflow.If](&c, "workflow:if", "workflow::if")
+	jsonkit.CodecRegisterTypeID[workflow.Sleep](&c, "workflow:sleep", "workflow::sleep")
+	jsonkit.CodecRegisterTypeID[workflow.For](&c, "workflow:for", "workflow::for")
+	jsonkit.CodecRegisterTypeID[workflow.ForEach](&c, "workflow:foreach", "workflow::foreach")
+	jsonkit.CodecRegisterTypeID[workflow.Break](&c, "workflow:break", "workflow::break")
+	jsonkit.CodecRegisterTypeID[workflow.SetVar](&c, "workflow:var:set", "workflow::var::set")
+	jsonkit.CodecRegisterTypeID[workflow.DeclareVar](&c, "workflow:var:declare", "workflow::var::declare")
+	jsonkit.CodecRegisterTypeID[workflow.DeleteVar](&c, "workflow:var:delete", "workflow::var::delete")
+	jsonkit.CodecRegisterTypeID[workflow.Increment](&c, "workflow:op:increment", "workflow::op::increment")
+	jsonkit.CodecRegisterTypeID[workflow.Spawn](&c, "workflow:spawn", "workflow::spawn")
+	jsonkit.CodecRegisterTypeID[workflow.Defer](&c, "workflow:defer", "workflow::defer")
+	jsonkit.CodecRegisterTypeID[workflow.Execute](&c, "workflow:execute", "workflow::execute")
+	jsonkit.CodecRegisterTypeID[workflow.Join](&c, "workflow:join", "workflow::join")
+	jsonkit.CodecRegisterTypeID[workflow.Definition](&c, "workflow:definition", "workflow::definition")
+	jsonkit.CodecRegisterTypeID[workflow.Condition](&c, "workflow:condition", "workflow::condition")
+	jsonkit.CodecRegisterTypeID[workflow.EventCompleted](&c, "workflow:event:completed", "workflow::event::completed")
+	jsonkit.CodecRegisterTypeID[workflow.EventTerminated](&c, "workflow:event:terminated", "workflow::event::terminated")
+	jsonkit.CodecRegisterTypeID[workflow.EventDeclareVar](&c, "workflow:event:var:declare", "workflow::event::var::declare")
+	jsonkit.CodecRegisterTypeID[workflow.EventSetVar](&c, "workflow:event:var:set", "workflow::event::var::set")
+	jsonkit.CodecRegisterTypeID[workflow.EventDeleteVar](&c, "workflow:event:var:delete", "workflow::event::var::delete")
+	jsonkit.CodecRegisterTypeID[workflow.EventParticipant](&c, "workflow:event:participant", "workflow::event::participant")
+	jsonkit.CodecRegisterTypeID[workflow.EventCondition](&c, "workflow:event:condition", "workflow::event::condition")
+	jsonkit.CodecRegisterTypeID[workflow.EventUseDefinition](&c, "workflow:event:use-definition", "workflow::event::use-definition")
+	jsonkit.CodecRegisterTypeID[workflow.EventSpawn](&c, "workflow:event:spawn", "workflow::event::spawn")
+	jsonkit.CodecRegisterTypeID[workflow.EventJoin](&c, "workflow:event:join", "workflow::event::join")
+	jsonkit.CodecRegisterTypeID[workflow.EventSleepCompleted](&c, "workflow:event:sleep:completed", "workflow::event::sleep::completed")
+	jsonkit.CodecRegisterTypeID[workflow.EventDefer](&c, "workflow:event:defer", "workflow::event::defer")
+	jsonkit.CodecRegisterTypeID[workflow.EventForEachIteration](&c, "workflow:event:foreach:iteration", "workflow::event::foreach::iteration")
+	jsonkit.CodecRegisterTypeID[workflow.EventError](&c, "workflow:event:error", "workflow::event::error")
+	jsonkit.CodecRegisterTypeID[workflow.ExecutionRequest](&c, "workflow:execution", "workflow::execution")
+	jsonkit.CodecRegisterTypeID[workflow.ProcessSchedule](&c, "workflow:schedule", "workflow::schedule")
+	jsonkit.CodecRegisterTypeID[workflow.ProcessCancel](&c, "workflow:cancel", "workflow::cancel")
 	return &c
 }
 
@@ -75,14 +129,14 @@ func NewCodec() *jsonkit.Codec {
 type WorkflowJoin struct{}
 
 type workflowJoinDTO struct {
-	SpawnName string              `json:"spawn_name,omitzero"`
-	Collect   workflow.VarMapping `json:"collect,omitzero"`
+	Spawn   string              `json:"spawn,omitzero"`
+	Collect workflow.VarMapping `json:"collect,omitzero"`
 }
 
 func (WorkflowJoin) Marshal(c *jsonkit.Codec, v workflow.Join) ([]byte, error) {
 	return json.Marshal(workflowJoinDTO{
-		SpawnName: string(v.SpawnName),
-		Collect:   v.Collect,
+		Spawn:   string(v.Spawn),
+		Collect: v.Collect,
 	})
 }
 
@@ -91,7 +145,7 @@ func (WorkflowJoin) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Join) e
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	p.SpawnName = workflow.SpawnName(dto.SpawnName)
+	p.Spawn = workflow.SpawnName(dto.Spawn)
 	p.Collect = dto.Collect
 	return nil
 }
@@ -110,12 +164,12 @@ var _ jsonkit.ITypeCodec[workflow.Join] = WorkflowJoin{}
 //   - One codec value per workflow type (e.g. WorkflowIf for workflow.If).
 //     Each codec implements jsonkit.ITypeCodec[T] so it can be plugged into
 //     CodecRegister. The codec MUST return only the inner JSON for the type
-//     (no @type envelope); jsonkit wraps the result with the envelope on the
+//     (no $type envelope); jsonkit wraps the result with the envelope on the
 //     polymorphic path, and routes the bare result through directly otherwise.
 //   - DTO structs are private (e.g. workflowIfDTO) and unexported. They carry
 //     only json tags — no behavioural methods, no business logic.
 //   - Nested Definition / Condition fields are marshalled recursively through
-//     *jsonkit.Codec so the inner @type envelope is preserved. The DTO uses
+//     *jsonkit.Codec so the inner $type envelope is preserved. The DTO uses
 //     json.RawMessage for those fields.
 //   - json:"...,omitempty" matches the original struct tag when the field is a
 //     pointer/collection; json:"...,omitzero" is used when the field is a
@@ -142,7 +196,7 @@ func (WorkflowSequence) Marshal(c *jsonkit.Codec, v workflow.Sequence) ([]byte, 
 			elems[i] = []byte("null")
 			continue
 		}
-		b, err := c.Marshal(d)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: d})
 		if err != nil {
 			return nil, err
 		}
@@ -188,21 +242,21 @@ type workflowIfDTO struct {
 func (WorkflowIf) Marshal(c *jsonkit.Codec, v workflow.If) ([]byte, error) {
 	dto := workflowIfDTO{}
 	if v.Cond != nil {
-		b, err := c.Marshal(v.Cond)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Condition]{V: v.Cond})
 		if err != nil {
 			return nil, err
 		}
 		dto.Cond = b
 	}
 	if v.Then != nil {
-		b, err := c.Marshal(v.Then)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Then})
 		if err != nil {
 			return nil, err
 		}
 		dto.Then = b
 	}
 	if v.Else != nil {
-		b, err := c.Marshal(v.Else)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Else})
 		if err != nil {
 			return nil, err
 		}
@@ -254,14 +308,14 @@ type workflowSleepDTO struct {
 func (WorkflowSleep) Marshal(c *jsonkit.Codec, v workflow.Sleep) ([]byte, error) {
 	dto := workflowSleepDTO{}
 	if v.While != nil {
-		b, err := c.Marshal(v.While)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Condition]{V: v.While})
 		if err != nil {
 			return nil, err
 		}
 		dto.While = b
 	}
 	if v.Until != nil {
-		b, err := c.Marshal(v.Until)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Condition]{V: v.Until})
 		if err != nil {
 			return nil, err
 		}
@@ -310,28 +364,28 @@ type workflowForDTO struct {
 func (WorkflowFor) Marshal(c *jsonkit.Codec, v workflow.For) ([]byte, error) {
 	dto := workflowForDTO{}
 	if v.Init != nil {
-		b, err := c.Marshal(v.Init)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Init})
 		if err != nil {
 			return nil, err
 		}
 		dto.Init = b
 	}
 	if v.Cond != nil {
-		b, err := c.Marshal(v.Cond)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Condition]{V: v.Cond})
 		if err != nil {
 			return nil, err
 		}
 		dto.Cond = b
 	}
 	if v.Post != nil {
-		b, err := c.Marshal(v.Post)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Post})
 		if err != nil {
 			return nil, err
 		}
 		dto.Post = b
 	}
 	if v.Do != nil {
-		b, err := c.Marshal(v.Do)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Do})
 		if err != nil {
 			return nil, err
 		}
@@ -399,7 +453,7 @@ func (WorkflowForEach) Marshal(c *jsonkit.Codec, v workflow.ForEach) ([]byte, er
 		V:    v.V,
 	}
 	if v.Do != nil {
-		b, err := c.Marshal(v.Do)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Do})
 		if err != nil {
 			return nil, err
 		}
@@ -467,14 +521,18 @@ type WorkflowSetVar struct{}
 var _ jsonkit.ITypeCodec[workflow.SetVar] = WorkflowSetVar{}
 
 type workflowSetVarDTO struct {
-	Name  string `json:"name"`
-	Value any    `json:"value"`
+	Name  string          `json:"name"`
+	Value json.RawMessage `json:"value"`
 }
 
 func (WorkflowSetVar) Marshal(c *jsonkit.Codec, v workflow.SetVar) ([]byte, error) {
+	value, err := marshalValue(c, v.Value)
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(workflowSetVarDTO{
 		Name:  string(v.Name),
-		Value: v.Value,
+		Value: value,
 	})
 }
 
@@ -483,8 +541,12 @@ func (WorkflowSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.SetVa
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
+	value, err := unmarshalValue(c, dto.Value)
+	if err != nil {
+		return err
+	}
 	p.Name = workflow.VarName(dto.Name)
-	p.Value = dto.Value
+	p.Value = value
 	return nil
 }
 
@@ -564,7 +626,7 @@ type workflowSpawnDTO struct {
 }
 
 func (WorkflowSpawn) Marshal(c *jsonkit.Codec, v workflow.Spawn) ([]byte, error) {
-	defBytes, err := c.Marshal(v.Definition)
+	defBytes, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Definition})
 	if err != nil {
 		return nil, err
 	}
@@ -592,16 +654,78 @@ func (WorkflowSpawn) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Spawn)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// ExecuteParticipant
+// Defer
 
-type WorkflowExecuteParticipant struct{}
+type WorkflowDefer struct{}
 
-var _ jsonkit.ITypeCodec[workflow.ExecuteParticipant] = WorkflowExecuteParticipant{}
+var _ jsonkit.ITypeCodec[workflow.Defer] = WorkflowDefer{}
 
-type workflowExecuteParticipantDTO struct {
-	ID     string   `json:"id"`
-	Input  []string `json:"input,omitempty"`
-	Output []string `json:"output,omitempty"`
+type workflowDeferDTO struct {
+	Definition json.RawMessage `json:"def,omitempty"`
+}
+
+func (WorkflowDefer) Marshal(c *jsonkit.Codec, v workflow.Defer) ([]byte, error) {
+	var dto workflowDeferDTO
+	if v.Definition != nil {
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Definition})
+		if err != nil {
+			return nil, err
+		}
+		dto.Definition = b
+	}
+	return json.Marshal(dto)
+}
+
+func (WorkflowDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Defer) error {
+	var dto workflowDeferDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.Definition = nil
+	if len(dto.Definition) > 0 && string(dto.Definition) != "null" {
+		var def workflow.Definition
+		if err := c.Unmarshal(dto.Definition, &def); err != nil {
+			return err
+		}
+		p.Definition = def
+	}
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Execute
+
+type WorkflowExecute struct{}
+
+var _ jsonkit.ITypeCodec[workflow.Execute] = WorkflowExecute{}
+
+type workflowExecuteDTO struct {
+	ParticipantID string   `json:"participant,omitempty"`
+	ConditionID   string   `json:"condition,omitempty"`
+	Input         []string `json:"input,omitempty"`
+	Output        []string `json:"output,omitempty"`
+}
+
+func (WorkflowExecute) Marshal(c *jsonkit.Codec, v workflow.Execute) ([]byte, error) {
+	return json.Marshal(workflowExecuteDTO{
+		ParticipantID: string(v.Participant),
+		ConditionID:   string(v.Condition),
+		Input:         varNamesToStrings(v.Input),
+		Output:        varNamesToStrings(v.Output),
+	})
+}
+
+func (WorkflowExecute) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Execute) error {
+	var dto workflowExecuteDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.Participant = workflow.ParticipantID(dto.ParticipantID)
+	p.Condition = workflow.ConditionID(dto.ConditionID)
+	p.Input = varNamesFromStrings(dto.Input)
+	p.Output = varNamesFromStrings(dto.Output)
+	return nil
 }
 
 func varNamesToStrings(names []workflow.VarName) []string {
@@ -624,55 +748,6 @@ func varNamesFromStrings(names []string) []workflow.VarName {
 		out[i] = workflow.VarName(n)
 	}
 	return out
-}
-
-func (WorkflowExecuteParticipant) Marshal(c *jsonkit.Codec, v workflow.ExecuteParticipant) ([]byte, error) {
-	return json.Marshal(workflowExecuteParticipantDTO{
-		ID:     string(v.ID),
-		Input:  varNamesToStrings(v.Input),
-		Output: varNamesToStrings(v.Output),
-	})
-}
-
-func (WorkflowExecuteParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ExecuteParticipant) error {
-	var dto workflowExecuteParticipantDTO
-	if err := json.Unmarshal(data, &dto); err != nil {
-		return err
-	}
-	p.ID = workflow.ParticipantID(dto.ID)
-	p.Input = varNamesFromStrings(dto.Input)
-	p.Output = varNamesFromStrings(dto.Output)
-	return nil
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// ExecuteCondition
-
-type WorkflowExecuteCondition struct{}
-
-var _ jsonkit.ITypeCodec[workflow.ExecuteCondition] = WorkflowExecuteCondition{}
-
-type workflowExecuteConditionDTO struct {
-	ID    string   `json:"id"`
-	Input []string `json:"input,omitempty"`
-}
-
-func (WorkflowExecuteCondition) Marshal(c *jsonkit.Codec, v workflow.ExecuteCondition) ([]byte, error) {
-	return json.Marshal(workflowExecuteConditionDTO{
-		ID:    string(v.ID),
-		Input: varNamesToStrings(v.Input),
-	})
-}
-
-func (WorkflowExecuteCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.ExecuteCondition) error {
-	var dto workflowExecuteConditionDTO
-	if err := json.Unmarshal(data, &dto); err != nil {
-		return err
-	}
-	p.ID = workflow.ConditionID(dto.ID)
-	p.Input = varNamesFromStrings(dto.Input)
-	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -753,7 +828,6 @@ type workflowEventDeclareVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
-	Scope     VarScopeDTO        `json:"scope,omitempty"`
 }
 
 func (WorkflowEventDeclareVar) Marshal(c *jsonkit.Codec, v workflow.EventDeclareVar) ([]byte, error) {
@@ -763,7 +837,6 @@ func (WorkflowEventDeclareVar) Marshal(c *jsonkit.Codec, v workflow.EventDeclare
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
-		Scope:     ToVarScopeDTO(v.Scope),
 	})
 }
 
@@ -777,7 +850,6 @@ func (WorkflowEventDeclareVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workf
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
-	p.Scope = ToVarScope(dto.Scope)
 	return nil
 }
 
@@ -791,18 +863,26 @@ type workflowEventSetVarDTO struct {
 	Timestamp time.Time          `json:"timestamp"`
 	Path      PathDTO            `json:"path,omitempty"`
 	Name      string             `json:"name"`
-	Value     any                `json:"value,omitempty"`
+	Value     json.RawMessage    `json:"value,omitempty"`
 }
 
 func (WorkflowEventSetVar) Marshal(c *jsonkit.Codec, v workflow.EventSetVar) ([]byte, error) {
-	return json.Marshal(workflowEventSetVarDTO{
+	dto := workflowEventSetVarDTO{
 		EventID:   v.EventID,
 		ProcessID: v.ProcessID,
 		Timestamp: v.Timestamp,
 		Path:      ToPathDTO(v.Path),
 		Name:      string(v.Name),
-		Value:     v.Value,
-	})
+	}
+	// A nil Value is left out, the way omitempty leaves out a nil interface.
+	if v.Value != nil {
+		value, err := marshalValue(c, v.Value)
+		if err != nil {
+			return nil, err
+		}
+		dto.Value = value
+	}
+	return json.Marshal(dto)
 }
 
 func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventSetVar) error {
@@ -810,12 +890,16 @@ func (WorkflowEventSetVar) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
+	value, err := unmarshalValue(c, dto.Value)
+	if err != nil {
+		return err
+	}
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Name = workflow.VarName(dto.Name)
-	p.Value = dto.Value
+	p.Value = value
 	return nil
 }
 
@@ -866,23 +950,31 @@ type workflowExecuteParticipantEventDTO struct {
 	Timestamp     time.Time          `json:"timestamp"`
 	ParticipantID string             `json:"participant_id,omitempty"`
 	Path          PathDTO            `json:"path,omitempty"`
-	Input         []any              `json:"input,omitempty"`
-	Output        []any              `json:"output,omitempty"`
+	Input         []json.RawMessage  `json:"input,omitempty"`
+	Output        []json.RawMessage  `json:"output,omitempty"`
 	Definition    json.RawMessage    `json:"definition,omitempty"`
 }
 
 func (WorkflowEventParticipant) Marshal(c *jsonkit.Codec, v workflow.EventParticipant) ([]byte, error) {
+	input, err := marshalValues(c, v.Input)
+	if err != nil {
+		return nil, err
+	}
+	output, err := marshalValues(c, v.Output)
+	if err != nil {
+		return nil, err
+	}
 	dto := workflowExecuteParticipantEventDTO{
 		EventID:       v.EventID,
 		ProcessID:     v.ProcessID,
 		Timestamp:     v.Timestamp,
 		ParticipantID: string(v.ParticipantID),
 		Path:          ToPathDTO(v.Path),
-		Input:         v.Input,
-		Output:        v.Output,
+		Input:         input,
+		Output:        output,
 	}
 	if v.Definition != nil {
-		b, err := c.Marshal(v.Definition)
+		b, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Definition})
 		if err != nil {
 			return nil, err
 		}
@@ -896,13 +988,21 @@ func (WorkflowEventParticipant) Unmarshal(c *jsonkit.Codec, data []byte, p *work
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
+	input, err := unmarshalValues(c, dto.Input)
+	if err != nil {
+		return err
+	}
+	output, err := unmarshalValues(c, dto.Output)
+	if err != nil {
+		return err
+	}
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.Timestamp = dto.Timestamp
 	p.ParticipantID = workflow.ParticipantID(dto.ParticipantID)
 	p.Path = ToPath(dto.Path)
-	p.Input = dto.Input
-	p.Output = dto.Output
+	p.Input = input
+	p.Output = output
 	if len(dto.Definition) > 0 && string(dto.Definition) != "null" {
 		var def workflow.Definition
 		if err := c.Unmarshal(dto.Definition, &def); err != nil {
@@ -924,18 +1024,22 @@ type workflowExecuteConditionEventDTO struct {
 	ProcessID   workflow.ProcessID `json:"process_id"`
 	ConditionID string             `json:"condition_id,omitempty"`
 	Path        PathDTO            `json:"path,omitempty"`
-	Input       []any              `json:"input"`
+	Input       []json.RawMessage  `json:"input"`
 	Answer      bool               `json:"answer"`
 	Timestamp   time.Time          `json:"timestamp"`
 }
 
 func (WorkflowEventCondition) Marshal(c *jsonkit.Codec, v workflow.EventCondition) ([]byte, error) {
+	input, err := marshalValues(c, v.Input)
+	if err != nil {
+		return nil, err
+	}
 	return json.Marshal(workflowExecuteConditionEventDTO{
 		EventID:     v.EventID,
 		ProcessID:   v.ProcessID,
 		ConditionID: string(v.ConditionID),
 		Path:        ToPathDTO(v.Path),
-		Input:       v.Input,
+		Input:       input,
 		Answer:      v.Answer,
 		Timestamp:   v.Timestamp,
 	})
@@ -946,11 +1050,15 @@ func (WorkflowEventCondition) Unmarshal(c *jsonkit.Codec, data []byte, p *workfl
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
+	input, err := unmarshalValues(c, dto.Input)
+	if err != nil {
+		return err
+	}
 	p.EventID = dto.EventID
 	p.ProcessID = dto.ProcessID
 	p.ConditionID = workflow.ConditionID(dto.ConditionID)
 	p.Path = ToPath(dto.Path)
-	p.Input = dto.Input
+	p.Input = input
 	p.Answer = dto.Answer
 	p.Timestamp = dto.Timestamp
 	return nil
@@ -970,7 +1078,7 @@ type workflowUseDefinitionEventDTO struct {
 }
 
 func (WorkflowEventUseDefinition) Marshal(c *jsonkit.Codec, v workflow.EventUseDefinition) ([]byte, error) {
-	defBytes, err := c.Marshal(v.Definition)
+	defBytes, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Definition})
 	if err != nil {
 		return nil, err
 	}
@@ -1010,6 +1118,7 @@ type workflowSpawnEventDTO struct {
 	ChildID   workflow.ProcessID `json:"child_id"`
 	Name      string             `json:"name,omitzero"`
 	Timestamp time.Time          `json:"timestamp"`
+	Path      PathDTO            `json:"path,omitempty"`
 }
 
 func (WorkflowEventSpawn) Marshal(c *jsonkit.Codec, v workflow.EventSpawn) ([]byte, error) {
@@ -1019,6 +1128,7 @@ func (WorkflowEventSpawn) Marshal(c *jsonkit.Codec, v workflow.EventSpawn) ([]by
 		ChildID:   v.ChildID,
 		Name:      string(v.Name),
 		Timestamp: v.Timestamp,
+		Path:      ToPathDTO(v.Path),
 	})
 }
 
@@ -1032,6 +1142,7 @@ func (WorkflowEventSpawn) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.E
 	p.ChildID = dto.ChildID
 	p.Name = workflow.SpawnName(dto.Name)
 	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
 	return nil
 }
 
@@ -1069,6 +1180,168 @@ func (WorkflowEventJoin) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.Ev
 	p.Timestamp = dto.Timestamp
 	p.Children = dto.Children
 	p.Path = ToPath(dto.Path)
+	return nil
+}
+
+// SleepCompletedEvent
+
+type WorkflowEventSleepCompleted struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventSleepCompleted] = WorkflowEventSleepCompleted{}
+
+type workflowSleepCompletedEventDTO struct {
+	EventID   workflow.EventID   `json:"event_id"`
+	ProcessID workflow.ProcessID `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Path      PathDTO            `json:"path,omitempty"`
+}
+
+func (WorkflowEventSleepCompleted) Marshal(c *jsonkit.Codec, v workflow.EventSleepCompleted) ([]byte, error) {
+	return json.Marshal(workflowSleepCompletedEventDTO{
+		EventID:   v.EventID,
+		ProcessID: v.ProcessID,
+		Timestamp: v.Timestamp,
+		Path:      ToPathDTO(v.Path),
+	})
+}
+
+func (WorkflowEventSleepCompleted) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventSleepCompleted) error {
+	var dto workflowSleepCompletedEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
+	return nil
+}
+
+// DeferEvent
+
+type WorkflowEventDefer struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventDefer] = WorkflowEventDefer{}
+
+type workflowDeferEventDTO struct {
+	EventID    workflow.EventID   `json:"event_id"`
+	ProcessID  workflow.ProcessID `json:"process_id"`
+	Timestamp  time.Time          `json:"timestamp"`
+	Path       PathDTO            `json:"path,omitempty"`
+	Definition json.RawMessage    `json:"definition"`
+}
+
+func (WorkflowEventDefer) Marshal(c *jsonkit.Codec, v workflow.EventDefer) ([]byte, error) {
+	defBytes, err := c.Marshal(jsonkit.Interface[workflow.Definition]{V: v.Definition})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(workflowDeferEventDTO{
+		EventID:    v.EventID,
+		ProcessID:  v.ProcessID,
+		Timestamp:  v.Timestamp,
+		Path:       ToPathDTO(v.Path),
+		Definition: defBytes,
+	})
+}
+
+func (WorkflowEventDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventDefer) error {
+	var dto workflowDeferEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	var def workflow.Definition
+	if err := c.Unmarshal(dto.Definition, &def); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
+	p.Definition = def
+	return nil
+}
+
+// ForEachIterationEvent
+
+type WorkflowEventForEachIteration struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventForEachIteration] = WorkflowEventForEachIteration{}
+
+type workflowForEachIterationEventDTO struct {
+	EventID   workflow.EventID   `json:"event_id"`
+	ProcessID workflow.ProcessID `json:"process_id"`
+	Timestamp time.Time          `json:"timestamp"`
+	Path      PathDTO            `json:"path,omitempty"`
+	Over      workflow.VarName   `json:"over"`
+	K         workflow.VarName   `json:"key,omitempty"`
+	V         workflow.VarName   `json:"value,omitempty"`
+}
+
+func (WorkflowEventForEachIteration) Marshal(c *jsonkit.Codec, v workflow.EventForEachIteration) ([]byte, error) {
+	return json.Marshal(workflowForEachIterationEventDTO{
+		EventID:   v.EventID,
+		ProcessID: v.ProcessID,
+		Timestamp: v.Timestamp,
+		Path:      ToPathDTO(v.Path),
+		Over:      v.Over,
+		K:         v.K,
+		V:         v.V,
+	})
+}
+
+func (WorkflowEventForEachIteration) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventForEachIteration) error {
+	var dto workflowForEachIterationEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.Path = ToPath(dto.Path)
+	p.Over = dto.Over
+	p.K = dto.K
+	p.V = dto.V
+	return nil
+}
+
+// ErrorEvent
+
+type WorkflowEventError struct{}
+
+var _ jsonkit.ITypeCodec[workflow.EventError] = WorkflowEventError{}
+
+type workflowErrorEventDTO struct {
+	EventID       workflow.EventID   `json:"event_id"`
+	ProcessID     workflow.ProcessID `json:"process_id"`
+	Timestamp     time.Time          `json:"timestamp"`
+	ParticipantID string             `json:"participant_id,omitempty"`
+	Path          PathDTO            `json:"path,omitempty"`
+	Error         string             `json:"error"`
+}
+
+func (WorkflowEventError) Marshal(c *jsonkit.Codec, v workflow.EventError) ([]byte, error) {
+	return json.Marshal(workflowErrorEventDTO{
+		EventID:       v.EventID,
+		ProcessID:     v.ProcessID,
+		Timestamp:     v.Timestamp,
+		ParticipantID: string(v.ParticipantID),
+		Path:          ToPathDTO(v.Path),
+		Error:         v.Error,
+	})
+}
+
+func (WorkflowEventError) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventError) error {
+	var dto workflowErrorEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	p.EventID = dto.EventID
+	p.ProcessID = dto.ProcessID
+	p.Timestamp = dto.Timestamp
+	p.ParticipantID = workflow.ParticipantID(dto.ParticipantID)
+	p.Path = ToPath(dto.Path)
+	p.Error = dto.Error
 	return nil
 }
 
@@ -1111,7 +1384,7 @@ func (WorkflowExecutionRequest) Unmarshal(c *jsonkit.Codec, data []byte, p *work
 }
 
 // Notification is a polymorphic interface; each concrete implementation
-// gets its own registered codec so jsonkit's @type envelope can dispatch
+// gets its own registered codec so jsonkit's $type envelope can dispatch
 // Marshal/Unmarshal to the right DTO shape on the wire.
 
 type WorkflowProcessSchedule struct{}
@@ -1165,7 +1438,11 @@ func ToPath(dto PathDTO) workflow.Path {
 	if dto == nil {
 		return nil
 	}
-	return workflow.Path(dto)
+	var p = make(workflow.Path, 0, len(dto))
+	for _, s := range dto {
+		p = append(p, workflow.Scope{Name: s.Name, Var: s.Var})
+	}
+	return p
 }
 
 // ToPathDTO converts a workflow.Path into its wire representation.
@@ -1176,32 +1453,26 @@ func ToPathDTO(p workflow.Path) PathDTO {
 	if p == nil {
 		return nil
 	}
-	return PathDTO(p)
+	var dto = make(PathDTO, 0, len(p))
+	for _, s := range p {
+		dto = append(dto, ScopeDTO{Name: s.Name, Var: s.Var})
+	}
+	return dto
 }
 
-// PathDTO is the wire representation of a workflow.Path.
+// PathDTO is the wire representation of a workflow.Path:
+// a JSON array of its Scopes, from the root.
 //
-// A path is a chain of scope names, so its wire form is a plain JSON array of
-// strings — the same shape it had back when workflow.Path was a []string, which
-// keeps histories recorded before the Scope detour readable without any shim.
-type PathDTO []string
+// The "var" marks are part of the Path, as they tell the variable scopes of the location,
+// and the variable events rely on them to tell the scope of the variable they are about.
+type PathDTO []ScopeDTO
 
-// ToVarScope converts the wire representation of a workflow.VarScope back into
-// the domain type, following the same nil-preserving convention as ToPath.
-func ToVarScope(dto VarScopeDTO) workflow.VarScope {
-	if dto == nil {
-		return nil
-	}
-	return workflow.VarScope(dto)
+// ScopeDTO is the wire representation of a workflow.Scope.
+//
+//	{"name": "for", "var": true}
+//
+// "var" is omitted for a Scope which is not a variable scope.
+type ScopeDTO struct {
+	Name string `json:"name"`
+	Var  bool   `json:"var,omitempty"`
 }
-
-// ToVarScopeDTO converts a workflow.VarScope into its wire representation.
-func ToVarScopeDTO(vs workflow.VarScope) VarScopeDTO {
-	if vs == nil {
-		return nil
-	}
-	return VarScopeDTO(vs)
-}
-
-// VarScopeDTO is the wire representation of a workflow.VarScope.
-type VarScopeDTO []string

@@ -1,0 +1,215 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::var::set",
+				"name": "token",
+				"value": "secret"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::greet",
+				"input": [
+					"token"
+				],
+				"output": [
+					"greeting"
+				]
+			},
+			{
+				"$type": "workflow::var::delete",
+				"name": "token"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::see",
+				"input": [
+					"greeting"
+				]
+			}
+		]
+	},
+	"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd4f-709f-a890-31e41b227e53",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375039Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::var::set",
+						"name": "token",
+						"value": "secret"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::greet",
+						"input": [
+							"token"
+						],
+						"output": [
+							"greeting"
+						]
+					},
+					{
+						"$type": "workflow::var::delete",
+						"name": "token"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::see",
+						"input": [
+							"greeting"
+						]
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a1842c-fd4f-7106-b0b3-acba93c0a530",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375064Z",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "token"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a1842c-fd4f-7112-bebd-5ad3be4a93d3",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375064001Z",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "token",
+			"value": "secret"
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd4f-71ad-a223-ca1582c16d76",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375106Z",
+			"participant_id": "compat::greet",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"input": [
+				"secret"
+			],
+			"output": [
+				"hello secret"
+			]
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a1842c-fd4f-71ff-9d54-2ee2434a3d11",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375125Z",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a1842c-fd4f-7208-96c4-c1ad2b35b5b3",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375125001Z",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting",
+			"value": "hello secret"
+		},
+		{
+			"$type": "workflow::event::var::delete",
+			"event_id": "01a1842c-fd4f-7276-9429-710d2864185c",
+			"process_id": "01a1842c-fd4f-7093-8621-eb2b1a4fbbb3",
+			"timestamp": "2026-10-28T20:21:43.375153Z",
+			"path": [
+				{
+					"name": "01a1842c-fd4f-709f-a890-31e41b227e53"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[2]"
+				},
+				{
+					"name": "delete-var"
+				}
+			],
+			"name": "token"
+		}
+	]
+}

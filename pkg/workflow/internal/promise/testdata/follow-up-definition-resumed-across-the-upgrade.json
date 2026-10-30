@@ -1,0 +1,126 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::plan"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd61-71a5-8ba2-87154175d260",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd61-71b2-aa5b-53517719c19c",
+			"process_id": "01a1842c-fd61-71a5-8ba2-87154175d260",
+			"timestamp": "2026-10-28T20:21:43.393106Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::plan"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd61-7235-a6d6-5b979a778ff1",
+			"process_id": "01a1842c-fd61-71a5-8ba2-87154175d260",
+			"timestamp": "2026-10-28T20:21:43.393138Z",
+			"participant_id": "compat::a",
+			"path": [
+				{
+					"name": "01a1842c-fd61-71b2-aa5b-53517719c19c"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd61-7276-b4b9-59754dcff469",
+			"process_id": "01a1842c-fd61-71a5-8ba2-87154175d260",
+			"timestamp": "2026-10-28T20:21:43.393154Z",
+			"participant_id": "compat::plan",
+			"path": [
+				{
+					"name": "01a1842c-fd61-71b2-aa5b-53517719c19c"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::plan"
+				}
+			],
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::b"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::c"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd61-72d4-9797-075693180e68",
+			"process_id": "01a1842c-fd61-71a5-8ba2-87154175d260",
+			"timestamp": "2026-10-28T20:21:43.393177Z",
+			"participant_id": "compat::b",
+			"path": [
+				{
+					"name": "01a1842c-fd61-71b2-aa5b-53517719c19c"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "compat::plan"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::b"
+				}
+			]
+		}
+	]
+}

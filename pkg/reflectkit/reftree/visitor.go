@@ -260,6 +260,19 @@ var vNodeTypeElemOf = map[NodeType]NodeType{
 	Interface: InterfaceElem,
 }
 
+// RecursionGuard tells whether a reference was seen already while walking a value tree,
+// so the walk is able to stop at a reference cycle, instead of recursing forever.
+//
+// A walk which visits each reference only once, like the Visitor's, keeps everything it has seen.
+// A walk which has to visit a reference each time it is referenced, like an encoder,
+// which writes a shared reference at every place it appears, keeps only the references of the current path:
+// it forgets a reference with Forget, once it stepped out of it,
+// so only a reference which leads back to one of its own containers is seen again:
+//
+//	if guard.Seen(v) {
+//		return errCycle
+//	}
+//	defer guard.Forget(v)
 type RecursionGuard struct {
 	seen map[recursionKey]struct{}
 }
@@ -301,6 +314,16 @@ func (g *RecursionGuard) Seen(v reflect.Value) bool {
 	_, seenBefore := g.seen[key]
 	g.seen[key] = struct{}{}
 	return seenBefore
+}
+
+// Forget makes the guard forget that it has seen v,
+// so the next Seen of it reports it as not yet seen.
+func (g *RecursionGuard) Forget(v reflect.Value) {
+	key, ok := g.keyOf(v)
+	if !ok {
+		return
+	}
+	delete(g.seen, key)
 }
 
 // keyOf returns the cycle identity of the value,

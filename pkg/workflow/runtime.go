@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/workflow/internal"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/guard"
@@ -48,6 +49,12 @@ type Runtime struct {
 	//
 	// Default: 30 seconds
 	WaitTime time.Duration
+	// ParticipantWarningInterval [optional] logs a warning every N scheduling
+	// failures caused by a missing participant or incompatible participant signature.
+	// These failures increment ExecutionRequest.FailureCount and requeue after
+	// WaitTime without a hard limit; suspensions do not increment the count.
+	// Zero and negative values use the default interval of 5 failures.
+	ParticipantWarningInterval int
 	// RetryStrategy [optional] is the retry strategy applied when a non-fatal error occurs during a task execution.
 	RetryStrategy resilience.RetryStrategy
 	// BindGracePeriod [optional] is how long a scheduled Process may wait for
@@ -230,7 +237,7 @@ func (rt Runtime) execute(ctx context.Context, pid ProcessID) (rErr error) {
 		return ErrZeroProcessID.F("workflow.Runtime#Execute")
 	}
 
-	ctx = ctxHProcessID.ContextWith(ctx, pid)
+	ctx = internal.ContextProcessID.ContextWith(ctx, pid)
 
 	ctx, acquired, unlock, err := rt.tryLock(ctx, pid)
 	if err != nil {
@@ -297,8 +304,19 @@ func (rt Runtime) tryLock(ctx context.Context, pid ProcessID) (context.Context, 
 	if !acquired {
 		return nil, false, nil, nil
 	}
-	return lockContext, true, func() error { return locker.Unlock(lockContext) }, nil
+	// A lock context is re-entrant: locking it again hands back the same lock.
+	// Releasing it is the job of whoever acquired it in the first place,
+	// otherwise a nested caller, like a participant raising Terminate,
+	// would release the lock from under the execution that holds it.
+	if held, _ := ctx.Value(ctxKeyProcessLock{ProcessID: pid}).(bool); held {
+		return lockContext, true, func() error { return nil }, nil
+	}
+	unlock := func() error { return locker.Unlock(lockContext) }
+	return context.WithValue(lockContext, ctxKeyProcessLock{ProcessID: pid}, true), true, unlock, nil
 }
+
+// ctxKeyProcessLock marks a context in which the lock of the Process is already held.
+type ctxKeyProcessLock struct{ ProcessID ProcessID }
 
 // ErrZeroProcessID is returned when a workflow.Runtime operation is called
 // with a zero ProcessID. The caller must own process identity so that retries
@@ -380,10 +398,6 @@ func RuntimeFromContext(ctx context.Context) (Runtime, bool) {
 	return ctxHRuntime.Lookup(ctx)
 }
 
-type ctxKeyProcessID struct{}
-
-var ctxHProcessID contextkit.ValueHandler[ctxKeyProcessID, ProcessID]
-
 func ProcessIDFromContext(ctx context.Context) (ProcessID, bool) {
-	return ctxHProcessID.Lookup(ctx)
+	return internal.ContextProcessID.Lookup(ctx)
 }

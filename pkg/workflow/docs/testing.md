@@ -59,9 +59,9 @@ func TestOrderWorkflow(t *testing.T) {
 	c.Definition.Let(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
 			workflow.SetVar{Name: "order_id", Value: "42"},
-			workflow.ExecuteParticipant{
-				ID:    chargeID.Get(t),
-				Input: []workflow.VarName{"order_id"},
+			workflow.Execute{
+				Participant: chargeID.Get(t),
+				Input:       []workflow.VarName{"order_id"},
 			},
 		}
 	})
@@ -249,7 +249,7 @@ value to `t.Run` for a named subtest. To fold one into a larger spec, use
 | `wfcontract.Queue(subject, opts...)`          | Your scheduler queue.              |
 | `wfcontract.NotificationBroadcast(subject, opts...)` | Your change-notification channel. |
 | `wfcontract.ProcessLocks(subject, opts...)`   | Your per-process locker factory.   |
-| `wfcontract.Definition(mk)`                   | Your own `Definition` type.        |
+| `wfcontract.Definition(mk, opts...)`         | Your own `Definition` type.        |
 | `wfcontract.Codec(codec)`                     | Your own wire format. See [Codec][CODEC]. |
 
 ### The requirements you would not have guessed
@@ -276,21 +276,28 @@ This is why running the contract beats writing your own tests:
 
 ### Contract-testing your own Definition
 
-If you write a `Definition` type, `wfcontract.Definition` checks the two things
-the runtime relies on — that it executes, and that re-executing it does not
-append duplicate events:
+If you write a `Definition` type, `wfcontract.Definition` checks the things
+the runtime relies on: that it executes, that re-executing it does not append
+duplicate events, and that the definition and the events it records
+**round-trip through the codec**, as the runtime persists both with it.
+
+The contract uses `wfjson.NewCodec()` unless you pass a codec of your own.
+Pass the codec your runtime uses, with your types registered on it (here
+`NewCodec`, see [Codec][CODEC] for the registration):
 
 ```go
 func TestSendInvoice(t *testing.T) {
 	wfcontract.Definition(func(tb testing.TB, c wfcontract.DefinitionContext) workflow.Definition {
 		return SendInvoice{CustomerID: "cust-1"}
-	}).Test(t)
+	}, wfcontract.DefinitionConfig{Codec: NewCodec()}).Test(t)
 }
 ```
 
 If your definition wraps other definitions, use `c.MakeDefinition(tb)` for the
-children — it returns a stub that asserts it was handed the right process ID and
-a **non-empty path**:
+children. It returns a `workflow.Execute` of a participant that only the
+contract knows about, so it round-trips through any codec. The contract asserts
+that each child runs **within the definition's process**, at a path **below the
+definition's own**, and that **no two child executions share a path**:
 
 ```go
 type Retry struct {
@@ -309,7 +316,7 @@ func (d Retry) Execute(ctx context.Context, pid workflow.ProcessID) error {
 func TestRetry(t *testing.T) {
 	wfcontract.Definition(func(tb testing.TB, c wfcontract.DefinitionContext) workflow.Definition {
 		return Retry{Definition: c.MakeDefinition(tb)}
-	}).Test(t)
+	}, wfcontract.DefinitionConfig{Codec: NewCodec()}).Test(t)
 }
 ```
 
@@ -318,6 +325,13 @@ how the engine tells one step from another in the event history, so a composite
 definition that forwards its context unchanged makes its child indistinguishable
 from its sibling — and the idempotency replay then skips the wrong step. Every
 built-in composite (`Sequence`, `If`, `Sleep`, `Spawn`) does the same thing.
+
+The same goes for a definition with several children: run each under a segment
+of its own (`WithName(ctx, "first")`, `WithName(ctx, "second")`). Two children
+executed with the same context, like two `ForEach` over different collections,
+run their steps at the same paths, and the contract reports the path they share.
+A child may run *within* the path of another, as `For` runs its `Do` at
+`[n]/body` within the `[n]` of its `Post`; only equal paths collide.
 
 ### Fixture builders
 

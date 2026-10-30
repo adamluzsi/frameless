@@ -1,11 +1,11 @@
 module go.llib.dev/frameless/adapter/postgresql
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
 	go.llib.dev/frameless v0.340.0
-	go.llib.dev/testcase v0.194.2
+	go.llib.dev/testcase v0.195.0
 )
 
 replace go.llib.dev/frameless => ../..

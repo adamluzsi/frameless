@@ -258,6 +258,21 @@ func TestMerge(t *testing.T) {
 			"a": 42,
 		})
 	})
+	t.Run("typed map merge", func(t *testing.T) {
+		type MyMap map[string]int
+		var (
+			a = MyMap{"a": 1, "b": 2, "c": 3}
+			b = MyMap{"g": 7, "h": 8, "i": 9}
+			c = map[string]int{"d": 4, "e": 5, "f": 6}
+			o = mapkit.Merge(a, b, c)
+		)
+		assert.Equal[MyMap](t, o, MyMap{
+			"a": 1, "b": 2, "c": 3,
+			"g": 7, "h": 8, "i": 9,
+			"d": 4, "e": 5, "f": 6,
+		})
+		assert.Equal(t, reflect.TypeOf(a), reflect.TypeOf(o))
+	})
 }
 
 func ExampleClone() {

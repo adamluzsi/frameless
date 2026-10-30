@@ -27,7 +27,7 @@ type Halt struct{}
 var _ RuntimeSignal = Halt{}
 
 // Error identifies the signal in error messages and stack traces.
-func (Halt) Error() string { return "workflow::halt" }
+func (Halt) Error() string { return "workflow:halt" }
 
 // RuntimeSignalExecute returns the Halt so the scheduler can recognise it and
 // acknowledge the queue entry without requeueing it. The signal is the

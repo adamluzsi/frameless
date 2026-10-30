@@ -42,6 +42,8 @@ func TestGenerateV1Snapshots(t *testing.T) {
 	evID := workflow.EventID(evUUID)
 	childPID := workflow.ProcessID(childUUID)
 	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	// path is in a variable scope, so its wire form shows the var flag as well.
+	path := workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "participant"}}
 
 	c := wfjson.NewCodec()
 
@@ -55,13 +57,13 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"Sequence(empty)", workflow.Sequence{}},
 		{"Sequence(1 elem)", workflow.Sequence{workflow.SetVar{Name: "n", Value: "v"}}},
 		{"If", workflow.If{
-			Cond: workflow.ExecuteCondition{ID: "is-x", Input: []workflow.VarName{"a"}},
+			Cond: workflow.Execute{Condition: "is-x", Input: []workflow.VarName{"a"}},
 			Then: workflow.SetVar{Name: "t", Value: "1"},
 			Else: workflow.SetVar{Name: "e", Value: "2"},
 		}},
 		{"Sleep", workflow.Sleep{
 			While: wftemplate.Condition(".x == .y"),
-			Until: workflow.ExecuteCondition{ID: "ok", Input: []workflow.VarName{"a"}},
+			Until: workflow.Execute{Condition: "ok", Input: []workflow.VarName{"a"}},
 		}},
 		{"For", workflow.For{
 			Init: workflow.SetVar{Name: "i", Value: "0"},
@@ -84,16 +86,18 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Definition: workflow.SetVar{Name: "x", Value: "1"},
 			Vars:       workflow.VarMapping{"a": "b"},
 		}},
-		{"ExecuteParticipant", workflow.ExecuteParticipant{
-			ID:     "p1",
-			Input:  []workflow.VarName{"a", "b"},
-			Output: []workflow.VarName{"c"},
+		{"Defer", workflow.Defer{Definition: workflow.SetVar{Name: "x", Value: "1"}}},
+		{"Defer without a definition", workflow.Defer{}},
+		{"Execute as a participant", workflow.Execute{
+			Participant: "p1",
+			Input:       []workflow.VarName{"a", "b"},
+			Output:      []workflow.VarName{"c"},
 		}},
-		{"ExecuteCondition", workflow.ExecuteCondition{
-			ID:    "c1",
-			Input: []workflow.VarName{"a"},
+		{"Execute as a condition", workflow.Execute{
+			Condition: "c1",
+			Input:     []workflow.VarName{"a"},
 		}},
-		{"Join", workflow.Join{SpawnName: "child1", Collect: workflow.VarMapping{"x": "y"}}},
+		{"Join", workflow.Join{Spawn: "child1", Collect: workflow.VarMapping{"x": "y"}}},
 		// Conditions
 		{"TemplateCondition", wftemplate.Condition(".x == .y")},
 		// Events
@@ -101,31 +105,31 @@ func TestGenerateV1Snapshots(t *testing.T) {
 		{"EventTerminated", workflow.EventTerminated{EventID: evID, ProcessID: pid, Timestamp: ts}},
 		{"EventDeclareVar", workflow.EventDeclareVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path:  workflow.Path{"sequence", "[0]", "participant"},
-			Name:  "x",
-			Scope: workflow.VarScope{"[0]"},
+			Path: path,
+			Name: "x",
 		}},
 		{"EventSetVar", workflow.EventSetVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path: workflow.Path{"sequence", "[0]", "participant"},
-			Name: "x", Value: "v",
+			Path:  path,
+			Name:  "x",
+			Value: "v",
 		}},
 		{"EventDeleteVar", workflow.EventDeleteVar{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
-			Path: workflow.Path{"sequence", "[0]", "participant"},
+			Path: path,
 			Name: "x",
 		}},
 		{"EventParticipant", workflow.EventParticipant{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			ParticipantID: "p1",
-			Path:          workflow.Path{"sequence", "[0]", "participant"},
+			Path:          path,
 			Input:         []any{"a"},
 			Output:        []any{"b"},
 		}},
 		{"EventCondition", workflow.EventCondition{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			ConditionID: "c1",
-			Path:        workflow.Path{"sequence", "[0]", "participant"},
+			Path:        path,
 			Input:       []any{"a"},
 			Answer:      true,
 		}},
@@ -140,10 +144,52 @@ func TestGenerateV1Snapshots(t *testing.T) {
 			Name:      "child1",
 			Timestamp: ts,
 		}},
+		{"EventSpawn with a Path", workflow.EventSpawn{
+			EventID:   evID,
+			ProcessID: pid,
+			ChildID:   childPID,
+			Name:      "child1",
+			Timestamp: ts,
+			Path:      workflow.Path{{Name: "sequence"}, {Name: "[0]", Var: true}, {Name: "spawn"}, {Name: "child1"}},
+		}},
 		{"EventJoin", workflow.EventJoin{
 			EventID: evID, ProcessID: pid, Timestamp: ts,
 			Children: []workflow.ProcessID{childPID},
-			Path:     workflow.Path{"sequence", "[0]"},
+			Path:     workflow.Path{{Name: "sequence"}, {Name: "[0]"}},
+		}},
+		{"EventSleepCompleted", workflow.EventSleepCompleted{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "sleep"}},
+		}},
+		{"EventDefer", workflow.EventDefer{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path:       path,
+			Definition: workflow.SetVar{Name: "x", Value: "1"},
+		}},
+		{"EventForEachIteration", workflow.EventForEachIteration{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "[1]", Var: true}},
+			Over: "items", K: "k", V: "v",
+		}},
+		{"EventForEachIteration without a key variable", workflow.EventForEachIteration{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "[1]", Var: true}},
+			Over: "items", V: "v",
+		}},
+		{"EventForEachIteration without a value variable", workflow.EventForEachIteration{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Path: workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "[1]", Var: true}},
+			Over: "items", K: "k",
+		}},
+		{"EventError", workflow.EventError{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			ParticipantID: "p1",
+			Path:          path,
+			Error:         "boom",
+		}},
+		{"EventError without a participant and a path", workflow.EventError{
+			EventID: evID, ProcessID: pid, Timestamp: ts,
+			Error: "boom",
 		}},
 		// Schedule-side
 		{"ExecutionRequest", workflow.ExecutionRequest{
@@ -156,7 +202,8 @@ func TestGenerateV1Snapshots(t *testing.T) {
 
 	var sb strings.Builder
 	for _, e := range entries {
-		data, err := c.Marshal(e.val)
+		// like assertMatchesV1Snapshot, the value is written as an interface holds it, with its $type
+		data, err := c.Marshal(&e.val)
 		if err != nil {
 			t.Fatalf("marshalling %s: %v", e.name, err)
 		}

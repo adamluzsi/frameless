@@ -841,7 +841,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						assert.Must(t).NoError(mdb.Get(t).Create(context.Background(), &ent))
 						t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
 						return ent
-					})
+					}).EagerLoading(s) // it must exist before the request, owned by another parent
 
 					s.Then(`it will delete the entities related to the current REST Scope`, func(t *testcase.T) {
 						rr := act(t)

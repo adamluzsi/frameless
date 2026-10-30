@@ -1,0 +1,108 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::for",
+				"cond": null,
+				"do": {
+					"$type": "workflow::sequence",
+					"$value": [
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::a"
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						},
+						{
+							"$type": "workflow::break"
+						}
+					]
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::b"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd40-7a7e-9156-c09eec6a9cbb",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd40-7a8a-9ef1-bcf6f3433da5",
+			"process_id": "01a1842c-fd40-7a7e-9156-c09eec6a9cbb",
+			"timestamp": "2026-10-28T20:21:43.360659Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::for",
+						"cond": null,
+						"do": {
+							"$type": "workflow::sequence",
+							"$value": [
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::a"
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								},
+								{
+									"$type": "workflow::break"
+								}
+							]
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::b"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a1842c-fd40-7b26-9d0a-e6d543bd339e",
+			"process_id": "01a1842c-fd40-7a7e-9156-c09eec6a9cbb",
+			"timestamp": "2026-10-28T20:21:43.360697Z",
+			"participant_id": "compat::a",
+			"path": [
+				{
+					"name": "01a1842c-fd40-7a8a-9ef1-bcf6f3433da5"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "for",
+					"var": true
+				},
+				{
+					"name": "[0]",
+					"var": true
+				},
+				{
+					"name": "body",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
+			]
+		}
+	]
+}

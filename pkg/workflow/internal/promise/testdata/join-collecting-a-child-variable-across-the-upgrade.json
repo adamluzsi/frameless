@@ -1,0 +1,289 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::var::set",
+				"name": "name",
+				"value": "world"
+			},
+			{
+				"$type": "workflow::spawn",
+				"name": "greeter",
+				"def": {
+					"$type": "workflow::sequence",
+					"$value": [
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::greet",
+							"input": [
+								"name"
+							],
+							"output": [
+								"greeting"
+							]
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						}
+					]
+				},
+				"vars": {
+					"name": "name"
+				}
+			},
+			{
+				"$type": "workflow::join",
+				"spawn": "greeter",
+				"collect": {
+					"greeting": "reply"
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::see",
+				"input": [
+					"reply"
+				]
+			}
+		]
+	},
+	"process_id": "01a18427-09eb-74ab-a8ef-022e87fb70fa",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a18427-09eb-74b3-86ce-e5a9bf2df00b",
+			"process_id": "01a18427-09eb-74ab-a8ef-022e87fb70fa",
+			"timestamp": "2026-10-28T20:15:13.387294Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::var::set",
+						"name": "name",
+						"value": "world"
+					},
+					{
+						"$type": "workflow::spawn",
+						"name": "greeter",
+						"def": {
+							"$type": "workflow::sequence",
+							"$value": [
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::greet",
+									"input": [
+										"name"
+									],
+									"output": [
+										"greeting"
+									]
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								}
+							]
+						},
+						"vars": {
+							"name": "name"
+						}
+					},
+					{
+						"$type": "workflow::join",
+						"spawn": "greeter",
+						"collect": {
+							"greeting": "reply"
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::see",
+						"input": [
+							"reply"
+						]
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09eb-752a-b3fc-ce130f5d4bfc",
+			"process_id": "01a18427-09eb-74ab-a8ef-022e87fb70fa",
+			"timestamp": "2026-10-28T20:15:13.387323Z",
+			"path": [
+				{
+					"name": "01a18427-09eb-74b3-86ce-e5a9bf2df00b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "name"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09eb-754b-8d09-fe0b65bea146",
+			"process_id": "01a18427-09eb-74ab-a8ef-022e87fb70fa",
+			"timestamp": "2026-10-28T20:15:13.387323001Z",
+			"path": [
+				{
+					"name": "01a18427-09eb-74b3-86ce-e5a9bf2df00b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "name",
+			"value": "world"
+		},
+		{
+			"$type": "workflow::event::spawn",
+			"event_id": "01a18427-09eb-7909-9d08-99faaed96653",
+			"process_id": "01a18427-09eb-74ab-a8ef-022e87fb70fa",
+			"child_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"name": "greeter",
+			"timestamp": "2026-10-28T20:15:13.387566Z",
+			"path": [
+				{
+					"name": "01a18427-09eb-74b3-86ce-e5a9bf2df00b"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "spawn"
+				},
+				{
+					"name": "greeter"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a18427-09eb-797c-a7fc-f84a55b37616",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387594Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::greet",
+						"input": [
+							"name"
+						],
+						"output": [
+							"greeting"
+						]
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09eb-7a1c-9f37-31e74daaca44",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387632Z",
+			"name": "name"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09eb-7a24-b682-25a1c7ed1d80",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387632001Z",
+			"name": "name",
+			"value": "world"
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a18427-09eb-7cdc-9316-7e48c07c7aa6",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387805Z",
+			"participant_id": "compat::greet",
+			"path": [
+				{
+					"name": "01a18427-09eb-797c-a7fc-f84a55b37616"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"input": [
+				"world"
+			],
+			"output": [
+				"hello world"
+			]
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a18427-09eb-7d36-a945-34e175730f06",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387826Z",
+			"path": [
+				{
+					"name": "01a18427-09eb-797c-a7fc-f84a55b37616"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a18427-09eb-7d3e-8134-74860957dbfd",
+			"process_id": "01a18427-09eb-790d-93bb-7b2853666864",
+			"timestamp": "2026-10-28T20:15:13.387826001Z",
+			"path": [
+				{
+					"name": "01a18427-09eb-797c-a7fc-f84a55b37616"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::greet"
+				}
+			],
+			"name": "greeting",
+			"value": "hello world"
+		}
+	]
+}

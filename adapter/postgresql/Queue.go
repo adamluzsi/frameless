@@ -37,7 +37,7 @@ var (
 // By default, neither idle subscriptions nor application processing reserve a
 // database connection. See QueueV2_spec.md for timing and compatibility details.
 // Configure a value before use; do not mutate it concurrently with its methods.
-// Changing Name selects another queue, never renames or migrates storage.
+// Changing Table selects another queue, never renames or migrates storage.
 type Queue[E any] struct {
 	Connection Connection
 	// Table is the queue table name.
@@ -212,7 +212,10 @@ func (q Queue[E]) Publish(ctx context.Context, value E) error {
 			return errors.New("blocking queue publish cannot wait inside a transaction; use a non-blocking publisher")
 		}
 	}
-	data, err := q.codec().Marshal(value)
+	// The consumers read the message back into an E,
+	// so it is written as an E holds it, which keeps the type of the value when E is an interface.
+	// It is given through a pointer rather than a jsonkit.Interface, as that works with any codec.Codec, and with a concrete E too.
+	data, err := q.codec().Marshal(&value)
 	if err != nil {
 		return err
 	}

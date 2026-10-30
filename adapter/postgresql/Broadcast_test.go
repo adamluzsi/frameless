@@ -337,6 +337,49 @@ func TestBroadcast(t *testing.T) {
 		})
 	})
 
+	// A LISTEN subscription holds a connection of the pool, which it gives back when it ends.
+	// With a pool of one connection, the next LISTEN subscription gets that very connection.
+	s.Describe("LISTEN subscription on a connection of an ended one", func(s *testcase.Spec) {
+		poolSize.LetValue(s, 1)
+		var (
+			// The only connection of the subject's pool is held by the LISTEN subscription.
+			publisher = let.Var(s, func(t *testcase.T) *postgresql.Broadcast[broadcastPayload] {
+				return &postgresql.Broadcast[broadcastPayload]{
+					Connection: queueV2ConnectPool(t, connection.Get(t).DB.Config()),
+					Name:       name.Get(t),
+				}
+			})
+			// More messages than a subscription reads ahead,
+			// so some of them are still unread on its connection when it ends.
+			unread = let.Var(s, func(t *testcase.T) []broadcastPayload {
+				vs := make([]broadcastPayload, 64)
+				for i := range vs {
+					vs[i] = makeBroadcastPayload(t)
+				}
+				return vs
+			})
+		)
+		s.Before(func(t *testcase.T) {
+			ended := bindBroadcastSubscriber(t, ctx.Get(t), subject.Get(t))
+			for _, v := range unread.Get(t) {
+				assert.Must(t).NoError(publisher.Get(t).Publish(ctx.Get(t), v))
+			}
+			// It ends after its first message, and gives its connection back to the pool.
+			for range ended.Subscribe(ctx.Get(t)) {
+				break
+			}
+		})
+		act := func(t *testcase.T) *broadcastSubscription[broadcastPayload] {
+			return pullBroadcastSubscription(t, ctx.Get(t), subject.Get(t))
+		}
+
+		s.Test("receives only messages published after it subscribed, like on a new connection", func(t *testcase.T) {
+			sub := act(t)
+			assert.Must(t).NoError(publisher.Get(t).Publish(ctx.Get(t), data.Get(t)))
+			assert.Equal(t, sub.Receive(t).Data(), data.Get(t))
+		})
+	})
+
 	s.Describe("WorkflowNotificationBroadcast interoperability", func(s *testcase.Spec) {
 		var (
 			wrapperName      = let.Var(s, func(t *testcase.T) string { return name.Get(t) })

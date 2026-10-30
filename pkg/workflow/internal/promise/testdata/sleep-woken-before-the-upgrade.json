@@ -1,0 +1,100 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::sleep",
+				"until": {
+					"$type": "workflow::execute",
+					"condition": "compat::before-upgrade"
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd33-7fbd-a25e-0ee76d12de47",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd33-7fc9-9396-eb6f09b72a61",
+			"process_id": "01a1842c-fd33-7fbd-a25e-0ee76d12de47",
+			"timestamp": "2026-10-28T20:21:43.347987Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::sleep",
+						"until": {
+							"$type": "workflow::execute",
+							"condition": "compat::before-upgrade"
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::condition",
+			"event_id": "01a1842c-fd34-704d-b50e-48cc2f936309",
+			"process_id": "01a1842c-fd33-7fbd-a25e-0ee76d12de47",
+			"condition_id": "compat::before-upgrade",
+			"path": [
+				{
+					"name": "01a1842c-fd33-7fc9-9396-eb6f09b72a61"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "sleep"
+				},
+				{
+					"name": "1793218903"
+				},
+				{
+					"name": "compat::before-upgrade"
+				}
+			],
+			"input": null,
+			"answer": true,
+			"timestamp": "2026-10-28T20:21:43.348019Z"
+		},
+		{
+			"$type": "workflow::event::sleep::completed",
+			"event_id": "01a1842c-fd34-705a-9aba-b78dadcb0237",
+			"process_id": "01a1842c-fd33-7fbd-a25e-0ee76d12de47",
+			"timestamp": "2026-10-28T20:21:43.348022Z",
+			"path": [
+				{
+					"name": "01a1842c-fd33-7fc9-9396-eb6f09b72a61"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "sleep"
+				}
+			]
+		}
+	]
+}

@@ -255,7 +255,7 @@ func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) 
 
 func extractIdentifierField(typ reflect.Type, val reflect.Value) (reflect.StructField, reflect.Value, bool) {
 	// When ENT is an interface type, the cache key must reflect the concrete
-	// dynamic type carried by val (e.g. VariableEvent, ExecuteParticipantEvent),
+	// dynamic type carried by val (e.g. VariableEvent, EventParticipant),
 	// not the interface type itself. Otherwise a closure built for one concrete
 	// type would be reused for a different one (or for a zero value), which
 	// leads to panics such as "reflect: call of reflect.Value.Type on zero Value".

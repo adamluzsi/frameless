@@ -63,7 +63,7 @@ definition* — "I am done, now please also run these steps". The runtime persis
 the participant's result with that definition attached and continues with it.
 
 Built-ins: `Sequence`, `If`, `Sleep`, `SetVar`, `DeclareVar`, `DeleteVar`,
-`ExecuteParticipant`, `ExecuteCondition`, `Spawn`, `Join`. See
+`Execute`, `Spawn`, `Join`. See
 [Definitions][DEFINITION].
 
 ### Participant
@@ -80,7 +80,7 @@ Participants: workflow.Participants{
 ```
 
 The signature must be `func(context.Context, ...ins) (...outs, error)`. A
-definition invokes it with `ExecuteParticipant{ID, Input, Output}`, which maps
+definition invokes it with `Execute{Participant, Input, Output}`, which maps
 process variables positionally onto the arguments and results.
 
 Every call is recorded as an `EventParticipant` and **replayed from the log** on
@@ -109,7 +109,7 @@ type Condition interface {
 
 Registered Go funcs (`workflow.Conditions`, signature
 `func(context.Context, ...ins) (bool, error)`) are reached from a definition via
-`ExecuteCondition{ID, Input}`. `wftemplate.Condition` is the shorthand that
+`Execute{Condition, Input}`. `wftemplate.Condition` is the shorthand that
 evaluates a Go template expression against the process variables instead.
 
 The answer is recorded as an `EventCondition`, so a replay re-uses the *same*
@@ -161,18 +161,46 @@ type Event interface {
 }
 ```
 
-| Event                | `EventType()`                     | Recorded when                                                   |
-| -------------------- | --------------------------------- | --------------------------------------------------------------- |
-| `EventUseDefinition` | `workflow::set-definition-event`  | A definition is bound to the process — or replaced.             |
-| `EventParticipant`   | `execute-participant`             | A participant ran; holds its input, output, and any follow-up definition. |
-| `EventCondition`     | `execute-condition`               | A condition was evaluated; holds the `Answer`.                  |
-| `EventDeclareVar`    | `workflow::event::var::declare`   | A variable came into existence in a scope, with no value yet.    |
-| `EventSetVar`        | `workflow::event::var::set`       | A variable was assigned a value.                                 |
-| `EventDeleteVar`     | `workflow::event::var::delete`    | A variable binding was removed.                                  |
-| `EventSpawn`         | `workflow::event::spawn`          | A sub-workflow was requested; links parent to `ChildID`.        |
-| `EventJoin`          | `workflow::event::join`           | A parent observed its children as complete.                      |
-| `EventCompleted`     | `workflow::completed`             | The definition finished successfully.                            |
-| `EventTerminated`    | `workflow::terminated`            | The process was called off via `rt.Terminate`. The two terminal events are mutually exclusive on the log. |
+| Event                   | `EventType()`                 | Recorded when                                                   |
+| ----------------------- | ----------------------------- | --------------------------------------------------------------- |
+| `EventUseDefinition`    | `workflow:definition`         | A definition is bound to the process — or replaced.             |
+| `EventParticipant`      | `workflow:participant`        | A participant ran; holds its input, output, and any follow-up definition. |
+| `EventCondition`        | `workflow:condition`          | A condition was evaluated; holds the `Answer`.                  |
+| `EventDeclareVar`       | `workflow:var:declare`        | A variable came into existence in a scope, with no value yet.    |
+| `EventSetVar`           | `workflow:var:set`            | A variable was assigned a value.                                 |
+| `EventDeleteVar`        | `workflow:var:delete`         | A variable binding was removed.                                  |
+| `EventSpawn`            | `workflow:spawn`              | A sub-workflow was requested; links parent to `ChildID`, at the `Path` of the `Spawn`. |
+| `EventJoin`             | `workflow:join`               | A parent observed its children as complete; recorded together with the variables it collected. |
+| `EventSleepCompleted`   | `workflow:sleep:completed`    | A `Sleep` woke up; a replay passes it without asking its condition. |
+| `EventForEachIteration` | `workflow:foreach:iteration`  | A `ForEach` iteration that names `K` or `V` started; a reference (path, collection and variable names, no value) from which every step within the iteration looks `K`/`V` up. |
+| `EventDefer`            | `workflow:defer`              | A `Defer` registered its hook, which runs when the process ends (completes or is terminated). |
+| `EventError`            | `workflow:error`              | A participant returned an error; holds the participant, its `Path`, and the error message. |
+| `EventCompleted`        | `workflow:completed`          | The definition finished successfully.                            |
+| `EventTerminated`       | `workflow:terminated`         | The process was called off via `rt.Terminate`. The two terminal events are mutually exclusive on the log. |
+
+`EventType()` is a stable constant that code can depend on. When you walk a
+process's events, switch on it (or on the event's Go type) to pick the logic for
+each kind, much like a front end that maps an API's constant error code to a
+localised message:
+
+```go
+for event, err := range rt.Events.FindByProcessID(ctx, pid) {
+	if err != nil {
+		return err
+	}
+	switch event.EventType() {
+	case "workflow:error":
+		// show the failed participant to an operator
+	case "workflow:completed":
+		// mark the process as done in a UI
+	}
+}
+```
+
+It is not the `$type` an event is stored under. That one only tells the codec
+which Go type to decode. The two are separate names with separate jobs, which
+only share the `workflow:` namespace prefix. See [Codec][CODEC] for the stored
+names.
 
 ### Runtime
 
@@ -195,6 +223,11 @@ and `Execute` reports `ErrNoProcessDefinition`.
 
 Bind is idempotent: a process that already carries a use-definition event is
 left untouched, so a retried `Bind` does not fork the process' history.
+
+A bound definition is immutable. It changes only when a new
+`EventUseDefinition` is appended, through `Replace` or a migration tool, and
+that new binding re-roots every [Path](#path). See
+[Definitions][DEFINITION] §5.
 
 ### Execute vs Schedule
 
@@ -286,13 +319,21 @@ Careful — "spawn" names two related things:
 forwarded variables in one transaction, then schedules the child *after* that
 transaction commits.
 
-`workflow.Join{SpawnName, Collect}` is the other half: it suspends the parent
-until the named child (or every child, when `SpawnName` is empty) has recorded
-an `EventCompleted`, then records an `EventJoin`.
+`workflow.Join{Spawn, Collect}` is the other half: it suspends the parent
+until the named child (or every child, when `Spawn` is empty) has recorded
+an `EventCompleted`, then records an `EventJoin`. With `Collect`, it also
+assigns the listed root-scope variables of the child to the parent's variables,
+in the same transaction as the `EventJoin`, so a replay never collects again.
 
-**SpawnName** is the human-friendly handle for a child — unique among a given
-process' children — and it exists purely so a later `Join` can name which child
-it is waiting for.
+**SpawnName** is the human-friendly handle for a child, and it exists purely so
+a later `Join` can name which child it is waiting for. It doesn't have to be
+unique: a `Spawn` is identified by its `Path`, so a `Spawn` in a loop body
+spawns a child per round. A `Join` by name waits for the child of that name
+spawned the closest to it, the way a Go variable name refers to the closest
+declaration. A `Spawn` is visible to the `Join`s in its variable scope and in
+the ones nested in it, and the innermost visible one wins. If none is visible,
+the one sharing the longest `Path` with the `Join` wins. On a tie, the latest
+wins.
 
 ### RuntimeSignal
 
@@ -317,18 +358,18 @@ See [Signals][SIGNAL].
 
 ## The data layer
 
-### Variable, VarName, VarScope, VarBinding
+### Variable, VarName, variable scope, VarBinding
 
 A **variable** is not a key-value store. It is a *fold* over the variable events
 of a process — `EventDeclareVar`, `EventSetVar`, `EventDeleteVar` — replayed in
 `EventID` order. Read them with `workflow.Vars{ProcessID, EventsRepository}` or
 `workflow.GetVars(ctx)`.
 
-| Term         | What it is                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------ |
-| `VarName`    | The name a definition refers to, e.g. `"greeting"`.                                                    |
-| `VarScope`   | A `[]string` naming the scope a declaration was made in. A declaration in a scope you cannot see shadows the name. |
-| `VarBinding` | The folded result: `{Name, Value, Scope}`.                                                             |
+| Term             | What it is                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `VarName`        | The name a definition refers to, e.g. `"greeting"`.                                                    |
+| variable scope   | A segment of the `Path` marked `Var` (added by `WithVarScope`), like a block of a Go function. The variable scope of a step is `Path#VarScope()`, its path up to the last such segment. A declaration in a scope you cannot see shadows the name. |
+| `VarBinding`     | The folded result: `{Name, Value, Scope}`, where `Scope` is the variable scope of the binding.         |
 
 `DeclareVar{..., Global: true}` declares in the root scope, so the name escapes
 the scope the step happens to run under. See [Variables][VARIABLES].
@@ -343,11 +384,11 @@ the child as `id`.* Parent variables that are not set yet are skipped silently.
 
 ### Path
 
-A `[]string` breadcrumb of where execution currently is inside the definition
-tree, for example:
+A breadcrumb of where execution currently is inside the definition tree, made
+of `Scope` segments, for example:
 
 ```go
-workflow.Path{"sequence", "[0]", "set-var"}
+workflow.Path{{Name: "sequence"}, {Name: "[0]"}, {Name: "set-var"}}
 ```
 
 Each composite definition contributes a segment (`Sequence` adds `sequence` plus
@@ -355,9 +396,14 @@ Each composite definition contributes a segment (`Sequence` adds `sequence` plus
 `EventUseDefinition` that bound the definition.
 
 Its job is identity. A step's recorded event is matched by `(ID, Path)`, so two
-`ExecuteParticipant{ID: "notify"}` entries in the same `Sequence` are distinct
+`Execute{Participant: "notify"}` entries in the same `Sequence` are distinct
 logical steps with independent caches — which is what makes idempotent replay
 work without any per-process bookkeeping on your side.
+
+A segment can be a variable scope as well (`Scope.Var`), like the body of a
+loop. Two segments are the same location when their names are, so
+`Path#Equal` compares the names only, while `Path#VarScope()` tells which
+variable scope the path is in. See [variable scope](#variable-varname-variable-scope-varbinding).
 
 ### Codec
 

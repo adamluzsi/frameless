@@ -1,0 +1,104 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::a"
+			},
+			{
+				"$type": "workflow::defer",
+				"def": {
+					"$type": "workflow::execute",
+					"participant": "compat::b"
+				}
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::await-upgrade"
+			},
+			{
+				"$type": "workflow::execute",
+				"participant": "compat::c"
+			}
+		]
+	},
+	"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092644Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::a"
+					},
+					{
+						"$type": "workflow::defer",
+						"def": {
+							"$type": "workflow::execute",
+							"participant": "compat::b"
+						}
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::await-upgrade"
+					},
+					{
+						"$type": "workflow::execute",
+						"participant": "compat::c"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::participant",
+			"event_id": "01a106ac-6e0c-7b11-b86f-bdf851be30ac",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092692Z",
+			"participant_id": "compat::a",
+			"path": [
+				{
+					"name": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "compat::a"
+				}
+			]
+		},
+		{
+			"$type": "workflow::event::defer",
+			"event_id": "01a106ac-6e0c-7bce-9db3-2a9f79c1de1a",
+			"process_id": "01a106ac-6e0c-7a24-9df7-c7f81aa8941e",
+			"timestamp": "2026-10-04T11:28:46.092738Z",
+			"path": [
+				{
+					"name": "01a106ac-6e0c-7a3c-a61c-b49d6f418c6d"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "defer"
+				}
+			],
+			"definition": {
+				"$type": "workflow::execute",
+				"participant": "compat::b"
+			}
+		}
+	]
+}

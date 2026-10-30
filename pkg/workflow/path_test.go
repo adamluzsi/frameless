@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -20,18 +21,51 @@ import (
 func ExampleWithName() {
 	ctx := workflow.WithName(context.Background(), "root")
 	ctx = workflow.WithName(ctx, "child")
-	_ = workflow.CurrentPath(ctx) // workflow.Path{"root", "child"}
+	_ = workflow.CurrentPath(ctx) // root/child
 }
 
-// pathOf builds a workflow.Path out of plain scope names.
+func ExampleWithVarScope() {
+	ctx := workflow.WithName(context.Background(), "root")
+	ctx = workflow.WithVarScope(ctx, "block")
+	ctx = workflow.WithName(ctx, "step")
+	path := workflow.CurrentPath(ctx) // root/block/step, where block is a variable scope
+	_ = path.VarScope()               // root/block
+}
+
+// pathOf builds a workflow.Path out of plain scope names, none of them a variable scope.
 func pathOf(names ...string) workflow.Path {
-	return workflow.Path(names)
+	var p = make(workflow.Path, 0, len(names))
+	for _, name := range names {
+		p = append(p, workflow.Scope{Name: name})
+	}
+	return p
 }
 
-// letRandomPath returns a random Path of the given length, with unique scope names.
+// varScopeOf builds a workflow.Path in which every scope is a variable scope,
+// like the one WithVarScope makes out of the same names.
+func varScopeOf(names ...string) workflow.Path {
+	var p = make(workflow.Path, 0, len(names))
+	for _, name := range names {
+		p = append(p, workflow.Scope{Name: name, Var: true})
+	}
+	return p
+}
+
+// assertSamePath asserts that two Paths are the same Scope by Scope,
+// whether a Scope is a variable scope included.
+//
+// workflow.Scope#Equal identifies a Scope by its name alone,
+// so assert.Equal on Paths doesn't tell their variable scopes apart.
+func assertSamePath(tb testing.TB, exp, got workflow.Path, msg ...assert.Message) {
+	tb.Helper()
+	assert.True(tb, slices.Equal(exp, got), append(msg, assert.MessageF("expected: %#v\ngot:      %#v", exp, got))...)
+}
+
+// letRandomPath returns a random Path of the given length, with unique scope names,
+// some of which are variable scopes.
 func letRandomPath(t *testcase.T, length int) workflow.Path {
-	return random.Slice(length, func() string {
-		return t.Random.String()
+	return random.Slice(length, func() workflow.Scope {
+		return workflow.Scope{Name: t.Random.String(), Var: t.Random.Bool()}
 	})
 }
 
@@ -72,16 +106,14 @@ func TestCurrentPath(t *testing.T) {
 
 		s.Context("contains contains path with using workflow.WithName", func(s *testcase.Spec) {
 			expectedPath := let.Var(s, func(t *testcase.T) workflow.Path {
-				return random.Slice(t.Random.IntBetween(1, 7), func() string {
-					return t.Random.String()
-				})
+				return pathOf(random.Slice(t.Random.IntBetween(1, 7), t.Random.String)...)
 			})
 
 			Levels := let.Var(s, func(t *testcase.T) []context.Context {
 				var levels = make([]context.Context, len(expectedPath.Get(t)))
 				var ctx = context.Background()
-				for i, name := range expectedPath.Get(t) {
-					ctx = workflow.WithName(ctx, name)
+				for i, scope := range expectedPath.Get(t) {
+					ctx = workflow.WithName(ctx, scope.Name)
 					levels[i] = ctx
 				}
 				return levels
@@ -95,7 +127,7 @@ func TestCurrentPath(t *testing.T) {
 			})
 
 			s.Then("it returns the current path", func(t *testcase.T) {
-				assert.Equal(t, expectedPath.Get(t), act(t))
+				assertSamePath(t, expectedPath.Get(t), act(t))
 			})
 
 			s.Then("each context level keeps its own state intact", func(t *testcase.T) {
@@ -105,6 +137,10 @@ func TestCurrentPath(t *testing.T) {
 					assert.Equal(t, expectedPath, currentPath)
 				}
 			})
+
+			s.Then("it is in the root variable scope", func(t *testcase.T) {
+				assert.Empty(t, act(t).VarScope())
+			})
 		})
 		s.Context("contains a variable scope made with workflow.WithVarScope", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
@@ -113,9 +149,12 @@ func TestCurrentPath(t *testing.T) {
 				return workflow.WithName(ctx, "participant")
 			})
 
-			s.Then("the variable scope is not part of the execution path", func(t *testcase.T) {
-				assert.Equal(t, pathOf("sequence", "participant"), act(t),
-					assert.MessageF("the variable scope lives on its own chain, separate from the execution path"))
+			s.Then("the variable scope is a segment of the path, marked as a variable scope", func(t *testcase.T) {
+				assertSamePath(t, workflow.Path{
+					{Name: "sequence"},
+					{Name: "loop", Var: true},
+					{Name: "participant"},
+				}, act(t))
 			})
 		})
 	})
@@ -130,10 +169,10 @@ func TestCurrentPath(t *testing.T) {
 				ctx3  = workflow.WithName(ctx2, "baz")
 			)
 
-			assert.Equal(t, workflow.CurrentPath(ctx3), workflow.Path{"foo", "bar", "baz"})
-			assert.Equal(t, workflow.CurrentPath(ctx2), workflow.Path{"foo", "bar"})
-			assert.Equal(t, workflow.CurrentPath(ctx1), workflow.Path{"foo"})
-			assert.Equal(t, workflow.CurrentPath(ctx2B), workflow.Path{"foo", "bar-2"})
+			assert.Equal(t, workflow.CurrentPath(ctx3), pathOf("foo", "bar", "baz"))
+			assert.Equal(t, workflow.CurrentPath(ctx2), pathOf("foo", "bar"))
+			assert.Equal(t, workflow.CurrentPath(ctx1), pathOf("foo"))
+			assert.Equal(t, workflow.CurrentPath(ctx2B), pathOf("foo", "bar-2"))
 			assert.Empty(t, workflow.CurrentPath(ctx0))
 		})
 	})
@@ -165,7 +204,7 @@ func (r *pathRecorder) Snapshot() []workflow.Path {
 	return out
 }
 
-func TestExecuteParticipantAddsItsSegment(t *testing.T) {
+func TestExecute_participantPathSegment(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	c := wftest.LetC(s)
@@ -182,7 +221,7 @@ func TestExecuteParticipantAddsItsSegment(t *testing.T) {
 	})
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
-		return workflow.ExecuteParticipant{ID: pid.Get(t)}
+		return workflow.Execute{Participant: pid.Get(t)}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {
@@ -194,12 +233,12 @@ func TestExecuteParticipantAddsItsSegment(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		s.Then("the participant sees its own path segment", func(t *testcase.T) {
+		s.Then("the participant sees its ID as its own path segment", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("participant", pid.Get(t).String()), paths[0])
+			assert.Equal(t, pathOf(pid.Get(t).String()), paths[0])
 		})
 	})
 }
@@ -230,9 +269,9 @@ func TestSequenceAddsSegmentAndPerIterationIndex(t *testing.T) {
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: children[0].Get(t)},
-			workflow.ExecuteParticipant{ID: children[1].Get(t)},
-			workflow.ExecuteParticipant{ID: children[2].Get(t)},
+			workflow.Execute{Participant: children[0].Get(t)},
+			workflow.Execute{Participant: children[1].Get(t)},
+			workflow.Execute{Participant: children[2].Get(t)},
 		}
 	})
 
@@ -251,7 +290,7 @@ func TestSequenceAddsSegmentAndPerIterationIndex(t *testing.T) {
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 3, len(paths))
 			for i, p := range paths {
-				expected := pathOf("sequence", "["+strconv.Itoa(i)+"]", "participant", children[i].Get(t).String())
+				expected := pathOf("sequence", "["+strconv.Itoa(i)+"]", children[i].Get(t).String())
 				assert.Equal(t, expected, p,
 					assert.MessageF("iteration %d should see only its own segment", i))
 			}
@@ -284,8 +323,8 @@ func TestSequencePerIterationDoesNotLeakBetweenIterations(t *testing.T) {
 
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.Sequence{
-			workflow.ExecuteParticipant{ID: children[0].Get(t)},
-			workflow.ExecuteParticipant{ID: children[1].Get(t)},
+			workflow.Execute{Participant: children[0].Get(t)},
+			workflow.Execute{Participant: children[1].Get(t)},
 		}
 	})
 
@@ -304,9 +343,9 @@ func TestSequencePerIterationDoesNotLeakBetweenIterations(t *testing.T) {
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 2, len(paths))
 
-			assert.Equal(t, pathOf("sequence", "[0]", "participant", children[0].Get(t).String()), paths[0])
-			assert.Equal(t, pathOf("sequence", "[1]", "participant", children[1].Get(t).String()), paths[1])
-			assert.NotContains(t, paths[1], "[0]",
+			assert.Equal(t, pathOf("sequence", "[0]", children[0].Get(t).String()), paths[0])
+			assert.Equal(t, pathOf("sequence", "[1]", children[1].Get(t).String()), paths[1])
+			assert.NotContains(t, paths[1], workflow.Scope{Name: "[0]"},
 				assert.MessageF("iteration [1] must not inherit the [0] segment from iteration [0]"),
 			)
 		})
@@ -373,7 +412,7 @@ func TestIfTrueBranchPropagatesIfThenSegments(t *testing.T) {
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.If{
 			Cond: wftemplate.Condition("true"),
-			Then: workflow.ExecuteParticipant{ID: pid.Get(t)},
+			Then: workflow.Execute{Participant: pid.Get(t)},
 		}
 	})
 
@@ -386,12 +425,16 @@ func TestIfTrueBranchPropagatesIfThenSegments(t *testing.T) {
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		s.Then("Then sees its [if, then, ...] path", func(t *testcase.T) {
+		s.Then("Then sees its [if, then, ...] path, where both the If and its Then are variable scopes", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "then", "participant", pid.Get(t).String()), paths[0])
+			assertSamePath(t, workflow.Path{
+				{Name: "if", Var: true},
+				{Name: "then", Var: true},
+				{Name: pid.Get(t).String()},
+			}, paths[0])
 		})
 	})
 }
@@ -415,7 +458,7 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 	subject := let.Var(s, func(t *testcase.T) workflow.Definition {
 		return workflow.If{
 			Cond: wftemplate.Condition("false"),
-			Else: workflow.ExecuteParticipant{ID: participantID.Get(t)},
+			Else: workflow.Execute{Participant: participantID.Get(t)},
 		}
 	})
 
@@ -428,12 +471,16 @@ func TestIfFalseBranchPropagatesIfElseSegments(t *testing.T) {
 			return subject.Get(t).Execute(Context.Get(t), processID.Get(t))
 		})
 
-		s.Then("Else sees its [if, else, ...] path", func(t *testcase.T) {
+		s.Then("Else sees its [if, else, ...] path, where both the If and its Else are variable scopes", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 
 			paths := rec.Get(t).Snapshot()
 			assert.Equal(t, 1, len(paths))
-			assert.Equal(t, pathOf("if", "else", "participant", participantID.Get(t).String()), paths[0])
+			assertSamePath(t, workflow.Path{
+				{Name: "if", Var: true},
+				{Name: "else", Var: true},
+				{Name: participantID.Get(t).String()},
+			}, paths[0])
 		})
 	})
 }
@@ -493,13 +540,29 @@ func TestPath(t *testing.T) {
 			oth.Let(s, func(t *testcase.T) workflow.Path {
 				var p workflow.Path = make(workflow.Path, len(subject.Get(t)))
 				for i, v := range subject.Get(t) {
-					p[i] = random.Unique(t.Random.String, v)
+					p[i] = workflow.Scope{Name: random.Unique(t.Random.String, v.Name), Var: v.Var}
 				}
 				return p
 			})
 
 			s.Then("they are not equal", func(t *testcase.T) {
 				assert.False(t, act(t))
+			})
+		})
+
+		s.When("paths only differ in which of their scopes are variable scopes", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return letRandomPath(t, t.Random.IntBetween(1, 7))
+			})
+			oth.Let(s, func(t *testcase.T) workflow.Path {
+				var p = slices.Clone(subject.Get(t))
+				var i = t.Random.IntN(len(p))
+				p[i].Var = !p[i].Var
+				return p
+			})
+
+			s.Then("they are equal, as they are the same location", func(t *testcase.T) {
+				assert.True(t, act(t))
 			})
 		})
 
@@ -527,108 +590,123 @@ func TestPath(t *testing.T) {
 			})
 		})
 	})
+
+	s.Describe("#VarScope", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) workflow.Path {
+			return subject.Get(t).VarScope()
+		})
+
+		s.Before(func(t *testcase.T) {
+			t.OnFail(func() { t.LogPretty("subject", subject.Get(t)) })
+		})
+
+		s.Then("it is a prefix of the path", func(t *testcase.T) {
+			assert.True(t, subject.Get(t).MatchPrefix(act(t)))
+		})
+
+		s.Then("it is either the root scope, or it ends in a variable scope", func(t *testcase.T) {
+			if got := act(t); 0 < len(got) {
+				assert.True(t, got[len(got)-1].Var)
+			}
+		})
+
+		s.When("the path has no variable scope", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return pathOf(random.Slice(t.Random.IntBetween(0, 7), t.Random.String)...)
+			})
+
+			s.Then("it is the root variable scope", func(t *testcase.T) {
+				assert.Empty(t, act(t))
+			})
+		})
+
+		s.When("the path ends in a variable scope", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return append(letRandomPath(t, t.Random.IntBetween(0, 5)), workflow.Scope{Name: t.Random.String(), Var: true})
+			})
+
+			s.Then("it is the path itself", func(t *testcase.T) {
+				assertSamePath(t, subject.Get(t), act(t))
+			})
+		})
+
+		s.When("the path continues after its innermost variable scope", func(s *testcase.Spec) {
+			scope := let.Var(s, func(t *testcase.T) workflow.Path {
+				return append(letRandomPath(t, t.Random.IntBetween(0, 5)), workflow.Scope{Name: t.Random.String(), Var: true})
+			})
+			subject.Let(s, func(t *testcase.T) workflow.Path {
+				return slices.Concat(scope.Get(t), pathOf(random.Slice(t.Random.IntBetween(1, 5), t.Random.String)...))
+			})
+
+			s.Then("it is the path up to and including its innermost variable scope", func(t *testcase.T) {
+				assertSamePath(t, scope.Get(t), act(t))
+			})
+
+			s.Then("extending it leaves the path intact", func(t *testcase.T) {
+				var exp = slices.Clone(subject.Get(t))
+				_ = append(act(t), workflow.Scope{Name: t.Random.String()})
+				assertSamePath(t, exp, subject.Get(t))
+			})
+		})
+	})
 }
 
-func TestCurrentVarScope(t *testing.T) {
+func TestWithVarScope(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	var Context = let.Var(s, func(t *testcase.T) context.Context {
-		return t.Context()
-	})
-	act := let.Act(func(t *testcase.T) workflow.VarScope {
-		return workflow.CurrentVarScope(Context.Get(t))
-	})
-
-	s.Then("it returns a VarScope without an issue", func(t *testcase.T) {
-		var _ workflow.VarScope = act(t)
-	})
-
-	s.Context("when the context", func(s *testcase.Spec) {
-		s.Context("is nil", func(s *testcase.Spec) {
-			Context.Let(s, func(t *testcase.T) context.Context {
-				return nil
-			})
-
-			s.Then("it returns an empty variable scope", func(t *testcase.T) {
-				assert.Empty(t, act(t))
-			})
+	var (
+		Context = let.Var(s, func(t *testcase.T) context.Context {
+			return withPath(t.Context(), letRandomPath(t, t.Random.IntBetween(0, 5)))
 		})
+		name = let.String(s)
+	)
+	act := let.Act(func(t *testcase.T) context.Context {
+		return workflow.WithVarScope(Context.Get(t), name.Get(t))
+	})
 
-		s.Context("has no variable scope entries", func(s *testcase.Spec) {
-			Context.Let(s, func(t *testcase.T) context.Context {
-				return context.Background()
-			})
+	s.Then("it extends the current path with a variable scope of the given name", func(t *testcase.T) {
+		var exp = append(workflow.CurrentPath(Context.Get(t)), workflow.Scope{Name: name.Get(t), Var: true})
+		assertSamePath(t, exp, workflow.CurrentPath(act(t)))
+	})
 
-			s.Then("it returns an empty variable scope", func(t *testcase.T) {
-				assert.Empty(t, act(t))
-			})
-		})
+	s.Then("the new scope is the innermost variable scope", func(t *testcase.T) {
+		var exp = append(workflow.CurrentPath(Context.Get(t)), workflow.Scope{Name: name.Get(t), Var: true})
+		assertSamePath(t, exp, workflow.CurrentPath(act(t)).VarScope())
+	})
 
-		s.Context("contains a variable scope built with workflow.WithVarScope", func(s *testcase.Spec) {
-			expectedScope := let.Var(s, func(t *testcase.T) workflow.VarScope {
-				return random.Slice(t.Random.IntBetween(1, 7), func() string {
-					return t.Random.String()
-				})
-			})
+	s.Then("the parent context keeps its own path", func(t *testcase.T) {
+		var exp = workflow.CurrentPath(Context.Get(t))
+		_ = act(t)
+		assertSamePath(t, exp, workflow.CurrentPath(Context.Get(t)))
+	})
 
-			Levels := let.Var(s, func(t *testcase.T) []context.Context {
-				var levels = make([]context.Context, len(expectedScope.Get(t)))
-				var ctx = context.Background()
-				for i, name := range expectedScope.Get(t) {
-					ctx = workflow.WithVarScope(ctx, name)
-					levels[i] = ctx
-				}
-				return levels
-			})
+	s.When("the context is nil", func(s *testcase.Spec) {
+		Context.LetValue(s, nil)
 
-			Context.Let(s, func(t *testcase.T) context.Context {
-				last, ok := slicekit.Last(Levels.Get(t))
-				assert.True(t, ok)
-				return last
-			})
-
-			s.Then("it returns the current variable scope", func(t *testcase.T) {
-				assert.Equal(t, expectedScope.Get(t), act(t))
-			})
-
-			s.Then("each context level keeps its own state intact", func(t *testcase.T) {
-				for i := range expectedScope.Get(t) {
-					var currentScope = workflow.CurrentVarScope(Levels.Get(t)[i])
-					var expectedScope = expectedScope.Get(t)[:i+1]
-					assert.Equal(t, expectedScope, currentScope)
-				}
-			})
-		})
-
-		s.Context("contains execution path segments made with workflow.WithName", func(s *testcase.Spec) {
-			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx := workflow.WithName(t.Context(), "sequence")
-				ctx = workflow.WithName(ctx, "[0]")
-				return workflow.WithName(ctx, "participant")
-			})
-
-			s.Then("the execution path does not leak into the variable scope", func(t *testcase.T) {
-				assert.Empty(t, act(t),
-					assert.MessageF("execution path segments live on their own chain, separate from the variable scope"))
-			})
+		s.Then("the variable scope is the only scope of the path", func(t *testcase.T) {
+			assertSamePath(t, varScopeOf(name.Get(t)), workflow.CurrentPath(act(t)))
 		})
 	})
 
-	s.Context("smoke", func(s *testcase.Spec) {
-		s.Test("context based level", func(t *testcase.T) {
-			var (
-				ctx0  = context.Background()
-				ctx1  = workflow.WithVarScope(ctx0, "foo")
-				ctx2  = workflow.WithVarScope(ctx1, "bar")
-				ctx2B = workflow.WithVarScope(ctx1, "bar-2")
-				ctx3  = workflow.WithVarScope(ctx2, "baz")
-			)
+	s.Test("smoke", func(t *testcase.T) {
+		var (
+			ctx0 = context.Background()
+			ctx1 = workflow.WithVarScope(ctx0, "foo")
+			ctx2 = workflow.WithName(ctx1, "bar")
+			ctx3 = workflow.WithVarScope(ctx2, "baz")
+			ctx4 = workflow.WithName(ctx3, "qux")
+		)
 
-			assert.Equal(t, workflow.CurrentVarScope(ctx3), workflow.VarScope{"foo", "bar", "baz"})
-			assert.Equal(t, workflow.CurrentVarScope(ctx2), workflow.VarScope{"foo", "bar"})
-			assert.Equal(t, workflow.CurrentVarScope(ctx1), workflow.VarScope{"foo"})
-			assert.Equal(t, workflow.CurrentVarScope(ctx2B), workflow.VarScope{"foo", "bar-2"})
-			assert.Empty(t, workflow.CurrentVarScope(ctx0))
+		assertSamePath(t, workflow.CurrentPath(ctx4), workflow.Path{
+			{Name: "foo", Var: true},
+			{Name: "bar"},
+			{Name: "baz", Var: true},
+			{Name: "qux"},
 		})
+		assert.Equal(t, workflow.CurrentPath(ctx4).VarScope(), pathOf("foo", "bar", "baz"))
+		assert.Equal(t, workflow.CurrentPath(ctx3).VarScope(), pathOf("foo", "bar", "baz"))
+		assert.Equal(t, workflow.CurrentPath(ctx2).VarScope(), pathOf("foo"))
+		assert.Equal(t, workflow.CurrentPath(ctx1).VarScope(), pathOf("foo"))
+		assert.Empty(t, workflow.CurrentPath(ctx0).VarScope())
 	})
 }

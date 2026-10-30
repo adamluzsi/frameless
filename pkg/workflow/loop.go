@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
 
-	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
@@ -13,15 +16,20 @@ import (
 //
 //	for Init; Cond; Post { Do }
 //
-// Init, Cond, Post and Do share a single variable scope which belongs to the
-// loop, so the loop variable is visible to every part of the loop without
-// leaking out of it. A variable declared outside of the loop is still visible
-// inside, and an assignment to it writes through, so it keeps whatever the loop
-// counted it to.
+// The variables of a For are scoped the way Go scopes them.
+// The loop is a variable scope of its own, which Init declares the loop variables in,
+// so they are visible to every part of the loop without leaking out of it.
+// Every round is a variable scope nested in the loop's, where Cond and Post run,
+// and Do, the body, is a variable scope nested in the round's,
+// so what a round declares in the body is gone by Post, and by the next round.
+// A variable declared outside of the loop is still visible inside,
+// and an assignment to it writes through, so it keeps whatever the loop counted it to.
 //
 // Every round is a step of its own on the definition path, so the idempotent
 // replay of a Process can tell the rounds apart: a participant in the body runs
 // again on the next round rather than being skipped as already done.
+// Within a round, Do is a step of its own as well,
+// so the same step in Do and in Post doesn't count as done for the other.
 //
 // A For without a Cond is `for { ... }`: nothing in the loop clause will ever
 // end it, so it runs until something inside it raises a Break.
@@ -40,7 +48,6 @@ type For struct {
 var _ Definition = For{}
 
 func (loop For) Execute(ctx context.Context, processID ProcessID) error {
-	ctx = WithName(ctx, "for")
 	ctx = WithVarScope(ctx, "for")
 
 	if loop.Init != nil {
@@ -50,12 +57,10 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 	}
 
 	for round := 0; ; round++ {
-		// Each round derives its own context from the loop scoped ctx, so the
-		// rounds don't leak path segments into one another.
-		roundCtx := WithName(ctx, fmt.Sprintf("[%d]", round))
+		var ctx = WithVarScope(ctx, fmt.Sprintf("[%d]", round))
 
 		if loop.Cond != nil {
-			ok, err := loop.Cond.Evaluate(WithName(roundCtx, "cond"), processID)
+			ok, err := loop.Cond.Evaluate(ctx, processID)
 			if err != nil {
 				return loopDone(err)
 			}
@@ -65,13 +70,14 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 		}
 
 		if loop.Do != nil {
-			if err := loop.Do.Execute(WithName(roundCtx, "do"), processID); err != nil {
+			// The body is a block of its own on every round, just like in Go.
+			if err := loop.Do.Execute(WithVarScope(ctx, "body"), processID); err != nil {
 				return loopDone(err)
 			}
 		}
 
 		if loop.Post != nil {
-			if err := loop.Post.Execute(WithName(roundCtx, "post"), processID); err != nil {
+			if err := loop.Post.Execute(ctx, processID); err != nil {
 				return loopDone(err)
 			}
 		}
@@ -96,7 +102,7 @@ func loopDone(err error) error {
 	return err
 }
 
-func (loop For) Error() string { return "workflow::for" }
+func (loop For) Error() string { return "workflow:for" }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -105,7 +111,7 @@ func (loop For) Error() string { return "workflow::for" }
 //
 //	workflow.For{ // for { ... }
 //		Do: workflow.Sequence{
-//			workflow.ExecuteParticipant{ID: "poll-job", Output: []workflow.VarName{"done"}},
+//			workflow.Execute{Participant: "poll-job", Output: []workflow.VarName{"done"}},
 //			workflow.If{
 //				Cond: wftemplate.Condition(".done"),
 //				Then: workflow.Break{},
@@ -126,22 +132,35 @@ type Break struct{}
 
 var _ Definition = Break{}
 
-func (Break) Error() string { return "workflow::break" }
+func (Break) Error() string { return "workflow:break" }
 
 // Execute raises the Break for the enclosing loop to catch.
 func (Break) Execute(context.Context, ProcessID) error { return Break{} }
 
 //---
 
+// ForEach is the workflow equivalent of Go's for range loop:
+//
+//	for K, V := range Over { Do }
+//
+// K and V are the loop variables. Just like in Go, every iteration has its own:
+// they belong to the variable scope of the iteration, so they shadow the
+// variables of the same name from outside of the loop, stay visible to the
+// loops nested in the body, and an assignment to them stays within the
+// iteration instead of writing through to an outer variable.
+//
+// They are visible to every step positioned within the iteration,
+// wherever and whenever it runs, like the hook of a Defer in the body,
+// as the iteration is on record (see EventForEachIteration).
 type ForEach struct {
 	// Over is the VarName that ForEach uses to find the iterable collection
 	Over VarName
 	// Do is the ForEach loop body, which is executed on each iteration, but with the currently relevant iteration scoped variable.
 	// The body ends the loop before the collection runs out by raising a Break.
 	Do Definition
-	// K [optional] will be used to store either the index value of a slice, or the key of a map of the iterated collection variable.
+	// K [optional] is the loop variable that holds either the index of the element in a slice, or the key of the entry in a map.
 	K VarName
-	// V [optional] is where the value of the currently iterated element will be placed.
+	// V [optional] is the loop variable that holds the currently iterated element of the collection.
 	V VarName
 }
 
@@ -167,17 +186,14 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 	switch collection.Kind() {
 	case reflect.Slice:
 		for i := range reflectkit.IterSlice(collection) {
-			var name = fmt.Sprintf("[%d]", i)
-			i := i
-			if err := foreach.iterate(ctx, processID, name, &i, reflect.Value{}); err != nil {
+			if err := foreach.iterate(ctx, processID, sliceIterationName(i)); err != nil {
 				return loopDone(err)
 			}
 		}
 
 	case reflect.Map:
 		for key := range reflectkit.IterMap(collection) {
-			var name = fmt.Sprintf("%v", key.Interface())
-			if err := foreach.iterate(ctx, processID, name, nil, key); err != nil {
+			if err := foreach.iterate(ctx, processID, mapIterationName(key)); err != nil {
 				return loopDone(err)
 			}
 		}
@@ -188,115 +204,172 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 	return nil
 }
 
+// sliceIterationName is the name of the iteration over the i-th element of a slice.
+func sliceIterationName(i int) string { return fmt.Sprintf("[%d]", i) }
+
+// mapIterationName is the name of the iteration over the entry of a map under the given key.
+func mapIterationName(key reflect.Value) string { return fmt.Sprintf("%v", key.Interface()) }
+
 // iterate runs a single iteration of the loop body.
 //
-// The iteration gets a scope of its own on the definition path so the
-// idempotent replay of a Process can tell the iterations apart and skip the
-// ones it already ran.
+// The iteration is a step of its own on the definition path, so the idempotent
+// replay of a Process can tell the iterations apart and skip the ones it
+// already ran. It is a block of its own too, with a variable scope of its own.
 //
-// The iteration's Key and Value are not stored as state on the iteration: the
-// context only carries a reference — the name of the collection variable and
-// the position within it — and every read of the iteration variable re-evaluates
-// the position against the current value of the collection in the event log.
-// A Process is a record of state changes, and a ForEach iteration is a
-// reference on what to look up from that record, not a change of its own.
-// Caching the value at iteration-start would silently disagree with the
-// collection once the body reassigns it.
-func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, bodyScope string, index *int, key reflect.Value) error {
-	ctx = WithName(ctx, bodyScope)
-	ctx = WithVarScope(ctx, bodyScope)
-	ctx = withIterationVars(ctx, iterationVars{
-		KeyName:   foreach.K,
-		ValueName: foreach.V,
-
-		Source: foreach.Over,
-		Index:  index,
-		Key:    key,
-	})
-	if foreach.Do != nil {
-		return foreach.Do.Execute(ctx, processID)
-	}
-	return nil
-}
-
-// iterationVars is the in-memory reference an iteration has on the Key/Value
-// it should expose to the body. It stores the names under which the body
-// expects to find the index/key and the element, the name of the source
-// collection variable, and the position within that collection.
+// The iteration's Key and Value are not recorded as variables, as they are not
+// a change of the Process state. The iteration itself is recorded instead, at
+// its Path (EventForEachIteration), which is a reference on where to look them
+// up, and not a copy of them: every read of an iteration variable looks the
+// element up in the current value of the collection. Caching the element at
+// iteration-start would silently disagree with the collection once the body
+// reassigns it.
 //
-// ForEach#Execute sets Index for slice iterations and Key for map iterations
-// (exactly one of them), and lookupIterationVar uses this instruction to
-// re-resolve the value against the current state of the collection on every
-// read, so a body that reassigns the collection variable sees the new value
-// without the proxy holding a stale snapshot.
-type iterationVars struct {
-	KeyName   VarName
-	ValueName VarName
-
-	Source VarName
-	Index  *int
-	Key    reflect.Value
-}
-
-var ctxIterationVars = contextkit.ValueHandler[ctxKeyIterationVars, iterationVars]{}
-
-type ctxKeyIterationVars struct{}
-
-func withIterationVars(ctx context.Context, v iterationVars) context.Context {
-	return ctxIterationVars.ContextWith(ctx, v)
-}
-
-func lookupIterationVar(ctx context.Context, name VarName, events []Event) (any, bool, error) {
-	var iv, ok = ctxIterationVars.Lookup(ctx)
-	if !ok {
-		return nil, false, nil
+// The iteration variables behave like the loop variables of Go's for range
+// loop: each iteration has its own, bound to the iteration's variable scope.
+// So they shadow the variables of the same name from outside of the loop, and
+// an assignment to them stays within the iteration.
+func (foreach ForEach) iterate(ctx context.Context, processID ProcessID, name string) error {
+	ctx = WithVarScope(ctx, name)
+	if foreach.Do == nil {
+		return nil
 	}
-	switch name {
-	case iv.KeyName:
-		switch {
-		case iv.Index != nil:
-			return *iv.Index, true, nil
-		case iv.Key.IsValid():
-			return iv.Key.Interface(), true, nil
-		}
-		return nil, false, nil
-	case iv.ValueName:
-		_, collVal, ok := lookupVariable(ctx, events, iv.Source)
-		if !ok {
-			return nil, false, nil
-		}
-		return indexCollection(collVal, iv)
+	if err := foreach.recordIteration(ctx, processID); err != nil {
+		return err
 	}
-	return nil, false, nil
+	return foreach.Do.Execute(ctx, processID)
 }
 
-func indexCollection(coll any, iv iterationVars) (any, bool, error) {
+// recordIteration records the iteration ctx is at, before its loop body runs.
+//
+// An iteration is identified by its Path, so a replay finds it on record, and
+// doesn't record it again. An iteration without iteration variables has
+// nothing to tell, so it is not recorded.
+func (foreach ForEach) recordIteration(ctx context.Context, processID ProcessID) error {
+	if foreach.K == "" && foreach.V == "" {
+		return nil
+	}
+	repo, err := LookupEventsRepository(ctx)
+	if err != nil {
+		return err
+	}
+	var path = CurrentPath(ctx)
+	for event, err := range repo.FindByProcessID(ctx, processID) {
+		if err != nil {
+			return err
+		}
+		if it, ok := event.(EventForEachIteration); ok && it.Path.Equal(path) {
+			return nil
+		}
+	}
+	eventID, err := MakeEventID()
+	if err != nil {
+		return err
+	}
+	var event Event = EventForEachIteration{
+		EventID:   eventID,
+		ProcessID: processID,
+		Timestamp: timeNow(),
+		Path:      path,
+		Over:      foreach.Over,
+		K:         foreach.K,
+		V:         foreach.V,
+	}
+	return repo.Create(ctx, &event)
+}
+
+// EventForEachIteration records an iteration of a ForEach loop body, which binds the loop's iteration variables.
+//
+// It is a reference, which holds no value, only where the iteration variables are found.
+// Its Path is the location of the iteration, which is the variable scope of the iteration too,
+// and the name of its last Scope is the position of the element in the collection:
+// "[i]" for the i-th element of a slice, and the printed key for the entry of a map.
+// From every position within the iteration, K and V are looked up
+// in the collection Over refers to from the location of the loop, at that position,
+// so they are visible to every step positioned there, no matter when it runs.
+// While the collection has no element at that position,
+// or more than one key of a map prints the same, neither K nor V is visible.
+//
+// A variable declared in the iteration's scope, or in one nested in it, shadows the iteration variable of the same name,
+// whether it was recorded before or after the iteration.
+type EventForEachIteration struct {
+	EventID   EventID `ext:"id"`
+	ProcessID ProcessID
+	Timestamp time.Time
+
+	Path Path
+	// Over is the name of the collection variable, as it is visible from the loop.
+	Over VarName
+	// K is the name of the variable which holds the index or the key of the element, if any.
+	K VarName
+	// V is the name of the variable which holds the element, if any.
+	V VarName
+}
+
+var _ Event = EventForEachIteration{}
+
+func (e EventForEachIteration) GetEventID() EventID     { return e.EventID }
+func (e EventForEachIteration) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventForEachIteration) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventForEachIteration) EventType() EventType    { return "workflow:foreach:iteration" }
+
+// binds tells whether the iteration has a variable by the given name.
+func (e EventForEachIteration) binds(name VarName) bool {
+	return name != "" && (name == e.K || name == e.V)
+}
+
+// names are the variable names the iteration binds.
+func (e EventForEachIteration) names() []VarName {
+	var names []VarName
+	for _, name := range []VarName{e.K, e.V} {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// loopPath is the Path of the loop itself, which the iteration is nested in.
+func (e EventForEachIteration) loopPath() Path {
+	if len(e.Path) == 0 {
+		return nil
+	}
+	return slices.Clip(e.Path[:len(e.Path)-1])
+}
+
+// locateIteration finds the element of an iteration in a collection.
+//
+// The name of the last Scope of the iteration's Path is the position of its
+// element, the way ForEach#Execute names its iterations: "[i]" in a slice, and
+// the printed key in a map. The element is not found when the collection has
+// no element at that position, or when more than one key of a map prints the
+// same, as those keys are the same iteration on the Path.
+func locateIteration(path Path, coll any) (key, value any, ok bool) {
+	if len(path) == 0 {
+		return nil, nil, false
+	}
+	var name = path[len(path)-1].Name
 	cv := reflectkit.BaseValue(reflect.ValueOf(coll))
-	switch {
-	case iv.Index != nil:
-		if cv.Kind() != reflect.Slice {
-			return nil, false, fmt.Errorf("workflow.ForEach: cannot index %s by index", cv.Kind())
+	switch cv.Kind() {
+	case reflect.Slice:
+		i, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, "["), "]"))
+		if err != nil || i < 0 || cv.Len() <= i || sliceIterationName(i) != name {
+			return nil, nil, false
 		}
-		i := *iv.Index
-		if i < 0 || i >= cv.Len() {
-			return nil, false, fmt.Errorf("workflow.ForEach: slice index %d out of range", i)
+		return i, cv.Index(i).Interface(), true
+	case reflect.Map:
+		for k, v := range reflectkit.IterMap(cv) {
+			if mapIterationName(k) != name {
+				continue
+			}
+			if ok {
+				return nil, nil, false
+			}
+			key, value, ok = k.Interface(), v.Interface(), true
 		}
-		return cv.Index(i).Interface(), true, nil
-	case iv.Key.IsValid():
-		if cv.Kind() != reflect.Map {
-			return nil, false, ErrFatal.F("workflow.ForEach: cannot index %s by key", cv.Kind())
-		}
-		if !iv.Key.Type().AssignableTo(cv.Type().Key()) {
-			return nil, false, ErrFatal.F("workflow.ForEach: cannot index map by %s", iv.Key.Type())
-		}
-		rv := cv.MapIndex(iv.Key)
-		if !rv.IsValid() {
-			return nil, false, nil
-		}
-		return rv.Interface(), true, nil
+		return key, value, ok
 	default:
-		return nil, false, ErrFatal.F("workflow.ForEach: iteration has no index or key")
+		return nil, nil, false
 	}
 }
 
-func (foreach ForEach) Error() string { return "workflow::foreach" }
+func (foreach ForEach) Error() string { return "workflow:foreach" }

@@ -6,10 +6,12 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -24,19 +26,27 @@ import (
 
 const ErrMalformed errorkitlite.Error = "[ErrMalformed] malformed JSON"
 
+// LexingError reports malformed JSON input.
+// It always matches ErrMalformed with errors.Is.
 type LexingError struct {
 	Message string
 	Path    Path
+	// Err is the underlying cause, typically a *jsontext.SyntacticError.
+	Err error
 }
 
 func (err LexingError) Error() string {
 	var (
 		format string = "JSON lexing error"
 		a      []any
+		msg    = err.Message
 	)
-	if 0 < len(err.Message) {
+	if len(msg) == 0 && err.Err != nil {
+		msg = err.Err.Error()
+	}
+	if 0 < len(msg) {
 		format += ": %s"
-		a = append(a, err.Message)
+		a = append(a, msg)
 	}
 	if 0 < len(err.Path) {
 		format += "\n%s"
@@ -45,35 +55,13 @@ func (err LexingError) Error() string {
 	return fmt.Sprintf(format, a...)
 }
 
-type token string
+func (err LexingError) Unwrap() error { return err.Err }
 
-func (tkn token) Bytes() []byte {
-	return []byte(tkn)
-}
+func (err LexingError) Is(target error) bool { return target == ErrMalformed }
 
-const (
-	nullToken  token = "null"
-	trueToken  token = "true"
-	falseToken token = "false"
-
-	quoteToken = '"'
-
-	arrayOpenToken  = '['
-	arrayCloseToken = ']'
-	valueSepToken   = ','
-
-	objectOpenToken  = '{'
-	objectCloseToken = '}'
-	nameSepToken     = ':'
-)
-
-var (
-	nullTokenUTF8  = []rune(nullToken)
-	trueTokenUTF8  = []rune(trueToken)
-	falseTokenUTF8 = []rune(falseToken)
-)
-
-// Scanner is a streaming lexer, that allows
+// Scanner is a streaming JSON lexer built on top of encoding/json/jsontext.
+// It reads exactly one JSON value from its Input,
+// and feeds the raw bytes of the values matching its Selectors to them as they are being read.
 type Scanner struct {
 	// Selectors allows granual control on what should be kept during scanning of a JSON input stream.
 	// When no Selectors is set, the default is to keep everything.
@@ -114,87 +102,397 @@ type Output interface {
 	Bytes() []byte
 }
 
-type noDiscard interface {
-	NoDiscard()
+// Scan reads a single JSON value from the input.
+//
+// The raw bytes of the value, including its insignificant whitespaces, are passed to the matching Selectors.
+// Scanning stops right after the JSON value,
+// and the rest of the input is left unread for the caller.
+// An empty input is not considered an error.
+func (s *Scanner) Scan(in Input) (rErr error) {
+	if in == nil {
+		return nil
+	}
+	src := newSource(in)
+	st := &scanState{Scanner: s}
+	st.dec = newDecoder(&flushingReader{src: src, st: st})
+	defer func() { rErr = st.closeFrames(rErr) }()
+	if err := st.scan(); err != nil {
+		_ = src.unread(0)
+		return err
+	}
+	if len(st.frames) == 0 { // empty input
+		return src.unread(0)
+	}
+	return src.unread(len(st.dec.UnreadBuffer()))
 }
 
-func (s *Scanner) Scan(in Input) error {
-	var path Path
-	var out io.Writer = discard
-	err := s.with(out, path, func(out io.Writer) error {
-		return s.scan(in, out, path)
-	})
-	if err != nil {
-		if err, ok := s.isScanError(err, path); ok {
+func newDecoder(r io.Reader) *jsontext.Decoder {
+	// These options make the decoder accept the same inputs as json.Valid.
+	return jsontext.NewDecoder(r,
+		jsontext.AllowDuplicateNames(true),
+		jsontext.AllowInvalidUTF8(true))
+}
+
+type scanState struct {
+	*Scanner
+	dec *jsontext.Decoder
+	// frames is the stack of the currently open JSON containers.
+	// The first frame is the root scope that encloses the whole input,
+	// including the whitespaces before the JSON value.
+	frames []frame
+	// err is the first failure of handing over data to the Selector.On readers.
+	err error
+	// scratch, index and the frame's name back the path of the value being read,
+	// unless the value's frame needs to keep its path while reading its nested values.
+	scratch Path
+	index   int
+	nameBuf []byte
+	names   map[string]string
+}
+
+type frame struct {
+	path  Path
+	scope scope
+	// selectors are the Selectors that might match a value nested within this frame.
+	selectors []Selector
+	// name is the last object member name read in this frame.
+	name string
+}
+
+func (st *scanState) scan() error {
+	for {
+		kind := st.dec.PeekKind()
+		if kind == jsontext.KindInvalid {
+			_, err := st.dec.ReadToken()
+			if errors.Is(err, io.EOF) && len(st.frames) == 0 {
+				return nil // empty input
+			}
+			return st.wrapErr(err)
+		}
+		if len(st.frames) == 0 {
+			st.frames = append(st.frames, frame{
+				scope:     st.open(scope{}, st.Selectors, nil),
+				selectors: within(st.Selectors, nil),
+			})
+		}
+		top := &st.frames[len(st.frames)-1]
+		if 0 < len(top.scope.sinks) {
+			// PeekKind already buffered the whitespaces and the ',' or ':' separator before the next token,
+			// and these belong to the enclosing scope.
+			if err := top.scope.write(separatorPrefix(st.dec.UnreadBuffer())); err != nil {
+				return err
+			}
+		}
+		var err error
+		switch kind {
+		case jsontext.KindBeginArray, jsontext.KindBeginObject:
+			err = st.scanBegin(top, kind)
+		case jsontext.KindEndArray, jsontext.KindEndObject:
+			err = st.scanEnd(top, kind)
+		default:
+			err = st.scanScalar(top, kind)
+		}
+		if err != nil {
 			return err
 		}
-		if errors.Is(err, io.EOF) {
+		if st.dec.StackDepth() == 0 {
 			return nil
 		}
-		return s.asLexingError(err, path)
+	}
+}
+
+func (st *scanState) scanBegin(top *frame, kind jsontext.Kind) error {
+	path, _ := st.appendChildPath(st.scratch[:0], top, toKind(kind), false)
+	st.scratch = path
+	sc := st.open(top.scope, top.selectors, path)
+	if selectors := within(top.selectors, path); 0 < len(selectors) {
+		path, _ = st.appendChildPath(make(Path, 0, len(path)), top, toKind(kind), true)
+		st.frames = append(st.frames, frame{path: path, scope: sc, selectors: selectors}) // top is invalidated
+		if _, err := st.dec.ReadToken(); err != nil {
+			return st.wrapErr(err)
+		}
+		return sc.write(delimiter(kind))
+	}
+	// No Selector can match anything nested in this value, so it can be read as a whole.
+	// The frame is only kept for flushing its scope and reporting errors, so it can use the scratch path.
+	st.frames = append(st.frames, frame{path: path, scope: sc})
+	if err := st.consume(sc); err != nil {
+		return st.wrapErr(err)
+	}
+	st.frames = st.frames[:len(st.frames)-1]
+	return st.close(sc, nil)
+}
+
+func (st *scanState) scanEnd(top *frame, kind jsontext.Kind) error {
+	if _, err := st.dec.ReadToken(); err != nil {
+		return st.wrapErr(err)
+	}
+	sc := top.scope
+	st.frames = st.frames[:len(st.frames)-1]
+	return st.close(sc, sc.write(delimiter(kind)))
+}
+
+func (st *scanState) scanScalar(top *frame, kind jsontext.Kind) error {
+	if len(top.selectors) == 0 {
+		val, err := st.dec.ReadValue()
+		if err != nil {
+			return st.wrapErr(err)
+		}
+		return top.scope.write(val)
+	}
+	path, isName := st.appendChildPath(st.scratch[:0], top, toKind(kind), false)
+	st.scratch = path
+	val, err := st.dec.ReadValue()
+	if err != nil {
+		return st.wrapErr(err)
+	}
+	if isName {
+		// the error can be ignored, as the decoder already validated the string
+		st.nameBuf, _ = jsontext.AppendUnquote(st.nameBuf[:0], val)
+		top.name = st.intern(st.nameBuf)
+	}
+	sc := st.open(top.scope, top.selectors, path)
+	return st.close(sc, sc.write(val))
+}
+
+// consume reads the next JSON value as a whole, and writes it to the scope.
+func (st *scanState) consume(sc scope) error {
+	switch {
+	case len(sc.sinks) == 0:
+		return st.dec.SkipValue()
+	case len(sc.pipes) == 0:
+		val, err := st.dec.ReadValue()
+		if err != nil {
+			return err
+		}
+		return sc.write(val)
+	}
+	// A Selector.On reader is consuming the value as it is being read,
+	// so the value is passed on token by token instead of buffering it whole.
+	depth := st.dec.StackDepth()
+	for first := true; ; first = false {
+		kind := st.dec.PeekKind()
+		if !first { // the separator before the value is already written by the caller
+			if err := sc.write(separatorPrefix(st.dec.UnreadBuffer())); err != nil {
+				return err
+			}
+		}
+		switch kind {
+		case jsontext.KindBeginArray, jsontext.KindBeginObject, jsontext.KindEndArray, jsontext.KindEndObject:
+			if _, err := st.dec.ReadToken(); err != nil {
+				return err
+			}
+			if err := sc.write(delimiter(kind)); err != nil {
+				return err
+			}
+		default:
+			val, err := st.dec.ReadValue()
+			if err != nil {
+				return err
+			}
+			if err := sc.write(val); err != nil {
+				return err
+			}
+		}
+		if st.dec.StackDepth() == depth {
+			return nil
+		}
+	}
+}
+
+// appendChildPath appends the path of the next value in the top frame to dst,
+// and reports whether that value is an object member name.
+// Unless stable is set, the path refers to the scanning state,
+// and it is only valid until the next value is read.
+func (st *scanState) appendChildPath(dst Path, top *frame, k Kind, stable bool) (Path, bool) {
+	dst = append(dst, top.path...)
+	switch ck, n := st.dec.StackIndex(st.dec.StackDepth()); ck {
+	case jsontext.KindBeginArray:
+		index := &st.index
+		if stable {
+			index = new(int)
+		}
+		*index = int(n)
+		return append(dst, KindElement{Index: index}, k), false
+	case jsontext.KindBeginObject:
+		if n%2 == 0 {
+			return append(dst, KindName, k), true
+		}
+		name := &top.name
+		if stable {
+			name = new(string)
+			*name = top.name
+		}
+		return append(dst, KindValue{Name: name}, k), false
+	default:
+		return append(dst, k), false
+	}
+}
+
+// intern deduplicates the object member names, as the same names tend to repeat throughout the input.
+func (st *scanState) intern(name []byte) string {
+	if s, ok := st.names[string(name)]; ok {
+		return s
+	}
+	const maxInternedNames = 1024
+	s := string(name)
+	if st.names == nil {
+		st.names = make(map[string]string)
+	}
+	if len(st.names) < maxInternedNames {
+		st.names[s] = s
+	}
+	return s
+}
+
+// within returns the selectors that might match a value nested within the value of the given path.
+func within(selectors []Selector, path Path) []Selector {
+	for i, selector := range selectors {
+		if mightMatchWithin(selector.Path, path) {
+			continue
+		}
+		out := append([]Selector(nil), selectors[:i]...)
+		for _, selector := range selectors[i+1:] {
+			if mightMatchWithin(selector.Path, path) {
+				out = append(out, selector)
+			}
+		}
+		return out
+	}
+	return selectors
+}
+
+// mightMatchWithin reports whether the selector path could match any value nested within the value of the path.
+// The paths of the nested values are longer than the path, and they start with it.
+func mightMatchWithin(selector, path Path) bool {
+	if len(selector) <= len(path) {
+		return false
+	}
+	for i := range path {
+		if !selector[i].Match(path[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// flush hands over the data processed so far to the Selector.On readers.
+func (st *scanState) flush() error {
+	if st.err != nil {
+		return st.err
+	}
+	for i := range st.frames {
+		if p := st.frames[i].scope.pipe; p != nil {
+			if err := p.flush(); err != nil {
+				st.err = err
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func (s *Scanner) isScanError(err error, path Path) (error, bool) {
-	if errors.As(err, &LexingError{}) {
-		return err, true
-	}
-	if errors.Is(err, ErrMalformed) {
-		return s.asLexingError(err, path), true
-	}
-	return nil, false
+// flushingReader flushes the processed data to the Selector.On readers before reading from the Input,
+// so they are not kept waiting while the Input blocks for more data.
+type flushingReader struct {
+	src io.Reader
+	st  *scanState
 }
 
-func (s *Scanner) malformedF(path Path, format string, a ...any) error {
-	return s.asLexingError(ErrMalformed.F(format, a...), path)
+func (r *flushingReader) Read(p []byte) (int, error) {
+	if err := r.st.flush(); err != nil {
+		return 0, err
+	}
+	return r.src.Read(p)
 }
 
-func (s *Scanner) asLexingError(err error, path Path) error {
-	if err == nil {
+func (st *scanState) wrapErr(err error) error {
+	if st.err != nil { // the decoder only failed because of it
+		return st.err
+	}
+	if serr, ok := errorkitlite.As[*jsontext.SyntacticError](err); ok {
+		var path Path
+		if 0 < len(st.frames) {
+			path = ownPath(st.frames[len(st.frames)-1].path)
+		}
+		return LexingError{Path: path, Err: serr}
+	}
+	return err
+}
+
+// ownPath copies the path, including the values its kinds refer to,
+// so it no longer depends on the scanning state.
+func ownPath(p Path) Path {
+	if len(p) == 0 {
 		return nil
 	}
-	if _, ok := errorkitlite.As[LexingError](err); ok {
-		return err
+	out := make(Path, len(p))
+	for i, k := range p {
+		switch k := k.(type) {
+		case KindElement:
+			if k.Index != nil {
+				index := *k.Index
+				k.Index = &index
+			}
+			out[i] = k
+		case KindValue:
+			if k.Name != nil {
+				name := *k.Name
+				k.Name = &name
+			}
+			out[i] = k
+		default:
+			out[i] = k
+		}
 	}
-	return errorkitlite.Merge(err, LexingError{Path: path})
+	return out
 }
 
-func (s *Scanner) scan(in Input, out io.Writer, path Path) error {
-	if in == nil {
-		return nil
+// closeFrames closes all the open frames from the innermost to the outermost.
+func (st *scanState) closeFrames(err error) error {
+	for 0 < len(st.frames) {
+		last := len(st.frames) - 1
+		sc := st.frames[last].scope
+		st.frames = st.frames[:last]
+		err = st.close(sc, err)
 	}
-	if err := trimSpace(in, out); err != nil {
-		return err
-	}
+	return err
+}
 
-	char, _, err := iokit.PeekRune(in)
-	if err != nil {
-		return err
+func separatorPrefix(data []byte) []byte {
+	for i, c := range data {
+		switch c {
+		case ' ', '\t', '\r', '\n', ',', ':':
+		default:
+			return data[:i]
+		}
 	}
+	return data
+}
 
-	switch kind := s.tokenStartKind(char); kind {
-	case KindNull:
-		return s.scanNull(in, out, path)
-	case KindBoolean:
-		return s.scanBoolean(in, out, path)
-	case KindString:
-		return s.scanString(in, out, path)
-	case KindNumber:
-		return s.scanNumber(in, out, path)
-	case KindArray:
-		return s.scanArray(in, out, path)
-	case KindObject:
-		return s.scanObject(in, out, path)
+var delimiters = []byte("[]{}")
+
+func delimiter(k jsontext.Kind) []byte {
+	i := bytes.IndexByte(delimiters, byte(k))
+	return delimiters[i : i+1]
+}
+
+func toKind(k jsontext.Kind) Kind {
+	switch k {
+	case jsontext.KindBeginArray, jsontext.KindEndArray:
+		return KindArray
+	case jsontext.KindBeginObject, jsontext.KindEndObject:
+		return KindObject
+	case jsontext.KindString:
+		return KindString
+	case jsontext.KindNumber:
+		return KindNumber
+	case jsontext.KindTrue, jsontext.KindFalse:
+		return KindBoolean
+	case jsontext.KindNull:
+		return KindNull
 	default:
-		var msg string = fmt.Sprintf("unexpected character: %q", string(char))
-		if kind != nil {
-			msg += fmt.Sprintf("\nkind=%s", kind.String())
-		}
-		return LexingError{
-			Message: msg,
-			Path:    path,
-		}
+		return nil
 	}
 }
 
@@ -203,469 +501,307 @@ func (s *Scanner) getBufferSize() iokit.ByteSize {
 	return cmp.Or(s.BufferSize, DefaultBufferSize)
 }
 
-func (s *Scanner) selectorsForPath(path Path) ([]func(data []byte) error, []func(src io.Reader) error) {
+// scope is the output of a JSON value,
+// that feeds every byte written to it to the Selectors matching the value's Path,
+// and to the Selectors of its enclosing scopes.
+type scope struct {
+	// sinks are the buffers of every Selector that receives the data written to the scope,
+	// including the ones of the enclosing scopes.
+	sinks []*bytes.Buffer
+	// pipes are the Selector.On pipes among the sinks.
+	pipes []*pipe
+
+	fns  []func(data []byte) error
+	buf  *bytes.Buffer
+	pipe *pipe
+	g    *synckit.Group
+}
+
+func (s *Scanner) open(parent scope, selectors []Selector, path Path) scope {
 	var (
-		sfs []func(data []byte) error
-		sos []func(src io.Reader) error
+		sc  = scope{sinks: parent.sinks, pipes: parent.pipes}
+		ons []func(src io.Reader) error
 	)
-	for _, selector := range s.Selectors {
+	for _, selector := range selectors {
 		if !selector.Path.Match(path) {
 			continue
 		}
 		if selector.Func != nil {
-			sfs = append(sfs, selector.Func)
+			sc.fns = append(sc.fns, selector.Func)
 		}
 		if selector.On != nil {
-			sos = append(sos, selector.On)
+			ons = append(ons, selector.On)
 		}
 	}
-	return sfs, sos
-}
-
-func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writer) error) (rErr error) {
-	var innerScopeData io.Writer = outerScopeData
-	var fns, ons = s.selectorsForPath(path)
-
-	if len(fns) == 0 && len(ons) == 0 {
-		// if no selector is interested about this path
-		// we just continue with the inner scope.
-		return blk(innerScopeData)
+	// the parent's slices are clipped, so the scope's sinks are never appended to the parent's backing array.
+	if 0 < len(sc.fns) {
+		sc.buf = &bytes.Buffer{}
+		sc.sinks = append(slices.Clip(sc.sinks), sc.buf)
 	}
-
-	if 0 < len(fns) {
-		var local bytes.Buffer
-		innerScopeData = io.MultiWriter(innerScopeData, &local)
-		defer func() {
-			if rErr != nil {
-				return
-			}
-			for _, fn := range fns {
-				if err := fn(local.Bytes()); err != nil {
-					rErr = err
-					break
-				}
-			}
-		}()
-	}
-
 	if 0 < len(ons) {
-		var g synckit.Group
-		defer errorkitlite.Finish(&rErr, g.Wait)
-
 		pr, pw := io.Pipe()
-		defer pw.Close()
-
-		innerScopeData = io.MultiWriter(innerScopeData, pw)
-
+		sc.pipe, sc.g = &pipe{w: pw}, &synckit.Group{}
+		sc.sinks = append(slices.Clip(sc.sinks), &sc.pipe.pending)
+		sc.pipes = append(slices.Clip(sc.pipes), sc.pipe)
 		if len(ons) == 1 {
-			g.Go(nil, func(ctx context.Context) error {
+			sc.g.Go(nil, func(ctx context.Context) error {
 				defer pr.Close()
 				return ons[0](pr)
 			})
 		} else {
-			lsrs := iokit.LockstepReaders(pr, len(ons), s.getBufferSize())
-			for i := range len(ons) {
-				var i = i
-				g.Go(nil, func(ctx context.Context) error {
-					var onFunc = ons[i]
-					var reader = lsrs[i]
+			for i, reader := range iokit.LockstepReaders(pr, len(ons), s.getBufferSize()) {
+				sc.g.Go(nil, func(ctx context.Context) error {
 					defer reader.Close()
-					return onFunc(reader)
+					return ons[i](reader)
 				})
 			}
 		}
 	}
-
-	return blk(innerScopeData)
+	return sc
 }
 
-func trimSpace(in Input, out io.Writer) error {
-	for {
-		char, _, err := in.ReadRune()
-		if err != nil {
-			return err
-		}
-		if _, ok := whitespaceChars[char]; !ok {
-			return in.UnreadRune()
-		}
-		writeRune(out, char)
-	}
-}
-
-func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
-	path = path.With(KindNumber)
-	return s.with(out, path, func(out io.Writer) error {
-		var number bytes.Buffer
-		out = io.MultiWriter(&number, out)
-	scan:
-		for {
-			digit, _, err := in.ReadRune()
-			if err != nil {
-				return err
-			}
-			if _, ok := numberChars[digit]; !ok {
-				// no more number chars, we are ready,
-				// the last read should be reverted.
-				if err := in.UnreadRune(); err != nil {
-					return err
-				}
-				break scan
-			}
-			if _, err := writeRune(out, digit); err != nil {
-				return err
-			}
-		}
-		if !json.Valid(number.Bytes()) {
-			return s.malformedF(path, "not a valid number: %s", number.String())
-		}
-		return nil
-	})
-}
-
-func writeRune(w io.Writer, r rune) (int, error) {
-	buf := make([]byte, utf8.UTFMax) // UTFMax = 4 bytes (max UTF-8 size)
-	n := utf8.EncodeRune(buf, r)
-	return w.Write(buf[:n])
-}
-
-func moveRune(in Input, o io.Writer) (rune, int, error) {
-	char, size, err := in.ReadRune()
-	if err != nil {
-		return char, size, err
-	}
-	if _, err := writeRune(o, char); err != nil {
-		return 0, 0, err
-	}
-	return char, size, nil
-}
-
-func (s *Scanner) scanNull(in Input, out io.Writer, path Path) error {
-	return s.scanToken(in, out, path.With(KindNull), nullTokenUTF8)
-}
-
-func (s *Scanner) scanToken(in Input, out io.Writer, path Path, token []rune) error {
-	return s.with(out, path, func(out io.Writer) error {
-		for i := 0; i < len(token); i++ {
-			char, _, err := in.ReadRune()
-			if err != nil {
-				return LexingError{Message: "error while reading from input: " + err.Error(), Path: path}
-			}
-			if char != token[i] {
-				return LexingError{Message: fmt.Sprintf(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i]), Path: path}
-			}
-			if _, err := writeRune(out, char); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (s *Scanner) scanBoolean(in Input, out io.Writer, path Path) error {
-	path = path.With(KindBoolean)
-	if err := trimSpace(in, out); err != nil {
-		return err
-	}
-	char, _, err := iokit.PeekRune(in)
-	if err != nil {
-		return err
-	}
-	switch char {
-	case 't':
-		return s.scanToken(in, out, path, trueTokenUTF8)
-	case 'f':
-		return s.scanToken(in, out, path, falseTokenUTF8)
-	default:
-		return LexingError{Message: fmt.Sprintf("unexpected boolean first character: %c", char), Path: path}
-	}
-}
-
-func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
-	path = path.With(KindArray)
-	return s.with(out, path, func(out io.Writer) error {
-		if err := trimSpace(in, out); err != nil {
-			return err
-		}
-
-		firstChar, _, err := moveRune(in, out)
-		if err != nil {
-			return err
-		}
-		if firstChar != arrayOpenToken {
-			return LexingError{Message: fmt.Sprintf(`unexpected array open token, expected "[" but got %c`, firstChar), Path: path}
-		}
-
-		secondChar, _, err := iokit.PeekRune(in)
-		if err != nil {
-			return err
-		}
-		if secondChar == arrayCloseToken { // empty array
-			_, _, err := moveRune(in, out)
-			return err
-		}
-
-		{ // check for empty array
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
-
-			nextChar, _, err := iokit.PeekRune(in)
-			if err != nil {
-				return err
-			}
-			if nextChar == arrayCloseToken {
-				if _, _, err := moveRune(in, out); err != nil {
-					return err
-				}
-				return nil
-			}
-		}
-
-	scanValues:
-		for i := 0; ; i++ {
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
-
-			// scan array value
-			if err := s.scan(in, out, path.With(KindElement{Index: &i})); err != nil {
-				if err, ok := s.isScanError(err, path); ok {
-					return err
-				}
-				if errors.Is(err, io.EOF) {
-					return s.malformedF(path, "unexpected %w during array value token scanning", err)
-				}
-				return err
-			}
-
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
-
-			// scan sep/close
-			next, _, err := moveRune(in, out)
-			if err != nil {
-				return err
-			}
-			switch next {
-			case valueSepToken: // has more
-				continue scanValues
-			case arrayCloseToken:
-				break scanValues
-			default:
-				return LexingError{Message: fmt.Sprintf("unexpected array token: %c", next), Path: path}
-			}
-		}
-		return nil
-	})
-}
-
-func (s *Scanner) scanObject(in Input, out io.Writer, path Path) error {
-	path = path.With(KindObject)
-	return s.with(out, path, func(out io.Writer) error {
-		if err := trimSpace(in, out); err != nil {
-			return err
-		}
-
-		firstChar, _, err := moveRune(in, out)
-		if err != nil {
-			return err
-		}
-
-		if firstChar != objectOpenToken { // '{'
-			return LexingError{Message: fmt.Sprintf(`unexpected object open token, expected "{" but got %c`, firstChar), Path: path}
-		}
-
-		if err := trimSpace(in, out); err != nil {
-			return err
-		}
-
-		secondChar, _, err := iokit.PeekRune(in)
-		if err != nil {
-			return err
-		}
-		if secondChar == objectCloseToken { // empty object
-			_, _, err := moveRune(in, out) // write '}'
-			return err
-		}
-
-	scan:
-		for {
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
-
-			{ /* key-value pair */
-
-				/* SCAN STRING KEY */
-
-				// we need to make sure that the object name is retrieved
-				// and not discarded from the output writing.
-				var name objectKeyBuffer
-				if err := s.scanString(in, &name, path.With(KindName)); err != nil {
-					return fmt.Errorf("(object key) %w", err)
-				}
-
-				if _, err := out.Write(name.Bytes()); err != nil {
-					return err
-				}
-
-				if err := trimSpace(in, out); err != nil {
-					return err
-				}
-
-				/* SEPERATOR */
-				sep, _, err := moveRune(in, out)
-				if err != nil {
-					return err
-				}
-				if sep != nameSepToken {
-					return LexingError{Message: fmt.Sprintf(`unexpected object key-value separator, expected ":" but got "%c"`, sep), Path: path}
-				}
-				if err := trimSpace(in, out); err != nil {
-					return err
-				}
-
-				/* SCAN OBJECT VALUE */
-				var valueName string = name.String()
-				if rawName := name.Bytes(); 2 <= len(rawName) {
-					valueName = string(rawName[1 : len(rawName)-1]) // drop quote tokens
-				}
-
-				if err := s.scan(in, out, path.With(KindValue{Name: &valueName})); err != nil {
-					return err
-				}
-				if err := trimSpace(in, out); err != nil {
-					return err
-				}
-			}
-
-			next, _, err := moveRune(in, out)
-			if err != nil {
-				return err
-			}
-			switch next {
-			case objectCloseToken:
-				return nil
-			case valueSepToken:
-				continue scan
-			default:
-				return LexingError{
-					Message: fmt.Sprintf(`unexpected character in object, expected either "," or "}", but got "%c"`, next),
-					Path:    path,
-				}
-			}
-		}
-	})
-}
-
-func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
-	path = path.With(KindString)
-	return s.with(out, path, func(out io.Writer) error {
-		// var str bytes.Buffer
-		// out = io.MultiWriter(&str, out)
-		if err := trimSpace(in, out); err != nil {
-			return err
-		}
-		first, _, err := moveRune(in, out)
-		if err != nil {
-			return err
-		}
-		if first != quoteToken {
-			return LexingError{
-				Message: fmt.Sprintf(`unexpected string starting token, expected quote but got "%c"`, first),
-				Path:    path,
-			}
-		}
-		var complete, inEscape bool
-		for !complete {
-			char, n, err := in.ReadRune()
-			if 0 < n {
-				if _, err := writeRune(out, char); err != nil {
-					return err
-				}
-				switch {
-				case char == stringEscapesToken:
-					inEscape = !inEscape
-				case char == quoteToken && !inEscape:
-					complete = true
-				default:
-					inEscape = false
-				}
-			}
-			if complete {
-				return err
-			}
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return s.malformedF(path, "unexpected %w during incomplete string token", err)
-				}
-				return s.malformedF(path, "unexpected error during string scanning: %w", err)
-			}
-		}
-		return nil
-	})
-}
-
-const stringEscapesToken = '\\'
-
-// var validStringEscapes = map[rune]struct{}{
-// 	'"':  {}, // quotation mark
-// 	'\\': {}, // backslash
-// 	'/':  {}, // forward slash
-// 	'b':  {}, // backspace
-// 	'f':  {}, // form feed
-// 	'n':  {}, // newline
-// 	'r':  {}, // carriage return
-// 	't':  {}, // tab
-// 	'u':  {}, // unicode
-// }
-
-func (s *Scanner) tokenStartKind(char rune) Kind {
-	if _, ok := numberChars[char]; ok {
-		return KindNumber
-	}
-	if _, ok := whitespaceChars[char]; ok {
+func (sc scope) write(data []byte) error {
+	if len(data) == 0 {
 		return nil
 	}
-	switch char {
-	case '[':
-		return KindArray
-	case '{':
-		return KindObject
-	case '"':
-		return KindString
-	case 'n':
-		return KindNull
-	case 't', 'f':
-		return KindBoolean
+	for _, sink := range sc.sinks {
+		sink.Write(data)
+	}
+	for _, p := range sc.pipes {
+		if pipeBatchSize <= p.pending.Len() {
+			if err := p.flush(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-var whitespaceChars = map[rune]struct{}{
-	' ':  {},
-	'\n': {},
-	'\r': {},
-	'\t': {},
+// pipeBatchSize is the amount of data that is handed over at once to the Selector.On readers.
+const pipeBatchSize = 32 * 1024
+
+// pipe hands over the data to the Selector.On readers in batches,
+// as each hand over is a context switch between goroutines.
+// The pending data is flushed when the batch is full, when its value is complete,
+// and before the scanning would wait for more input.
+type pipe struct {
+	w       *io.PipeWriter
+	pending bytes.Buffer
 }
 
-var numberChars = map[rune]struct{}{
-	'0': {},
-	'1': {},
-	'2': {},
-	'3': {},
-	'4': {},
-	'5': {},
-	'6': {},
-	'7': {},
-	'8': {},
-	'9': {},
-	'.': {},
-	'-': {},
-	'+': {},
-	'e': {},
-	'E': {},
+func (p *pipe) flush() error {
+	if p.pending.Len() == 0 {
+		return nil
+	}
+	_, err := p.w.Write(p.pending.Bytes())
+	p.pending.Reset()
+	return err
+}
+
+// abortError is how the readers of the Selector.On functions learn that scanning failed.
+// It is a pointer, so the error coming back from them can be recognised and dropped,
+// as it would only duplicate the original error.
+type abortError struct{ err error }
+
+func (e *abortError) Error() string { return e.err.Error() }
+func (e *abortError) Unwrap() error { return e.err }
+
+// close finishes the scope, which must be already removed from the frames.
+// The Selector.Func functions are only called when the scope is complete without an error.
+func (st *scanState) close(sc scope, err error) error {
+	if sc.pipe == nil && len(sc.fns) == 0 {
+		return err
+	}
+	if err == nil {
+		// The enclosing scopes' Selector.On readers receive the data
+		// before the Selectors of this scope learn that the value is complete.
+		err = st.flush()
+	}
+	if sc.pipe != nil {
+		err = sc.closePipe(err)
+	}
+	if err != nil {
+		return err
+	}
+	for _, fn := range sc.fns {
+		if err := fn(sc.buf.Bytes()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sc scope) closePipe(err error) error {
+	if err == nil {
+		err = sc.pipe.flush()
+	}
+	var abort *abortError
+	if err != nil {
+		abort = &abortError{err: err}
+		_ = sc.pipe.w.CloseWithError(abort)
+	} else {
+		_ = sc.pipe.w.Close()
+	}
+	if gErr := sc.g.Wait(); gErr != nil && (abort == nil || !errors.Is(gErr, abort)) {
+		if errors.Is(err, io.ErrClosedPipe) {
+			// a Selector.On returned early, and its error is the root cause of the failed write.
+			err = gErr
+		} else {
+			err = errorkitlite.Merge(err, gErr)
+		}
+	}
+	return err
+}
+
+// source adapts an Input to an io.Reader for the jsontext.Decoder,
+// and allows giving back the decoder's unused look-ahead to the Input.
+type source interface {
+	io.Reader
+	// unread returns the last n bytes from the last Read call to the underlying Input.
+	unread(n int) error
+}
+
+func newSource(in Input) source {
+	if in, ok := in.(bufferedInput); ok {
+		return &bufferedSource{in: in}
+	}
+	if in, ok := in.(io.ReadSeeker); ok {
+		if _, err := in.Seek(0, io.SeekCurrent); err == nil {
+			return seekSource{in: in}
+		}
+	}
+	if in, ok := in.(io.ByteScanner); ok {
+		return byteSource{in: in}
+	}
+	return &runeSource{in: in}
+}
+
+func errUnread(n int) error {
+	return fmt.Errorf("jsontoken: unable to give back %d bytes of look-ahead to the Input", n)
+}
+
+// bufferedInput is implemented by *bufio.Reader.
+type bufferedInput interface {
+	Peek(n int) ([]byte, error)
+	Discard(n int) (discarded int, err error)
+	Buffered() int
+}
+
+// bufferedSource lends the already buffered bytes of the Input to the decoder,
+// and only discards them from the Input once the decoder has consumed them.
+type bufferedSource struct {
+	in   bufferedInput
+	lent int
+}
+
+func (s *bufferedSource) Read(p []byte) (int, error) {
+	if err := s.commit(); err != nil {
+		return 0, err
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if s.in.Buffered() == 0 {
+		if _, err := s.in.Peek(1); err != nil {
+			return 0, err
+		}
+	}
+	data, err := s.in.Peek(min(s.in.Buffered(), len(p)))
+	s.lent = copy(p, data)
+	return s.lent, err
+}
+
+func (s *bufferedSource) commit() error {
+	if s.lent == 0 {
+		return nil
+	}
+	_, err := s.in.Discard(s.lent)
+	s.lent = 0
+	return err
+}
+
+func (s *bufferedSource) unread(n int) error {
+	if s.lent < n {
+		_ = s.commit()
+		return errUnread(n)
+	}
+	s.lent -= n
+	return s.commit()
+}
+
+type seekSource struct{ in io.ReadSeeker }
+
+func (s seekSource) Read(p []byte) (int, error) { return s.in.Read(p) }
+
+func (s seekSource) unread(n int) error {
+	if n == 0 {
+		return nil
+	}
+	_, err := s.in.Seek(-int64(n), io.SeekCurrent)
+	return err
+}
+
+// byteSource reads one byte at a time, so at most a single byte needs to be given back.
+type byteSource struct{ in io.ByteScanner }
+
+func (s byteSource) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	c, err := s.in.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	p[0] = c
+	return 1, nil
+}
+
+func (s byteSource) unread(n int) error {
+	switch n {
+	case 0:
+		return nil
+	case 1:
+		return s.in.UnreadByte()
+	default:
+		return errUnread(n)
+	}
+}
+
+// runeSource reads one rune at a time, so at most a single rune needs to be given back.
+type runeSource struct {
+	in      Input
+	buf     [utf8.UTFMax]byte
+	size    int
+	pending []byte
+}
+
+func (s *runeSource) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if len(s.pending) == 0 {
+		r, _, err := s.in.ReadRune()
+		if err != nil {
+			return 0, err
+		}
+		s.size = utf8.EncodeRune(s.buf[:], r)
+		s.pending = s.buf[:s.size]
+	}
+	n := copy(p, s.pending)
+	s.pending = s.pending[n:]
+	return n, nil
+}
+
+func (s *runeSource) unread(n int) error {
+	switch returned := s.size - len(s.pending); {
+	case n == 0 && len(s.pending) == 0:
+		return nil
+	case 0 < n && n == returned:
+		s.size, s.pending = 0, nil
+		return s.in.UnreadRune()
+	default:
+		return errUnread(n)
+	}
 }
 
 /* KIND */
@@ -774,6 +910,8 @@ const (
 	KindName   strKind = "name"
 )
 
+// KindValue is the path element of an object member's value.
+// Name is the decoded (unescaped) member name.
 type KindValue struct{ Name *string }
 
 func (v KindValue) Match(oth Kind) bool {
@@ -808,25 +946,6 @@ var _ = enum.Register[Kind](
 	KindValue{},
 )
 
-var discard = &nullOutput{}
-
-type nullOutput struct{}
-
-func (*nullOutput) Write(p []byte) (n int, err error)        { return len(p), nil }
-func (*nullOutput) WriteTo(w io.Writer) (n int64, err error) { return 0, nil }
-func (*nullOutput) WriteRune(r rune) (n int, err error)      { return len([]byte(string(r))), nil }
-func (*nullOutput) WriteByte(c byte) error                   { return nil }
-func (*nullOutput) Bytes() []byte                            { return []byte{} }
-
-var _ noDiscard = objectKeyBuffer{}
-
-type objectKeyBuffer struct {
-	bytes.Buffer
-	// Due to the requirements for matching the JSON object value path,
-	// we need to temporarily store the key value in memory to construct the JSON selector path.
-	noDiscard
-}
-
 func IterateArray(ctx context.Context, r io.Reader) iter.Seq2[json.RawMessage, error] {
 	i := &ArrayIterator{Context: ctx, Input: r}
 	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
@@ -853,7 +972,7 @@ type ArrayIterator struct {
 	Context context.Context
 	Input   io.Reader
 
-	dec *json.Decoder
+	dec *jsontext.Decoder
 
 	index  int
 	inList bool
@@ -872,25 +991,19 @@ func (c *ArrayIterator) Next() bool {
 		return false
 	}
 	if c.dec == nil {
-		c.dec = json.NewDecoder(c.Input)
+		c.dec = newDecoder(c.Input)
 	}
 
 	if !c.inList {
-		tkn, err := c.dec.Token()
+		tkn, err := c.dec.ReadToken()
 		if err != nil {
-			c.err = err
+			c.err = c.wrapErr(err, Path{KindArray})
 			return false
 		}
-		delim, ok := tkn.(json.Delim)
-		if !ok {
-			c.err = LexingError{Path: []Kind{KindArray},
-				Message: fmt.Sprintf("unexpecte json token: %v", tkn)}
-			return false
-		}
-		if delim != '[' {
+		if kind := tkn.Kind(); kind != jsontext.KindBeginArray {
 			c.err = LexingError{
-				Message: fmt.Sprintf(`unexpecte json token delimiter, expected "%c" but got "%s"`, '[', delim),
-				Path:    []Kind{KindArray},
+				Message: fmt.Sprintf(`unexpected json token, expected "[" but got %s`, kind),
+				Path:    Path{KindArray},
 			}
 			return false
 		}
@@ -898,41 +1011,31 @@ func (c *ArrayIterator) Next() bool {
 		c.index = 0
 	}
 
-	if !c.dec.More() {
-		tkn, err := c.dec.Token()
-		if err != nil {
-			c.err = err
-		}
-
-		delim, ok := tkn.(json.Delim)
-		if !ok {
-			c.err = LexingError{
-				Message: fmt.Sprintf("unexpecte json token: %v", tkn),
-				Path:    []Kind{KindArray, KindElement{Index: &c.index}},
-			}
+	if c.dec.PeekKind() == jsontext.KindEndArray {
+		if _, err := c.dec.ReadToken(); err != nil {
+			c.err = c.wrapErr(err, Path{KindArray})
 			return false
 		}
-		if delim != ']' {
-			c.err = LexingError{
-				Message: fmt.Sprintf(`unexpecte json token delimiter, expected "%c" but got "%s"`, ']', delim),
-				Path:    []Kind{KindArray, KindElement{Index: &c.index}},
-			}
-			return false
-		}
-
 		c.done = true
 		return false
 	}
-	c.index++
 
-	var raw json.RawMessage
-	if err := c.dec.Decode(&raw); err != nil {
-		c.err = err
+	raw, err := c.dec.ReadValue()
+	if err != nil {
+		index := c.index
+		c.err = c.wrapErr(err, Path{KindArray, KindElement{Index: &index}})
 		return false
 	}
-
-	c.data = raw
+	c.index++
+	c.data = raw.Clone()
 	return true
+}
+
+func (c *ArrayIterator) wrapErr(err error, path Path) error {
+	if serr, ok := errorkitlite.As[*jsontext.SyntacticError](err); ok {
+		return LexingError{Path: path, Err: serr}
+	}
+	return err
 }
 
 func (c *ArrayIterator) Value() json.RawMessage { return c.data }
@@ -953,30 +1056,54 @@ func (c *ArrayIterator) Close() error {
 	return nil
 }
 
+// TrimSpace removes the insignificant whitespaces from a JSON value.
+// Whitespaces within JSON strings are kept intact.
 func TrimSpace(data []byte) []byte {
-	in := bufio.NewReader(bytes.NewReader(data))
-	out := &bytes.Buffer{}
-trim:
-	for {
-		if err := trimSpace(in, discard); err != nil {
-			break trim
-		}
-	move:
-		for { // move until next white space
-			_, _, err := moveRune(in, out)
-			if err != nil {
-				break trim
+	out := make([]byte, 0, len(data))
+	for i := 0; i < len(data); {
+		switch data[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+		case '"':
+			end := stringEnd(data, i+1)
+			out = append(out, data[i:end]...)
+			i = end
+		default:
+			j := i + 1
+			for j < len(data) && !isSpaceOrQuote(data[j]) {
+				j++
 			}
-
-			char, _, err := iokit.PeekRune(in)
-			if err != nil {
-				break trim
-			}
-
-			if _, ok := whitespaceChars[char]; ok {
-				break move
-			}
+			out = append(out, data[i:j]...)
+			i = j
 		}
 	}
-	return out.Bytes()
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func isSpaceOrQuote(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"'
+}
+
+// stringEnd returns the index right after the closing quote of the JSON string that starts at i,
+// or the length of the data when the string is unterminated.
+func stringEnd(data []byte, i int) int {
+	for {
+		j := bytes.IndexByte(data[i:], '"')
+		if j < 0 {
+			return len(data)
+		}
+		i += j
+		// the quote is escaped when it is preceded by an odd number of backslashes
+		var backslashes int
+		for k := i - 1; 0 <= k && data[k] == '\\'; k-- {
+			backslashes++
+		}
+		i++
+		if backslashes%2 == 0 {
+			return i
+		}
+	}
 }

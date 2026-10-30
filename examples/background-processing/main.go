@@ -19,12 +19,19 @@ func main() {
 
 	cm, err := postgresql.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
-		logger.Error(ctx, err.Error())
+		logger.Fatal(ctx, err.Error())
+		return
 	}
 
 	q := postgresql.Queue[MyDomainEventEntity]{
-		Name:       "my_domain_event",
+		Table:      "my_domain_event",
 		Connection: cm,
+	}
+
+	// the queue table must exist before publishing or subscribing
+	if err := q.Migrate(ctx); err != nil {
+		logger.Fatal(ctx, err.Error())
+		return
 	}
 
 	myHTTPRequestHandler := MyHTTPRequestHandler{

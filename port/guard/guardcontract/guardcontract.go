@@ -637,8 +637,10 @@ func NonBlockingLockerFactory[Key any](subject guard.NonBlockingLockerFactory[Ke
 	s.Test("result NonBlockingLock with different name don't interfere with each other", func(t *testcase.T) {
 		var (
 			ctx = c.MakeContext(t)
-			l1  = subject.NonBlockingLockerFor(c.MakeKey(t))
-			l2  = subject.NonBlockingLockerFor(c.MakeKey(t))
+			k1  = c.MakeKey(t)
+			k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+			l1  = subject.NonBlockingLockerFor(k1)
+			l2  = subject.NonBlockingLockerFor(k2)
 		)
 		assert.Must(t).Within(3*time.Second, func(context.Context) {
 			lockCtx1, ok, err := l1.TryLock(ctx)

@@ -3,25 +3,31 @@ package jsonkit_test
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
+	"errors"
 	"fmt"
+	"reflect"
+	"strconv"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
-var (
-	rnd = random.New(random.CryptoSeed{})
-	_   = jsonkit.RegisterTypeID[withTypeStruct]("with_type_struct")
-	_   = jsonkit.RegisterTypeID[withTypeString]("with_type_string")
-	_   = jsonkit.RegisterTypeID[map[string]int]("with_type_map")
-	_   = jsonkit.RegisterTypeID[withTypeSlice]("with_type_slice")
-	_   = jsonkit.RegisterTypeID[withTypeNested]("with_type_nested")
-	_   = jsonkit.RegisterTypeID[withTypePointerImpl]("with_type_pointer_impl")
-	_   = jsonkit.RegisterTypeID[withTypeCustomJSON]("with_type_custom_json")
-)
+var rnd = random.New(random.CryptoSeed{})
+
+func RegisterTypeIDs(t *testcase.T) {
+	t.Cleanup(jsonkit.RegisterTypeID[withTypeStruct]("with_type_struct"))
+	t.Cleanup(jsonkit.RegisterTypeID[withTypeString]("with_type_string"))
+	t.Cleanup(jsonkit.RegisterTypeID[map[string]int]("with_type_map"))
+	t.Cleanup(jsonkit.RegisterTypeID[withTypeSlice]("with_type_slice"))
+	t.Cleanup(jsonkit.RegisterTypeID[withTypeNested]("with_type_nested"))
+	t.Cleanup(jsonkit.RegisterTypeID[withTypePointerImpl]("with_type_pointer_impl"))
+	t.Cleanup(jsonkit.RegisterTypeID[withTypeCustomJSON]("with_type_custom_json"))
+}
 
 type withTypeInterface interface{ String() string }
 
@@ -40,6 +46,16 @@ type withTypeNested struct {
 	Value  *withTypeStruct   `json:"value"`
 	Labels map[string]string `json:"labels"`
 	Items  []withTypeStruct  `json:"items"`
+}
+
+// withTypeHolder has an interface field, which is written with the $type of the value it holds.
+type withTypeHolder struct {
+	V withTypeInterface `json:"v"`
+}
+
+// withTypeNode can reference back to itself.
+type withTypeNode struct {
+	Next *withTypeNode `json:"next"`
 }
 
 type withTypePointerImpl struct{ Value string }
@@ -97,7 +113,7 @@ func ExampleInterface() {
 	if err != nil {
 		panic(err)
 	}
-	// {"@type":"type_c","v":42.24}
+	// {"$type":"type_c","V":42.24}
 
 	var got jsonkit.Interface[Greeter]
 	if err := json.Unmarshal(data, &got); err != nil {
@@ -106,6 +122,43 @@ func ExampleInterface() {
 
 	// got == exp
 	// got.V -> *TypeC{V: 42.24}
+}
+
+// ExampleCodec_interface shows the explicit way to have a value written with its $type:
+// holding it in a jsonkit.Interface, the way an interface field would hold it.
+func ExampleCodec_interface() {
+	type Item struct{ Name string }
+
+	var c jsonkit.Codec
+	jsonkit.CodecRegisterTypeID[Item](&c, "item")
+
+	flat, err := c.Marshal(Item{Name: "a"})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(flat))
+
+	data, err := c.Marshal(jsonkit.Interface[any]{V: Item{Name: "a"}})
+	if err != nil {
+		panic(err)
+	}
+	// The members of a JSON object are unordered, so the JSON is canonicalized, which sorts its members by name, to print it the same way every time.
+	canonical := jsontext.Value(bytes.Clone(data))
+	if err := canonical.Canonicalize(); err != nil {
+		panic(err)
+	}
+	fmt.Println(canonical)
+
+	var got jsonkit.Interface[any]
+	if err := c.Unmarshal(data, &got); err != nil {
+		panic(err)
+	}
+	fmt.Printf("%T %+v\n", got.V, got.V)
+
+	// Output:
+	// {"Name":"a"}
+	// {"$type":"item","Name":"a"}
+	// jsonkit_test.Item {Name:a}
 }
 
 func TestInterface(t *testing.T) {
@@ -136,6 +189,26 @@ func TestInterface(t *testing.T) {
 		var got jsonkit.Interface[any]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
+	})
+	t.Run("empty interface type with a slice which holds registered types", func(t *testing.T) {
+		var exp jsonkit.Interface[any]
+		exp.V = []any{TypeA{V: rnd.String()}, []any{TypeB{V: rnd.Int()}}, rnd.String()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("empty interface type with a JSON array of $type envelopes", func(t *testing.T) {
+		exp := TypeA{V: rnd.String()}
+		data, err := json.Marshal([]map[string]string{{"$type": "type_a", "V": exp.V}})
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal[any](t, []any{exp}, got.V)
 	})
 	t.Run("interface T type with base-type based implementation", func(t *testing.T) {
 		var exp jsonkit.Interface[Greeter]
@@ -187,6 +260,371 @@ func TestInterface(t *testing.T) {
 		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with a registered type that does not implement T fails", func(t *testing.T) {
+		data, err := json.Marshal(jsonkit.Interface[any]{V: withTypeStruct{Name: rnd.String()}})
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[Greeter]
+		assert.Error(t, json.Unmarshal(data, &got))
+	})
+	t.Run("interface T type with a JSON value which T can not hold fails", func(t *testing.T) {
+		for kind, data := range jsonValuesWithoutType() {
+			t.Run(kind, func(t *testing.T) {
+				var got jsonkit.Interface[Greeter]
+				assert.Error(t, json.Unmarshal([]byte(data), &got))
+			})
+		}
+	})
+	t.Run("interface T type with a slice implementation holding nil elements", func(t *testing.T) {
+		var exp jsonkit.Interface[Greeter]
+		exp.V = TypeE{TypeA{V: rnd.String()}, nil, TypeB{V: rnd.Int()}}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+}
+
+// jsonValuesWithoutType are JSON values without a $type discriminator, by their JSON kind.
+// Only an empty interface like `any` could hold them.
+func jsonValuesWithoutType() map[string]string {
+	return map[string]string{
+		"string":      strconv.Quote(rnd.String()),
+		"number":      strconv.Itoa(rnd.Int()),
+		"boolean":     strconv.FormatBool(rnd.Bool()),
+		"empty array": `[]`,
+		"array":       `[` + strconv.Itoa(rnd.Int()) + `]`,
+		"object":      `{"k":` + strconv.Itoa(rnd.Int()) + `}`,
+	}
+}
+
+// The jsonkit wrappers write the values with encoding/json on their own the same way as the Codec does.
+
+func TestInterface_MarshalJSON(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	value := let.Var(s, func(t *testcase.T) any {
+		return makeJSONTypeScalar(t)
+	})
+	act := func(t *testcase.T) ([]byte, error) {
+		return json.Marshal(jsonkit.Interface[any]{V: value.Get(t)})
+	}
+
+	thenItIsWrittenAsPlainJSON := func(t *testcase.T) {
+		data, err := act(t)
+		assert.NoError(t, err)
+		assertJSONEqual(t, mustMarshalJSON(t, value.Get(t)), string(data))
+	}
+
+	thenItIsReadBackAsTheSameValue := func(t *testcase.T) {
+		data, err := act(t)
+		assert.Must(t).NoError(err)
+
+		var got jsonkit.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, value.Get(t), got.V)
+	}
+
+	s.Then("a value of the types plain JSON is read into is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+	s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+
+	s.When("the value is nil", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return nil
+		})
+
+		s.Then("it is written as null, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as nil", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a number of another built-in type, like an int64", func(s *testcase.Spec) {
+		value.Let(s, makeOtherBuiltinNumber)
+
+		s.Then("it is written with its $type, as plain JSON would be read back as an int or a float64", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+			assertJSONEqual(t, makeValueEnvelopeJSON(t, jsonkit.TypeID(reflect.TypeOf(value.Get(t)).String()), value.Get(t)), string(data))
+		})
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a slice of these", func(s *testcase.Spec) {
+		value.Let(s, makeJSONTypesSlice)
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a map of these", func(s *testcase.Spec) {
+		value.Let(s, makeJSONTypesMap)
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a map, which holds a value of a registered type", func(s *testcase.Spec) {
+		member := let.Var(s, func(t *testcase.T) TypeA {
+			return TypeA{V: t.Random.String()}
+		})
+		value.Let(s, func(t *testcase.T) any {
+			return map[string]any{"k": member.Get(t)}
+		})
+
+		s.Then("the map is written without a $type, while the value it holds is written with its own", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+			assertJSONEqual(t, `{"k":{"$type":"type_a","V":`+mustMarshalJSON(t, member.Get(t).V)+`}}`, string(data))
+		})
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	// An array has no derived type ID, see TestCodec_typedContainers.
+	s.When("the value is an array", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return [2]int{t.Random.Int(), t.Random.Int()}
+		})
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back the way encoding/json reads it into an any, except that a whole number is an int", func(t *testcase.T) {
+			data, err := act(t)
+			assert.Must(t).NoError(err)
+
+			var got jsonkit.Interface[any]
+			assert.NoError(t, json.Unmarshal(data, &got))
+
+			var exp any
+			unmarshalPlainJSON(t, []byte(mustMarshalJSON(t, value.Get(t))), &exp)
+			assert.Equal(t, exp, got.V)
+		})
+	})
+
+	s.When("the value references back to itself", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			m := map[string]any{}
+			m["self"] = m
+			return m
+		})
+
+		s.Then("it fails the way encoding/json fails, instead of recursing forever", func(t *testcase.T) {
+			_, err := act(t)
+
+			var unsupported *json.UnsupportedValueError
+			assert.True(t, errors.As(err, &unsupported), assert.MessageF("expected a *json.UnsupportedValueError, got: %v", err))
+		})
+	})
+}
+
+func TestInterface_UnmarshalJSON(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		// exp is the value the JSON is expected to be read as.
+		exp = let.Var(s, func(t *testcase.T) any {
+			return makeJSONTypesMap(t)
+		})
+		data = let.Var(s, func(t *testcase.T) string {
+			return mustMarshalJSON(t, exp.Get(t))
+		})
+	)
+	act := func(t *testcase.T) (jsonkit.Interface[any], error) {
+		var got jsonkit.Interface[any]
+		err := json.Unmarshal([]byte(data.Get(t)), &got)
+		return got, err
+	}
+
+	thenItIsReadAsExpected := func(t *testcase.T) {
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.Equal(t, exp.Get(t), got.V)
+	}
+
+	s.Then("a JSON object without a $type is read as a map[string]any, like with encoding/json", thenItIsReadAsExpected)
+
+	s.When("a member of the JSON object has a $type", func(s *testcase.Spec) {
+		member := let.Var(s, func(t *testcase.T) TypeA {
+			return TypeA{V: t.Random.String()}
+		})
+		exp.Let(s, func(t *testcase.T) any {
+			return map[string]any{"k": member.Get(t)}
+		})
+		data.Let(s, func(t *testcase.T) string {
+			return `{"k":{"$type":"type_a","V":` + mustMarshalJSON(t, member.Get(t).V) + `}}`
+		})
+
+		s.Then("the member is read as the type its $type names", thenItIsReadAsExpected)
+	})
+}
+
+func TestArray_MarshalJSON(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	value := let.Var(s, func(t *testcase.T) any {
+		return makeJSONTypeScalar(t)
+	})
+	act := func(t *testcase.T) ([]byte, error) {
+		return json.Marshal(jsonkit.Array[any]{value.Get(t)})
+	}
+
+	thenItIsWrittenAsPlainJSON := func(t *testcase.T) {
+		data, err := act(t)
+		assert.NoError(t, err)
+		assertJSONEqual(t, `[`+mustMarshalJSON(t, value.Get(t))+`]`, string(data))
+	}
+
+	thenItIsReadBackAsTheSameValue := func(t *testcase.T) {
+		data, err := act(t)
+		assert.Must(t).NoError(err)
+
+		var got jsonkit.Array[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, jsonkit.Array[any]{value.Get(t)}, got)
+	}
+
+	s.Then("a value of the types plain JSON is read into is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+	s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+
+	s.When("the value is nil", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return nil
+		})
+
+		s.Then("it is written as null, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as nil", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a number of another built-in type, like an int64", func(s *testcase.Spec) {
+		value.Let(s, makeOtherBuiltinNumber)
+
+		s.Then("it is written with its $type, as plain JSON would be read back as an int or a float64", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+			assertJSONEqual(t, `[`+makeValueEnvelopeJSON(t, jsonkit.TypeID(reflect.TypeOf(value.Get(t)).String()), value.Get(t))+`]`, string(data))
+		})
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a slice of these", func(s *testcase.Spec) {
+		value.Let(s, makeJSONTypesSlice)
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a map of these", func(s *testcase.Spec) {
+		value.Let(s, makeJSONTypesMap)
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	s.When("the value is a map, which holds a value of a registered type", func(s *testcase.Spec) {
+		member := let.Var(s, func(t *testcase.T) TypeA {
+			return TypeA{V: t.Random.String()}
+		})
+		value.Let(s, func(t *testcase.T) any {
+			return map[string]any{"k": member.Get(t)}
+		})
+
+		s.Then("the map is written without a $type, while the value it holds is written with its own", func(t *testcase.T) {
+			data, err := act(t)
+			assert.NoError(t, err)
+			assertJSONEqual(t, `[{"k":{"$type":"type_a","V":`+mustMarshalJSON(t, member.Get(t).V)+`}}]`, string(data))
+		})
+
+		s.Then("it is read back as the very same value", thenItIsReadBackAsTheSameValue)
+	})
+
+	// An array has no derived type ID, see TestCodec_typedContainers.
+	s.When("the value is an array", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return [2]int{t.Random.Int(), t.Random.Int()}
+		})
+
+		s.Then("it is written without a $type, like with encoding/json", thenItIsWrittenAsPlainJSON)
+
+		s.Then("it is read back the way encoding/json reads it into an any, except that a whole number is an int", func(t *testcase.T) {
+			data, err := act(t)
+			assert.Must(t).NoError(err)
+
+			var got jsonkit.Array[any]
+			assert.NoError(t, json.Unmarshal(data, &got))
+
+			var exp any
+			unmarshalPlainJSON(t, []byte(mustMarshalJSON(t, value.Get(t))), &exp)
+			assert.Equal(t, jsonkit.Array[any]{exp}, got)
+		})
+	})
+
+	s.When("the value references back to itself", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			l := []any{nil}
+			l[0] = l
+			return l
+		})
+
+		s.Then("it fails the way encoding/json fails, instead of recursing forever", func(t *testcase.T) {
+			_, err := act(t)
+
+			var unsupported *json.UnsupportedValueError
+			assert.True(t, errors.As(err, &unsupported), assert.MessageF("expected a *json.UnsupportedValueError, got: %v", err))
+		})
+	})
+}
+
+func TestArray_UnmarshalJSON(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		// exp is the element the JSON array is expected to be read as.
+		exp = let.Var(s, func(t *testcase.T) any {
+			return makeJSONTypesMap(t)
+		})
+		data = let.Var(s, func(t *testcase.T) string {
+			return `[` + mustMarshalJSON(t, exp.Get(t)) + `]`
+		})
+	)
+	act := func(t *testcase.T) (jsonkit.Array[any], error) {
+		var got jsonkit.Array[any]
+		err := json.Unmarshal([]byte(data.Get(t)), &got)
+		return got, err
+	}
+
+	thenItIsReadAsExpected := func(t *testcase.T) {
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.Equal(t, jsonkit.Array[any]{exp.Get(t)}, got)
+	}
+
+	s.Then("a JSON object without a $type is read as a map[string]any, like with encoding/json", thenItIsReadAsExpected)
+
+	s.When("a member of the JSON object has a $type", func(s *testcase.Spec) {
+		member := let.Var(s, func(t *testcase.T) TypeA {
+			return TypeA{V: t.Random.String()}
+		})
+		exp.Let(s, func(t *testcase.T) any {
+			return map[string]any{"k": member.Get(t)}
+		})
+		data.Let(s, func(t *testcase.T) string {
+			return `[{"k":{"$type":"type_a","V":` + mustMarshalJSON(t, member.Get(t).V) + `}}]`
+		})
+
+		s.Then("the member is read as the type its $type names", thenItIsReadAsExpected)
 	})
 }
 
@@ -259,6 +697,36 @@ func TestArray_json(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
+	t.Run("interface T type with an element which T can not hold fails", func(t *testing.T) {
+		for kind, data := range jsonValuesWithoutType() {
+			t.Run(kind, func(t *testing.T) {
+				var got jsonkit.Array[Greeter]
+				assert.Error(t, json.Unmarshal([]byte(`[`+data+`]`), &got))
+			})
+		}
+	})
+	t.Run("interface T type with a slice implementation holding nil elements", func(t *testing.T) {
+		var exp = jsonkit.Array[Greeter]{
+			TypeE{nil, TypeA{V: rnd.String()}},
+			nil,
+		}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsonkit.Array[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with a nil array is written as null and read back as nil, like a nil slice with encoding/json", func(t *testing.T) {
+		data, err := json.Marshal(jsonkit.Array[Greeter](nil))
+		assert.NoError(t, err)
+		assertJSONEqual(t, "null", string(data))
+
+		got := jsonkit.Array[Greeter]{TypeA{V: rnd.String()}}
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Nil(t, got)
+	})
 }
 
 func ExampleRegisterTypeID() {
@@ -273,12 +741,7 @@ func ExampleRegisterTypeID() {
 func TestRegister_doubleRegisterPanics(t *testing.T) {
 	type X struct{}
 	defer jsonkit.RegisterTypeID[X]("x")()
-	panicResults := assert.Panic(t, func() { jsonkit.RegisterTypeID[X]("xx") })
-	assert.NotNil(t, panicResults)
-	out, ok := panicResults.(string)
-	assert.True(t, ok, "panic value suppose to be a string")
-	assert.Contains(t, out, `Unable to register "xx"`)
-	assert.Contains(t, out, fmt.Sprintf("%T", X{}))
+	assert.Panic(t, func() { jsonkit.RegisterTypeID[X]("xx") })
 }
 
 func TestRegister_race(t *testing.T) {
@@ -306,7 +769,7 @@ func TestRegister_supportAliases(t *testing.T) {
 	t.Run("integer", func(t *testing.T) {
 		var (
 			val  jsonkit.Interface[any]
-			data = []byte(`{"@type":"integer","@value":42}`)
+			data = []byte(`{"$type":"integer","$value":42}`)
 		)
 		assert.NoError(t, json.Unmarshal(data, &val))
 		assert.NotNil(t, val.V)
@@ -315,7 +778,7 @@ func TestRegister_supportAliases(t *testing.T) {
 	t.Run("boolean", func(t *testing.T) {
 		var (
 			val  jsonkit.Interface[any]
-			data = []byte(`{"@type":"boolean","@value":true}`)
+			data = []byte(`{"$type":"boolean","$value":true}`)
 		)
 		assert.NoError(t, json.Unmarshal(data, &val))
 		assert.NotNil(t, val.V)
@@ -573,40 +1036,51 @@ func TestIndent(t *testing.T) {
 	})
 }
 
-// func TestArrayStream(t *testing.T) {
-// 	type ItemDTO struct {
-// 		V string
-// 	}
-//
-// 	type ExampleDTO struct {
-// 		Metadata string                       `json:"metadata"`
-// 		Items    jsonkit.ArrayStream[ItemDTO] `json:"items"`
-// 	}
-//
-// 	items := []ItemDTO{
-// 		{V: "1"},
-// 		{V: "2"},
-// 		{V: "c"},
-// 		{V: "d"},
-// 	}
-//
-// 	var dto = ExampleDTO{
-// 		Metadata: "Hello, world!",
-// 		Items:    jsonkit.ArrayStream[ItemDTO]{Iter: iterkit.Slice(items)},
-// 	}
-//
-// 	var buf bytes.Buffer
-// 	assert.NoError(t, json.NewEncoder(&buf).Encode(dto))
-//
-// 	type ExampleDTOGot struct {
-// 		Metadata string    `json:"metadata"`
-// 		Items    []ItemDTO `json:"items"`
-// 	}
-// 	var got ExampleDTOGot
-// 	assert.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-//
-// 	assert.Equal(t, ExampleDTOGot{
-// 		Metadata: dto.Metadata,
-// 		Items:    items,
-// 	}, got)
-// }
+func Test_jsonDecoder_UseNumber_spike(t *testing.T) {
+	t.Run("string", func(t *testing.T) {
+		data := []byte(`"42"`)
+		buf := bytes.NewReader(data)
+
+		dec := json.NewDecoder(buf)
+		dec.UseNumber()
+
+		var v any
+		assert.NoError(t, dec.Decode(&v))
+		assert.Equal(t, reflect.ValueOf(v).Type().String(), "string")
+	})
+	t.Run("int", func(t *testing.T) {
+		data := []byte(`42`)
+		buf := bytes.NewReader(data)
+
+		dec := json.NewDecoder(buf)
+		dec.UseNumber()
+
+		var v any
+		assert.NoError(t, dec.Decode(&v))
+		assert.NotNil(t, v)
+
+		n, ok := v.(json.Number)
+		assert.True(t, ok)
+		assert.Equal(t, n, "42")
+	})
+	t.Run("float", func(t *testing.T) {
+		t.Run("dot", func(t *testing.T) {
+			data := []byte(`42.0`)
+			buf := bytes.NewReader(data)
+
+			dec := json.NewDecoder(buf)
+			dec.UseNumber()
+
+			var v any
+			assert.NoError(t, dec.Decode(&v))
+			assert.NotNil(t, v)
+
+			n, ok := v.(json.Number)
+			assert.True(t, ok)
+			assert.Equal(t, n, "42.0")
+
+			_, err := strconv.ParseInt(n.String(), 10, strconv.IntSize)
+			assert.Error(t, err)
+		})
+	})
+}

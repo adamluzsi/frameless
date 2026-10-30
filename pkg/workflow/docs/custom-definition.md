@@ -21,9 +21,11 @@ type Definition interface {
 }
 ```
 
-`Error()` doubles as the codec `@type` tag for your type, so it must be a
-stable, namespaced, constant string — `"acme::charge-order"`, never a
-formatted message. Pick a tag that a future built-in cannot collide with.
+`Error()` names your type in error messages and logs, so it must be a stable,
+namespaced, constant string — `"acme:charge-order"`, never a formatted
+message. Pick a name that a future built-in cannot collide with. It is not the
+codec `$type` tag: that one is chosen when you register the type (§5). Using
+the same string for both is a handy convention, not a requirement.
 
 `Execute(ctx, pid)` is where the work happens. The context carries the
 runtime, the current process's event repository, the path under construction,
@@ -38,7 +40,7 @@ runtime is currently executing.
 // ChargeOrder is a named, reusable unit: take an amount from one variable,
 // pass it to a registered participant, and record the receipt.
 // The body could also be written as a workflow.Sequence{}, but a named type
-// travels through the codec with a stable @type tag, which makes it auditable
+// travels through the codec with a stable $type tag, which makes it auditable
 // and reviewable in a UI.
 type ChargeOrder struct {
     Amount workflow.VarName
@@ -46,7 +48,7 @@ type ChargeOrder struct {
 
 var _ workflow.Definition = ChargeOrder{}
 
-func (ChargeOrder) Error() string { return "acme::charge-order" }
+func (ChargeOrder) Error() string { return "acme:charge-order" }
 
 func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error {
     // Contribute a path segment so this step is distinct from its siblings
@@ -72,10 +74,10 @@ func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error 
     // Delegate the actual side effect to a registered participant. Doing the
     // I/O in a participant keeps the domain work out of the definition tree
     // and gives you its event-cache boundary for free.
-    return workflow.ExecuteParticipant{
-        ID:     "charge-card",
-        Input:  []workflow.VarName{d.Amount},
-        Output: []workflow.VarName{"receipt"},
+    return workflow.Execute{
+        Participant: "charge-card",
+        Input:       []workflow.VarName{d.Amount},
+        Output:      []workflow.VarName{"receipt"},
     }.Execute(ctx, pid)
 }
 ```
@@ -123,12 +125,18 @@ contributes a segment, and `Sequence` contributes its index.
 > every built-in composite (`Sequence`, `If`, `Sleep`, `Spawn`); your custom
 > definition should do the same.
 
-`WithVarScope` is the variable analogue: it opens a new variable scope whose
-name is part of the variable path. `SetVar` and `DeclareVar` find the nearest
-visible binding, so scoping lets a custom definition shadow outer variables
-without colliding with them. It is the right tool when your definition is
-looped, recursive, or otherwise re-enters a scope its parent might also be
-writing to.
+`WithVarScope` is the variable analogue: it adds a path segment that is a
+variable scope as well, like a block in Go. `SetVar` and `DeclareVar` find the
+nearest visible binding, so scoping lets a custom definition shadow outer
+variables without colliding with them. It is the right tool when your
+definition is looped, recursive, or otherwise re-enters a scope its parent
+might also be writing to.
+
+As the scope is a path segment, it claims the definition's coordinate on its
+own, so use it instead of `WithName`, not next to it. Its identity is its
+location: two instances side by side, like the elements of a `Sequence`, or the
+rounds of a loop, are at different paths, so each gets a scope of its own,
+while a replay of the same instance gets the same scope again.
 
 A definition that wraps another and records bookkeeping values around it is
 the canonical case:
@@ -143,11 +151,10 @@ type Timed struct {
 
 var _ workflow.Definition = Timed{}
 
-func (Timed) Error() string { return "acme::timed" }
+func (Timed) Error() string { return "acme:timed" }
 
 func (d Timed) Execute(ctx context.Context, pid workflow.ProcessID) error {
-    ctx = workflow.WithName(ctx, "timed")
-    ctx = workflow.WithVarScope(ctx, "timed") // keep `elapsed` local
+    ctx = workflow.WithVarScope(ctx, "timed") // its own segment, and keeps `elapsed` local
 
     startedAt := time.Now()
     if err := d.Body.Execute(ctx, pid); err != nil {
@@ -165,14 +172,14 @@ func (d Timed) Execute(ctx context.Context, pid workflow.ProcessID) error {
 
 Use the rule: if your definition writes variables that should not bleed into
 the caller's scope — temporary bookkeeping, per-iteration state, anything
-local — wrap the writes in `WithVarScope`. Otherwise `WithName` alone is
+local — claim the coordinate with `WithVarScope`. Otherwise `WithName` is
 enough.
 
 ---
 
 ## 4. Replay safety: lean on event-backed operations
 
-The runtime may replay any `Execute` call — crash recovery, a retry after a
+The runtime may replay any `Definition#Execute` call — crash recovery, a retry after a
 transient failure, or a scheduler requeue after a `Suspend`. The side effects
 on the process must converge to the same final state.
 
@@ -182,14 +189,14 @@ Two rules fall out of that:
   pointer stashed in a package variable, or a connection held by the
   definition will diverge between attempts. Read and write through the event
   log via `vars.Lookup` / `vars.Set` / `vars.Delete`, or via the built-in
-  definition steps (`SetVar`, `DeleteVar`, `ExecuteParticipant`,
-  `ExecuteCondition`).
+  definition steps (`SetVar`, `DeleteVar`, `Execute`).
 - **Make external effects retry-safe.** A `vars.Set` is replay-safe because
   the event log short-circuits duplicate writes. A call to your payment
   provider is not — mint an idempotency key, persist it via `SetVar` first,
-  and pass the same key on the retry. Better still, expose the work as a
-  registered `Participant` so the participant's own event is the cache
-  boundary.
+  and pass the same key on the retry. Better still, run the work as a
+  participant call, so its own event is the cache boundary — through a
+  registered `Participant`, or through `Execute#ExecuteWith` when
+  the logic belongs to the definition itself (below).
 
 The same principle governs how you return. A `nil` or non-signal return is
 recorded; a `RuntimeSignal` is not. Returning `workflow.Suspend{}` means
@@ -198,6 +205,79 @@ attempt — the work before the signal runs again, so keep it cheap and
 side-effect free. Returning a `workflow.Definition` records the call with the
 new definition attached and runs it in place of the step; a follow-up stage
 is therefore "fire once" by design.
+
+### Your own logic as a participant call
+
+`Execute#ExecuteWith` takes a `ParticipantID` and a function with the signature
+of `Definition#Execute`, and runs the function in place of a registered
+participant. The call is cached the same way, so a definition can keep its side
+effect in its own code, and nothing has to be registered:
+
+```go
+func (d ChargeOrder) Execute(ctx context.Context, pid workflow.ProcessID) error {
+    ctx = workflow.WithName(ctx, "charge-order")
+    return workflow.Execute{
+        Input: []workflow.VarName{d.Amount}, // resolved and recorded with the call
+    }.ExecuteWith(ctx, pid, "acme:charge-card", d.chargeCard)
+}
+
+// chargeCard is only called while no successful call is recorded at the position.
+func (d ChargeOrder) chargeCard(ctx context.Context, pid workflow.ProcessID) error {
+    repo, err := workflow.LookupEventsRepository(ctx)
+    if err != nil {
+        return err
+    }
+    vars := workflow.Vars{ProcessID: pid, EventsRepository: repo}
+
+    amount, _, err := vars.Lookup(ctx, d.Amount) // presence is checked through Input
+    if err != nil {
+        return err
+    }
+    receipt, err := payments.Charge(ctx, amount)
+    if err != nil {
+        return err
+    }
+    return vars.Set(ctx, "receipt", receipt)
+}
+```
+
+- **The ID argument identifies the call.** Together with the path, the
+  `ParticipantID` you pass identifies the call, so keep it stable across
+  deployments, namespaced, and distinct from other participant calls at the
+  same position. An empty ID is fatal, and so is setting `Participant` or
+  `Condition` on the `Execute` as well (a fatal `ErrInvalidDefinition`),
+  since those fields belong to `#Execute` and `#Evaluate`.
+- **Recorded like `Execute#Execute`.** The call is recorded as an
+  `EventParticipant` under that `ParticipantID`, at
+  `<path>/<ParticipantID>`, just like a registered participant's.
+  Moving a registered participant's logic into `#ExecuteWith` under the same
+  `ParticipantID` replays the calls already recorded instead of repeating them —
+  but only calls recorded without an `Output` mapping: `Output` is part of a
+  call's cache identity, so where the registered participant mapped results
+  onto `Output`, your function runs again.
+- **Variables instead of `Output`.** The function returns no values, so a
+  non-empty `Output` is a fatal `ErrInvalidDefinition`. Set results through
+  `workflow.Vars`; those writes are recorded as part of the call, and discarded
+  together with a failed attempt. `Input` works as with `#Execute`: a missing
+  variable is fatal, and the resolved values are recorded.
+- **Only success is recorded.** A failure is recorded as an `EventError` and
+  retried on the next execution; a `RuntimeSignal` such as `Suspend` records
+  nothing. Returning a `Definition` records it with the call and runs it in
+  place of the step. Replays walk that recorded definition without calling
+  your function again, which is how a routing definition extends the tree
+  once and keeps that extension stable.
+- **Best-effort cleanup.** The function runs in a `txkit` transaction, so it
+  can register an undo step with `txkit.OnRollback`. That step runs when the
+  call ends up not recorded. It must still be safe to run repeatedly; see
+  [Participants][PARTICIPANT] §2 for the limits and for splitting multi-step
+  work into repeatable steps.
+
+Prefer a registered participant when the capability should be part of the
+vocabulary that end users compose ([Participants][PARTICIPANT] §7).
+
+For a runnable version with a runtime and no registered participants, where a
+suspended process is executed again without charging twice, see
+`ExampleExecute_ExecuteWith` in [`example_executewith_test.go`][EXAMPLE_EXECUTE_WITH].
 
 ---
 
@@ -220,13 +300,14 @@ import (
 
 func NewCodec() *jsonkit.Codec {
     c := wfjson.NewCodec()
-    jsonkit.CodecRegisterTypeID[ChargeOrder](c, "acme::charge-order")
+    jsonkit.CodecRegisterTypeID[ChargeOrder](c, "acme:charge-order")
     return c
 }
 ```
 
-The tag is what the runtime sees on the wire, so it must match the value your
-`Error()` method returns byte-for-byte. Pass the same `*jsonkit.Codec` to your
+The tag is what the codec writes on the wire and the name it decodes your type
+by. The codec never reads `Error()`, so the two don't have to match; reusing
+the same string is just easy to recognise. Pass the same `*jsonkit.Codec` to your
 event/queue/notification adapters, and the system has one consistent view of
 the wire format.
 
@@ -256,12 +337,12 @@ func (ChargeOrderCodec) Unmarshal(c *jsonkit.Codec, data []byte, p *ChargeOrder)
 
 func NewCodec() *jsonkit.Codec {
     c := wfjson.NewCodec()
-    jsonkit.CodecRegister[ChargeOrder](c, "acme::charge-order", ChargeOrderCodec{})
+    jsonkit.CodecRegister[ChargeOrder](c, "acme:charge-order", ChargeOrderCodec{})
     return c
 }
 ```
 
-Your `Marshal` must emit only the inner JSON — no `@type` field. `jsonkit`
+Your `Marshal` must emit only the inner JSON — no `$type` field. `jsonkit`
 adds the envelope itself; emitting your own produces a duplicate key. For a
 nested `Definition` or `Condition` field, marshal it through the passed-in
 `*jsonkit.Codec` (into a `json.RawMessage`) so the inner envelope survives.
@@ -283,27 +364,32 @@ Three layers, each with a different tool:
 
 | Concern | How to test it |
 | --- | --- |
-| Logic of `Execute` | `wfcontract.Definition(mk)` — exercises success, replay, failure, rollback, signal propagation. |
-| Serialization | `wfcontract.Codec(yourCodec)` round-trip; your own test if you added a custom type. |
+| Logic of `Execute` | `wfcontract.Definition(mk, opts...)`: it executes, re-execution appends no events, and children (`c.MakeDefinition`) run within the definition's process, at distinct paths below the definition's. |
+| Serialization | `wfcontract.Definition` with your codec in `wfcontract.DefinitionConfig`: the definition and the events it records round-trip through it. `wfcontract.Codec(yourCodec)` covers the built-ins. |
 | Composition | `wftest.LetC(s)` with `c.Definition` set to your type; assert with `c.IsCompleted` after `c.ActExecute`. |
 
 `wfcontract.Definition` is the load-bearing one. It calls your `Execute` in
 the same context a real runtime would, then calls it again and asserts that
-no duplicate events were appended. For a definition that wraps other
-definitions, use `c.MakeDefinition(tb)` inside the contract fixture to get a
-child that asserts it was handed the right process ID and a **non-empty
-path** — drop the `WithName` line and the contract fails.
+no duplicate events were appended. It also asserts that the definition, and
+every event it recorded, round-trips through the codec, which is
+`wfjson.NewCodec()` unless you pass the codec your runtime uses, with your
+type registered on it. For a definition that wraps other definitions, use
+`c.MakeDefinition(tb)` inside the contract fixture to get a child that
+round-trips through any codec, while the contract asserts that each child ran
+within the definition's process, at a path below the definition's own, and
+that no two child executions share a path. Drop the `WithName` line, or run
+two children with the same context, and the contract fails.
 
 ```go
 func TestChargeOrder(t *testing.T) {
     wfcontract.Definition(func(tb testing.TB, c wfcontract.DefinitionContext) workflow.Definition {
         return ChargeOrder{Amount: "amount"}
-    }).Test(t)
+    }, wfcontract.DefinitionConfig{Codec: NewCodec()}).Test(t)
 }
 ```
 
-For a codec round-trip, register the type on a test codec and exercise it
-through the `Definition` interface — that is the path production callers use:
+The built-ins your type sits next to must round-trip through the same codec,
+which is what the codec contract checks:
 
 ```go
 func TestChargeOrderCodec(t *testing.T) {
@@ -328,7 +414,7 @@ ships as one of:
 - **A new field without a default.** Make it a pointer or wrap it in an
   `omitempty` codec DTO, so old definitions still decode.
 - **A renamed field.** A codec DTO bridges old and new JSON.
-- **A new behavior.** Bump the `@type` tag (`acme::charge-order-v2`) and
+- **A new behavior.** Bump the `$type` tag (`acme:charge-order-v2`) and
   keep the old tag registered; the runtime distinguishes them by path.
 
 In every case, run the codec contract test against both the old and the new
@@ -336,7 +422,7 @@ shape. The contract catches the silent-corruption cases — codec produces
 JSON that decodes but does not re-marshal identically, or a renamed
 discriminator that the polymorphic decoder cannot dispatch on.
 
-For processes already in flight, do **not** rename an in-use `@type`. The
+For processes already in flight, do **not** rename an in-use `$type`. The
 persisted event log will not decode. Add the new tag, leave the old one
 registered, and migrate via `workflow.Replace{Definition}` (or a one-shot
 migration tool that writes a new `EventUseDefinition` for the existing
@@ -362,3 +448,4 @@ process).
 [END_USER]: ./end-user.md
 [TESTING]: ./testing.md
 [GLOSSARY]: ./glossary.md
+[EXAMPLE_EXECUTE_WITH]: ../example_executewith_test.go

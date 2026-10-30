@@ -735,7 +735,8 @@ func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, 
 		defer comproto.FinishOnePhaseCommit(&rerr, res.CommitManager, ctx)
 	}
 
-	all := res.Index(ctx)
+	// Only entities owned by the parent resource belong to this sub-collection.
+	all := res.indexIter(ctx)
 
 	var ids []ID
 	for v, err := range all {

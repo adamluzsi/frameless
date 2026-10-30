@@ -167,7 +167,7 @@ func TestRuntime(t *testing.T) {
 			process.Let(s, func(t *testcase.T) workflow.ProcessID {
 				p := process.Super(t)
 				assert.NotEmpty(t, p)
-				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.ExecuteParticipant{ID: participantID.Get(t)}))
+				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.Execute{Participant: participantID.Get(t)}))
 				return p
 			})
 
@@ -243,7 +243,7 @@ func TestRuntime(t *testing.T) {
 				}
 				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.Sequence{
 					workflow.SetVar{Name: "warmup", Value: "ready"},
-					workflow.ExecuteParticipant{ID: switcherID.Get(t)},
+					workflow.Execute{Participant: switcherID.Get(t)},
 				}))
 				return p
 			})
@@ -554,7 +554,7 @@ func TestRuntime(t *testing.T) {
 				return mustProcessID(t)
 			})
 			definition = let.Var(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: "/dev/null"}
+				return workflow.Execute{Participant: "/dev/null"}
 			})
 		)
 		act := let.Act(func(t *testcase.T) error {
@@ -641,7 +641,7 @@ func TestRuntime(t *testing.T) {
 			})
 
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: blockingParticipantID.Get(t)}
+				return workflow.Execute{Participant: blockingParticipantID.Get(t)}
 			})
 
 			s.Then("Spawn returns before the definition has finished", func(t *testcase.T) {
@@ -786,7 +786,7 @@ func TestRuntime(t *testing.T) {
 			return mustProcessID(t)
 		})
 
-		// First and second definitions are distinct ExecuteParticipants; the
+		// First and second definitions are distinct participant Executes; the
 		// participant counters let us assert that each round executed the
 		// intended definition.
 		firstParticipant := wftest.LetParticipantID(s)
@@ -820,14 +820,14 @@ func TestRuntime(t *testing.T) {
 				EventID:    mustEventID(t),
 				ProcessID:  processID.Get(t),
 				Timestamp:  base,
-				Definition: workflow.ExecuteParticipant{ID: firstParticipant.Get(t)},
+				Definition: workflow.Execute{Participant: firstParticipant.Get(t)},
 			})
 			assert.NoError(t, eventsRepo.Create(t.Context(), &first))
 			second := workflow.Event(workflow.EventUseDefinition{
 				EventID:    mustEventID(t),
 				ProcessID:  processID.Get(t),
 				Timestamp:  base.Add(time.Millisecond),
-				Definition: workflow.ExecuteParticipant{ID: secondParticipant.Get(t)},
+				Definition: workflow.Execute{Participant: secondParticipant.Get(t)},
 			})
 			assert.NoError(t, eventsRepo.Create(t.Context(), &second))
 		}
@@ -904,12 +904,11 @@ func TestRuntime(t *testing.T) {
 			})
 
 			parentDef := let.Var(s, func(t *testcase.T) workflow.Definition {
-				return workflow.ExecuteParticipant{ID: parentPAID.Get(t)}
+				return workflow.Execute{Participant: parentPAID.Get(t)}
 			})
 
 			s.Before(func(t *testcase.T) {
-				t.Go(runtime.Get(t).Run)
-
+				// the Runtime is already running in the background, see wftest.Runtime
 				assert.NoError(t, runtime.Get(t).Spawn(t.Context(), processID.Get(t), parentDef.Get(t)))
 
 				t.Eventually(func(t *testcase.T) {
@@ -938,6 +937,40 @@ func TestRuntime(t *testing.T) {
 
 				t.Eventually(func(t *testcase.T) {
 					assert.True(t, isCancelled.Get(t))
+				})
+			})
+
+			// With a single worker which is not restarted after a failure,
+			// a termination which the worker would take for a failure leaves the queue without a worker.
+			s.And("the Runtime has a single worker, which is not restarted after a failure", func(s *testcase.Spec) {
+				runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+					rt := runtime.Super(t)
+					rt.NumQueueSubscriber = 1
+					rt.RetryStrategy = singleAttempt{}
+					return rt
+				})
+
+				isNextExecuted := let.VarOf(s, false)
+				_, nextPAID := wftest.LetParticipant(s, func(t *testcase.T) func(ctx context.Context) error {
+					return func(ctx context.Context) error {
+						isNextExecuted.Set(t, true)
+						return nil
+					}
+				})
+
+				s.Then("the worker carries on with other Processes, as a termination is not a failure", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isCancelled.Get(t))
+					})
+
+					var next = mustProcessID(t)
+					assert.NoError(t, runtime.Get(t).Spawn(t.Context(), next, workflow.Execute{Participant: nextPAID.Get(t)}))
+
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isNextExecuted.Get(t),
+							"expected the worker to execute the next Process after the termination")
+					})
 				})
 			})
 
@@ -972,7 +1005,7 @@ func TestRuntime(t *testing.T) {
 					for i := range childrenN.Get(t) {
 						children = append(children, workflow.Spawn{
 							Name:       workflow.SpawnName(fmt.Sprintf("child[%d]", i)),
-							Definition: workflow.ExecuteParticipant{ID: childPAID.Get(t)},
+							Definition: workflow.Execute{Participant: childPAID.Get(t)},
 						})
 					}
 					return workflow.Sequence{
@@ -1178,16 +1211,16 @@ func TestRuntime_multipleDefinitionStage(t *testing.T) {
 
 			"dynamic": func(ctx context.Context) error {
 				return workflow.Sequence{
-					workflow.ExecuteParticipant{ID: "foo"},
-					workflow.ExecuteParticipant{ID: "bar"},
+					workflow.Execute{Participant: "foo"},
+					workflow.Execute{Participant: "bar"},
 				}
 			},
 
 			"replace": func(ctx context.Context) error {
 				return workflow.Replace{
 					Definition: workflow.Sequence{
-						workflow.ExecuteParticipant{ID: "foo"},
-						workflow.ExecuteParticipant{ID: "bar"},
+						workflow.Execute{Participant: "foo"},
+						workflow.Execute{Participant: "bar"},
 					},
 				}
 			},
@@ -1213,11 +1246,11 @@ func TestRuntime_multipleDefinitionStage(t *testing.T) {
 		rt := runtime.Get(t)
 
 		definition := workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "foo"},
-			workflow.ExecuteParticipant{ID: "bar"},
-			workflow.ExecuteParticipant{ID: "baz"},
-			workflow.ExecuteParticipant{ID: "replace"},
-			workflow.ExecuteParticipant{ID: "qux"}, // will be ignored due to switch
+			workflow.Execute{Participant: "foo"},
+			workflow.Execute{Participant: "bar"},
+			workflow.Execute{Participant: "baz"},
+			workflow.Execute{Participant: "replace"},
+			workflow.Execute{Participant: "qux"}, // will be ignored due to switch
 		}
 
 		assert.Within(t, deadline, func(ctx context.Context) {
@@ -1237,11 +1270,11 @@ func TestRuntime_multipleDefinitionStage(t *testing.T) {
 		rt := runtime.Get(t)
 
 		definition := workflow.Sequence{
-			workflow.ExecuteParticipant{ID: "foo"},
-			workflow.ExecuteParticipant{ID: "bar"},
-			workflow.ExecuteParticipant{ID: "baz"},
-			workflow.ExecuteParticipant{ID: "dynamic"},
-			workflow.ExecuteParticipant{ID: "qux"},
+			workflow.Execute{Participant: "foo"},
+			workflow.Execute{Participant: "bar"},
+			workflow.Execute{Participant: "baz"},
+			workflow.Execute{Participant: "dynamic"},
+			workflow.Execute{Participant: "qux"},
 		}
 
 		assert.NoError(t, rt.Bind(t.Context(), pid, definition))

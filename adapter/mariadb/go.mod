@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/go-sql-driver/mysql v1.10.1
 	go.llib.dev/frameless v0.338.0
-	go.llib.dev/testcase v0.194.2
+	go.llib.dev/testcase v0.195.0
 )
 
 replace go.llib.dev/frameless => ../..

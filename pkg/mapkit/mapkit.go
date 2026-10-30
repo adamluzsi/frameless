@@ -4,7 +4,9 @@
 // and therefore its dependencies stritcly restricted.
 package mapkit
 
-import "go.llib.dev/frameless/pkg/must"
+import (
+	"go.llib.dev/frameless/pkg/must"
+)
 
 func Map[
 	OK comparable, OV any,
@@ -102,7 +104,7 @@ func ToSlice[K comparable, V any](m map[K]V) []Entry[K, V] {
 
 // Merge will merge all passed map[K]V into a single map[K]V.
 // Merging is intentionally order dependent by how the map argument values are passed to Merge.
-func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
+func Merge[M ~map[K]V, K comparable, V any](maps ...M) M {
 	var out = make(map[K]V)
 	for _, kvs := range maps {
 		for k, v := range kvs {
@@ -113,8 +115,8 @@ func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
 }
 
 // Clone creates a clone from a passed source map.
-func Clone[K comparable, V any](m map[K]V) map[K]V {
-	var out = make(map[K]V)
+func Clone[M ~map[K]V, K comparable, V any](m M) M {
+	var out = make(M)
 	for k, v := range m {
 		out[k] = v
 	}

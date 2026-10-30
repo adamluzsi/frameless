@@ -318,13 +318,14 @@ WHERE channel = $1 AND id = $2 AND expires_at > clock_timestamp()`,
 func (s *notificationFeedSubscription[E]) maintain(deadline time.Time) {
 	defer close(s.done)
 	defer s.unregister()
+	interval := s.settings.refresh
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			s.cancel(ErrSubscriptionExpired)
 			return
 		}
-		if err := waitNotificationFeed(s.ctx, min(s.settings.refresh, remaining)); err != nil {
+		if err := waitNotificationFeed(s.ctx, min(interval, remaining)); err != nil {
 			return
 		}
 		if !time.Now().Before(deadline) {
@@ -335,14 +336,20 @@ func (s *notificationFeedSubscription[E]) maintain(deadline time.Time) {
 		ctx, cancel := context.WithDeadline(s.ctx, deadline)
 		err := s.renew(ctx)
 		cancel()
-		if err == nil && time.Now().Before(deadline) {
+		switch {
+		case err == nil && time.Now().Before(deadline):
 			deadline = started.Add(s.settings.lease - s.settings.lease/10)
-		} else if errors.Is(err, ErrSubscriptionExpired) {
+			interval = s.settings.refresh
+		case errors.Is(err, ErrSubscriptionExpired):
 			s.cancel(err)
 			return
+		default:
+			// Transient errors do not discard unread data while the previous lease
+			// remains assured. An uncertain renewal never extends our local deadline,
+			// but a single failed attempt, such as one that timed out waiting for the
+			// channel lock, must not use up the rest of it: retry at the polling pace.
+			interval = min(s.settings.poll, s.settings.refresh)
 		}
-		// Transient errors do not discard unread data while the previous lease
-		// remains assured. An uncertain renewal never extends our local deadline.
 	}
 }
 

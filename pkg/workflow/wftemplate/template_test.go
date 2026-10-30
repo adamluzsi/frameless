@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftemplate"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 // setVar seeds a workflow variable into the Process' event history.
@@ -24,6 +28,20 @@ func setVar(tb testing.TB, rt workflow.Runtime, pid workflow.ProcessID, name wor
 	tb.Helper()
 	vars := workflow.Vars{ProcessID: pid, EventsRepository: rt.Events}
 	assert.NoError(tb, vars.Set(rt.Context(context.Background()), name, val))
+}
+
+// conditionEvents returns the condition answers recorded in the Process event history.
+func conditionEvents(tb testing.TB, repo workflow.EventRepository, pid workflow.ProcessID) []workflow.EventCondition {
+	tb.Helper()
+	events, err := iterkit.CollectE(repo.FindByProcessID(tb.Context(), pid))
+	assert.NoError(tb, err)
+	var out []workflow.EventCondition
+	for _, event := range events {
+		if ec, ok := event.(workflow.EventCondition); ok {
+			out = append(out, ec)
+		}
+	}
+	return out
 }
 
 func TestCondition(t *testing.T) {
@@ -80,6 +98,49 @@ func TestCondition(t *testing.T) {
 			got, err := act(t)
 			assert.NoError(t, err)
 			assert.True(t, got, assert.MessageF("expected .%s to resolve to %q", varName, storedValue.Get(t)))
+		})
+
+		s.Then("the answer is recorded under the fixed template-condition ID, at the position of the evaluation", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+
+			events := conditionEvents(t, c.EventRepository.Get(t), processID.Get(t))
+			assert.Must(t).Equal(len(events), 1)
+			id := "template-condition"
+			assert.OneOf(t, events, func(t testing.TB, e workflow.EventCondition) {
+				assert.Equal(t, e.ConditionID, workflow.ConditionID(id))
+				assert.Equal(t, e.Path, workflow.Path{{Name: id}})
+				assert.Equal(t, e.Answer, got)
+			})
+		})
+
+		s.When("the expression was already answered at the same position", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				got, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.Must(t).True(got)
+				// the variable no longer matches what the expression compares it against
+				setVar(t, c.Runtime.Get(t), processID.Get(t), varName, t.Random.UUID())
+			})
+
+			s.Then("the recorded answer is replayed, even though the variable changed since", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.True(t, got)
+				assert.Equal(t, len(conditionEvents(t, c.EventRepository.Get(t), processID.Get(t))), 1)
+			})
+
+			s.And("the next evaluation happens at a different position", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					execCTX.Set(t, workflow.WithName(execCTX.Get(t), t.Random.UUID()))
+				})
+
+				s.Then("it is answered independently, from the current variables", func(t *testcase.T) {
+					got, err := act(t)
+					assert.NoError(t, err)
+					assert.False(t, got)
+				})
+			})
 		})
 
 		s.When("the expression compares the variable against a different value", func(s *testcase.Spec) {
@@ -212,6 +273,106 @@ func TestCondition(t *testing.T) {
 				assert.Error(t, err)
 				assert.False(t, got)
 			})
+		})
+	})
+
+	s.Describe("as the condition of a Sleep", func(s *testcase.Spec) {
+		var (
+			processID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				pid := c.ProcessID.Super(t)
+				setVar(t, c.Runtime.Get(t), pid, varName, storedValue.Get(t))
+				return pid
+			})
+			sleep = let.Var(s, func(t *testcase.T) workflow.Sleep {
+				return workflow.Sleep{Until: subject.Get(t)}
+			})
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return sleep.Get(t).Execute(c.Runtime.Get(t).Context(t.Context()), processID.Get(t))
+		})
+
+		s.Then("the Sleep wakes up once the expression is true, and the answer is recorded", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			events := conditionEvents(t, c.EventRepository.Get(t), processID.Get(t))
+			assert.Must(t).Equal(len(events), 1)
+			assert.True(t, events[0].Answer)
+		})
+
+		s.When("the expression is not true yet", func(s *testcase.Spec) {
+			comparedValue.Let(s, func(t *testcase.T) string {
+				return t.Random.UUID()
+			})
+
+			s.Then("the Sleep suspends, and an attempt in a later second asks the expression again", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), workflow.Suspend{})
+
+				setVar(t, c.Runtime.Get(t), processID.Get(t), varName, comparedValue.Get(t))
+				// the Sleep tells its attempts apart by the second they happen in
+				timecop.Travel(t, time.Second)
+				assert.NoError(t, act(t))
+			})
+		})
+	})
+
+	s.Describe("as the condition of an If in the body of a ForEach", func(s *testcase.Spec) {
+		// The loop exposes the iterated element as the Value variable the
+		// expression reads, so .name is not a variable of the Process here, only
+		// an iteration variable of the loop body.
+		const collectionName workflow.VarName = "names"
+
+		var (
+			// elements holds storedValue exactly once, among values which don't
+			// match the expression.
+			elements = let.Var(s, func(t *testcase.T) []string {
+				var (
+					before = random.Slice(t.Random.IntBetween(0, 3), t.Random.UUID)
+					after  = random.Slice(t.Random.IntBetween(0, 3), t.Random.UUID)
+				)
+				return append(append(before, storedValue.Get(t)), after...)
+			})
+			processID = c.ProcessID.Let(s, func(t *testcase.T) workflow.ProcessID {
+				pid := c.ProcessID.Super(t)
+				setVar(t, c.Runtime.Get(t), pid, collectionName, elements.Get(t))
+				return pid
+			})
+			// matches records the elements for which the expression was true.
+			matches = let.Var(s, func(t *testcase.T) []string {
+				return nil
+			})
+			forEach = let.Var(s, func(t *testcase.T) workflow.ForEach {
+				return workflow.ForEach{
+					Over: collectionName,
+					V:    varName,
+					Do: workflow.If{
+						Cond: subject.Get(t),
+						Then: wftest.Stub{
+							StubExecute: func(ctx context.Context, pid workflow.ProcessID) error {
+								v, err := workflow.Vars{
+									ProcessID:        pid,
+									EventsRepository: c.EventRepository.Get(t),
+								}.Get(ctx, varName)
+								if err != nil {
+									return err
+								}
+								testcase.Append(t, matches, v.(string))
+								return nil
+							},
+						},
+					},
+				}
+			})
+		)
+
+		act := let.Act(func(t *testcase.T) error {
+			return forEach.Get(t).Execute(c.Runtime.Get(t).Context(t.Context()), processID.Get(t))
+		})
+
+		s.Then("the expression reads the iteration variable of the loop", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, []string{storedValue.Get(t)}, matches.Get(t),
+				"the expression must be true for the matching element only,",
+				"which it can only tell apart by seeing the iteration variable")
 		})
 	})
 

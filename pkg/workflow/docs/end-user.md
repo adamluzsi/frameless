@@ -74,10 +74,17 @@ in situations you did not design for.** That is not a leak in the abstraction,
 it is the entire point of separating vocabulary from composition — and it is why
 the idempotency and `ErrFatal` rules are rules rather than suggestions.
 
-When one participant really needs several independently retryable steps, return
-a `workflow.Sequence` from it instead of doing all the work inline. The runtime
-persists your result with that definition attached and runs the steps as
-first-class, individually recoverable stages.
+A participant can return a `workflow.Sequence` to describe follow-up stages.
+A cached producer is not called again, but its recorded definition is walked
+again so suspended work resumes. These nested stages still share the producer's
+event transaction: an ordinary failure can roll back earlier nested success
+events, so they are **not independent top-level commit boundaries**.
+
+Use separate top-level steps when you need those boundaries. In either layout,
+external effects must be idempotent and safe to retry: an effect may succeed
+before its event is durably recorded, and a write/commit failure, crash, or
+rollback can make it repeat. Use stable business idempotency keys or a shared
+transaction/outbox where applicable.
 
 ---
 
@@ -90,10 +97,17 @@ sequence of `EventUseDefinition` entries on a Process **is** its version history
 | -------------- | ------------------------------------------------------------------------------------------------------ |
 | **Replay**     | `Runtime.Execute` reads the latest `EventUseDefinition` and re-runs it; recorded steps short-circuit.  |
 | **Migration**  | Write a new `EventUseDefinition` for an existing `ProcessID` — via a `workflow.Replace{Definition}` signal, or a one-shot migration tool. |
-| **Rollback**   | Rewrite or remove events; the replay loop recomputes from whatever is left.                             |
+| **Undoing work** | `Replace` the definition with one that compensates, such as a refund; committed events are never rewritten. |
 
 A migration never rewrites old events. They stay in the log, so the audit trail
 still shows which definition a process was running when each step happened.
+
+Template conditions (`wftemplate.Condition`) now record their answers, like
+registered conditions always did. Histories from before that hold no recorded
+template answer, so they cannot reconstruct a past choice: the first
+post-upgrade evaluation uses current scoped variables. Explicitly migrate
+processes where that could select an unsafe branch. Paths identify steps, not a
+variable timeline; see [Conditions][CONDITION].
 
 ---
 
@@ -107,7 +121,9 @@ they are. The design makes this survivable:
 - A participant ID missing on the executing node produces
   `workflow.ErrParticipantNotFound{ID: id}`, even if no `Participants` repository
   is configured. This is a plain, nonfatal availability error, not a runtime
-  signal. Missing condition IDs still produce a fatal `ErrConditionNotFound`.
+  signal. An incompatible registration produces the nonfatal
+  `ErrParticipantSignatureMismatch{ID, Cause}`, preserving the original invalid-function
+  or mapping error. Missing condition IDs still produce a fatal `ErrConditionNotFound`.
 - The [Codec][CODEC] only reconstructs the definition and condition types it has
   been taught, so an unknown type on the wire fails to decode at the boundary.
 
@@ -118,14 +134,26 @@ makes end-user composition viable at all.**
 Builders should validate participant IDs independently against the capabilities
 available across their deployment, not just one node's registrations. Rescheduling
 is not validation: a typo or an ID that no node provides leaves the process
-waiting for availability indefinitely. Validate condition IDs too.
+waiting for availability indefinitely. Validate participant signatures and
+variable mappings as well as condition IDs.
+
+A fatal execution error causes the scheduler to warn and ACK/drop that queue
+entry, not kill the worker. The process remains incomplete and nonterminated;
+after correcting the cause, the caller can `Schedule` the same ID again.
 
 ## Specialised nodes can share execution
 
 Nodes with different participant registrations can share the same queue, events,
-locks and notifications. Missing participant availability defers execution until
-after `WaitTime`, preserving `FailureCount` and cached completed steps rather
-than recording a failure (see [Participants][PARTICIPANT]).
+locks and notifications. Missing or incompatible participant availability skips
+tight local retries and defers execution until after `WaitTime`, incrementing
+`ExecutionRequest.FailureCount` while preserving earlier work and cached
+completed steps. It records no `EventError` for the unavailable invocation
+(see [Participants][PARTICIPANT]).
+
+`Runtime.ParticipantWarningInterval` warns every N such scheduling failures,
+with a default of **5** (zero or negative values use the default). There is no
+hard failure-count drop limit; these warnings are operational visibility, not
+capability routing.
 
 A later attempt can run on another node and reuse that work. This lets differently
 specialised nodes take turns, but introduces **no routing changes**: there is no

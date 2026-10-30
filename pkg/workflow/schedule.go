@@ -208,8 +208,8 @@ func (rt Runtime) withRetry(ctx context.Context, do func() error) (err error) {
 			// the event history, so each attempt walks back to the waiting
 			// step and asks it again straight away.
 			return err
-		case isParticipantNotFound(err):
-			// Retrying on this node cannot supply the missing participant.
+		case isParticipantNotFound(err), isParticipantSignatureMismatch(err):
+			// Retrying on this node cannot supply a compatible participant.
 			// Let the scheduler offer the process to another node instead.
 			return err
 		case ErrIsFatal(err):
@@ -276,7 +276,10 @@ waiting:
 		}
 		switch n.NotificationType() {
 		case (ProcessSchedule{}).NotificationType():
-			goto waiting
+			// The ordered queue may now have an earlier entry. Release this
+			// delivery through NACK and select again, without publishing a
+			// replacement or a notification that would wake us in a loop.
+			return false
 		case (ProcessCancel{}).NotificationType():
 			if n.GetProcessID().Equal(sch.ProcessID) {
 				_ = msg.ACK() // process execution no longer needed
@@ -288,6 +291,11 @@ waiting:
 		}
 
 	case <-ticker.C:
+		// A wake-up is only a hint: the clock may have changed since the
+		// timer was created. Never execute before the entry's start time.
+		if timeNow().Before(sch.StartTime) {
+			goto waiting
+		}
 		return true
 	}
 }
@@ -323,8 +331,10 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 				goto waiting
 			case (ProcessCancel{}).NotificationType():
 				if sch.ProcessID.Equal(ch.GetProcessID()) {
-					_ = msg.ACK()
+					// Cancel before the ACK: an ACK may end msg.Context(), the parent of executeCTX,
+					// which would cancel executeCTX without ErrProcessCancel as its cause.
 					cancel(ErrProcessCancel)
+					_ = msg.ACK()
 					return nil
 				}
 				goto waiting
@@ -337,9 +347,11 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 
 	var err = rt.Execute(executeCTX, sch.ProcessID)
-	if errors.Is(err, ErrProcessCancel) {
+	if errors.Is(context.Cause(executeCTX), ErrProcessCancel) {
 		// ProcessCancel is not a real problematic error,
-		// but a control flow, for process termination
+		// but a control flow, for process termination.
+		// Execute reports a cancellation with the context's error,
+		// so the termination is recognised by the context's cause.
 		return nil
 	}
 
@@ -373,13 +385,37 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 			FailureCount: sch.FailureCount,
 		})
 
-	// This includes ErrParticipantNotFound: another node sharing the queue
-	// may have the participant needed to resume the process.
-	case errors.Is(err, Suspend{}), isParticipantNotFound(err):
+	case errors.Is(err, Suspend{}):
 		return s.Queue.Publish(ctx, ExecutionRequest{
 			ProcessID:    sch.ProcessID,
 			StartTime:    rt.backoffStartTime(),
 			FailureCount: sch.FailureCount,
+			CreatedAt:    sch.CreatedAt,
+		})
+
+	case ErrIsFatal(err):
+		// A permanent execution error leaves the process inert, not complete.
+		// Drop this delivery rather than requeueing it or stopping the worker,
+		// even when it is joined with a participant availability error.
+		logger.Warn(ctx, "a scheduled workflow process is dropped because execution failed fatally",
+			logging.Field("process_id", sch.ProcessID.String()),
+			logging.Field("error", err.Error()))
+		return nil
+
+	case isParticipantNotFound(err), isParticipantSignatureMismatch(err):
+		// Another node may have a compatible participant. Count each deferred
+		// attempt for periodic warnings, but never impose a hard drop limit.
+		failureCount := sch.FailureCount + 1
+		if failureCount%rt.getParticipantWarningInterval() == 0 {
+			logger.Warn(ctx, "a scheduled workflow process is waiting for a compatible participant",
+				logging.Field("process_id", sch.ProcessID.String()),
+				logging.Field("failure_count", failureCount),
+				logging.Field("error", err.Error()))
+		}
+		return s.Queue.Publish(ctx, ExecutionRequest{
+			ProcessID:    sch.ProcessID,
+			StartTime:    rt.backoffStartTime(),
+			FailureCount: failureCount,
 			CreatedAt:    sch.CreatedAt,
 		})
 
@@ -427,6 +463,13 @@ func (rt Runtime) getBindGracePeriod() time.Duration {
 		return defaultBindGracePeriod
 	}
 	return rt.BindGracePeriod
+}
+
+func (rt Runtime) getParticipantWarningInterval() int {
+	if rt.ParticipantWarningInterval <= 0 {
+		return 5
+	}
+	return rt.ParticipantWarningInterval
 }
 
 func (rt Runtime) backoffStartTime() time.Time {

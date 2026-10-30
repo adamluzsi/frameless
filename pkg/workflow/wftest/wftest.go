@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/internal"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"
 
 	"go.llib.dev/testcase"
@@ -418,4 +419,10 @@ func MakeEventID(tb testing.TB) workflow.EventID {
 
 func MakeProcessID(tb testing.TB) workflow.ProcessID {
 	return v7UUID(tb)
+}
+
+func ContextWithProcessID(tb testing.TB, ctx context.Context, processID workflow.ProcessID) context.Context {
+	tb.Helper()
+	assert.NotNil(tb, ctx)
+	return internal.ContextProcessID.ContextWith(ctx, processID)
 }

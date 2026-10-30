@@ -153,7 +153,9 @@ return workflow.Complete{}
 
 Records `EventCompleted` for the process, unless one is already present — so it
 is idempotent. The runtime raises this one itself when a definition runs to the
-end, which is how normal completion is recorded.
+end, which is how normal completion is recorded. Before the completion is
+recorded, the process's deferred definitions run (see
+[Participants][PARTICIPANT] — *Process-level cleanup with `workflow.Defer`*).
 
 > **Caution:** do not return `Complete` from a participant. A participant's
 > signal is never recorded, so the runtime marks the process complete, loops
@@ -165,7 +167,7 @@ end, which is how normal completion is recorded.
 
 ```go
 return workflow.Replace{Definition: workflow.Sequence{
-	workflow.ExecuteParticipant{ID: "manual-review"},
+	workflow.Execute{Participant: "manual-review"},
 }}
 ```
 
@@ -228,8 +230,11 @@ if err := rt.Terminate(ctx, pid); err != nil {
 
 `rt.Terminate` acquires the process lock, publishes a `ProcessCancel` over the
 change broadcast if a worker is mid-flight (so the in-flight participant sees
-its `ctx` cancelled and unwinds), and then runs `Terminate{}.RuntimeSignalExecute`,
-which appends one `EventTerminated` and returns.
+its `ctx` cancelled and unwinds), and then runs `Terminate{}.RuntimeSignalExecute`.
+That terminates the spawned children first, then runs the process's deferred
+definitions (see `workflow.Defer`), and finally appends one `EventTerminated`.
+If a deferred definition fails, the error is returned and no `EventTerminated`
+is written, so calling `rt.Terminate` again resumes where it stopped.
 
 Three properties fall out of the implementation, and each is load-bearing:
 
@@ -278,12 +283,12 @@ type Escalate struct {
 
 var _ workflow.RuntimeSignal = Escalate{}
 
-func (Escalate) Error() string { return "acme::escalate" }
+func (Escalate) Error() string { return "acme:escalate" }
 
 func (sig Escalate) RuntimeSignalExecute(ctx context.Context, rt workflow.Runtime, id workflow.ProcessID) error {
-	return workflow.Replace{Definition: workflow.ExecuteParticipant{
-		ID:    "notify-oncall",
-		Input: []workflow.VarName{"incident_id"},
+	return workflow.Replace{Definition: workflow.Execute{
+		Participant: "notify-oncall",
+		Input:       []workflow.VarName{"incident_id"},
 	}}.RuntimeSignalExecute(ctx, rt, id)
 }
 ```

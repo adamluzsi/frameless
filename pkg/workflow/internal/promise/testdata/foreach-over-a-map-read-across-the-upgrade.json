@@ -1,0 +1,234 @@
+{
+	"definition": {
+		"$type": "workflow::sequence",
+		"$value": [
+			{
+				"$type": "workflow::var::set",
+				"name": "roles",
+				"value": {
+					"$type": "map[string]string",
+					"$value": {
+						"alice": "admin"
+					}
+				}
+			},
+			{
+				"$type": "workflow::foreach",
+				"over": "roles",
+				"do": {
+					"$type": "workflow::sequence",
+					"$value": [
+						{
+							"$type": "workflow::defer",
+							"def": {
+								"$type": "workflow::execute",
+								"participant": "compat::see",
+								"input": [
+									"role"
+								]
+							}
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::await-upgrade"
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::greet",
+							"input": [
+								"name"
+							],
+							"output": [
+								"greeting"
+							]
+						},
+						{
+							"$type": "workflow::execute",
+							"participant": "compat::see",
+							"input": [
+								"greeting"
+							]
+						}
+					]
+				},
+				"key": "name",
+				"value": "role"
+			}
+		]
+	},
+	"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+	"history": [
+		{
+			"$type": "workflow::event::use-definition",
+			"event_id": "01a1842c-fd43-72b8-86c2-7d6c7e624c73",
+			"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+			"timestamp": "2026-10-28T20:21:43.36317Z",
+			"definition": {
+				"$type": "workflow::sequence",
+				"$value": [
+					{
+						"$type": "workflow::var::set",
+						"name": "roles",
+						"value": {
+							"$type": "map[string]string",
+							"$value": {
+								"alice": "admin"
+							}
+						}
+					},
+					{
+						"$type": "workflow::foreach",
+						"over": "roles",
+						"do": {
+							"$type": "workflow::sequence",
+							"$value": [
+								{
+									"$type": "workflow::defer",
+									"def": {
+										"$type": "workflow::execute",
+										"participant": "compat::see",
+										"input": [
+											"role"
+										]
+									}
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::await-upgrade"
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::greet",
+									"input": [
+										"name"
+									],
+									"output": [
+										"greeting"
+									]
+								},
+								{
+									"$type": "workflow::execute",
+									"participant": "compat::see",
+									"input": [
+										"greeting"
+									]
+								}
+							]
+						},
+						"key": "name",
+						"value": "role"
+					}
+				]
+			}
+		},
+		{
+			"$type": "workflow::event::var::declare",
+			"event_id": "01a1842c-fd43-733b-82bd-ac9372316aa3",
+			"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+			"timestamp": "2026-10-28T20:21:43.363202Z",
+			"path": [
+				{
+					"name": "01a1842c-fd43-72b8-86c2-7d6c7e624c73"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "roles"
+		},
+		{
+			"$type": "workflow::event::var::set",
+			"event_id": "01a1842c-fd43-7343-9911-fadf8868ea5d",
+			"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+			"timestamp": "2026-10-28T20:21:43.363202001Z",
+			"path": [
+				{
+					"name": "01a1842c-fd43-72b8-86c2-7d6c7e624c73"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "set-var"
+				}
+			],
+			"name": "roles",
+			"value": {
+				"$type": "map[string]string",
+				"$value": {
+					"alice": "admin"
+				}
+			}
+		},
+		{
+			"$type": "workflow::event::foreach::iteration",
+			"event_id": "01a1842c-fd43-73d6-adc3-bf8a9a791308",
+			"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+			"timestamp": "2026-10-28T20:21:43.36324Z",
+			"path": [
+				{
+					"name": "01a1842c-fd43-72b8-86c2-7d6c7e624c73"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "alice",
+					"var": true
+				}
+			],
+			"over": "roles",
+			"key": "name",
+			"value": "role"
+		},
+		{
+			"$type": "workflow::event::defer",
+			"event_id": "01a1842c-fd43-7430-a5ce-7eb0380e091e",
+			"process_id": "01a1842c-fd43-72ab-8420-b53b6b80dacb",
+			"timestamp": "2026-10-28T20:21:43.363262Z",
+			"path": [
+				{
+					"name": "01a1842c-fd43-72b8-86c2-7d6c7e624c73"
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[1]"
+				},
+				{
+					"name": "alice",
+					"var": true
+				},
+				{
+					"name": "sequence"
+				},
+				{
+					"name": "[0]"
+				},
+				{
+					"name": "defer"
+				}
+			],
+			"definition": {
+				"$type": "workflow::execute",
+				"participant": "compat::see",
+				"input": [
+					"role"
+				]
+			}
+		}
+	]
+}
