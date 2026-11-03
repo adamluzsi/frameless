@@ -1,6 +1,8 @@
 package uuid
 
-import "io"
+import (
+	"io"
+)
 
 var v4 V4
 
@@ -33,7 +35,7 @@ func (g *V4) Make() (UUID, error) {
 	if err := fillWithRandom(uuid[:], g.Random); err != nil {
 		return uuid, err
 	}
-	uuid.setVersion(4)
-	uuid.setVariant(2)
+	setVersion(&uuid, 4)
+	setVariant(&uuid, 2)
 	return uuid, nil
 }

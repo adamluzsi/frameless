@@ -2,14 +2,18 @@ package uuid_test
 
 import (
 	"bytes"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"strings"
 	"testing"
 	"text/template"
+	stduuid "uuid"
 
 	"go.llib.dev/frameless/pkg/uuid"
+	"go.llib.dev/frameless/pkg/uuidkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -19,6 +23,17 @@ import (
 
 const firstUUIDv4 = "00000000-0000-4000-8000-000000000000"
 const lastUUIDv4 = "FFFFFFFF-FFFF-F4FF-FEFF-FFFFFFFFFFFF"
+
+// uuid.UUID is the standard library's uuid.UUID,
+// so these signatures only compile while it remains a type alias rather than a distinct type.
+var (
+	_ func() (stduuid.UUID, error)                    = uuid.MakeV4
+	_ func() (stduuid.UUID, error)                    = uuid.MakeV7
+	_ func(*uuid.V4) (stduuid.UUID, error)            = (*uuid.V4).Make
+	_ func(*uuid.V7) (stduuid.UUID, error)            = (*uuid.V7).Make
+	_ func(string) (stduuid.UUID, error)              = uuid.Parse
+	_ func(func() (stduuid.UUID, error)) stduuid.UUID = uuid.Must
+)
 
 func TestUUID(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -33,123 +48,22 @@ func TestUUID(t *testing.T) {
 		return mk(t)
 	})
 
-	s.Describe("#IsZero", func(s *testcase.Spec) {
-		act := let.Act(func(t *testcase.T) bool {
-			return subject.Get(t).IsZero()
-		})
-
-		s.When("uuid is a zero value", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) uuid.UUID {
-				var u uuid.UUID
-				return u
-			})
-
-			s.Then("it is reported as zero", func(t *testcase.T) {
-				assert.True(t, act(t))
-			})
-		})
-
-		s.When("uuid is a non zero value", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) uuid.UUID {
-				u, err := uuid.MakeV4()
-				assert.NoError(t, err)
-				return u
-			})
-
-			s.Then("it is reported as zero", func(t *testcase.T) {
-				assert.False(t, act(t))
-			})
-		})
-	})
-
-	s.Describe("#Equal", func(s *testcase.Spec) {
-		var oth = let.Var[uuid.UUID](s, nil)
-
-		act := let.Act(func(t *testcase.T) bool {
-			return subject.Get(t).Equal(oth.Get(t))
-		})
-
-		s.When("the uuids are the same", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) uuid.UUID {
-				u, err := uuid.MakeV4()
-				assert.NoError(t, err)
-				return u
-			})
-
-			oth.Let(s, subject.Get)
-
-			s.Then("they are reported to be equal", func(t *testcase.T) {
-				assert.True(t, act(t))
-			})
-		})
-
-		s.When("the uuids are different", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) uuid.UUID {
-				u, err := uuid.MakeV4()
-				assert.NoError(t, err)
-				return u
-			})
-
-			oth.Let(s, func(t *testcase.T) uuid.UUID {
-				return random.Unique(func() uuid.UUID {
-					u, err := uuid.MakeV4()
-					assert.NoError(t, err)
-					return u
-				}, subject.Get(t))
-			})
-
-			s.Then("they are reported to be not equal", func(t *testcase.T) {
-				assert.False(t, act(t))
-			})
-		})
-	})
-
-	s.Describe("#Version", func(s *testcase.Spec) {
-		exp := let.OneOf(s, 4, 7)
-
-		subject.Let(s, func(t *testcase.T) uuid.UUID {
-			switch ver := exp.Get(t); ver {
-			case 4:
-				u, err := uuid.MakeV4()
-				assert.NoError(t, err)
-				return u
-
-			case 7:
-				u, err := uuid.MakeV7()
-				assert.NoError(t, err)
-				return u
-
-			default:
-				t.Fatalf("unknown uuid version is expected: %d", ver)
-				return uuid.UUID{}
-			}
-		})
-
-		act := let.Act(func(t *testcase.T) int {
-			return subject.Get(t).Version()
-		})
-
-		s.Then("it will report the expected version", func(t *testcase.T) {
-			assert.Equal(t, exp.Get(t), act(t))
-		})
-	})
-
-	s.Describe("#Less", func(s *testcase.Spec) {
+	s.Describe("#Compare", func(s *testcase.Spec) {
 		var (
 			compared = let.Var(s, func(t *testcase.T) uuid.UUID {
 				return mk(t)
 			})
 		)
-		act := let.Act(func(t *testcase.T) bool {
-			return subject.Get(t).Less(compared.Get(t))
+		act := let.Act(func(t *testcase.T) int {
+			return subject.Get(t).Compare(compared.Get(t))
 		})
 
 		s.When("compared uuids are equal", func(s *testcase.Spec) {
 			subject.Let(s, viStringUUID(firstUUIDv4))
 			compared.Let(s, viStringUUID(firstUUIDv4))
 
-			s.Then("it won't be less", func(t *testcase.T) {
-				assert.False(t, act(t))
+			s.Then("they are reported as equal", func(t *testcase.T) {
+				assert.Equal(t, 0, act(t))
 			})
 		})
 
@@ -157,8 +71,8 @@ func TestUUID(t *testing.T) {
 			compared.Let(s, viStringUUID(firstUUIDv4))
 			subject.Let(s, viStringUUID(lastUUIDv4))
 
-			s.Then("it won't be less", func(t *testcase.T) {
-				assert.False(t, act(t))
+			s.Then("the UUID is reported as greater", func(t *testcase.T) {
+				assert.Equal(t, 1, act(t))
 			})
 		})
 
@@ -166,8 +80,8 @@ func TestUUID(t *testing.T) {
 			subject.Let(s, viStringUUID(firstUUIDv4))
 			compared.Let(s, viStringUUID(lastUUIDv4))
 
-			s.Then("it will reported to be less", func(t *testcase.T) {
-				assert.True(t, act(t))
+			s.Then("the UUID is reported as less", func(t *testcase.T) {
+				assert.Equal(t, -1, act(t))
 			})
 		})
 	})
@@ -182,8 +96,8 @@ func TestUUID(t *testing.T) {
 			assert.NoError(t, err)
 
 			exp := subject.Get(t)
-			assert.Equal(t, exp.Version(), got.Version(), "it was expected to preserve version")
-			assert.Equal(t, exp.Variant(), got.Variant(), "it was expected to preserve variant")
+			assert.Equal(t, uuidkit.Version(exp), uuidkit.Version(got), "it was expected to preserve version")
+			assert.Equal(t, uuidkit.Variant(exp), uuidkit.Variant(got), "it was expected to preserve variant")
 		})
 	})
 
@@ -233,96 +147,64 @@ func TestUUID(t *testing.T) {
 		})
 	})
 
-	s.Context("sql integration", func(s *testcase.Spec) {
-		s.Test("Scan(nil) restores zero UUID", func(t *testcase.T) {
-			u, err := uuid.MakeV4()
+	// The standard library's database/sql supports uuid.UUID natively:
+	// arguments are sent in their string form, and SQL NULL is expressed through sql.Null[uuid.UUID].
+	s.Context("database/sql integration", func(s *testcase.Spec) {
+		s.Test("as a query argument, it is passed in its string representation", func(t *testcase.T) {
+			exp := mk(t)
+
+			val, err := driver.DefaultParameterConverter.ConvertValue(exp)
 			assert.NoError(t, err)
-			assert.NoError(t, u.Scan(nil))
-			assert.True(t, u.IsZero())
+			assert.Equal[driver.Value](t, exp.String(), val)
 		})
 
-		s.Test("Value() returns string representation for SQL parameters", func(t *testcase.T) {
-			exp, err := uuid.MakeV4()
-			assert.NoError(t, err)
-
-			val, err := exp.Value()
-			assert.NoError(t, err)
-			assert.NotNil(t, val)
-
-			// Should be string, not []byte
-			str, ok := val.(string)
-			assert.True(t, ok, assert.MessageF("expected string value from Value(), got %T", val))
-			assert.Equal(t, exp.String(), str)
-
-			// Zero UUID should return nil
-			var zero uuid.UUID
-			val, err = zero.Value()
+		s.Test("SQL NULL is represented by sql.Null[uuid.UUID]", func(t *testcase.T) {
+			val, err := sql.Null[uuid.UUID]{}.Value()
 			assert.NoError(t, err)
 			assert.Nil(t, val)
+
+			got := sql.Null[uuid.UUID]{V: mk(t), Valid: true}
+			assert.NoError(t, got.Scan(nil))
+			assert.False(t, got.Valid)
+			assert.Equal(t, uuid.UUID{}, got.V)
 		})
 
-		s.Test("Scan() accepts string from SQL result", func(t *testcase.T) {
-			exp, err := uuid.MakeV4()
-			assert.NoError(t, err)
+		s.Test("it can be scanned from a string SQL result", func(t *testcase.T) {
+			exp := mk(t)
 
-			var got uuid.UUID
-			err = got.Scan(exp.String())
-			assert.NoError(t, err)
-			assert.Equal(t, exp, got)
+			var got sql.Null[uuid.UUID]
+			assert.NoError(t, got.Scan(exp.String()))
+			assert.True(t, got.Valid)
+			assert.Equal(t, exp, got.V)
 		})
 
-		s.Test("Scan() accepts []byte from SQL result (binary path)", func(t *testcase.T) {
-			exp, err := uuid.MakeV4()
-			assert.NoError(t, err)
+		s.Test("it can be scanned from a binary SQL result", func(t *testcase.T) {
+			exp := mk(t)
 
-			var got uuid.UUID
-			err = got.Scan(exp[:]) // Pass []byte directly — simulates driver returning BINARY(16)
-			assert.NoError(t, err)
-			assert.Equal(t, exp, got)
+			var got sql.Null[uuid.UUID]
+			assert.NoError(t, got.Scan(exp[:])) // simulates a driver returning BINARY(16)
+			assert.True(t, got.Valid)
+			assert.Equal(t, exp, got.V)
 		})
 
-		s.Test("Scan() handles empty string", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan("")
-			assert.NoError(t, err)
-			assert.True(t, got.IsZero())
+		s.Test("scanning a malformed UUID string is rejected", func(t *testcase.T) {
+			var got sql.Null[uuid.UUID]
+			assert.Error(t, got.Scan("not-a-uuid"))
+			assert.False(t, got.Valid)
 		})
 
-		s.Test("Scan() handles empty []byte", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan([]byte{})
-			assert.NoError(t, err)
-			assert.True(t, got.IsZero())
+		s.Test("scanning a byte slice of the wrong length is rejected", func(t *testcase.T) {
+			var got sql.Null[uuid.UUID]
+			assert.Error(t, got.Scan([]byte{1, 2, 3}))
+			assert.False(t, got.Valid)
 		})
 
-		s.Test("Scan() handles nil from SQL NULL", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan(nil)
-			assert.NoError(t, err)
-			assert.True(t, got.IsZero())
-		})
-
-		s.Test("Scan() rejects malformed UUID string", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan("not-a-uuid")
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "invalid UUID string")
-		})
-
-		s.Test("Scan() rejects non-string, non-byte slice types", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan(123)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "cannot scan type int into UUID")
-		})
-
-		s.Test("Scan() rejects byte slice of wrong length (not 0, not 16)", func(t *testcase.T) {
-			var got uuid.UUID
-			err := got.Scan([]byte{1, 2, 3}) // 3 bytes
-			assert.ErrorIs(t, err, uuid.ErrParse)
+		s.Test("scanning a non-string, non-byte slice value is rejected", func(t *testcase.T) {
+			var got sql.Null[uuid.UUID]
+			assert.Error(t, got.Scan(123))
+			assert.False(t, got.Valid)
 		})
 	})
-
 }
 
 func viStringUUID(raw string) testcase.VarInit[uuid.UUID] {
@@ -473,8 +355,8 @@ func TestParse(t *testing.T) {
 			got, err := uuid.Parse(exp.String())
 			assert.NoError(t, err)
 
-			assert.Equal(t, 4, got.Version())
-			assert.Equal(t, 2, got.Variant())
+			assert.Equal(t, 4, uuidkit.Version(got))
+			assert.Equal(t, 2, uuidkit.Variant(got))
 		})
 
 		s.Test("v7 UUIDs have version 7 and variant 2", func(t *testcase.T) {
@@ -484,8 +366,8 @@ func TestParse(t *testing.T) {
 			got, err := uuid.Parse(exp.String())
 			assert.NoError(t, err)
 
-			assert.Equal(t, 7, got.Version())
-			assert.Equal(t, 2, got.Variant())
+			assert.Equal(t, 7, uuidkit.Version(got))
+			assert.Equal(t, 2, uuidkit.Variant(got))
 		})
 	})
 
@@ -518,7 +400,7 @@ func TestParse(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Compare as bytes — this is how databases sort UUIDs
-			assert.True(t, u1.Less(u2), "u1 should be lexicographically less than u2")
+			assert.Equal(t, -1, u1.Compare(u2), "u1 should be lexicographically less than u2")
 		})
 
 		s.Test("lowercase and uppercase hex are treated identically", func(t *testcase.T) {

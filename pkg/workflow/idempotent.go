@@ -294,7 +294,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		if err != nil {
 			return nil, err
 		}
-		if !newEvent.GetProcessID().Equal(pid) {
+		if newEvent.GetProcessID() != pid {
 			return nil, fmt.Errorf("incorrect MakeEvent[%T] implementation, process id mismatch", newEvent)
 		}
 		if err := eventsRepo.Create(ctx, &newEvent); err != nil {
@@ -329,7 +329,7 @@ func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, events
 	if err != nil {
 		return
 	}
-	if !eventError.GetProcessID().Equal(pid) {
+	if eventError.GetProcessID() != pid {
 		return
 	}
 	var event Event = eventError
@@ -366,7 +366,7 @@ func (ie idempotentExecutor[E, ID]) handleResultDefinition(
 		ie.AcceptDefinition(&event, def)
 	}
 	var newEvent Event = event
-	if !newEvent.GetProcessID().Equal(pid) {
+	if newEvent.GetProcessID() != pid {
 		return nil, fmt.Errorf("incorrect MakeEvent[%T] implementation, process id mismatch", event)
 	}
 	if err := eventsRepo.Create(ctx, &newEvent); err != nil {

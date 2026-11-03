@@ -20,10 +20,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/codec/codeccontract"
 	"go.llib.dev/frameless/testing/testent"
@@ -3956,7 +3956,7 @@ func TestCodec_jsonMarshaler(t *testing.T) {
 	})
 
 	s.Test("top-level value implementing json.Marshaler and json.Unmarshaler, which is not a struct", func(t *testcase.T) {
-		assertEncodesLikeEncodingJSON(t, &c, uuid.Must(uuid.MakeV4))
+		assertEncodesLikeEncodingJSON(t, &c, uuid.NewV4())
 	})
 
 	s.Test("top-level slice of json.Marshaler elements", func(t *testcase.T) {

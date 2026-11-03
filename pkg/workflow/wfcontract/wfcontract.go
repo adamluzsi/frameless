@@ -186,7 +186,7 @@ func EventRepository(subject workflow.EventRepository) contract.Contract {
 				assert.NotEmpty(t, got)
 
 				slicekit.SortBy(exp.Get(t), func(a, b workflow.Event) bool {
-					return a.GetEventID().Less(b.GetEventID())
+					return a.GetEventID().Compare(b.GetEventID()) < 0
 				})
 				assert.Equal(t, exp.Get(t), got)
 			})

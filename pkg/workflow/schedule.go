@@ -82,7 +82,7 @@ func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*Exe
 		return err
 	}
 
-	if pid.IsZero() {
+	if pid == (ProcessID{}) {
 		return ErrZeroProcessID.F("Scheduling requires a non-zero processID")
 	}
 
@@ -281,7 +281,7 @@ waiting:
 			// replacement or a notification that would wake us in a loop.
 			return false
 		case (ProcessCancel{}).NotificationType():
-			if n.GetProcessID().Equal(sch.ProcessID) {
+			if n.GetProcessID() == sch.ProcessID {
 				_ = msg.ACK() // process execution no longer needed
 				return false
 			}
@@ -330,7 +330,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 			case (ProcessSchedule{}).NotificationType():
 				goto waiting
 			case (ProcessCancel{}).NotificationType():
-				if sch.ProcessID.Equal(ch.GetProcessID()) {
+				if sch.ProcessID == ch.GetProcessID() {
 					// Cancel before the ACK: an ACK may end msg.Context(), the parent of executeCTX,
 					// which would cancel executeCTX without ErrProcessCancel as its cause.
 					cancel(ErrProcessCancel)

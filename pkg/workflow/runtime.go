@@ -233,7 +233,7 @@ func (rt Runtime) execute(ctx context.Context, pid ProcessID) (rErr error) {
 		return ErrFatal.F("the workflow.Runtime has no EventsRepository configured")
 	}
 
-	if pid.IsZero() {
+	if pid == (ProcessID{}) {
 		return ErrZeroProcessID.F("workflow.Runtime#Execute")
 	}
 
@@ -341,7 +341,7 @@ func (rt Runtime) Bind(ctx context.Context, processID ProcessID, def Definition)
 }
 
 func (rt Runtime) bind(ctx context.Context, processID ProcessID, def Definition) error {
-	if processID.IsZero() {
+	if processID == (ProcessID{}) {
 		return ErrZeroProcessID
 	}
 

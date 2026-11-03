@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/uuid"
+	"go.llib.dev/frameless/pkg/uuidkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -18,9 +19,8 @@ func TestMakeV4_smoke(t *testing.T) {
 	u, err := uuid.MakeV4()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, u)
-	assert.False(t, u.IsZero())
-	assert.Equal(t, u.Version(), 4)
-	assert.Equal(t, u.Variant(), 2)
+	assert.Equal(t, uuidkit.Version(u), 4)
+	assert.Equal(t, uuidkit.Variant(u), 2)
 }
 
 func ExampleV4_Make() {
@@ -52,9 +52,8 @@ func TestV4(t *testing.T) {
 			u, err := act(t)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, u)
-			assert.False(t, u.IsZero())
-			assert.Equal(t, 4, u.Version()) // Must be version 4
-			assert.Equal(t, 2, u.Variant()) // Must be RFC 4122 variant
+			assert.Equal(t, 4, uuidkit.Version(u)) // Must be version 4
+			assert.Equal(t, 2, uuidkit.Variant(u)) // Must be RFC 4122 variant
 		})
 
 		s.Test("unique", func(t *testcase.T) {

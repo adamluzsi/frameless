@@ -84,8 +84,8 @@ func (g *V7) Make() (UUID, error) {
 		return uuid, err
 	}
 
-	uuid.setVersion(7) // set version to v7
-	uuid.setVariant(2) // Set variant (RFC 4122)
+	setVersion(&uuid, 7) // set version to v7
+	setVariant(&uuid, 2) // Set variant (RFC 4122)
 
 	return uuid, nil
 }

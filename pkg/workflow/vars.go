@@ -677,7 +677,7 @@ func (vv visibleVars) bindings() ([]VarBinding, error) {
 func eventsToVarBindingsE(ctx context.Context, events iter.Seq2[Event, error], pid ProcessID) iter.Seq2[VarBinding, error] {
 	return func(yield func(VarBinding, error) bool) {
 		events = iterkit.Filter(events, func(e Event) bool {
-			return e.GetProcessID().Equal(pid)
+			return e.GetProcessID() == pid
 		})
 		eventsVS, err := iterkit.CollectE(events)
 		if err != nil {

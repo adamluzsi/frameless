@@ -124,7 +124,7 @@ func TestComplete(t *testing.T) {
 				"the completion belongs to the Process the Runtime is executing; the "+
 					"Runtime is the one that knows which Process it is running, and the "+
 					"signal is raised from inside that execution"))
-			assert.False(t, completion.EventID.IsZero(),
+			assert.False(t, completion.EventID == (workflow.EventID{}),
 				"the completion needs its own identity in the log")
 			assert.False(t, completion.Timestamp.IsZero(),
 				"the completion needs to say when the Process finished")
@@ -662,7 +662,7 @@ func TestTerminate(t *testing.T) {
 			var termination = terminations[0]
 			assert.Equal(t, processID.Get(t), termination.ProcessID, assert.MessageF(
 				"the termination belongs to the Process the Runtime is executing"))
-			assert.False(t, termination.EventID.IsZero(),
+			assert.False(t, termination.EventID == (workflow.EventID{}),
 				"the termination needs its own identity in the log")
 			assert.False(t, termination.Timestamp.IsZero(),
 				"the termination needs to say when the Process was stopped")

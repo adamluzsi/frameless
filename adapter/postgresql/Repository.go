@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -19,7 +20,6 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/teardown"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
@@ -645,11 +645,7 @@ func (b *Batch[ENT, ID]) useStagingTable(ctx *context.Context, columns []flsql.C
 	}
 
 	// table name
-	batchUUID, err := uuid.MakeV4()
-	if err != nil {
-		return nil, nil, err
-	}
-	var batchID = strings.ReplaceAll(batchUUID.String(), "-", "")
+	var batchID = strings.ReplaceAll(uuid.NewV4().String(), "-", "")
 	stagingTable = append(stagingTable, fmt.Sprintf("staging_%s_%s", sourceTable[sourceTableLastElementIndex], batchID))
 
 	query := fmt.Sprintf("CREATE TEMPORARY TABLE %s (LIKE %s INCLUDING ALL EXCLUDING INDEXES)",

@@ -1,4 +1,4 @@
-// Package erm stands for Entity-Relationship Modeling
+// Package relationship stands for Entity-Relationship Modeling
 package relationship
 
 import (

@@ -5,12 +5,12 @@ import (
 	"iter"
 	"sync"
 	"sync/atomic"
+	"uuid"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
@@ -40,7 +40,7 @@ func (r *WorkflowEventRepository) init() {
 		r.r = Repository[workflow.Event, workflow.EventID]{
 			Memory: NewMemory(),
 			MakeID: func(ctx context.Context) (workflow.EventID, error) {
-				return uuid.MakeV7()
+				return uuid.NewV7(), nil
 			},
 		}
 	})
@@ -112,7 +112,7 @@ func (r *WorkflowEventRepository) FindAll(ctx context.Context) iter.Seq2[workflo
 func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workflow.ProcessID) iter.Seq2[workflow.Event, error] {
 	return func(yield func(workflow.Event, error) bool) {
 		events, err := iterkit.CollectE(iterkit.Filter(r.FindAll(ctx), func(e workflow.Event) bool {
-			return e.GetProcessID().Equal(pid)
+			return e.GetProcessID() == pid
 		}))
 
 		if err != nil {
@@ -121,7 +121,7 @@ func (r *WorkflowEventRepository) FindByProcessID(ctx context.Context, pid workf
 		}
 
 		slicekit.SortBy(events, func(a, b workflow.Event) bool {
-			return a.GetEventID().Less(b.GetEventID())
+			return a.GetEventID().Compare(b.GetEventID()) < 0
 		})
 
 		for _, event := range events {
@@ -138,10 +138,10 @@ func (r *WorkflowEventRepository) validateEvent(ctx context.Context, ptr *workfl
 	if ptr == nil || *ptr == nil {
 		return errorkit.F("nil %T received", ptr)
 	}
-	if (*ptr).GetEventID().IsZero() {
+	if (*ptr).GetEventID() == uuid.Nil() {
 		return errorkit.F("zero workflow event id")
 	}
-	if (*ptr).GetProcessID().IsZero() {
+	if (*ptr).GetProcessID() == uuid.Nil() {
 		return errorkit.F("zero workflow event process id")
 	}
 	if (*ptr).GetTimestamp().IsZero() {

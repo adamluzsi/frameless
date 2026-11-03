@@ -7,6 +7,7 @@ import (
 	"iter"
 	"sync"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,7 +17,6 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/testcase/clock"
@@ -46,8 +46,8 @@ var _ guard.Locker = (*Lock)(nil)
 var _ guard.NonBlockingLocker = (*Lock)(nil)
 
 func (l *Lock) init() error {
-	_, err := synckit.InitErr(&l.m, &l.owner, uuid.MakeV4)
-	return err
+	synckit.Init(&l.m, &l.owner, uuid.NewV4)
+	return nil
 }
 
 const defaultLeaseDuration = 30 * time.Second
@@ -75,7 +75,7 @@ func (l *Lock) TryLock(ctx context.Context) (_ context.Context, _ bool, rerr err
 	if err != nil {
 		return nil, false, err
 	}
-	if first == nil || !first.ID.Equal(rec.ID) { // if we are not the first in line, we bail
+	if first == nil || first.ID != rec.ID { // if we are not the first in line, we bail
 		return nil, false, l.deleteLock(ctx, rec)
 	}
 	return l.lockContext(ctx, rec), true, nil
@@ -103,7 +103,7 @@ func (l *Lock) Lock(ctx context.Context) (_ context.Context, rerr error) {
 		if err != nil {
 			return nil, err
 		}
-		if first != nil && first.ID.Equal(rec.ID) {
+		if first != nil && first.ID == rec.ID {
 			break // we own it
 		}
 		select {
@@ -197,12 +197,8 @@ func (l *Lock) insLock(ctx context.Context) (*lockRecord, error) {
 	if err := l.init(); err != nil {
 		return nil, err
 	}
-	var id, err = uuid.MakeV7()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create UUID V7")
-	}
 	var rec = &lockRecord{
-		ID:      id,
+		ID:      uuid.NewV7(),
 		Owner:   l.owner,
 		Name:    l.Name,
 		Expires: l.getExpiresAt(),

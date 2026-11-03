@@ -26,8 +26,7 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"go.llib.dev/frameless/pkg/uuid"
+	"uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"

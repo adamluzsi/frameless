@@ -1,8 +1,9 @@
 package internal
 
 import (
+	"uuid"
+
 	"go.llib.dev/frameless/pkg/contextkit"
-	"go.llib.dev/frameless/pkg/uuid"
 )
 
 type ctxKeyProcessID struct{}

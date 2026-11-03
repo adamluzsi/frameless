@@ -1,5 +1,10 @@
 # UUID
 
+> `uuid.UUID` is now an alias of the standard library's `uuid.UUID`.
+> This package remains as a backward compatibility layer (`Parse`, `Must`, `MakeV4`, `MakeV7`, `V4`, `V7`).
+> New code should use the standard library directly,
+> and [`uuidkit`](../uuidkit) for what the standard library doesn't provide (`Version`, `Variant`).
+
 ## V7
 
 UUID v7 is monotonic within a process and ordered by time, making it ideal for databases and distributed systems.

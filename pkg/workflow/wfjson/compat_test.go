@@ -44,12 +44,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-
-	"go.llib.dev/frameless/pkg/uuid"
 
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wfjson"

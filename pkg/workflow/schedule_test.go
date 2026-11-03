@@ -8,11 +8,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/resilience"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/frameless/pkg/workflow/wftest"
 	"go.llib.dev/frameless/port/pubsub"
@@ -46,7 +46,7 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 	})
 
 	s.Test("scheduled process, eventually runs", func(t *testcase.T) {
-		processID := uuid.Must(uuid.MakeV7)
+		processID := uuid.NewV7()
 
 		inputVal := t.Random.String()
 
@@ -103,7 +103,7 @@ func TestRuntime_Schedule_E2E(t *testing.T) {
 		// Allocate the ID ahead of Schedule so we can seed the event history
 		// with a UseDefinitionEvent (Process is stateless — the runtime reads
 		// the definition from the history, not from the Process struct).
-		processID := uuid.Must(uuid.MakeV7)
+		processID := uuid.NewV7()
 
 		rtCtx := c.Runtime.Get(t).Context(t.Context())
 		var ev workflow.Event = workflow.EventUseDefinition{

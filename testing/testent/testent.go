@@ -5,9 +5,9 @@ import (
 	"iter"
 	"testing"
 	"time"
+	"uuid"
 
 	"go.llib.dev/frameless/pkg/dtokit"
-	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
@@ -220,9 +220,7 @@ func BazIDA(v *Baz) *string { return &v.Name }
 func MakeQux(tb testing.TB) Qux {
 	t := testcase.ToT(&tb)
 	return Qux{
-		ID: uuid.Must(func() (uuid.UUID, error) {
-			return uuid.Parse(t.Random.UUID())
-		}),
+		ID:  uuid.MustParse(t.Random.UUID()),
 		Foo: MakeFoo(t),
 		Bars: random.Slice(t.Random.IntBetween(0, 7), func() Bar {
 			return MakeBar(t)

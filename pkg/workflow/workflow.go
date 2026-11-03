@@ -6,11 +6,12 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"uuid"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/uuid"
+	"go.llib.dev/frameless/pkg/uuidkit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/testcase/clock"
@@ -81,7 +82,7 @@ type ConditionConvertible interface {
 type ProcessID = uuid.UUID
 
 func MakeProcessID() (ProcessID, error) {
-	return uuid.MakeV7()
+	return uuid.NewV7(), nil
 }
 
 type Event interface {
@@ -96,7 +97,7 @@ type EventType string
 type EventID = uuid.UUID
 
 func MakeEventID() (EventID, error) {
-	return uuid.MakeV7()
+	return uuid.NewV7(), nil
 }
 
 func ValidateEventID(id EventID) error {
@@ -108,10 +109,10 @@ func ValidateProcessID(id ProcessID) error {
 }
 
 func validateV7UUID(id uuid.UUID, name string) error {
-	if id.IsZero() {
+	if id == uuid.Nil() {
 		return fmt.Errorf("zero %s UUID v7", name)
 	}
-	if version := id.Version(); version != 7 {
+	if version := uuidkit.Version(id); version != 7 {
 		return fmt.Errorf("invalid %s UUID v7, expected v7 but got v%d", name, version)
 	}
 	return nil
@@ -119,7 +120,7 @@ func validateV7UUID(id uuid.UUID, name string) error {
 
 func sortEvents(events []Event) {
 	slicekit.SortBy(events, func(a, b Event) bool {
-		return a.GetEventID().Less(b.GetEventID())
+		return a.GetEventID().Compare(b.GetEventID()) < 0
 	})
 }
 

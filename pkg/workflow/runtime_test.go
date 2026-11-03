@@ -115,7 +115,7 @@ func TestRuntime(t *testing.T) {
 			})
 			process.Let(s, func(t *testcase.T) workflow.ProcessID {
 				p := process.Super(t)
-				if p.IsZero() {
+				if p == (workflow.ProcessID{}) {
 					p = mustProcessID(t)
 				}
 				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, definition.Get(t)))
@@ -238,7 +238,7 @@ func TestRuntime(t *testing.T) {
 
 			process.Let(s, func(t *testcase.T) workflow.ProcessID {
 				p := process.Super(t)
-				if p.IsZero() {
+				if p == (workflow.ProcessID{}) {
 					p = mustProcessID(t)
 				}
 				assert.NoError(t, runtime.Get(t).Bind(t.Context(), p, workflow.Sequence{
@@ -310,7 +310,7 @@ func TestRuntime(t *testing.T) {
 
 			process.Let(s, func(t *testcase.T) workflow.ProcessID {
 				p := process.Super(t)
-				if p.IsZero() {
+				if p == (workflow.ProcessID{}) {
 					p = mustProcessID(t)
 				}
 				// Bind a Definition that records whether it was invoked, so the
@@ -877,7 +877,7 @@ func TestRuntime(t *testing.T) {
 			var found bool
 			for _, event := range mustHistory(t, runtime.Get(t), processID.Get(t)) {
 				if terminated, ok := event.(workflow.EventTerminated); ok {
-					assert.True(t, terminated.ProcessID.Equal(processID.Get(t)),
+					assert.True(t, terminated.ProcessID == processID.Get(t),
 						assert.MessageF("every entry in a Process' history belongs to that Process"))
 					found = true
 				}

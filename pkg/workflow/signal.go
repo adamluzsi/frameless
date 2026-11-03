@@ -20,7 +20,7 @@ func (sig Complete) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pro
 		if err != nil {
 			return err
 		}
-		if completed, ok := event.(EventCompleted); ok && completed.ProcessID.Equal(id) {
+		if completed, ok := event.(EventCompleted); ok && completed.ProcessID == id {
 			return nil
 		}
 		if _, ok := event.(EventTerminated); ok {
@@ -98,7 +98,7 @@ func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pr
 }
 
 func (sig Terminate) sigTERM(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
-	if id.IsZero() {
+	if id == (ProcessID{}) {
 		return ErrZeroProcessID.F("terminate")
 	}
 	var (
@@ -198,7 +198,7 @@ func (sig Terminate) inspect(ctx context.Context, rt Runtime, id ProcessID) (end
 		if _, ok := event.(EventCompleted); ok {
 			return true, nil, nil
 		}
-		if terminated, ok := event.(EventTerminated); ok && terminated.ProcessID.Equal(id) {
+		if terminated, ok := event.(EventTerminated); ok && terminated.ProcessID == id {
 			return true, nil, nil
 		}
 	}

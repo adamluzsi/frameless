@@ -1,11 +1,12 @@
 package uuid_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/uuid"
+	"go.llib.dev/frameless/pkg/uuidkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
@@ -22,9 +23,8 @@ func TestMakeV7_smoke(t *testing.T) {
 	u, err := uuid.MakeV7()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, u)
-	assert.False(t, u.IsZero())
-	assert.Equal(t, u.Version(), 7)
-	assert.Equal(t, u.Variant(), 2)
+	assert.Equal(t, uuidkit.Version(u), 7)
+	assert.Equal(t, uuidkit.Variant(u), 2)
 }
 
 func ExampleV7_Make() {
@@ -55,9 +55,8 @@ func TestV7(t *testing.T) {
 			u, err := act(t)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, u)
-			assert.False(t, u.IsZero())
-			assert.Equal(t, u.Version(), 7)
-			assert.Equal(t, u.Variant(), 2)
+			assert.Equal(t, uuidkit.Version(u), 7)
+			assert.Equal(t, uuidkit.Variant(u), 2)
 		})
 
 		s.Test("unique", func(t *testcase.T) {
@@ -76,8 +75,8 @@ func TestV7(t *testing.T) {
 				vs = append(vs, onSuccess(t))
 			})
 
-			exp := slicekit.Clone(vs)
-			slicekit.SortBy(exp, uuid.UUID.Less)
+			exp := slices.Clone(vs)
+			slices.SortFunc(exp, uuid.UUID.Compare)
 
 			assert.Equal(t, exp, vs, "order dependent equality")
 		})

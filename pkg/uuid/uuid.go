@@ -1,16 +1,21 @@
+// Package uuid
+//
+// This package was the mainline uuid package from UUID related frameless codebase,
+// but with go1.27, the stdlib received a carbon copy similar uuid package implementation,
+// therefore, the uuid package will eventually be sunset.
+//
+// Deprecated: use the stdlib uuid package, and optionally with the uuidkit companion package
 package uuid
 
 import (
-	"database/sql"
-	"database/sql/driver"
 	"encoding"
-	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/port/predicate"
 	"go.llib.dev/testcase/clock"
 )
 
@@ -60,62 +65,42 @@ func Parse(raw string) (UUID, error) {
 	return uuid, nil
 }
 
-type UUID [16]byte
+type UUID = uuid.UUID
 
-// String will format UUID into its standard UUID string representation.
-func (u UUID) String() string {
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
-}
+var _ encoding.TextMarshaler = UUID{}
+var _ encoding.TextUnmarshaler = (*UUID)(nil)
+var _ predicate.Comparable[UUID] = UUID{}
 
-func (u UUID) Version() int {
-	return int(u[6] >> 4)
-}
+// // String will format UUID into its standard UUID string representation.
+//
+//	func (u UUID) String() string {
+//		return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
+//	}
 
-func (u *UUID) setVersion(version int) {
+func setVersion(u *UUID, version int) {
 	u[6] = (u[6] & 0x0F) | byte(version<<4)
 }
 
-// Variant returns the UUID variant
-func (u UUID) Variant() int {
-	return int(u[8] >> 6)
-}
-
-var _ json.Marshaler = UUID{}
-
-func (u UUID) MarshalJSON() ([]byte, error) {
-	return json.Marshal(u.String())
-}
-
-var _ json.Unmarshaler = (*UUID)(nil)
-
-func (u *UUID) UnmarshalJSON(data []byte) error {
-	var raw string
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	id, err := Parse(raw)
-	if err != nil {
-		return err
-	}
-	for i := range u {
-		u[i] = id[i]
-	}
-	return nil
-}
-
-var _ encoding.TextMarshaler = UUID{}
-
-func (u UUID) MarshalText() (text []byte, err error) {
-	return []byte(u.String()), nil
-}
-
-var _ encoding.TextUnmarshaler = (*UUID)(nil)
-
-func (u *UUID) UnmarshalText(text []byte) error {
-	var err error
-	*u, err = Parse(string(text))
-	return err
-}
+//	func (u UUID) MarshalJSON() ([]byte, error) {
+//		return json.Marshal(u.String())
+//	}
+//
+// var _ json.Unmarshaler = (*UUID)(nil)
+//
+//	func (u *UUID) UnmarshalJSON(data []byte) error {
+//		var raw string
+//		if err := json.Unmarshal(data, &raw); err != nil {
+//			return err
+//		}
+//		id, err := Parse(raw)
+//		if err != nil {
+//			return err
+//		}
+//		for i := range u {
+//			u[i] = id[i]
+//		}
+//		return nil
+//	}
 
 // setVariant sets the variant field of a UUID according to RFC 4122.
 //
@@ -138,94 +123,94 @@ func (u *UUID) UnmarshalText(text []byte) error {
 //   - variant: An integer in the range [0, 3]. Must not exceed 2 bits.
 //
 // Panics if variant is outside the valid range [0, 3].
-func (u *UUID) setVariant(variant int) {
+func setVariant(u *UUID, variant int) {
 	u[8] = (u[8] & 0x3F) | byte(variant<<6)
 }
 
-func (u UUID) Compare(o UUID) int {
-	for i := 0; i < 16; i++ {
-		if u[i] < o[i] {
-			return -1
-		}
-		if u[i] > o[i] {
-			return 1
-		}
-	}
-	return 0 // equal
-}
+// func (u UUID) Compare(o UUID) int {
+// 	for i := 0; i < 16; i++ {
+// 		if u[i] < o[i] {
+// 			return -1
+// 		}
+// 		if u[i] > o[i] {
+// 			return 1
+// 		}
+// 	}
+// 	return 0 // equal
+// }
+//
+// func (u UUID) Less(oth UUID) bool {
+// 	for i := 0; i < 16; i++ {
+// 		if u[i] != oth[i] {
+// 			return u[i] < oth[i]
+// 		}
+// 	}
+// 	return false
+// }
+//
+// func (u UUID) Equal(oth UUID) bool {
+// 	for i := range u {
+// 		if u[i] != oth[i] {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }
+//
+// func (u UUID) IsZero() bool {
+// 	for _, b := range u {
+// 		if b != 0 {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }
 
-func (u UUID) Less(oth UUID) bool {
-	for i := 0; i < 16; i++ {
-		if u[i] != oth[i] {
-			return u[i] < oth[i]
-		}
-	}
-	return false
-}
-
-func (u UUID) Equal(oth UUID) bool {
-	for i := range u {
-		if u[i] != oth[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func (u UUID) IsZero() bool {
-	for _, b := range u {
-		if b != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-var _ driver.Valuer = UUID{}
+// var _ driver.Valuer = UUID{}
 
 // Value implements sql driver.Valuer.
 // It returns nil for zero UUIDs to represent SQL NULL — not an empty string "000...".
 // For non-zero UUIDs, it returns the standard hyphenated string format.
-func (u UUID) Value() (driver.Value, error) {
-	if u.IsZero() {
-		return nil, nil // sql NULL value
-	}
-	return u.String(), nil
-}
+// func (u UUID) Value() (driver.Value, error) {
+// 	if u.IsZero() {
+// 		return nil, nil // sql NULL value
+// 	}
+// 	return u.String(), nil
+// }
+//
+// var _ sql.Scanner = (*UUID)(nil)
 
-var _ sql.Scanner = (*UUID)(nil)
-
-// Scan implements sql.Scanner to allow UUID to be populated from SQL result values.
-func (u *UUID) Scan(value any) error {
-	if value == nil {
-		*u = UUID{}
-		return nil
-	}
-	switch v := value.(type) {
-	case []byte:
-		if len(v) == 0 {
-			*u = UUID{}
-			return nil
-		}
-		if len(v) == 16 {
-			copy(u[:], v)
-			return nil
-		}
-		return u.Scan(string(v))
-
-	case string:
-		if len(v) == 0 {
-			*u = UUID{}
-			return nil
-		}
-		id, err := Parse(v)
-		if err != nil {
-			return err
-		}
-		*u = id
-		return nil
-
-	default:
-		return fmt.Errorf("uuid: cannot scan type %T into UUID", value)
-	}
-}
+// // Scan implements sql.Scanner to allow UUID to be populated from SQL result values.
+// func (u *UUID) Scan(value any) error {
+// 	if value == nil {
+// 		*u = UUID{}
+// 		return nil
+// 	}
+// 	switch v := value.(type) {
+// 	case []byte:
+// 		if len(v) == 0 {
+// 			*u = UUID{}
+// 			return nil
+// 		}
+// 		if len(v) == 16 {
+// 			copy(u[:], v)
+// 			return nil
+// 		}
+// 		return u.Scan(string(v))
+//
+// 	case string:
+// 		if len(v) == 0 {
+// 			*u = UUID{}
+// 			return nil
+// 		}
+// 		id, err := Parse(v)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		*u = id
+// 		return nil
+//
+// 	default:
+// 		return fmt.Errorf("uuid: cannot scan type %T into UUID", value)
+// 	}
+// }
