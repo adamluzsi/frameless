@@ -104,21 +104,21 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 		}
 
-		QueryOne[ENT, ID](subject, "#FindByID", func(tb testing.TB) QueryOneSubject[ENT] {
+		s.Context("QueryOne", QueryOne[ENT, ID](subject, "#FindByID", func(tb testing.TB) QueryOneSubject[ENT] {
+			// stored up front, as the query needs the ID that the resource may only assign on Create
 			ent := ensureExistingEntity(tb, c, subject, nil)
+			id := c.IDA.Get(ent)
 
 			return QueryOneSubject[ENT]{
 				Query: func(ctx context.Context) (_ ENT, found bool, _ error) {
-					return subject.FindByID(ctx, c.IDA.Get(ent))
+					return subject.FindByID(ctx, id)
 				},
 				ExpectedEntity: ent,
 				ExcludedEntity: func() ENT {
-					return ensureExistingEntity(tb, c, subject, func() ENT {
-						return c.MakeEntity(tb)
-					})
+					return c.MakeEntity(tb)
 				},
 			}
-		}, opts...)
+		}, opts...).Spec)
 
 		// "Concurrent calls are race-free" is a happy-case concurrency check.
 		// We pre-resolve every testcase variable (ctx, id, entity) before

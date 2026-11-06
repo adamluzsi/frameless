@@ -26,20 +26,36 @@ type QueryOneSubject[ENT any] struct {
 	// The QueryOneFunc closure should only have the Method call with the already mapped values.
 	// Query will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.
+	// The ctx argument must be passed on to the query method as is,
+	// since it may carry a transaction when Config.OnePhaseCommit is supplied.
 	//
 	// The func signature for Query is the generic representation of a query that meant to find one result.
 	// It is really similar to resources.Finder#FindByID,
 	// with the exception that the closure meant to know the query method name on the subject and the inputs it requires.
 	Query func(ctx context.Context) (_ ENT, found bool, _ error)
-	// ExpectedEntity is an entity that is matched by the Query.
-	// If subject doesn't support Creator, then it should be present in the subject resource.
+	// ExpectedEntity is the entity that the Query is expected to find.
+	// When it isn't present in the resource yet, the contract stores it through crud.Creator or crud.Saver,
+	// and deletes it after the test.
+	// When the resource can't store it, or the Query needs its ID up front (like FindByID),
+	// the subject function stores it before it returns, and then it is responsible for its cleanup.
+	// The contract recognises an already stored ExpectedEntity by its ID through crud.ByIDFinder.
+	//
+	// The contract may remove it from the resource to cover the cases where the Query has no result,
+	// so its cleanup must tolerate when the entity is already absent.
 	ExpectedEntity ENT
-	// MakeExcludedEntity is an optional property,
+	// ExcludedEntity is an optional property,
 	// that could be used ensure the query returns only the expected values.
-	// If subject doesn't support Creator, then it should be present in the subject resource.
+	// The contract stores the entities it makes, unless they are already present in the resource.
 	ExcludedEntity func() ENT
 }
 
+// QueryOne is the contract of a query method that finds a single entity.
+//
+// The contract makes sure that the ExpectedEntity is present in the resource,
+// by storing it unless the subject function already did.
+// To cover the cases where the query has no result, the contract removes the ExpectedEntity from the resource,
+// either by its ID with crud.ByIDDeleter, or with crud.AllDeleter.
+// When the resource implements neither, these scenarios are skipped.
 func QueryOne[ENT, ID any](
 	resource any,
 	methodName string,
@@ -49,8 +65,23 @@ func QueryOne[ENT, ID any](
 	c := option.ToConfig[Config[ENT, ID]](opts)
 	s := testcase.NewSpec(nil)
 
+	s.Before(func(t *testcase.T) {
+		spechelper.TryCleanup(t, c.MakeContext(t), resource)
+	})
+
 	sub := testcase.Let(s, func(t *testcase.T) QueryOneSubject[ENT] {
-		return subject(t)
+		v := subject(t)
+		assert.NotNil(t, v.Query, "QueryOneSubject.Query is required")
+		assert.NotEmpty(t, v.ExpectedEntity, "QueryOneSubject.ExpectedEntity is required")
+		if ent, ok := tryCreateEntity(t, c, resource, func() ENT { return v.ExpectedEntity }); ok {
+			v.ExpectedEntity = ent // a stored entity may have received its ID from the resource
+		} else {
+			t.OnFail(func() {
+				t.Logf("QueryOneSubject.ExpectedEntity is not findable by its ID, and %T can't store it,", resource)
+				t.Log("so the subject function is expected to store it before it returns")
+			})
+		}
+		return v
 	})
 
 	var (
@@ -61,86 +92,153 @@ func QueryOne[ENT, ID any](
 	act := func(t *testcase.T) (ENT, bool, error) {
 		return sub.Get(t).Query(Context.Get(t))
 	}
-
-	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(t), resource)
-	})
-
-	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
-		ent := testcase.Let(s, func(t *testcase.T) ENT {
-			v := createEntity(t, t.SkipNow, c, resource, func() ENT {
-				ent := sub.Get(t).ExpectedEntity
-				assert.NotEmpty(t, ent)
-				return ent
-			}, "QueryOne.Subject.ExpectedEntity")
-			return v
-		}).EagerLoading(s)
-
-		s.Then(`the entity will be returned`, func(t *testcase.T) {
+	expected := func(t *testcase.T) ENT {
+		return sub.Get(t).ExpectedEntity
+	}
+	isFound := func(t *testcase.T) {
+		t.Helper()
+		t.Eventually(func(t *testcase.T) {
 			got, found, err := act(t)
-			assert.Must(t).NoError(err)
+			assert.NoError(t, err)
 			assert.True(t, found)
-			assert.Must(t).Equal(got, ent.Get(t))
+			assert.Equal(t, expected(t), got)
+		})
+	}
+	isNotFound := func(t *testcase.T) {
+		t.Helper()
+		t.Eventually(func(t *testcase.T) {
+			_, found, err := act(t)
+			assert.NoError(t, err)
+			assert.False(t, found)
+		})
+	}
+
+	// registered after the cleanup, so an ExpectedEntity stored by the subject function is kept
+	sub.EagerLoading(s)
+
+	s.Then(`the expected entity will be returned`, func(t *testcase.T) {
+		isFound(t)
+	})
+
+	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(c.MakeContext(t))
+			cancel()
+			assert.Error(t, ctx.Err())
+			return ctx
 		})
 
-		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx, cancel := context.WithCancel(c.MakeContext(t))
-				cancel()
-				assert.Error(t, ctx.Err())
-				return ctx
-			})
+		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
+			_, found, err := act(t)
+			assert.Must(t).ErrorIs(context.Canceled, err)
+			assert.Must(t).False(found)
+		})
+	})
 
-			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-				_, found, err := act(t)
-				assert.Must(t).ErrorIs(context.Canceled, err)
-				assert.Must(t).False(found)
-			})
+	s.When(`other entities are stored in the resource as well`, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			ensureExistingEntity(t, c, resource, sub.Get(t).ExcludedEntity, expected(t))
 		})
 
-		s.And(`more entity is saved in the resource as well`, func(s *testcase.Spec) {
+		s.Then(`still the expected entity is returned`, func(t *testcase.T) {
+			isFound(t)
+		})
+	})
+
+	s.When(`the expected entity is absent from the resource`, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			shouldRemove(t, c, resource, c.MakeContext(t), expected(t))
+		})
+
+		s.Then(`it will have no result`, func(t *testcase.T) {
+			isNotFound(t)
+		})
+
+		s.And(`unrelated entities are stored in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				ensureExistingEntity(t, c, resource, sub.Get(t).ExcludedEntity, ent.Get(t))
+				ents := []ENT{expected(t)}
+				t.Random.Repeat(3, 7, func() {
+					ent := ensureExistingEntity(t, c, resource, sub.Get(t).ExcludedEntity, ents...)
+					ents = append(ents, ent)
+				})
 			})
 
-			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
-				got, found, err := act(t)
+			s.Then(`it will have no result`, func(t *testcase.T) {
+				isNotFound(t)
+			})
+		})
+	})
+
+	if c.OnePhaseCommit != nil {
+		s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
+			tx := testcase.Let(s, func(t *testcase.T) context.Context {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
 				assert.Must(t).NoError(err)
-				assert.True(t, found)
-				assert.Must(t).Equal(got, ent.Get(t))
+				t.Cleanup(func() { _ = c.OnePhaseCommit.RollbackTx(tx) })
+				return tx
 			})
-		})
-	})
-
-	s.When(`no entity is saved in the resource`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			if !spechelper.TryCleanup(t, c.MakeContext(t), resource) {
-				t.Skip("unable to clean resource")
+			removeWithinTx := func(t *testcase.T) {
+				shouldRemove(t, c, resource, tx.Get(t), expected(t))
 			}
-		})
 
-		s.Then(`it will have no result`, func(t *testcase.T) {
-			_, found, err := act(t)
-			assert.Must(t).NoError(err)
-			assert.Must(t).False(found)
-		})
-	})
+			s.When("the query is executed within a transaction", func(s *testcase.Spec) {
+				Context.Let(s, tx.Get)
 
-	s.When(`unrelated entities are stored in the database`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			var ents []ENT
-			t.Random.Repeat(3, 7, func() {
-				ent := ensureExistingEntity(t, c, resource, sub.Get(t).ExcludedEntity, ents...)
-				ents = append(ents, ent)
+				s.Then("the expected entity will be returned", func(t *testcase.T) {
+					isFound(t)
+				})
+
+				s.And("the expected entity is removed within the same transaction", func(s *testcase.Spec) {
+					s.Before(removeWithinTx)
+
+					s.Then("it will have no result", func(t *testcase.T) {
+						isNotFound(t)
+					})
+				})
+
+				s.And("the transaction is already finished", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						finish := random.Pick(t.Random, c.OnePhaseCommit.CommitTx, c.OnePhaseCommit.RollbackTx)
+						assert.Must(t).NoError(finish(tx.Get(t)))
+					})
+
+					s.Then("it will yield an error", func(t *testcase.T) {
+						_, found, err := act(t)
+						assert.Error(t, err)
+						assert.False(t, found)
+					})
+				})
+			})
+
+			s.When("the expected entity is removed within a transaction", func(s *testcase.Spec) {
+				s.Before(removeWithinTx)
+
+				s.Then("it will be still returned, as uncommitted changes are only visible within the transaction", func(t *testcase.T) {
+					isFound(t)
+				})
+
+				s.And("the transaction is committed", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						assert.Must(t).NoError(c.OnePhaseCommit.CommitTx(tx.Get(t)))
+					})
+
+					s.Then("it will have no result", func(t *testcase.T) {
+						isNotFound(t)
+					})
+				})
+
+				s.And("the transaction is rolled back", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						assert.Must(t).NoError(c.OnePhaseCommit.RollbackTx(tx.Get(t)))
+					})
+
+					s.Then("the expected entity will be returned", func(t *testcase.T) {
+						isFound(t)
+					})
+				})
 			})
 		})
-
-		s.Then(`it will have no result`, func(t *testcase.T) {
-			_, found, err := act(t)
-			assert.Must(t).NoError(err)
-			assert.Must(t).False(found)
-		})
-	})
+	}
 
 	return s.AsSuite(methodName)
 }
@@ -152,6 +250,8 @@ type QueryManySubject[ENT any] struct {
 	// The QueryOneFunc closure should only have the Method call with the already mapped values.
 	// Query will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.
+	// The ctx argument must be passed on to the query method as is,
+	// since it may carry a transaction when Config.OnePhaseCommit is supplied.
 	//
 	// The func signature for Query is the generic representation of a query that meant to find one result.
 	// It is really similar to resources.Finder#FindByID,
@@ -386,6 +486,87 @@ func QueryMany[ENT, ID any](
 			assert.ErrorIs(t, gotErr, ctx.Get(t).Err())
 		})
 	})
+
+	if c.OnePhaseCommit != nil {
+		s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
+			tx := testcase.Let(s, func(t *testcase.T) context.Context {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+				t.Cleanup(func() { _ = c.OnePhaseCommit.RollbackTx(tx) })
+				return tx
+			})
+			entStoredInTx := testcase.Let(s, func(t *testcase.T) ENT {
+				mk := sub.Get(t).IncludedEntity
+				assert.NotNil(t, mk, "QueryManySubject.IncludedEntity is required")
+				return shouldStoreWithinTx(t, c, resource, tx.Get(t), mk())
+			})
+
+			s.When("the query is executed within a transaction", func(s *testcase.Spec) {
+				ctx.Let(s, tx.Get)
+
+				s.And("the entity is stored within the same transaction", func(s *testcase.Spec) {
+					entStoredInTx.EagerLoading(s)
+
+					s.Then("the entity will be returned", func(t *testcase.T) {
+						t.Eventually(func(t *testcase.T) {
+							got, err := iterkit.CollectE(act(t))
+							assert.NoError(t, err)
+							assert.Contains(t, got, entStoredInTx.Get(t))
+						})
+					})
+				})
+
+				s.And("the transaction is already finished", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						finish := random.Pick(t.Random, c.OnePhaseCommit.CommitTx, c.OnePhaseCommit.RollbackTx)
+						assert.Must(t).NoError(finish(tx.Get(t)))
+					})
+
+					s.Then("it will yield an error", func(t *testcase.T) {
+						shouldIterEventuallyError(t, func() iter.Seq2[ENT, error] {
+							return act(t)
+						})
+					})
+				})
+			})
+
+			s.When("the entity is stored within a transaction", func(s *testcase.Spec) {
+				entStoredInTx.EagerLoading(s)
+
+				s.Then("the entity will not be returned, as uncommitted changes are only visible within the transaction", func(t *testcase.T) {
+					got, err := iterkit.CollectE(act(t))
+					assert.NoError(t, err)
+					assert.NotContains(t, got, entStoredInTx.Get(t))
+				})
+
+				s.And("the transaction is committed", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						assert.Must(t).NoError(c.OnePhaseCommit.CommitTx(tx.Get(t)))
+					})
+
+					s.Then("the entity will be returned", func(t *testcase.T) {
+						t.Eventually(func(t *testcase.T) {
+							got, err := iterkit.CollectE(act(t))
+							assert.NoError(t, err)
+							assert.Contains(t, got, entStoredInTx.Get(t))
+						})
+					})
+				})
+
+				s.And("the transaction is rolled back", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						assert.Must(t).NoError(c.OnePhaseCommit.RollbackTx(tx.Get(t)))
+					})
+
+					s.Then("the entity will not be returned", func(t *testcase.T) {
+						got, err := iterkit.CollectE(act(t))
+						assert.NoError(t, err)
+						assert.NotContains(t, got, entStoredInTx.Get(t))
+					})
+				})
+			})
+		})
+	}
 
 	return s.AsSuite(methodName)
 }

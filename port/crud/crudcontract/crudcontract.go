@@ -49,7 +49,9 @@ type Config[ENT, ID any] struct {
 	// instead during the method call.
 	// For e.g.: crud.ByIDsFinder[ENT, ID]
 	LazyNotFoundError bool
-
+	// OnePhaseCommit [optional] is the commit protocol whose transactions the subject joins through the context.
+	// When supplied, the contracts also cover the transaction scenarios,
+	// like the visibility of uncommitted changes, commit, rollback and the use of a finished transaction.
 	OnePhaseCommit comproto.OnePhaseCommitProtocol
 }
 

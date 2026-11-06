@@ -103,7 +103,16 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 				}
 				ctx := c.MakeContext(t)
 				assert.NoError(t, subject.Save(ctx, ptr.Get(t)))
+				id, hasID := lookupNonZeroID[ID](c, *ptr.Get(t))
+				if hasID && ByIDFinderOK {
+					// An eventually consistent subject may not show the saved entity yet,
+					// and shouldDelete would then skip a delete that the pending write later undoes.
+					c.Helper().IsPresent(t, byIDF, ctx, id)
+				}
 				shouldDelete(t, c, subject, ctx, *ptr.Get(t))
+				if hasID && ByIDFinderOK {
+					c.Helper().IsAbsent(t, byIDF, ctx, id)
+				}
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
@@ -125,6 +134,9 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			ptr.Let(s, func(t *testcase.T) *ENT {
 				v := ptr.Super(t)
 				assert.NoError(t, subject.Save(c.MakeContext(t), v))
+				if ByIDFinderOK {
+					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), c.IDA.Get(*v))
+				}
 				return v
 			}).EagerLoading(s)
 

@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/crud/crudcontract"
+	"go.llib.dev/frameless/port/crud/crudtest"
 
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
@@ -18,12 +19,16 @@ func TestQueryOne(t *testing.T) {
 	mem := memory.NewMemory()
 	repo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 
-	crudcontract.QueryOne[testent.Foo, testent.FooID](repo, "QueryOne",
-		func(tb testing.TB) crudcontract.QueryOneSubject[testent.Foo] {
+	subject := func(preStored bool) func(tb testing.TB) crudcontract.QueryOneSubject[testent.Foo] {
+		return func(tb testing.TB) crudcontract.QueryOneSubject[testent.Foo] {
 			tc := tb.(*testcase.T)
 			var baz = tc.Random.String()
 			v := testent.MakeFoo(tb)
 			v.Baz = baz
+			if preStored {
+				// not tb.Context(), as it is already canceled when the cleanup deletes the entity
+				crudtest.Create[testent.Foo, testent.FooID](tb, repo, context.Background(), &v)
+			}
 			return crudcontract.QueryOneSubject[testent.Foo]{
 				Query: func(ctx context.Context) (_ testent.Foo, found bool, _ error) {
 					return repo.QueryOne(ctx, func(v testent.Foo) bool {
@@ -37,7 +42,18 @@ func TestQueryOne(t *testing.T) {
 					return v
 				},
 			}
-		}).Test(t)
+		}
+	}
+	config := crudcontract.Config[testent.Foo, testent.FooID]{
+		OnePhaseCommit: mem,
+	}
+
+	t.Run("ExpectedEntity is stored by the contract", func(t *testing.T) {
+		crudcontract.QueryOne[testent.Foo, testent.FooID](repo, "QueryOne", subject(false), config).Test(t)
+	})
+	t.Run("ExpectedEntity is already stored by the subject function", func(t *testing.T) {
+		crudcontract.QueryOne[testent.Foo, testent.FooID](repo, "QueryOne", subject(true), config).Test(t)
+	})
 }
 
 func TestQueryMany(t *testing.T) {
@@ -69,5 +85,7 @@ func TestQueryMany(t *testing.T) {
 					return v
 				},
 			}
+		}, crudcontract.Config[testent.Foo, testent.FooID]{
+			OnePhaseCommit: mem,
 		}).Test(t)
 }

@@ -251,8 +251,12 @@ func (c Config[ENT, ID]) ModifyEntity(tb testing.TB, ptr *ENT) {
 		return
 	}
 	id, _ := lookupNonZeroID[ID](c, *ptr)
-	*ptr = random.Unique(func() ENT { return c.MakeEntity(tb) }, *ptr)
-	setID(tb, c, ptr, id)
+	*ptr = random.Unique(func() ENT {
+		v := c.MakeEntity(tb)
+		// with the ID already in place, only the changeable fields can make the value unique
+		setID(tb, c, &v, id)
+		return v
+	}, *ptr)
 }
 
 func shouldPresent[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, ctx context.Context, id ID) *ENT {
@@ -304,6 +308,36 @@ func shouldStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, pt
 	tb.Skipf("unable to continue with this testing scenario, as %T doesn't implement neither crud.Creator or crud.Saver", resource)
 }
 
+// shouldStoreWithinTx stores the entity through the tx context,
+// so it remains part of the transaction until the transaction is committed.
+func shouldStoreWithinTx[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, tx context.Context, ent ENT) ENT {
+	t.Helper()
+	if id, ok := lookupNonZeroID(c, ent); ok {
+		if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+			_, found, err := finder.FindByID(c.MakeContext(t), id)
+			assert.Must(t).NoError(err)
+			if found {
+				t.Skip("the entity is already present in the resource, so it can't be stored within a transaction")
+			}
+		}
+	}
+	switch r := resource.(type) {
+	case crud.Creator[ENT]:
+		assert.Must(t).NoError(r.Create(tx, &ent))
+	case crud.Saver[ENT]:
+		assert.Must(t).NoError(r.Save(tx, &ent))
+	default:
+		t.Skipf("storing an entity within a transaction requires %T to implement crud.Creator or crud.Saver", resource)
+	}
+	t.Cleanup(func() {
+		// Rolling back first releases a transaction that the test left open,
+		// then a committed entity is removed through the global context.
+		_ = c.OnePhaseCommit.RollbackTx(tx)
+		tryDelete(t, c, resource, ent)
+	})
+	return ent
+}
+
 func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
 	tb.Helper()
 	id, ok := lookupNonZeroID(c, v)
@@ -326,6 +360,23 @@ func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, c
 		return
 	}
 	assert.NoError(tb, err)
+}
+
+// shouldRemove removes a stored entity from the resource through ctx, which may carry a transaction.
+// It deletes the entity by its ID when it can, and otherwise it deletes every entity.
+func shouldRemove[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, ent ENT) {
+	tb.Helper()
+	if id, ok := lookupNonZeroID(c, ent); ok {
+		if deleter, ok := resource.(crud.ByIDDeleter[ID]); ok {
+			assert.Must(tb).NoError(deleter.DeleteByID(ctx, id))
+			return
+		}
+	}
+	if deleter, ok := resource.(crud.AllDeleter); ok {
+		assert.Must(tb).NoError(deleter.DeleteAll(ctx))
+		return
+	}
+	tb.Skipf("removing the entity requires %T to implement crud.ByIDDeleter or crud.AllDeleter", resource)
 }
 
 func testingRunFlagProvided() bool {

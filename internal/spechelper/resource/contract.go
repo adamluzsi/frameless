@@ -50,6 +50,9 @@ func Contract[ENT any, ID comparable](subject ContractSubject[ENT, ID], opts ...
 	if cm, ok := subject.(comproto.OnePhaseCommitProtocol); ok && c.CommitManager == nil {
 		c.CommitManager = cm
 	}
+	if c.CRUD.OnePhaseCommit == nil {
+		c.CRUD.OnePhaseCommit = c.CommitManager
+	}
 
 	testcase.RunSuite(s,
 		crudcontract.Creator[ENT, ID](subject, c.CRUD),
