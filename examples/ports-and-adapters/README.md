@@ -13,6 +13,7 @@ A payment collector that shows how a domain package owns its dependencies:
 | `domain/billing/billing_test.go` | `memory.Queue` and `memory.LockerFactory` verified as suppliers, and a use-case spec built on fakes instead of mocks |
 | `adapter/inmemory` | a fake for the domain-specific port, verified by the same contract |
 | `adapter/pgbilling` | `postgresql.Queue` used as is, and a lock factory adapted to the role interface |
+| `cmd/collector` | the composition root: configuration from the environment, suppliers wired into `billing.Collector` by hand, and `tasker.Main` running it |
 
 Run it:
 
@@ -26,4 +27,11 @@ The PostgreSQL suppliers are tested only when `PG_DATABASE_URL` points to a dedi
 PG_DATABASE_URL='postgres://postgres:pass@localhost:13000/dbt?sslmode=disable' go test ./adapter/pgbilling/...
 ```
 
+Run the collector against PostgreSQL:
+
+```sh
+DATABASE_URL='postgres://postgres:pass@localhost:13000/dbt?sslmode=disable' go run ./cmd/collector
+```
+
 The `frameless-ports` agent skill (`.agents/skills/frameless-ports`) explains the approach.
+The `frameless-software-design` agent skill (`.agents/skills/frameless-software-design`) explains the layout and the wiring in `cmd`.

@@ -142,7 +142,7 @@ func TestGreetCommand(t *testing.T) {
 		})
 		subject = let.Var(s, func(t *testcase.T) greetcli.GreetCommand {
 			return greetcli.GreetCommand{
-				Lang:    "en", // a direct ServeCLI call does no parsing, so tag defaults are not applied
+				Lang:    "en", // a direct ServeCLI call does no parsing, so tag defaults are not applied (cli.WithDefaults would)
 				Name:    t.Random.StringNC(8, random.CharsetAlpha()),
 				Greeter: greeter.Get(t),
 			}
@@ -336,7 +336,7 @@ func TestNewMux(t *testing.T) {
 			s.Then("usage is printed to stderr with a bad request exit code", func(t *testcase.T) {
 				rr := act(t)
 				assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
-				assert.MatchRegexp(t, rr.Err.String(), `Usage: \S+ greet`) // the binary name differs per OS
+				assert.MatchRegexp(t, rr.Err.String(), `Usage: \S+ greet`) // the program name is the test binary's name
 				assert.Equal(t, greeter.Get(t).Calls, 0)
 			})
 		})
@@ -411,7 +411,7 @@ func TestNewMux(t *testing.T) {
 
 ## What the bad-input output looks like
 
-From a `ReportCommand` with an embedded `CommonFlags` (`Format string flag:"format" default:"text" enum:"text,json,"`), run with `--format xml`. The `Usage:` line shows the test binary's name, and Windows uses `\r\n` line endings:
+From a `ReportCommand` with an embedded `CommonFlags` (`Format string flag:"format" default:"text" enum:"text,json,"`) and a `Since time.Time flag:"since" layout:"2006-01-02"` field, run with `--format xml`. The `Usage:` line shows the test binary's name. Line endings are `\n` on every OS, and the name has no `.exe` on Windows:
 
 ```text
 Usage: greetcli.test [OPTION]... Files
@@ -420,7 +420,7 @@ Options:
   -verbose=[bool]
     -v
   -format=[string] (default: "text")
-  -since=[greetcli_test.Date]: YYYY-MM-DD
+  -since=[time.Time] (layout: "2006-01-02")
   -tag=[[]string] (seperator: ,)
 
 Arguments:

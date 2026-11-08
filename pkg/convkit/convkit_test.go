@@ -235,6 +235,36 @@ func TestParse_json(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, map[string]int{"a": 42}, gotMap)
 	})
+	t.Run("object into a struct", func(t *testing.T) {
+		type T struct {
+			Name string
+			N    int      `json:"n"`
+			Tags []string `json:"tags"`
+		}
+		exp := T{
+			Name: rnd.StringNC(8, random.CharsetAlpha()),
+			N:    rnd.Int(),
+			Tags: []string{rnd.StringNC(8, random.CharsetAlpha())},
+		}
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		got, err := convkit.Parse[T](data)
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+
+		gotPtr, err := convkit.Parse[*T](data)
+		assert.NoError(t, err)
+		assert.NotNil(t, gotPtr)
+		assert.Equal(t, exp, *gotPtr)
+	})
+	t.Run("object into a struct, when it doesn't match the struct", func(t *testing.T) {
+		type T struct{ N int }
+		_, err := convkit.Parse[T](`{"N":"not-a-number"}`)
+		assert.Error(t, err)
+		_, err = convkit.Parse[T]("not-a-json")
+		assert.Error(t, err)
+	})
 }
 
 func TestParse_timeTime(t *testing.T) {

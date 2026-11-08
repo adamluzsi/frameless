@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/internal/interr"
@@ -26,6 +27,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/internal/signalint"
+	"go.llib.dev/frameless/pkg/internal/tagint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -453,6 +455,54 @@ func ConfigureHandler[H Handler](ptr *H, r *Request) error {
 	return metaFor(reflect.ValueOf(ptr)).Configure(r)
 }
 
+// WithDefaults returns the handler with the `default` tag values applied to its zero value input fields.
+// Input fields that already have a value are kept as they are.
+//
+// The `default` tag values are applied the same way when a command runs,
+// so you only need WithDefaults when the handler is used without going through
+// the argument parsing, for example when you call its ServeCLI method directly in a test:
+//
+//	cmd := cli.WithDefaults(MyCommand{Dependency: dep})
+//	cmd.ServeCLI(rr, req)
+//
+// Since a zero value can't be told apart from an unset one,
+// a field pre-set to its zero value still gets its `default` tag value.
+// A pointer handler is updated in place.
+// WithDefaults panics if a `default` tag value is not valid for its field.
+func WithDefaults[H Handler](h H) H {
+	if rv := reflect.ValueOf(h); !rv.IsValid() || (rv.Kind() == reflect.Pointer && rv.IsNil()) {
+		panic("nil cli.Handler")
+	}
+	ptr := reflect.New(reflect.TypeOf(h))
+	ptr.Elem().Set(reflect.ValueOf(h))
+	var (
+		ctx  = context.Background()
+		refs = metaFor(ptr).refs
+	)
+	var errInvalidDefault = func(ref *metaRef, err error) error {
+		defVal, _ := ref.LookupDefault()
+		return ErrInvalidDefaultValue.F("%s field's default value (%q) is invalid: %w", ref.FieldName(), defVal, err)
+	}
+	for _, ref := range refs {
+		typ, ok := ref.LookupType()
+		if !ok {
+			continue
+		}
+		if err := ref.useDefault(typ); err != nil {
+			panic(errInvalidDefault(ref, err))
+		}
+	}
+	for _, ref := range refs {
+		if !ref.loaded {
+			continue
+		}
+		if err := ref.validate(ctx, ref.Node.Value); err != nil {
+			panic(errInvalidDefault(ref, err))
+		}
+	}
+	return ptr.Elem().Interface().(H)
+}
+
 func (m *ServeMux) entries() map[string]*muxEntry {
 	if m.m == nil {
 		m.m = map[string]*muxEntry{}
@@ -470,27 +520,33 @@ func commandName(ctx context.Context) string {
 }
 
 func execName() string {
-	if ep, err := os.Executable(); err == nil {
-		return filepath.Base(ep)
+	if ep, err := osint.Executable(); err == nil {
+		return trimExeExt(filepath.Base(ep))
 	}
 	if 0 < len(osint.Args()) {
-		return osint.Args()[0]
+		return trimExeExt(osint.Args()[0])
 	}
 	return ""
+}
+
+// trimExeExt drops the Windows ".exe" extension from the program name,
+// so the usage reads the same on every OS, and matches how users invoke the program.
+func trimExeExt(name string) string {
+	if ext := filepath.Ext(name); strings.EqualFold(ext, ".exe") {
+		return strings.TrimSuffix(name, ext)
+	}
+	return name
 }
 
 func printfln(w io.Writer, msg ...string) {
 	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
 }
 
-var lineSeparator = func() string {
-	switch runtime.GOOS {
-	case "windows":
-		return "\r\n"
-	default:
-		return "\n"
-	}
-}()
+// lineSeparator is used for all framework generated text, regardless of the OS,
+// the same way as the flag and fmt packages do.
+// This keeps the output consistent with what handlers write using fmt.Fprintln,
+// and makes the output identical on every platform.
+const lineSeparator = "\n"
 
 func errOut(w ResponseWriter) io.Writer {
 	if rwe, ok := w.(ErrorWriter); ok {
@@ -504,9 +560,9 @@ func errOut(w ResponseWriter) io.Writer {
 type StdResponse struct{ Code int }
 
 func (rr *StdResponse) ExitCode(n int)                    { rr.Code = n }
-func (rr *StdResponse) Stdeout() io.Writer                { return os.Stdout }
+func (rr *StdResponse) Stdout() io.Writer                 { return os.Stdout }
 func (rr *StdResponse) Stderr() io.Writer                 { return os.Stderr }
-func (rr *StdResponse) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
+func (rr *StdResponse) Write(p []byte) (n int, err error) { return rr.Stdout().Write(p) }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -524,9 +580,9 @@ func (rr *ResponseRecorder) CombinedOutput() []byte {
 }
 
 func (rr *ResponseRecorder) ExitCode(n int)                    { rr.Code = n }
-func (rr *ResponseRecorder) Stdeout() io.Writer                { return &rr.Out }
+func (rr *ResponseRecorder) Stdout() io.Writer                 { return &rr.Out }
 func (rr *ResponseRecorder) Stderr() (_ io.Writer)             { return &rr.Err }
-func (rr *ResponseRecorder) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
+func (rr *ResponseRecorder) Write(p []byte) (n int, err error) { return rr.Stdout().Write(p) }
 
 var flagTagHandler = reflectkit.TagHandler[[]string]{
 	Name: "flag",
@@ -581,6 +637,22 @@ type argTag struct {
 	IsVariadic bool
 	Begin      *int
 	End        *int
+}
+
+// IsSlice reports whether the arg takes multiple values, like a range ("n:m") or a variadic ("n:") arg.
+func (tag argTag) IsSlice() bool {
+	return tag.Begin != nil && (tag.IsVariadic || tag.End != nil)
+}
+
+// RangeExpr formats the slice expression of a range or variadic arg, such as "[1:3]" or "[1:]".
+func (tag argTag) RangeExpr() string {
+	if tag.Begin == nil {
+		return "[:]"
+	}
+	if tag.End == nil {
+		return fmt.Sprintf("[%d:]", *tag.Begin)
+	}
+	return fmt.Sprintf("[%d:%d]", *tag.Begin, *tag.End)
 }
 
 var argTagHandler = reflectkit.TagHandler[argTag]{
@@ -721,21 +793,25 @@ func metaFor(ptr reflect.Value) metaH {
 		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non-pointer type", ptr.Type().String()))
 	}
 	var m = metaH{ptr: ptr}
-	for v := range reflectkit.Visit(ptr) {
+	_ = reftree.Walk(ptr, func(v reftree.Node) error {
 		if v.Type != reftree.StructField {
-			continue
+			return nil
 		}
-		if !v.StructField.IsExported() {
-			continue
+		if v.StructField.IsExported() {
+			var ref = &metaRef{Node: v}
+			if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
+				ref.Separator = sep
+			}
+			if ref.IsRelevant() {
+				m.refs = append(m.refs, ref)
+			}
 		}
-		var ref = &metaRef{Node: v}
-		if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
-			ref.Separator = sep
+		// An opaque field can be an input itself, but its value is not looked into for further inputs.
+		if tagint.IsOpaque(v.StructField) {
+			return reftree.Skip
 		}
-		if ref.IsRelevant() {
-			m.refs = append(m.refs, ref)
-		}
-	}
+		return nil
+	})
 	return m
 }
 
@@ -767,27 +843,20 @@ func (m metaH) Validate(ctx context.Context) (rErr error) {
 		}
 	}
 
-	// Validate that range arguments have enough values when partially provided or fully expected
+	// Validate that range arguments have enough values when they are partially provided.
+	// A range or variadic arg without any user value is handled by metaH.load,
+	// since it may still get its value from the environment, its default tag, or the handler itself.
 	for _, ref := range m.refs {
-		if tag, ok := ref.ArgTag(); ok {
-			var actualLen = len(ref.RawValues)
-			switch {
-			case tag.Begin != nil && tag.End != nil:
-				expectedLen := *tag.End - *tag.Begin
-				// If any values were provided but not enough, it's an error (partial provision)
-				if 0 < actualLen && actualLen < expectedLen {
-					return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
-				}
-				// If no values were provided and it's required, it's an error
-				if actualLen == 0 && ref.IsRequired() {
-					return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
-				}
-			case tag.Begin != nil && tag.End == nil && tag.IsVariadic:
-				// If no values were provided and it's required, it's an error
-				if actualLen == 0 && ref.IsRequired() {
-					return fmt.Errorf("missing arguments for %s: expected range [%d:]", ref.InputName(), *tag.Begin)
-				}
-			}
+		tag, ok := ref.ArgTag()
+		if !ok || tag.Begin == nil || tag.End == nil {
+			continue
+		}
+		var (
+			actualLen   = len(ref.RawValues)
+			expectedLen = *tag.End - *tag.Begin
+		)
+		if 0 < actualLen && actualLen < expectedLen {
+			return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
 		}
 	}
 
@@ -915,13 +984,7 @@ func (m metaH) Configure(r *Request) error {
 	}
 	r.Args = remainingArgs
 
-	var ctx = r.Context()
-	for _, ref := range m.refs {
-		if err := ref.Parse(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return m.load(r.Context())
 	// TODO: maybe validate the whole structure too?
 	//
 	// if validate.Value(ctx, m.ptr.Interface()) != nil {
@@ -931,37 +994,62 @@ func (m metaH) Configure(r *Request) error {
 	// }
 }
 
-func (ref metaRef) parseVariadicRaw(ctx context.Context, typ reflect.Type) error {
-	var opts []convkit.Option
-	if ref.Separator != "" {
-		opts = append(opts, convkit.Options{Separator: ref.Separator})
+// load sets the input fields from their sources, in the order of their precedence,
+// so a later source overwrites an earlier one:
+//
+//  1. the `default` tag values, outer fields first, and only onto zero fields,
+//     so the default of an inner field only fills in what the default of its struct field left zero;
+//  2. the flags, args and env vars, inner fields first,
+//     so the JSON input of a struct field is merged onto the inputs of its inner fields.
+//
+// So a default never overwrites an input, and the order of the flags in the arguments doesn't matter.
+// The required inputs and the validation tags are checked only once every value is loaded,
+// since an inner field can get its value from the JSON value of its struct field as well.
+func (m metaH) load(ctx context.Context) error {
+	for _, ref := range m.refs {
+		if err := ref.loadDefault(); err != nil {
+			return err
+		}
 	}
+	for _, ref := range m.innerFirst() {
+		if err := ref.loadInput(); err != nil {
+			return err
+		}
+	}
+	for _, ref := range m.refs {
+		if err := ref.check(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
+// innerFirst returns the refs in an order where every inner field precedes the struct field that holds it.
+func (m metaH) innerFirst() []*metaRef {
+	refs := slices.Clone(m.refs)
+	slices.SortStableFunc(refs, func(a, b *metaRef) int {
+		return b.depth() - a.depth()
+	})
+	return refs
+}
+
+func (ref metaRef) parseVariadicRaw(typ reflect.Type) error {
 	switch typ.Kind() {
 	case reflect.Slice:
 		sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
 		for _, raw := range ref.RawValues {
-			elemVal, err := convkit.ParseReflect(typ.Elem(), raw, opts...)
+			elemVal, err := ref.parseValue(typ.Elem(), raw)
 			if err != nil {
 				return err
 			}
 			sliceVal = reflect.Append(sliceVal, elemVal)
 		}
 		ref.Node.Value.Set(sliceVal)
-		// Validate the field after setting the value
-		if ref.Node.Type == reftree.StructField {
-			if err := validate.StructField(ctx, ref.Node.StructField, sliceVal); err != nil {
-				if errors.Is(err, enum.ErrInvalid) {
-					return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), sliceVal)
-				}
-				return err
-			}
-		}
 		return nil
 	default:
 		// For non-slice types with variadic tag, this should have been caught by validation
 		if len(ref.RawValues) > 0 {
-			return ref.parseRaw(ctx, typ, ref.RawValues[0])
+			return ref.parseRaw(typ, ref.RawValues[0])
 		}
 		return nil
 	}
@@ -1030,6 +1118,9 @@ type metaRef struct {
 	Raw       string
 	RawValues []string
 	Separator string
+
+	// loaded tells whether the field got a value of its own, from its input or its `default` tag.
+	loaded bool
 }
 
 func (ref metaRef) InputName() string {
@@ -1054,98 +1145,151 @@ func (ref metaRef) FieldName() string {
 	return ref.Node.StructField.Name
 }
 
-func (ref metaRef) Parse(ctx context.Context) (rErr error) {
-	defer errorkit.FinishOnError(&rErr, func() {
-		rErr = ErrInvalidInput{
-			ref: ref,
-			Err: rErr,
+// depth is the number of nodes between the field and the root of the handler.
+func (ref metaRef) depth() int {
+	var n int
+	for p := ref.Node.Parent; p != nil; p = p.Parent {
+		n++
+	}
+	return n
+}
+
+// HasInput tells whether the field got an input: a flag, an arg, or an env var.
+func (ref metaRef) HasInput() bool {
+	if len(ref.RawValues) > 0 || ref.IsSet {
+		return true
+	}
+	_, ok := ref.LookupEnv()
+	return ok
+}
+
+func (ref *metaRef) asInvalidInput(rErr *error) {
+	errorkit.FinishOnError(rErr, func() {
+		*rErr = ErrInvalidInput{
+			ref: *ref,
+			Err: *rErr,
 		}
 	})
+}
+
+// loadDefault sets the field to its `default` tag value, unless the field has a value already.
+// A field with an input skips it, since the input overwrites it anyway,
+// except a field taking a JSON object, since its JSON input is merged onto the default.
+func (ref *metaRef) loadDefault() (rErr error) {
+	defer ref.asInvalidInput(&rErr)
 	typ, ok := ref.LookupType()
 	if !ok {
 		return fmt.Errorf("unable to determine type for %s", ref.InputName())
 	}
-	// Handle variadic arguments with multiple raw values
-	if len(ref.RawValues) > 0 {
-		return ref.parseVariadicRaw(ctx, typ)
-	}
-
-	// Handle variadic arguments with no values - create empty slice and validate
-	if tag, ok := ref.ArgTag(); ok && tag.IsVariadic && len(ref.RawValues) == 0 {
-		if typ.Kind() == reflect.Slice {
-			sliceVal := reflect.MakeSlice(typ, 0, 0)
-			ref.Node.Value.Set(sliceVal)
-			// Validate the empty slice against any length constraints
-			if ref.Node.Type == reftree.StructField {
-				if err := validate.StructField(ctx, ref.Node.StructField, sliceVal); err != nil {
-					if errors.Is(err, enum.ErrInvalid) {
-						return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), sliceVal)
-					}
-					return err
-				}
-			}
-			return nil
-		}
-	}
-
-	// Handle range arguments with no values - check if required
-	if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
-		actualLen := len(ref.RawValues)
-		if actualLen == 0 {
-			if ref.IsRequired() {
-				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
-			}
-			// Optional range with no args - set empty slice
-			if typ.Kind() == reflect.Slice {
-				sliceVal := reflect.MakeSlice(typ, 0, 0)
-				ref.Node.Value.Set(sliceVal)
-				return nil
-			}
-		}
-		// Note: partial provision (actualLen > 0 && actualLen < expectedLen) is handled in Validate()
-		// If we have some values but not enough, we still need to set what we got for the field
-		if typ.Kind() == reflect.Slice {
-			sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
-			for _, raw := range ref.RawValues {
-				elemVal, err := convkit.ParseReflect(typ.Elem(), raw)
-				if err != nil {
-					return err
-				}
-				sliceVal = reflect.Append(sliceVal, elemVal)
-			}
-			ref.Node.Value.Set(sliceVal)
-		}
-	}
-
-	if ref.IsSet {
-		return ref.parseRaw(ctx, typ, ref.Raw)
-	}
-	if envVal, ok := ref.LookupEnv(); ok {
-		return ref.parseRaw(ctx, typ, envVal)
-	}
-	if defVal, ok := ref.LookupDefault(); ok {
-		return ref.parseRaw(ctx, typ, defVal)
-	}
-	var isEmpty = reflectkit.IsEmpty(ref.Node.Value)
-	if !ref.IsRequired() && isEmpty {
+	if ref.HasInput() && !tagint.IsJSONObject(typ) {
 		return nil
 	}
-	if isEmpty {
-		return fmt.Errorf("missing input for %s", ref.InputName())
+	return ref.useDefault(typ)
+}
+
+// loadInput sets the field from its input, if it got one.
+func (ref *metaRef) loadInput() (rErr error) {
+	defer ref.asInvalidInput(&rErr)
+	typ, ok := ref.LookupType()
+	if !ok {
+		return fmt.Errorf("unable to determine type for %s", ref.InputName())
 	}
-	// switch ref.Node.Type {
-	// case reftree.StructField:
-	// 	return validate.StructField(ctx, ref.Node.StructField, ref.Node.Value)
-	// }
+	var err error
+	switch {
+	case len(ref.RawValues) > 0:
+		// Range and variadic args with values from the user.
+		// Partially provided ranges are rejected by metaH.Validate.
+		err = ref.parseVariadicRaw(typ)
+	case ref.IsSet:
+		err = ref.parseRaw(typ, ref.Raw)
+	default:
+		envVal, ok := ref.LookupEnv()
+		if !ok {
+			return nil
+		}
+		err = ref.parseRaw(typ, envVal)
+	}
+	if err != nil {
+		return err
+	}
+	ref.loaded = true
 	return nil
 }
 
-func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) error {
-	var opts []convkit.Option
-	if ref.Separator != "" {
-		opts = append(opts, convkit.Options{Separator: ref.Separator})
+// check validates the field's value when it got one of its own,
+// and otherwise reports the field as missing when it is required, but its value is empty.
+// A value from the JSON value of an outer struct field satisfies required as well,
+// and so does a value from the inner fields of a struct field.
+func (ref *metaRef) check(ctx context.Context) (rErr error) {
+	defer ref.asInvalidInput(&rErr)
+	if ref.loaded {
+		return ref.validate(ctx, ref.Node.Value)
 	}
+	typ, ok := ref.LookupType()
+	if !ok {
+		return fmt.Errorf("unable to determine type for %s", ref.InputName())
+	}
+	var isEmpty = reflectkit.IsEmpty(ref.Node.Value)
+	if tag, ok := ref.ArgTag(); ok && tag.IsSlice() && isEmpty {
+		return ref.parseEmptySliceArg(ctx, typ, tag)
+	}
+	if isEmpty && ref.IsRequired() {
+		return fmt.Errorf("missing input for %s", ref.InputName())
+	}
+	return nil
+}
 
+// parseEmptySliceArg handles a range or variadic arg that got no value from the user,
+// the environment, its `default` tag, or the handler itself.
+// A required one is a missing input, an optional one becomes an empty slice.
+func (ref metaRef) parseEmptySliceArg(ctx context.Context, typ reflect.Type, tag argTag) error {
+	if ref.IsRequired() {
+		return fmt.Errorf("missing arguments for %s: expected range %s", ref.InputName(), tag.RangeExpr())
+	}
+	if typ.Kind() != reflect.Slice {
+		return nil
+	}
+	sliceVal := reflect.MakeSlice(typ, 0, 0)
+	ref.Node.Value.Set(sliceVal)
+	// Validate the empty slice against any length constraints
+	return ref.validate(ctx, sliceVal)
+}
+
+// validate checks the value against the validation tags of the field, such as `enum` or `len`.
+func (ref metaRef) validate(ctx context.Context, value reflect.Value) error {
+	if ref.Node.Type != reftree.StructField {
+		return nil
+	}
+	if err := validate.StructField(ctx, ref.Node.StructField, value); err != nil {
+		// enum error is considered as a user error,
+		// thus we intercept the validation error
+		// and return back the list of enum values which are accepted for this field.
+		if errors.Is(err, enum.ErrInvalid) {
+			return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), value)
+		}
+		return err
+	}
+	return nil
+}
+
+// useDefault sets the field to its `default` tag value when the field is still zero.
+// A non-zero field holds a value pre-set on the handler, or one from the default of its struct field,
+// which must not be overwritten.
+func (ref *metaRef) useDefault(typ reflect.Type) error {
+	defVal, ok := ref.LookupDefault()
+	if !ok || !reflectkit.IsZero(ref.Node.Value) {
+		return nil
+	}
+	if err := ref.parseRaw(typ, defVal); err != nil {
+		return err
+	}
+	ref.loaded = true
+	return nil
+}
+
+// parseRaw parses the raw input value, and sets the field to it.
+// The value is validated only once every input field is loaded, see metaRef.check.
+func (ref metaRef) parseRaw(typ reflect.Type, raw string) error {
 	// Handle multiple flag repetitions by splitting on the internal separator first.
 	// This allows both `-v foo,bar -v baz` and `-vs foo/bar/baz` to work correctly.
 	var value reflect.Value
@@ -1162,7 +1306,7 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 		case reflect.Slice:
 			sliceVal := reflect.MakeSlice(typ, 0, 0)
 			for _, part := range parts {
-				partVal, err := convkit.ParseReflect(typ, part, opts...)
+				partVal, err := ref.parseValue(typ, part)
 				if err != nil {
 					return err
 				}
@@ -1175,33 +1319,61 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 		default:
 			// For non-slice types, just use the first value.
 			var err error
-			value, err = convkit.ParseReflect(typ, parts[0], opts...)
+			value, err = ref.parseValue(typ, parts[0])
 			if err != nil {
 				return err
 			}
 		}
 	} else {
 		var err error
-		value, err = convkit.ParseReflect(typ, raw, opts...)
+		value, err = ref.parseValue(typ, raw)
 		if err != nil {
-			return err
-		}
-	}
-
-	if ref.Node.Type == reftree.StructField {
-		if err := validate.StructField(ctx, ref.Node.StructField, value); err != nil {
-			// enum error is soncidered as a user error,
-			// this we intercept the validation error
-			// and return back the list of enum value which are accepted for this field.
-			if errors.Is(err, enum.ErrInvalid) {
-				return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), value)
-			}
 			return err
 		}
 	}
 
 	ref.Node.Value.Set(value)
 	return nil
+}
+
+// parseValue parses a raw input value as the given type.
+//
+// A slice value is split with the `separator` tag of the field, or with tagint.DefaultSeparator when it has none.
+// A JSON array is parsed as JSON, which allows passing list elements that contain the separator.
+// A JSON object for the field itself is merged onto the field's current value.
+// The env package follows the same rules.
+func (ref metaRef) parseValue(typ reflect.Type, raw string) (reflect.Value, error) {
+	opts := convkit.Options{
+		Separator:  tagint.Separator(ref.Separator, raw),
+		TimeLayout: ref.TimeLayout(),
+	}
+	if typ == ref.Node.Value.Type() {
+		return tagint.ParseOnto(ref.Node.Value, raw, opts)
+	}
+	return convkit.ParseReflect(typ, raw, opts)
+}
+
+// TimeLayout is the layout used to parse a time.Time input.
+// It comes from the `layout` tag, and without one, the input is expected in RFC3339 format.
+func (ref metaRef) TimeLayout() string {
+	if layout, ok, _ := tagint.TimeLayout.Lookup(ref.Node.StructField); ok && layout != "" {
+		return layout
+	}
+	return time.RFC3339
+}
+
+var typeTime = reflectkit.TypeOf[time.Time]()
+
+// IsTime reports whether the input is a time.Time, or a pointer or slice of it.
+func (ref metaRef) IsTime() bool {
+	typ, ok := ref.LookupType()
+	if !ok {
+		return false
+	}
+	for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice {
+		typ = typ.Elem()
+	}
+	return typ == typeTime
 }
 
 func (ref metaRef) LookupType() (reflect.Type, bool) {

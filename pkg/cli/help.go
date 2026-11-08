@@ -183,6 +183,10 @@ func helpCreateUsage(h Handler, command string) string {
 				line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
 			}
 
+			if flag.Ref.IsTime() {
+				line += fmt.Sprintf(" (layout: %q)", flag.Ref.TimeLayout())
+			}
+
 			def, ok := flag.Ref.LookupDefault()
 			if ok && 0 < len(def) {
 				line += fmt.Sprintf(" (default: %q)", def)
@@ -213,6 +217,10 @@ func helpCreateUsage(h Handler, command string) string {
 
 			if desc, ok := arg.Ref.LookupDescription(); ok {
 				line += ": " + desc
+			}
+
+			if arg.Ref.IsTime() {
+				line += fmt.Sprintf(" (layout: %q)", arg.Ref.TimeLayout())
 			}
 
 			defVal, ok := arg.Ref.LookupDefault()
@@ -248,6 +256,9 @@ func helpCreateUsage(h Handler, command string) string {
 			var description string
 			if desc, ok := ref.LookupDescription(); ok {
 				description += desc
+			}
+			if ref.IsTime() {
+				description = fmt.Sprintf("%s (layout: %q)", description, ref.TimeLayout())
 			}
 			if defVal, ok := ref.LookupDefault(); ok {
 				description = fmt.Sprintf("%s (default: %q)", description, defVal)

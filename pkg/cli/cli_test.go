@@ -3,13 +3,17 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1405,6 +1409,2044 @@ func TestServeCLI(t *testing.T) {
 			})
 		})
 	})
+
+	s.Context("default tag", func(s *testcase.Spec) {
+		const envKey = "CLI_TEST_DEFAULT_TAG_ENV" // the env tag of CommandWithDefaultTags.Env
+
+		var (
+			got = let.VarOf[*CommandWithDefaultTags](s, nil)
+			cmd = let.Var(s, func(t *testcase.T) CommandWithDefaultTags {
+				return CommandWithDefaultTags{
+					Callback: func(v CommandWithDefaultTags, w cli.ResponseWriter, r *cli.Request) {
+						got.Set(t, &v)
+					},
+				}
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return cmd.Get(t)
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, envKey)
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("default values are used for the inputs the user didn't provide", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Flag, "flag-default")
+			assert.Equal(t, got.Get(t).Bool, true)
+			assert.Equal(t, got.Get(t).Env, "env-default")
+			assert.Equal(t, got.Get(t).Arg, "arg-default")
+		})
+
+		s.When("the user provides the inputs", func(s *testcase.Spec) {
+			var (
+				flagVal = let.StringNC(s, 8, random.CharsetAlpha())
+				envVal  = let.StringNC(s, 8, random.CharsetAlpha())
+				argVal  = let.StringNC(s, 8, random.CharsetAlpha())
+			)
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, "-flag", flagVal.Get(t), "-bool=false", argVal.Get(t))
+				return r
+			})
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, envKey, envVal.Get(t))
+			})
+
+			s.Then("the user input takes precedence over the default tag values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, flagVal.Get(t))
+				assert.Equal(t, got.Get(t).Bool, false)
+				assert.Equal(t, got.Get(t).Env, envVal.Get(t))
+				assert.Equal(t, got.Get(t).Arg, argVal.Get(t))
+			})
+		})
+
+		s.When("the registered handler has a dependency", func(s *testcase.Spec) {
+			dependency := let.StringNC(s, 8, random.CharsetAlpha())
+
+			cmd.Let(s, func(t *testcase.T) CommandWithDefaultTags {
+				c := cmd.Super(t)
+				c.Dependency = dependency.Get(t)
+				return c
+			})
+
+			s.Then("the dependency is kept, and the inputs get their default values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Dependency, dependency.Get(t))
+				assert.Equal(t, got.Get(t).Flag, "flag-default")
+				assert.Equal(t, got.Get(t).Bool, true)
+				assert.Equal(t, got.Get(t).Env, "env-default")
+				assert.Equal(t, got.Get(t).Arg, "arg-default")
+			})
+		})
+
+		s.When("the registered handler has only some of its inputs pre-set", func(s *testcase.Spec) {
+			preFlag := let.StringNC(s, 8, random.CharsetAlpha())
+
+			cmd.Let(s, func(t *testcase.T) CommandWithDefaultTags {
+				c := cmd.Super(t)
+				c.Flag = preFlag.Get(t)
+				return c
+			})
+
+			s.Then("the pre-set input is kept, and the rest of the inputs get their default values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, preFlag.Get(t))
+				assert.Equal(t, got.Get(t).Bool, true)
+				assert.Equal(t, got.Get(t).Env, "env-default")
+				assert.Equal(t, got.Get(t).Arg, "arg-default")
+			})
+		})
+
+		s.When("an input is pre-set to its zero value, while its default tag has a different value", func(s *testcase.Spec) {
+			cmd.Let(s, func(t *testcase.T) CommandWithDefaultTags {
+				c := cmd.Super(t)
+				c.Bool = false
+				return c
+			})
+
+			s.Then("the default value is used, since a zero value can't be told apart from an unset one", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Bool, true)
+			})
+
+			s.And("the user sets the input to its zero value explicitly", func(s *testcase.Spec) {
+				request.Let(s, func(t *testcase.T) *cli.Request {
+					r := request.Super(t)
+					r.Args = append(r.Args, "-bool=false")
+					return r
+				})
+
+				s.Then("the user input is used instead of the default value", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Bool, false)
+				})
+			})
+		})
+
+		s.When("the registered handler has pre-set values", func(s *testcase.Spec) {
+			var (
+				preFlag = let.StringNC(s, 8, random.CharsetAlpha())
+				preEnv  = let.StringNC(s, 8, random.CharsetAlpha())
+				preArg  = let.StringNC(s, 8, random.CharsetAlpha())
+			)
+			cmd.Let(s, func(t *testcase.T) CommandWithDefaultTags {
+				c := cmd.Super(t)
+				c.Flag = preFlag.Get(t)
+				c.Env = preEnv.Get(t)
+				c.Arg = preArg.Get(t)
+				return c
+			})
+
+			s.Then("the pre-set values are kept instead of being overwritten by the default tag", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, preFlag.Get(t))
+				assert.Equal(t, got.Get(t).Env, preEnv.Get(t))
+				assert.Equal(t, got.Get(t).Arg, preArg.Get(t))
+				assert.Equal(t, got.Get(t).Bool, true, assert.Message("the input that wasn't pre-set should get its default value"))
+			})
+
+			s.And("the user provides the inputs", func(s *testcase.Spec) {
+				var (
+					flagVal = let.StringNC(s, 8, random.CharsetAlpha())
+					envVal  = let.StringNC(s, 8, random.CharsetAlpha())
+					argVal  = let.StringNC(s, 8, random.CharsetAlpha())
+				)
+				request.Let(s, func(t *testcase.T) *cli.Request {
+					r := request.Super(t)
+					r.Args = append(r.Args, "-flag", flagVal.Get(t), argVal.Get(t))
+					return r
+				})
+				s.Before(func(t *testcase.T) {
+					testcase.SetEnv(t, envKey, envVal.Get(t))
+				})
+
+				s.Then("the user input takes precedence over the pre-set values", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Flag, flagVal.Get(t))
+					assert.Equal(t, got.Get(t).Env, envVal.Get(t))
+					assert.Equal(t, got.Get(t).Arg, argVal.Get(t))
+				})
+			})
+		})
+	})
+
+	s.Context("bool input with a true default tag", func(s *testcase.Spec) {
+		const envKey = "CLI_TEST_TRUE_DEFAULT_BOOL_ENV" // the env tag of CommandWithTrueDefaultBools.Env
+
+		var (
+			got        = let.VarOf[*CommandWithTrueDefaultBools](s, nil)
+			falseInput = let.Var(s, func(t *testcase.T) string {
+				return random.Pick(t.Random, "false", "False", "FALSE", "f", "F", "0")
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithTrueDefaultBools{
+				Callback: func(v CommandWithTrueDefaultBools, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, envKey)
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the bool inputs the user didn't provide are true", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Flag, true)
+			assert.Equal(t, got.Get(t).Env, true)
+			assert.Equal(t, got.Get(t).Arg, true)
+		})
+
+		s.When("the user passes false with the flag", func(s *testcase.Spec) {
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, "-flag="+falseInput.Get(t))
+				return r
+			})
+
+			s.Then("the flag is false instead of its true default", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, false)
+				assert.Equal(t, got.Get(t).Env, true)
+				assert.Equal(t, got.Get(t).Arg, true)
+			})
+		})
+
+		s.When("the environment variable is set to false", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, envKey, falseInput.Get(t))
+			})
+
+			s.Then("the env input is false instead of its true default", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Env, false)
+				assert.Equal(t, got.Get(t).Flag, true)
+				assert.Equal(t, got.Get(t).Arg, true)
+			})
+		})
+
+		s.When("the user passes false as the argument", func(s *testcase.Spec) {
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, falseInput.Get(t))
+				return r
+			})
+
+			s.Then("the arg is false instead of its true default", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Arg, false)
+				assert.Equal(t, got.Get(t).Flag, true)
+				assert.Equal(t, got.Get(t).Env, true)
+			})
+		})
+	})
+
+	s.Context("slice args with a default tag", func(s *testcase.Spec) {
+		const ( // the env tags of CommandWithSliceArgDefaults
+			rangeEnvKey    = "CLI_TEST_SLICE_ARG_RANGE_ENV"
+			variadicEnvKey = "CLI_TEST_SLICE_ARG_VARIADIC_ENV"
+		)
+
+		var (
+			got = let.VarOf[*CommandWithSliceArgDefaults](s, nil)
+			cmd = let.Var(s, func(t *testcase.T) CommandWithSliceArgDefaults {
+				return CommandWithSliceArgDefaults{
+					Callback: func(v CommandWithSliceArgDefaults, w cli.ResponseWriter, r *cli.Request) {
+						got.Set(t, &v)
+					},
+				}
+			})
+			userRange = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, 2)
+			})
+			userVariadic = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(1, 5))
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return cmd.Get(t)
+		})
+
+		givenTheUserProvidesTheArgs := func(s *testcase.Spec) {
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, userRange.Get(t)...)
+				r.Args = append(r.Args, userVariadic.Get(t)...)
+				return r
+			})
+		}
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, rangeEnvKey)
+			testcase.UnsetEnv(t, variadicEnvKey)
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("default values are used for the args the user didn't provide", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Range, []string{"r1", "r2"})
+			assert.Equal(t, got.Get(t).Variadic, []string{"v1", "v2", "v3"})
+		})
+
+		s.When("the user provides the args", func(s *testcase.Spec) {
+			givenTheUserProvidesTheArgs(s)
+
+			s.Then("the user input takes precedence over the default tag values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Range, userRange.Get(t))
+				assert.Equal(t, got.Get(t).Variadic, userVariadic.Get(t))
+			})
+		})
+
+		s.When("the user provides only the range args", func(s *testcase.Spec) {
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, userRange.Get(t)...)
+				return r
+			})
+
+			s.Then("the range arg gets the user input, and the variadic arg gets its default value", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Range, userRange.Get(t))
+				assert.Equal(t, got.Get(t).Variadic, []string{"v1", "v2", "v3"})
+			})
+		})
+
+		s.When("the environment variables of the args are set", func(s *testcase.Spec) {
+			var (
+				envRange = let.Var(s, func(t *testcase.T) []string {
+					return makeWords(t, 2)
+				})
+				envVariadic = let.Var(s, func(t *testcase.T) []string {
+					return makeWords(t, t.Random.IntBetween(1, 5))
+				})
+			)
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, rangeEnvKey, strings.Join(envRange.Get(t), ","))
+				testcase.SetEnv(t, variadicEnvKey, strings.Join(envVariadic.Get(t), ","))
+			})
+
+			s.Then("the env values take precedence over the default tag values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Range, envRange.Get(t))
+				assert.Equal(t, got.Get(t).Variadic, envVariadic.Get(t))
+			})
+
+			s.And("the user provides the args", func(s *testcase.Spec) {
+				givenTheUserProvidesTheArgs(s)
+
+				s.Then("the user input takes precedence over the env values", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Range, userRange.Get(t))
+					assert.Equal(t, got.Get(t).Variadic, userVariadic.Get(t))
+				})
+			})
+		})
+
+		s.When("the registered handler has pre-set values", func(s *testcase.Spec) {
+			var (
+				preRange = let.Var(s, func(t *testcase.T) []string {
+					return makeWords(t, 2)
+				})
+				preVariadic = let.Var(s, func(t *testcase.T) []string {
+					return makeWords(t, t.Random.IntBetween(1, 5))
+				})
+			)
+			cmd.Let(s, func(t *testcase.T) CommandWithSliceArgDefaults {
+				c := cmd.Super(t)
+				c.Range = preRange.Get(t)
+				c.Variadic = preVariadic.Get(t)
+				return c
+			})
+
+			s.Then("the pre-set values are kept instead of being overwritten by the default tag", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Range, preRange.Get(t))
+				assert.Equal(t, got.Get(t).Variadic, preVariadic.Get(t))
+			})
+
+			s.And("the user provides the args", func(s *testcase.Spec) {
+				givenTheUserProvidesTheArgs(s)
+
+				s.Then("the user input takes precedence over the pre-set values", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Range, userRange.Get(t))
+					assert.Equal(t, got.Get(t).Variadic, userVariadic.Get(t))
+				})
+			})
+		})
+
+		s.When("the registered handler has only the variadic arg pre-set", func(s *testcase.Spec) {
+			preVariadic := let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(1, 5))
+			})
+			cmd.Let(s, func(t *testcase.T) CommandWithSliceArgDefaults {
+				c := cmd.Super(t)
+				c.Variadic = preVariadic.Get(t)
+				return c
+			})
+
+			s.Then("the pre-set value is kept, and the range arg gets its default value", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Variadic, preVariadic.Get(t))
+				assert.Equal(t, got.Get(t).Range, []string{"r1", "r2"})
+			})
+		})
+	})
+
+	s.Context("required slice args", func(s *testcase.Spec) {
+		const ( // the env tags of CommandWithRequiredSliceArgs
+			rangeEnvKey    = "CLI_TEST_REQUIRED_SLICE_ARG_RANGE_ENV"
+			variadicEnvKey = "CLI_TEST_REQUIRED_SLICE_ARG_VARIADIC_ENV"
+		)
+
+		var (
+			got = let.VarOf[*CommandWithRequiredSliceArgs](s, nil)
+			cmd = let.Var(s, func(t *testcase.T) CommandWithRequiredSliceArgs {
+				return CommandWithRequiredSliceArgs{
+					Callback: func(v CommandWithRequiredSliceArgs, w cli.ResponseWriter, r *cli.Request) {
+						got.Set(t, &v)
+					},
+				}
+			})
+			userRange = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, 2)
+			})
+			userVariadic = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(1, 5))
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return cmd.Get(t)
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, userRange.Get(t)...)
+			r.Args = append(r.Args, userVariadic.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, rangeEnvKey)
+			testcase.UnsetEnv(t, variadicEnvKey)
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the handler gets the user input", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Range, userRange.Get(t))
+			assert.Equal(t, got.Get(t).Variadic, userVariadic.Get(t))
+		})
+
+		s.When("the user provides only the range args", func(s *testcase.Spec) {
+			userVariadic.Let(s, func(t *testcase.T) []string {
+				return nil
+			})
+
+			s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "missing arguments for")
+				assert.Contains(t, response.Get(t).Err.String(), "Variadic")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+		})
+
+		s.When("the user doesn't provide any of the args", func(s *testcase.Spec) {
+			userRange.Let(s, func(t *testcase.T) []string {
+				return nil
+			})
+			userVariadic.Let(s, func(t *testcase.T) []string {
+				return nil
+			})
+
+			s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "missing arguments for")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+
+			s.And("the registered handler has pre-set values", func(s *testcase.Spec) {
+				var (
+					preRange = let.Var(s, func(t *testcase.T) []string {
+						return makeWords(t, 2)
+					})
+					preVariadic = let.Var(s, func(t *testcase.T) []string {
+						return makeWords(t, t.Random.IntBetween(1, 5))
+					})
+				)
+				cmd.Let(s, func(t *testcase.T) CommandWithRequiredSliceArgs {
+					c := cmd.Super(t)
+					c.Range = preRange.Get(t)
+					c.Variadic = preVariadic.Get(t)
+					return c
+				})
+
+				s.Then("the pre-set values satisfy the requirement, and they are kept", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Range, preRange.Get(t))
+					assert.Equal(t, got.Get(t).Variadic, preVariadic.Get(t))
+				})
+			})
+
+			s.And("the environment variables of the args are set", func(s *testcase.Spec) {
+				var (
+					envRange = let.Var(s, func(t *testcase.T) []string {
+						return makeWords(t, 2)
+					})
+					envVariadic = let.Var(s, func(t *testcase.T) []string {
+						return makeWords(t, t.Random.IntBetween(1, 5))
+					})
+				)
+				s.Before(func(t *testcase.T) {
+					testcase.SetEnv(t, rangeEnvKey, strings.Join(envRange.Get(t), ","))
+					testcase.SetEnv(t, variadicEnvKey, strings.Join(envVariadic.Get(t), ","))
+				})
+
+				s.Then("the env values satisfy the requirement, and they are used", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Range, envRange.Get(t))
+					assert.Equal(t, got.Get(t).Variadic, envVariadic.Get(t))
+				})
+			})
+		})
+	})
+
+	s.Context("slice inputs without a separator tag", func(s *testcase.Spec) {
+		const envKey = "CLI_TEST_SLICE_WITHOUT_SEP_ENV" // the env tag of CommandWithSliceInputsWithoutSeparatorTag.Env
+
+		var (
+			got       = let.VarOf[*CommandWithSliceInputsWithoutSeparatorTag](s, nil)
+			flagWords = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(2, 5))
+			})
+			flagValue = let.Var(s, func(t *testcase.T) string {
+				return strings.Join(flagWords.Get(t), ",")
+			})
+			envInts = let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(2, 5), func() int {
+					return t.Random.IntBetween(0, 1000)
+				})
+			})
+			envValue = let.Var(s, func(t *testcase.T) string {
+				return strings.Join(slicekit.Map(envInts.Get(t), strconv.Itoa), ",")
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithSliceInputsWithoutSeparatorTag{
+				Callback: func(v CommandWithSliceInputsWithoutSeparatorTag, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, "-flag", flagValue.Get(t))
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.SetEnv(t, envKey, envValue.Get(t))
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the flag value is split on commas", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Flag, flagWords.Get(t))
+		})
+
+		s.Then("the env value is split on commas", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+		})
+
+		s.Then("the default tag value is split on commas", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Default, []string{"foo", "bar", "baz"})
+		})
+
+		s.When("the flag is repeated", func(s *testcase.Spec) {
+			moreWords := let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(1, 3))
+			})
+			request.Let(s, func(t *testcase.T) *cli.Request {
+				r := request.Super(t)
+				r.Args = append(r.Args, "-flag", strings.Join(moreWords.Get(t), ","))
+				return r
+			})
+
+			s.Then("each flag value is split on commas, and the values are combined", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, append(slicekit.Clone(flagWords.Get(t)), moreWords.Get(t)...))
+			})
+		})
+
+		s.When("the env value is a single number, which is also valid JSON", func(s *testcase.Spec) {
+			envInts.Let(s, func(t *testcase.T) []int {
+				return []int{t.Random.IntBetween(0, 1000)}
+			})
+
+			s.Then("it is parsed as a list with a single element, since only JSON arrays are parsed as JSON", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+			})
+		})
+
+		s.When("the values are JSON arrays", func(s *testcase.Spec) {
+			flagWords.Let(s, func(t *testcase.T) []string {
+				return random.Slice(t.Random.IntBetween(1, 3), func() string {
+					return strings.Join(makeWords(t, 2), ",") // a comma inside of a JSON array element
+				})
+			})
+			flagValue.Let(s, func(t *testcase.T) string {
+				data, err := json.Marshal(flagWords.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+			envValue.Let(s, func(t *testcase.T) string {
+				data, err := json.Marshal(envInts.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("they are parsed as JSON, instead of being split on commas", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, flagWords.Get(t))
+				assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+			})
+		})
+	})
+
+	s.Context("slice inputs with a separator tag", func(s *testcase.Spec) {
+		const (
+			envKey    = "CLI_TEST_SLICE_WITH_SEP_ENV" // the env tag of CommandWithSliceInputsWithSeparatorTag.Env
+			separator = ";"                           // the sep tag of the CommandWithSliceInputsWithSeparatorTag fields
+		)
+
+		var (
+			got       = let.VarOf[*CommandWithSliceInputsWithSeparatorTag](s, nil)
+			flagWords = let.Var(s, func(t *testcase.T) []string {
+				return makeWords(t, t.Random.IntBetween(2, 5))
+			})
+			flagValue = let.Var(s, func(t *testcase.T) string {
+				return strings.Join(flagWords.Get(t), separator)
+			})
+			envInts = let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(2, 5), func() int {
+					return t.Random.IntBetween(0, 1000)
+				})
+			})
+			envValue = let.Var(s, func(t *testcase.T) string {
+				return strings.Join(slicekit.Map(envInts.Get(t), strconv.Itoa), separator)
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithSliceInputsWithSeparatorTag{
+				Callback: func(v CommandWithSliceInputsWithSeparatorTag, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, "-flag", flagValue.Get(t))
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.SetEnv(t, envKey, envValue.Get(t))
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the values are split on the separator", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Flag, flagWords.Get(t))
+			assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+		})
+
+		s.When("the env value is a single number, which is also valid JSON", func(s *testcase.Spec) {
+			envInts.Let(s, func(t *testcase.T) []int {
+				return []int{t.Random.IntBetween(0, 1000)}
+			})
+
+			s.Then("it is parsed as a list with a single element, since only JSON arrays are parsed as JSON", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+			})
+		})
+
+		s.When("the values are JSON arrays", func(s *testcase.Spec) {
+			flagWords.Let(s, func(t *testcase.T) []string {
+				return random.Slice(t.Random.IntBetween(1, 3), func() string {
+					return strings.Join(makeWords(t, 2), separator) // the separator inside of a JSON array element
+				})
+			})
+			flagValue.Let(s, func(t *testcase.T) string {
+				data, err := json.Marshal(flagWords.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+			envValue.Let(s, func(t *testcase.T) string {
+				data, err := json.Marshal(envInts.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+
+			s.Then("they are parsed as JSON, the same way as the env package does", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Flag, flagWords.Get(t))
+				assert.Equal(t, got.Get(t).Env, envInts.Get(t))
+			})
+		})
+	})
+
+	s.Context("time.Time field", func(s *testcase.Spec) {
+		const layout = "2006-01-02" // the layout tag of CommandWithTimeFlags.Date and CommandWithTimeFlags.Since
+
+		var (
+			got  = let.VarOf[*CommandWithTimeFlags](s, nil)
+			date = let.Var(s, func(t *testcase.T) time.Time {
+				d, err := time.Parse(layout, t.Random.Time().Format(layout))
+				assert.Must(t).NoError(err)
+				return d
+			})
+			args = let.Var(s, func(t *testcase.T) []string {
+				return []string{"-date", date.Get(t).Format(layout)}
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithTimeFlags{
+				Callback: func(v CommandWithTimeFlags, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, args.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the value is parsed with the layout from the layout tag", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.True(t, got.Get(t).Date.Equal(date.Get(t)),
+				assert.MessageF("expected %s, got %s", date.Get(t), got.Get(t).Date))
+		})
+
+		s.Then("the default tag value is parsed with the layout from the layout tag", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			exp := time.Date(2000, time.January, 2, 0, 0, 0, 0, time.UTC)
+			assert.True(t, got.Get(t).Since.Equal(exp),
+				assert.MessageF("expected %s, got %s", exp, got.Get(t).Since))
+		})
+
+		s.When("the field has no layout tag", func(s *testcase.Spec) {
+			at := let.Time(s)
+
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-at", at.Get(t).Format(time.RFC3339)}
+			})
+
+			s.Then("the value is parsed as RFC3339", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.True(t, got.Get(t).At.Equal(at.Get(t)),
+					assert.MessageF("expected %s, got %s", at.Get(t), got.Get(t).At))
+			})
+		})
+
+		s.When("the value doesn't match the layout", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-date", date.Get(t).Format("02/01/2006")}
+			})
+
+			s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "Invalid input")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+		})
+
+		s.When("help is requested", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-help"}
+			})
+
+			s.Then("the expected layout of each time.Time flag is documented", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				out := response.Get(t).Out.String()
+				assert.MatchRegexp(t, out, `-date=\S+.*`+regexp.QuoteMeta(layout))
+				assert.MatchRegexp(t, out, `-at=\S+.*`+regexp.QuoteMeta(time.RFC3339))
+			})
+		})
+	})
+
+	s.Context(`fields tagged as opaque`, func(s *testcase.Spec) {
+		const (
+			tokenEnvKey  = "CLI_TEST_FOREIGN_TOKEN_ENV"  // the env tag of ForeignConfig.Token
+			configEnvKey = "CLI_TEST_FOREIGN_CONFIG_ENV" // the env tag of CommandWithOpaqueFields.Config
+		)
+
+		var (
+			got        = let.VarOf[*CommandWithOpaqueFields](s, nil)
+			name       = let.StringNC(s, 8, random.CharsetAlpha())
+			dependency = let.Var(s, func(t *testcase.T) *ForeignConfig {
+				// Name is left empty, so its default tag value would show if the cli package reached it.
+				return &ForeignConfig{Token: t.Random.StringNC(8, random.CharsetAlpha())}
+			})
+			config = let.Var(s, func(t *testcase.T) ForeignConfig {
+				return ForeignConfig{
+					Name:  t.Random.StringNC(8, random.CharsetAlpha()),
+					Token: t.Random.StringNC(8, random.CharsetAlpha()),
+					Paths: makeWords(t, t.Random.IntBetween(1, 3)),
+				}
+			})
+			configJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(config.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+			args = let.Var(s, func(t *testcase.T) []string {
+				return []string{"-name", name.Get(t)}
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithOpaqueFields{
+				Callback: func(v CommandWithOpaqueFields, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+				Pointer: dependency.Get(t),
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, args.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			// ForeignConfig.Token is required, so it would fail the command if it were an input.
+			testcase.UnsetEnv(t, tokenEnvKey)
+			testcase.UnsetEnv(t, configEnvKey)
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the handler's own inputs are configured, even when an opaque field's type uses the same input names", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Name, name.Get(t))
+		})
+
+		s.Then("the fields of an opaque field's type are not inputs, so their default tags are not applied, and their required tags are not enforced", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).ForeignConfig, ForeignConfig{})
+			assert.Equal(t, got.Get(t).Field, ForeignConfig{})
+			assert.Equal(t, got.Get(t).Config, ForeignConfig{})
+		})
+
+		s.Then("the norecurse alias works the same as the opaque tag", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Alias, ForeignConfig{})
+		})
+
+		s.Then(`a field tagged with opaque:"false" is looked into as usual`, func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Settings.Level, "info")
+		})
+
+		s.Then("a dependency behind an opaque pointer field is left untouched", func(t *testcase.T) {
+			exp := *dependency.Get(t)
+
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.True(t, got.Get(t).Pointer == dependency.Get(t))
+			assert.Equal(t, *dependency.Get(t), exp)
+		})
+
+		s.When("the env var of an opaque field's type is set", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, tokenEnvKey, t.Random.StringNC(8, random.CharsetAlpha()))
+			})
+
+			s.Then("it is not read", func(t *testcase.T) {
+				exp := *dependency.Get(t)
+
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Empty(t, got.Get(t).ForeignConfig.Token)
+				assert.Empty(t, got.Get(t).Field.Token)
+				assert.Empty(t, got.Get(t).Alias.Token)
+				assert.Empty(t, got.Get(t).Config.Token)
+				assert.Equal(t, *dependency.Get(t), exp)
+			})
+		})
+
+		s.When("a flag of an opaque field's type is given", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-token", t.Random.StringNC(8, random.CharsetAlpha())}
+			})
+
+			s.Then("it is rejected as an undefined flag without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "-token")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+		})
+
+		s.When("the opaque field is an input itself, and its flag gets a JSON value", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-config", configJSON.Get(t)}
+			})
+
+			s.Then("the JSON value is parsed into the field", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Config, config.Get(t))
+			})
+
+			s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+				configJSON.Let(s, func(t *testcase.T) string {
+					return fmt.Sprintf(`{"Name":%d}`, t.Random.Int())
+				})
+
+				s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input")
+					assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+				})
+			})
+		})
+
+		s.When("the opaque field is an input itself, and its env var holds a JSON value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, configEnvKey, configJSON.Get(t))
+			})
+
+			s.Then("the JSON value is parsed into the field", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Config, config.Get(t))
+			})
+		})
+
+		s.When("help is requested", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-help"}
+			})
+
+			s.Then("only the handler's own inputs are documented", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				out := response.Get(t).Out.String()
+				assert.Contains(t, out, "-name")
+				assert.Contains(t, out, "-config")
+				assert.Contains(t, out, "-level")
+				assert.Contains(t, out, configEnvKey)
+				assert.NotContains(t, out, "-token")
+				assert.NotContains(t, out, tokenEnvKey)
+				assert.NotContains(t, out, "foreign-default")
+				assert.NotContains(t, out, "Paths")
+			})
+		})
+
+		s.When("the opaque tag has an invalid value", func(s *testcase.Spec) {
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				return CommandWithInvalidOpaqueTagValue{}
+			})
+
+			s.Then("it panics with the field, the tag and the invalid value, so a mistyped tag can't go unnoticed", func(t *testcase.T) {
+				msg := fmt.Sprint(assert.Panic(t, func() { act(t) }))
+				assert.Contains(t, msg, "Settings")
+				assert.Contains(t, msg, "opaque")
+				assert.Contains(t, msg, "maybe")
+			})
+		})
+	})
+
+	s.Context(`struct fields which are inputs themselves`, func(s *testcase.Spec) {
+		const (
+			retryEnvKey  = "CLI_TEST_RETRY_ENV"   // the env tag of CommandWithStructInputs.Retry
+			dbEnvKey     = "CLI_TEST_DB_ENV"      // the env tag of CommandWithStructInputs.DB
+			dbHostEnvKey = "CLI_TEST_DB_HOST_ENV" // the env tag of DBConfig.Host
+			dbPortEnvKey = "CLI_TEST_DB_PORT_ENV" // the env tag of DBConfig.Port
+
+			authEnvKey      = "CLI_TEST_AUTH_ENV"       // the env tag of CommandWithStructInputs.Auth
+			authTokenEnvKey = "CLI_TEST_AUTH_TOKEN_ENV" // the env tag of AuthConfig.Token
+		)
+
+		var (
+			got  = let.VarOf[*CommandWithStructInputs](s, nil)
+			args = let.Var(s, func(t *testcase.T) []string {
+				return nil
+			})
+			retry = let.Var(s, func(t *testcase.T) RetryPolicy {
+				return RetryPolicy{
+					Max:     t.Random.IntBetween(1, 10),
+					Backoff: time.Duration(t.Random.IntBetween(1, 60)) * time.Second,
+				}
+			})
+			retryJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(retry.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+			db = let.Var(s, func(t *testcase.T) DBConfig {
+				return DBConfig{
+					Host: t.Random.StringNC(8, random.CharsetAlpha()),
+					Port: t.Random.IntBetween(2000, 2999),
+				}
+			})
+			dbJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(db.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+			// the inner values use a port range that differs from db's, so they can't be mistaken for each other.
+			innerHost = let.StringNC(s, 8, random.CharsetAlpha())
+			innerPort = let.IntB(s, 1000, 1999)
+			// innerToken is set as the env var of the required inner field, so the scenarios not about it stay valid.
+			innerToken = let.StringNC(s, 8, random.CharsetAlpha())
+			auth       = let.Var(s, func(t *testcase.T) AuthConfig {
+				return AuthConfig{Token: t.Random.StringNC(8, random.CharsetAlpha())}
+			})
+			authJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(auth.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithStructInputs{
+				Callback: func(v CommandWithStructInputs, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, args.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, retryEnvKey)
+			testcase.UnsetEnv(t, dbEnvKey)
+			testcase.UnsetEnv(t, dbHostEnvKey)
+			testcase.UnsetEnv(t, dbPortEnvKey)
+			testcase.UnsetEnv(t, authEnvKey)
+			testcase.SetEnv(t, authTokenEnvKey, innerToken.Get(t))
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the inner fields are configured from their own tags, like their defaults", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).DB, DBConfig{Host: "localhost", Port: 5432})
+			assert.Equal(t, got.Get(t).Retry, RetryPolicy{})
+		})
+
+		s.Then("a required inner field is configured from its own input", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Auth, AuthConfig{Token: innerToken.Get(t)})
+		})
+
+		s.When("the flag of a struct field without cli tags of its own gets a JSON value", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-retry", retryJSON.Get(t)}
+			})
+
+			s.Then("the JSON value is parsed into the field", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Retry, retry.Get(t))
+			})
+
+			s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+				retryJSON.Let(s, func(t *testcase.T) string {
+					return fmt.Sprintf(`{"Max":%q}`, t.Random.StringNC(8, random.CharsetAlpha()))
+				})
+
+				s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input")
+					assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+				})
+			})
+		})
+
+		s.When("the env var of a struct field without cli tags of its own holds a JSON value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, retryEnvKey, retryJSON.Get(t))
+			})
+
+			s.Then("the JSON value is parsed into the field", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Retry, retry.Get(t))
+			})
+		})
+
+		s.When("the flags of the inner fields are given", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-db-host", innerHost.Get(t), "-db-port", strconv.Itoa(innerPort.Get(t))}
+			})
+
+			s.Then("the inner fields are configured from them", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).DB, DBConfig{Host: innerHost.Get(t), Port: innerPort.Get(t)})
+			})
+		})
+
+		s.When("the flag of a struct field with cli tags of its own gets a JSON value", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-db", dbJSON.Get(t)}
+			})
+
+			s.Then("the JSON value is parsed onto the inner fields, overwriting their defaults", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).DB, db.Get(t))
+			})
+
+			s.And("the flags of the inner fields are given too, even after it", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return append(args.Super(t), "-db-host", innerHost.Get(t), "-db-port", strconv.Itoa(innerPort.Get(t)))
+				})
+
+				s.Then("the inner fields are configured first, then the JSON value overwrites them", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).DB, db.Get(t))
+				})
+			})
+
+			s.And("the JSON value has only some of the fields", func(s *testcase.Spec) {
+				dbJSON.Let(s, func(t *testcase.T) string {
+					return fmt.Sprintf(`{"Host":%q}`, db.Get(t).Host)
+				})
+
+				s.Then("the JSON value is merged onto the inner fields, so the absent ones keep their configured value", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).DB, DBConfig{Host: db.Get(t).Host, Port: 5432})
+				})
+			})
+
+			s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+				dbJSON.Let(s, func(t *testcase.T) string {
+					return fmt.Sprintf(`{"Port":%q}`, t.Random.StringNC(8, random.CharsetAlpha()))
+				})
+
+				s.Then("it is rejected as a bad request without calling the handler", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input")
+					assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+				})
+			})
+		})
+
+		s.When("the env var of a struct field with cli tags of its own holds a JSON value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, dbEnvKey, dbJSON.Get(t))
+			})
+
+			s.Then("the JSON value is parsed onto the inner fields, overwriting their defaults", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).DB, db.Get(t))
+			})
+
+			s.And("the env vars of the inner fields are set too", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					testcase.SetEnv(t, dbHostEnvKey, innerHost.Get(t))
+					testcase.SetEnv(t, dbPortEnvKey, strconv.Itoa(innerPort.Get(t)))
+				})
+
+				s.Then("the inner fields are configured first, then the JSON value overwrites them", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).DB, db.Get(t))
+				})
+			})
+		})
+
+		// required is checked once the whole configuring is complete,
+		// so a required inner field can be satisfied by the JSON value of its outer struct field too.
+		s.When("a required inner field gets no input", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.UnsetEnv(t, authTokenEnvKey)
+			})
+
+			s.Then("it is rejected as a bad request that names the input, without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "auth-token")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+
+			s.And("the flag of the outer struct field gets a JSON value with it", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"-auth", authJSON.Get(t)}
+				})
+
+				s.Then("required is satisfied by the JSON value", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Auth, auth.Get(t))
+				})
+			})
+
+			s.And("the env var of the outer struct field holds a JSON value with it", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					testcase.SetEnv(t, authEnvKey, authJSON.Get(t))
+				})
+
+				s.Then("required is satisfied by the JSON value", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+					assert.Equal(t, got.Get(t).Auth, auth.Get(t))
+				})
+			})
+
+			s.And("the outer struct field gets a JSON value without it", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"-auth", `{}`}
+				})
+
+				s.Then("it is still rejected as a bad request that names the input, without calling the handler", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "auth-token")
+					assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+				})
+			})
+		})
+
+		s.When("the env var of a required inner field is set to an empty value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.SetEnv(t, authTokenEnvKey, "")
+			})
+
+			s.Then("required is satisfied, since the input is provided, even though the configured value is empty", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Auth, AuthConfig{})
+			})
+		})
+
+		s.When("the flag of a required inner field gets an empty value", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.UnsetEnv(t, authTokenEnvKey)
+			})
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-auth-token", ""}
+			})
+
+			s.Then("required is satisfied, since the input is provided, even though the configured value is empty", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Auth, AuthConfig{})
+			})
+		})
+	})
+
+	s.Context(`struct fields with a JSON value in their default tag`, func(s *testcase.Spec) {
+		const (
+			replicaEnvKey      = "CLI_TEST_REPLICA_ENV"       // the env tag of CommandWithStructInputDefault.Replica
+			replicaHostEnvKey  = "CLI_TEST_REPLICA_HOST_ENV"  // the env tag of ReplicaConfig.Host
+			replicaPortEnvKey  = "CLI_TEST_REPLICA_PORT_ENV"  // the env tag of ReplicaConfig.Port
+			replicaUserEnvKey  = "CLI_TEST_REPLICA_USER_ENV"  // the env tag of ReplicaConfig.User
+			replicaTokenEnvKey = "CLI_TEST_REPLICA_TOKEN_ENV" // the env tag of ReplicaConfig.Token
+		)
+		// the values in the default tag of CommandWithStructInputDefault.Replica
+		const (
+			defaultHost  = "replica.internal"
+			defaultToken = "from-default"
+		)
+
+		var (
+			got  = let.VarOf[*CommandWithStructInputDefault](s, nil)
+			args = let.Var(s, func(t *testcase.T) []string {
+				return nil
+			})
+			// innerUser is set as the env var of the required inner field that the default JSON lacks,
+			// so the scenarios not about it stay valid.
+			innerUser = let.StringNC(s, 8, random.CharsetAlpha())
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithStructInputDefault{
+				Callback: func(v CommandWithStructInputDefault, w cli.ResponseWriter, r *cli.Request) {
+					got.Set(t, &v)
+				},
+			}
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, args.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			testcase.UnsetEnv(t, replicaEnvKey)
+			testcase.UnsetEnv(t, replicaHostEnvKey)
+			testcase.UnsetEnv(t, replicaPortEnvKey)
+			testcase.UnsetEnv(t, replicaTokenEnvKey)
+			testcase.SetEnv(t, replicaUserEnvKey, innerUser.Get(t))
+			debugRecorderResult(t, response.Get(t))
+		})
+
+		s.Then("the default JSON is merged onto the inner fields, overwriting their defaults, while the absent ones keep theirs", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Replica.Host, defaultHost)
+			assert.Equal(t, got.Get(t).Replica.Port, 5432)
+		})
+
+		s.Then("the default JSON satisfies a required inner field that has no input", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+			assert.Equal(t, got.Get(t).Replica.Token, defaultToken)
+		})
+
+		s.When("the flags of the inner fields are given", func(s *testcase.Spec) {
+			var (
+				innerHost  = let.StringNC(s, 8, random.CharsetAlpha())
+				innerPort  = let.IntB(s, 1000, 1999)
+				innerToken = let.StringNC(s, 8, random.CharsetAlpha())
+			)
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{
+					"-replica-host", innerHost.Get(t),
+					"-replica-port", strconv.Itoa(innerPort.Get(t)),
+					"-replica-token", innerToken.Get(t),
+				}
+			})
+
+			s.Then("they win over the default JSON, since a default never overwrites an input", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Replica, ReplicaConfig{
+					Host:  innerHost.Get(t),
+					Port:  innerPort.Get(t),
+					User:  innerUser.Get(t),
+					Token: innerToken.Get(t),
+				})
+			})
+		})
+
+		s.When("the flag of the struct field gets a JSON value", func(s *testcase.Spec) {
+			port := let.IntB(s, 2000, 2999)
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"-replica", fmt.Sprintf(`{"Port":%d}`, port.Get(t))}
+			})
+
+			s.Then("it is merged onto the value the field has without it, including its default JSON", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.NotNil(t, got.Get(t), assert.Message("handler was not called"))
+				assert.Equal(t, got.Get(t).Replica, ReplicaConfig{
+					Host:  defaultHost,
+					Port:  port.Get(t),
+					User:  innerUser.Get(t),
+					Token: defaultToken,
+				})
+			})
+		})
+
+		s.When("a required inner field that the default JSON lacks gets no input", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				testcase.UnsetEnv(t, replicaUserEnvKey)
+			})
+
+			s.Then("it is rejected as a bad request that names the input, without calling the handler", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "replica-user")
+				assert.Nil(t, got.Get(t), assert.Message("handler should not be called"))
+			})
+		})
+	})
+
+	s.Context("framework generated text", func(s *testcase.Spec) {
+		// Help, usage and input error reports are written by the framework, not by the handler.
+		// They should look the same on every OS, so tests can assert them without OS specific branches.
+		var args = let.Var(s, func(t *testcase.T) []string {
+			return []string{"-help"}
+		})
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			var mux cli.ServeMux
+			mux.Handle("cmd", CommandWithFlagWithEnum{})
+			return &mux
+		})
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			r := request.Super(t)
+			r.Args = append(r.Args, args.Get(t)...)
+			return r
+		})
+
+		s.Before(func(t *testcase.T) {
+			in := slicekit.Clone(args.Get(t))
+			t.OnFail(func() {
+				t.Logf("args: %q", in)
+				t.Logf("output: %q", response.Get(t).CombinedOutput())
+			})
+		})
+
+		thenItIsOSIndependent := func(s *testcase.Spec) {
+			s.Then("line endings are LF on every OS", func(t *testcase.T) {
+				act(t)
+
+				out := string(response.Get(t).CombinedOutput())
+				assert.Contains(t, out, "\n")
+				assert.NotContains(t, out, "\r")
+			})
+
+			s.Then("the usage names the program the same way on every OS", func(t *testcase.T) {
+				act(t)
+
+				out := string(response.Get(t).CombinedOutput())
+				usage := regexp.MustCompile(`(?m)^Usage: (\S+)`).FindStringSubmatch(out)
+				assert.Equal(t, len(usage), 2, assert.Message("usage line is missing"))
+				assert.False(t, strings.HasSuffix(strings.ToLower(usage[1]), ".exe"),
+					assert.MessageF("the program name has an OS specific extension: %q", usage[1]))
+			})
+		}
+
+		thenItIsOSIndependent(s)
+
+		s.When("the help of a command is requested", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"cmd", "-help"}
+			})
+
+			thenItIsOSIndependent(s)
+		})
+
+		s.When("the input is invalid", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"cmd", "-flag", "invalid"}
+			})
+
+			s.Then("the error report lists the accepted values", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				assert.Contains(t, response.Get(t).Err.String(), "accepted values")
+			})
+
+			thenItIsOSIndependent(s)
+		})
+
+		s.When("the command is unknown", func(s *testcase.Spec) {
+			unknown := let.StringNC(s, 8, random.CharsetAlpha())
+
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{unknown.Get(t)}
+			})
+
+			thenItIsOSIndependent(s)
+		})
+
+		s.When("the executable has a Windows .exe extension", func(s *testcase.Spec) {
+			var (
+				name = let.StringNC(s, 8, random.CharsetAlpha())
+				ext  = let.OneOf(s, ".exe", ".EXE", ".Exe")
+			)
+			s.Before(func(t *testcase.T) {
+				osint.StubExecutable(t, filepath.Join("bin", name.Get(t)+ext.Get(t)))
+			})
+
+			s.Then("the usage names the program without the extension", func(t *testcase.T) {
+				act(t)
+
+				out := string(response.Get(t).CombinedOutput())
+				usage := regexp.MustCompile(`(?m)^Usage: (\S+)`).FindStringSubmatch(out)
+				assert.Equal(t, len(usage), 2, assert.Message("usage line is missing"))
+				assert.Equal(t, usage[1], name.Get(t))
+			})
+		})
+
+		s.When("the help of a command is requested with a known executable name", func(s *testcase.Spec) {
+			name := let.StringNC(s, 8, random.CharsetAlpha())
+
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"cmd", "-help"}
+			})
+			s.Before(func(t *testcase.T) {
+				osint.StubExecutable(t, filepath.Join("bin", name.Get(t)))
+			})
+
+			s.Then("the help text is the same on every OS, so it can be compared exactly", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.Equal(t, response.Get(t).Out.String(), ""+
+					"Usage: "+name.Get(t)+" cmd [OPTION]...\n"+
+					"\n"+
+					"Options:\n"+
+					"  -flag=[string]\n"+
+					"\n"+
+					"\n")
+				assert.Empty(t, response.Get(t).Err.String())
+			})
+		})
+	})
+}
+
+type CommandWithDefaultTags struct {
+	Callback[CommandWithDefaultTags]
+
+	// Dependency is not an input, it has no input tags.
+	Dependency string
+
+	Flag string `flag:"flag" default:"flag-default"`
+	Bool bool   `flag:"bool" default:"true"`
+	Env  string `env:"CLI_TEST_DEFAULT_TAG_ENV" default:"env-default"`
+	Arg  string `arg:"0" default:"arg-default"`
+}
+
+func (cmd CommandWithDefaultTags) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithTrueDefaultBools struct {
+	Callback[CommandWithTrueDefaultBools]
+
+	Flag bool `flag:"flag" default:"true"`
+	Env  bool `env:"CLI_TEST_TRUE_DEFAULT_BOOL_ENV" default:"true"`
+	Arg  bool `arg:"0" default:"true"`
+}
+
+func (cmd CommandWithTrueDefaultBools) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithSliceArgDefaults struct {
+	Callback[CommandWithSliceArgDefaults]
+
+	Range    []string `arg:"0:2" env:"CLI_TEST_SLICE_ARG_RANGE_ENV" default:"r1,r2"`
+	Variadic []string `arg:"2:" env:"CLI_TEST_SLICE_ARG_VARIADIC_ENV" default:"v1,v2,v3"`
+}
+
+func (cmd CommandWithSliceArgDefaults) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithRequiredSliceArgs struct {
+	Callback[CommandWithRequiredSliceArgs]
+
+	Range    []string `arg:"0:2" env:"CLI_TEST_REQUIRED_SLICE_ARG_RANGE_ENV"`
+	Variadic []string `arg:"2:" env:"CLI_TEST_REQUIRED_SLICE_ARG_VARIADIC_ENV"`
+}
+
+func (cmd CommandWithRequiredSliceArgs) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithSliceInputsWithoutSeparatorTag struct {
+	Callback[CommandWithSliceInputsWithoutSeparatorTag]
+
+	Flag    []string `flag:"flag"`
+	Env     []int    `env:"CLI_TEST_SLICE_WITHOUT_SEP_ENV" opt:"T"`
+	Default []string `flag:"default" default:"foo,bar,baz"`
+}
+
+func (cmd CommandWithSliceInputsWithoutSeparatorTag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithSliceInputsWithSeparatorTag struct {
+	Callback[CommandWithSliceInputsWithSeparatorTag]
+
+	Flag []string `flag:"flag" sep:";"`
+	Env  []int    `env:"CLI_TEST_SLICE_WITH_SEP_ENV" sep:";" opt:"T"`
+}
+
+func (cmd CommandWithSliceInputsWithSeparatorTag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// makeWords makes n random words, which never contain a comma, and never start with a dash,
+// so they can be used as command line args, and as comma separated list elements.
+func makeWords(t *testcase.T, n int) []string {
+	return random.Slice(n, func() string {
+		return t.Random.StringNC(8, random.CharsetAlpha())
+	})
+}
+
+type CommandWithTimeFlags struct {
+	Callback[CommandWithTimeFlags]
+
+	Date  time.Time `flag:"date" layout:"2006-01-02"`
+	Since time.Time `flag:"since" layout:"2006-01-02" default:"2000-01-02"`
+	At    time.Time `flag:"at"`
+}
+
+func (cmd CommandWithTimeFlags) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithInvalidDefaultTag struct {
+	Callback[CommandWithInvalidDefaultTag]
+
+	N int `flag:"n" default:"not-a-number"`
+}
+
+func (cmd CommandWithInvalidDefaultTag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// ForeignConfig mimics a type which was designed with different principles than the cli package,
+// such as the command struct of another CLI framework, or the config type of a third-party library.
+// Its tags share their names with the cli tags, but they don't follow the cli conventions.
+type ForeignConfig struct {
+	Name  string   `flag:"name" default:"foreign-default"` // the same flag name as CommandWithOpaqueFields.Name
+	Token string   `flag:"token" env:"CLI_TEST_FOREIGN_TOKEN_ENV" required:"true"`
+	Paths []string `arg:""` // a positional arg marker in kong, but not a valid arg index for the cli package
+}
+
+// CompatibleSettings follows the cli conventions, so its tags are inputs when the cli package looks into it.
+type CompatibleSettings struct {
+	Level string `flag:"level" default:"info"`
+}
+
+type CommandWithOpaqueFields struct {
+	Callback[CommandWithOpaqueFields]
+
+	Name string `flag:"name"`
+
+	ForeignConfig `opaque:""`
+	Field         ForeignConfig  `opaque:"true"`
+	Alias         ForeignConfig  `norecurse:""`
+	Pointer       *ForeignConfig `opaque:""`
+
+	// Config is an input itself, which takes a JSON value, but the tags of its type are not inputs.
+	Config ForeignConfig `flag:"config" env:"CLI_TEST_FOREIGN_CONFIG_ENV" opaque:""`
+
+	// Settings is looked into as usual, since its opaque tag is turned off.
+	Settings CompatibleSettings `opaque:"false"`
+}
+
+func (cmd CommandWithOpaqueFields) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithInvalidOpaqueTagValue struct {
+	Callback[CommandWithInvalidOpaqueTagValue]
+
+	Settings CompatibleSettings `opaque:"maybe"`
+}
+
+func (cmd CommandWithInvalidOpaqueTagValue) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// RetryPolicy has no cli tags of its own, so it can only be configured as a whole, with a JSON value.
+type RetryPolicy struct {
+	Max     int
+	Backoff time.Duration
+}
+
+// DBConfig follows the cli conventions, and it can be configured as a whole with a JSON value too.
+type DBConfig struct {
+	Host string `flag:"db-host" env:"CLI_TEST_DB_HOST_ENV" default:"localhost"`
+	Port int    `flag:"db-port" env:"CLI_TEST_DB_PORT_ENV" default:"5432"`
+}
+
+// AuthConfig has a required inner field, which can be provided either by its own input or as part of a JSON value.
+type AuthConfig struct {
+	Token string `flag:"auth-token" env:"CLI_TEST_AUTH_TOKEN_ENV" required:"true"`
+}
+
+type CommandWithStructInputs struct {
+	Callback[CommandWithStructInputs]
+
+	Retry RetryPolicy `flag:"retry" env:"CLI_TEST_RETRY_ENV"`
+	DB    DBConfig    `flag:"db" env:"CLI_TEST_DB_ENV"`
+	Auth  AuthConfig  `flag:"auth" env:"CLI_TEST_AUTH_ENV"`
+}
+
+func (cmd CommandWithStructInputs) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// ReplicaConfig has inner defaults and required inner fields.
+type ReplicaConfig struct {
+	Host  string `flag:"replica-host" env:"CLI_TEST_REPLICA_HOST_ENV" default:"localhost"`
+	Port  int    `flag:"replica-port" env:"CLI_TEST_REPLICA_PORT_ENV" default:"5432"`
+	User  string `flag:"replica-user" env:"CLI_TEST_REPLICA_USER_ENV" required:"true"`
+	Token string `flag:"replica-token" env:"CLI_TEST_REPLICA_TOKEN_ENV" required:"true"`
+}
+
+// CommandWithStructInputDefault puts a JSON value into a default tag. Horrifying, but possible.
+// The default JSON overwrites an inner default (Host), satisfies a required inner field (Token),
+// and lacks an inner field with a default (Port) and a required inner field (User).
+type CommandWithStructInputDefault struct {
+	Callback[CommandWithStructInputDefault]
+
+	Replica ReplicaConfig `flag:"replica" env:"CLI_TEST_REPLICA_ENV" default:"{\"Host\":\"replica.internal\",\"Token\":\"from-default\"}"`
+}
+
+func (cmd CommandWithStructInputDefault) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+func TestWithDefaults(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const envKey = "CLI_TEST_DEFAULT_TAG_ENV" // the env tag of CommandWithDefaultTags.Env
+
+	var handler = let.Var(s, func(t *testcase.T) cli.Handler {
+		return CommandWithDefaultTags{}
+	})
+	act := func(t *testcase.T) cli.Handler {
+		return cli.WithDefaults(handler.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) {
+		testcase.UnsetEnv(t, envKey)
+	})
+
+	s.Then("the zero input fields get their default tag value", func(t *testcase.T) {
+		got, ok := act(t).(CommandWithDefaultTags)
+		assert.True(t, ok)
+		assert.Equal(t, got.Flag, "flag-default")
+		assert.Equal(t, got.Bool, true)
+		assert.Equal(t, got.Env, "env-default")
+		assert.Equal(t, got.Arg, "arg-default")
+	})
+
+	s.When("some of the input fields are already set", func(s *testcase.Spec) {
+		var (
+			flag = let.StringNC(s, 8, random.CharsetAlpha())
+			arg  = let.StringNC(s, 8, random.CharsetAlpha())
+		)
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithDefaultTags{Flag: flag.Get(t), Arg: arg.Get(t)}
+		})
+
+		s.Then("the set values are kept, and only the zero input fields get their default", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithDefaultTags)
+			assert.True(t, ok)
+			assert.Equal(t, got.Flag, flag.Get(t))
+			assert.Equal(t, got.Arg, arg.Get(t))
+			assert.Equal(t, got.Bool, true)
+			assert.Equal(t, got.Env, "env-default")
+		})
+	})
+
+	s.When("the handler has a dependency", func(s *testcase.Spec) {
+		dependency := let.StringNC(s, 8, random.CharsetAlpha())
+
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithDefaultTags{Dependency: dependency.Get(t)}
+		})
+
+		s.Then("the dependency is kept as is", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithDefaultTags)
+			assert.True(t, ok)
+			assert.Equal(t, got.Dependency, dependency.Get(t))
+			assert.Equal(t, got.Flag, "flag-default")
+		})
+	})
+
+	s.When("the environment variable of an input is set", func(s *testcase.Spec) {
+		envVal := let.StringNC(s, 8, random.CharsetAlpha())
+
+		s.Before(func(t *testcase.T) {
+			testcase.SetEnv(t, envKey, envVal.Get(t))
+		})
+
+		s.Then("the environment variable is not read, since it is only applied when the command runs", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithDefaultTags)
+			assert.True(t, ok)
+			assert.Equal(t, got.Env, "env-default")
+		})
+	})
+
+	s.When("the handler is a pointer", func(s *testcase.Spec) {
+		ptr := let.Var(s, func(t *testcase.T) *CommandWithDefaultTags {
+			return &CommandWithDefaultTags{}
+		})
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return ptr.Get(t)
+		})
+
+		s.Then("the same handler is returned, updated in place", func(t *testcase.T) {
+			got, ok := act(t).(*CommandWithDefaultTags)
+			assert.True(t, ok)
+			assert.True(t, got == ptr.Get(t))
+			assert.Equal(t, ptr.Get(t).Flag, "flag-default")
+			assert.Equal(t, ptr.Get(t).Bool, true)
+			assert.Equal(t, ptr.Get(t).Env, "env-default")
+			assert.Equal(t, ptr.Get(t).Arg, "arg-default")
+		})
+	})
+
+	s.When("the handler has a time.Time input with a layout tag", func(s *testcase.Spec) {
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithTimeFlags{}
+		})
+
+		s.Then("the default tag value is parsed with the layout", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithTimeFlags)
+			assert.True(t, ok)
+			exp := time.Date(2000, time.January, 2, 0, 0, 0, 0, time.UTC)
+			assert.True(t, got.Since.Equal(exp),
+				assert.MessageF("expected %s, got %s", exp, got.Since))
+		})
+	})
+
+	s.When("the handler has slice args without a separator tag", func(s *testcase.Spec) {
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithSliceArgDefaults{}
+		})
+
+		s.Then("the default tag values are split on commas", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithSliceArgDefaults)
+			assert.True(t, ok)
+			assert.Equal(t, got.Range, []string{"r1", "r2"})
+			assert.Equal(t, got.Variadic, []string{"v1", "v2", "v3"})
+		})
+	})
+
+	s.When(`the handler has fields tagged as opaque`, func(s *testcase.Spec) {
+		dependency := let.Var(s, func(t *testcase.T) *ForeignConfig {
+			return &ForeignConfig{}
+		})
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithOpaqueFields{Pointer: dependency.Get(t)}
+		})
+
+		s.Then("the default tags of an opaque field's type are not applied", func(t *testcase.T) {
+			got, ok := act(t).(CommandWithOpaqueFields)
+			assert.True(t, ok)
+			assert.Equal(t, got.ForeignConfig, ForeignConfig{})
+			assert.Equal(t, got.Field, ForeignConfig{})
+			assert.Equal(t, got.Alias, ForeignConfig{})
+			assert.Equal(t, got.Config, ForeignConfig{})
+			assert.True(t, got.Pointer == dependency.Get(t))
+			assert.Equal(t, *dependency.Get(t), ForeignConfig{})
+		})
+
+		s.Then(`the default tags of a field tagged with opaque:"false" are applied`, func(t *testcase.T) {
+			got, ok := act(t).(CommandWithOpaqueFields)
+			assert.True(t, ok)
+			assert.Equal(t, got.Settings.Level, "info")
+		})
+	})
+
+	s.When("a default tag value is not valid for its field", func(s *testcase.Spec) {
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithInvalidDefaultTag{}
+		})
+
+		s.Then("it panics with ErrInvalidDefaultValue", func(t *testcase.T) {
+			out := assert.Panic(t, func() { act(t) })
+			err, ok := out.(error)
+			assert.True(t, ok, assert.MessageF("expected an error panic value, got %#v", out))
+			assert.ErrorIs(t, err, cli.ErrInvalidDefaultValue)
+		})
+	})
+
+	s.When("the handler is a nil pointer", func(s *testcase.Spec) {
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return (*CommandWithDefaultTags)(nil)
+		})
+
+		s.Then("it panics", func(t *testcase.T) {
+			assert.Panic(t, func() { act(t) })
+		})
+	})
 }
 
 type CommandWithTypedDependency[Dependency any] struct {
@@ -1889,10 +3931,10 @@ func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
 }
 
 func TestConfigureHandler_envIntegration(t *testing.T) {
-	cmd := CommandWithFlagWithEnv[string]{}
 	const envName = "FLAGNAME"
 	t.Run("no env var", func(t *testing.T) {
 		testcase.UnsetEnv(t, envName)
+		cmd := CommandWithFlagWithEnv[string]{}
 		err := cli.ConfigureHandler(&cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
@@ -1901,6 +3943,7 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	t.Run("with env var", func(t *testing.T) {
 		testcase.SetEnv(t, envName, "val")
 
+		cmd := CommandWithFlagWithEnv[string]{}
 		err := cli.ConfigureHandler(&cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, "val")
@@ -2021,9 +4064,8 @@ func (cmd CommandWithEmbeddedOptionalEnvVariable) ServeCLI(w cli.ResponseWriter,
 }
 
 func TestConfigureHandler_enumIntegration(t *testing.T) {
-	cmd := CommandWithFlagWithEnum{}
-
 	t.Run("no enum value", func(t *testing.T) {
+		cmd := CommandWithFlagWithEnum{}
 		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{}})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
@@ -2033,12 +4075,14 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 		t := testcase.NewT(tt)
 		exp := random.Pick(t.Random, "foo", "bar", "baz")
 
+		cmd := CommandWithFlagWithEnum{}
 		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", exp}})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, exp)
 	})
 
 	t.Run("with invalid enum value", func(t *testing.T) {
+		cmd := CommandWithFlagWithEnum{}
 		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", "invalid"}})
 		assert.Error(t, err)
 
@@ -2725,6 +4769,40 @@ func TestResponseRecorder(t *testing.T) {
 			})
 		})
 	})
+
+	s.Describe("#Stdout", func(s *testcase.Spec) {
+		act := func(t *testcase.T) io.Writer {
+			return subject.Get(t).Stdout()
+		}
+
+		s.Then("it returns the writer that records into ResponseRecorder.Out", func(t *testcase.T) {
+			exp := t.Random.String()
+
+			_, err := io.WriteString(act(t), exp)
+			assert.NoError(t, err)
+
+			assert.Equal(t, subject.Get(t).Out.String(), exp)
+			assert.Empty(t, subject.Get(t).Err.String())
+		})
+	})
+}
+
+func TestStdResponse(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := let.Var(s, func(t *testcase.T) *cli.StdResponse {
+		return &cli.StdResponse{}
+	})
+
+	s.Describe("#Stdout", func(s *testcase.Spec) {
+		act := func(t *testcase.T) io.Writer {
+			return subject.Get(t).Stdout()
+		}
+
+		s.Then("it returns the standard output of the process", func(t *testcase.T) {
+			assert.True(t, act(t) == io.Writer(os.Stdout))
+		})
+	})
 }
 
 func TestError(t *testing.T) {
@@ -2822,12 +4900,22 @@ func TestMain_signalInterrupt(tt *testing.T) {
 	osint.StubExit(t, func(code int) {})
 	osint.StubArgs(t, []string{"cmd"})
 
-	var sigch chan<- os.Signal
-	var sigs []os.Signal
+	var (
+		notifyMutex sync.Mutex
+		sigch       chan<- os.Signal
+		sigs        []os.Signal
+	)
 	defer signalint.StubNotify(func(c chan<- os.Signal, sig ...os.Signal) {
+		notifyMutex.Lock()
+		defer notifyMutex.Unlock()
 		sigch = c
 		sigs = sig
 	})()
+	notified := func() (chan<- os.Signal, []os.Signal) {
+		notifyMutex.Lock()
+		defer notifyMutex.Unlock()
+		return sigch, sigs
+	}
 
 	var mainDone int32
 	go func() {
@@ -2838,9 +4926,11 @@ func TestMain_signalInterrupt(tt *testing.T) {
 	}()
 
 	t.Eventually(func(t *testcase.T) {
+		c, sigs := notified()
 		assert.NotEmpty(t, sigs)
-		assert.NotNil(t, sigch)
+		assert.NotNil(t, c)
 	})
+	notifyCh, notifySigs := notified()
 
 	w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
 		for atomic.LoadInt32(&handlerDone) == 0 {
@@ -2848,7 +4938,7 @@ func TestMain_signalInterrupt(tt *testing.T) {
 	})
 
 	select {
-	case sigch <- random.Pick(t.Random, sigs...):
+	case notifyCh <- random.Pick(t.Random, notifySigs...):
 	case <-t.Context().Done():
 	case <-time.After(time.Second):
 		t.FailNow()

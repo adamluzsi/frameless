@@ -2,7 +2,6 @@ package env
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -12,11 +11,11 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
+	"go.llib.dev/frameless/pkg/internal/tagint"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 const (
@@ -117,81 +116,174 @@ func reflectStructValueOfPointer(ptr reflect.Value) (reflect.Value, error) {
 	return reflectkit.BaseValue(ptr), nil
 }
 
-func reflectLoadField[I reflect.StructField | int](ctx context.Context, rStruct reflect.Value, i I) error {
-	var structField reflect.StructField
-
-	switch i := any(i).(type) {
-	case int:
-		structField = rStruct.Type().Field(i)
-	case reflect.StructField:
-		structField = i
-	}
-
-	if !rStruct.IsValid() {
-		return ErrInvalidValue
-	}
-	if rStruct.Kind() != reflect.Struct {
-		return ErrInvalidValue.F("struct type was expected")
-	}
-
-	field := rStruct.FieldByIndex(structField.Index)
-	if !field.IsValid() {
-		return ErrInvalidValue.F("struct field type not found: %s", structField.Name)
-	}
-
-	return loadVisitStructField(ctx, structField, field)
-}
-
 func vistiLoadStruct(ctx context.Context, rStruct reflect.Value) error {
-	for i, numField := 0, rStruct.NumField(); i < numField; i++ {
-		if err := reflectLoadField(ctx, rStruct, i); err != nil {
+	for _, phase := range loadPhases {
+		if err := phase.visitStruct(ctx, rStruct, false); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func loadVisitStructField(ctx context.Context, sf reflect.StructField, field reflect.Value) error {
+// loadPhase is a pass over the fields of the struct being loaded.
+//
+// The values are loaded in the order of their precedence, so a later one overwrites an earlier one:
+//
+//  1. the defaults, inner fields first, then the default of their struct field, merged onto them;
+//  2. the env vars, inner fields first, then the env var of their struct field, merged onto them.
+//
+// So a default never overwrites an env var,
+// and the JSON value of a struct field overwrites only the inner fields it mentions.
+// The required fields and the validation tags are checked only once every value is loaded,
+// since an inner field can get its value from the JSON value of its struct field as well.
+type loadPhase int
+
+const (
+	loadDefaults loadPhase = iota
+	loadEnvVars
+	checkFields
+)
+
+var loadPhases = []loadPhase{loadDefaults, loadEnvVars, checkFields}
+
+// visitStruct runs the phase on the fields of rStruct.
+// hasOuterJSON tells whether an outer struct field has a JSON value, which may give a value to these fields.
+func (phase loadPhase) visitStruct(ctx context.Context, rStruct reflect.Value, hasOuterJSON bool) error {
+	for i, numField := 0, rStruct.NumField(); i < numField; i++ {
+		if err := phase.visitField(ctx, rStruct.Type().Field(i), rStruct.Field(i), hasOuterJSON); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (phase loadPhase) visitField(ctx context.Context, sf reflect.StructField, field reflect.Value, hasOuterJSON bool) error {
 	if !sf.IsExported() {
 		return nil
 	}
-
-	// We don't want to visit struct types which have their own registered parser.
-	if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
-		return vistiLoadStruct(ctx, field)
-	}
-
-	osEnvNames, ok := LookupFieldEnvNames(sf)
-	if !ok {
-		return nil
-	}
-
-	opts, err := getLookupEnvOptions(sf.Tag)
+	f, ok, err := lookupEnvField(sf, field)
 	if err != nil {
 		return err
 	}
-
-	var val reflect.Value
-	for _, osEnvName := range osEnvNames {
-		var err error
-		val, ok, err = lookupEnv(field.Type(), osEnvName, opts)
-		if err != nil {
-			return errParsingEnvValue(sf, err)
-		}
-		if ok {
-			break
+	// We don't want to visit struct types which have their own registered parser,
+	// or which are opaque, since their tags are not meant for the env package.
+	isNested := field.Kind() == reflect.Struct && !tagint.IsOpaque(sf) && !convkit.IsRegistered(field.Interface())
+	if isNested {
+		// The inner fields go first, so the struct field's own JSON value is merged onto them.
+		if err := phase.visitStruct(ctx, field, hasOuterJSON || (ok && f.HasValue())); err != nil {
+			return err
 		}
 	}
 	if !ok {
 		return nil
 	}
-	if !field.CanSet() {
+	switch phase {
+	case loadDefaults:
+		return f.LoadDefault()
+	case loadEnvVars:
+		return f.LoadEnvVar()
+	case checkFields:
+		return f.Check(ctx, isNested || hasOuterJSON)
+	default:
+		return nil
+	}
+}
+
+// envField is a struct field with an env tag.
+type envField struct {
+	StructField reflect.StructField
+	Value       reflect.Value
+	Names       []string
+	Options     lookupEnvOptions
+}
+
+func lookupEnvField(sf reflect.StructField, field reflect.Value) (envField, bool, error) {
+	names, ok := LookupFieldEnvNames(sf)
+	if !ok {
+		return envField{}, false, nil
+	}
+	opts, err := getLookupEnvOptions(sf)
+	if err != nil {
+		return envField{}, false, err
+	}
+	return envField{
+		StructField: sf,
+		Value:       field,
+		Names:       names,
+		Options:     opts,
+	}, true, nil
+}
+
+// LookupEnvVar returns the value of the field's first env var that is present in the environment.
+func (f envField) LookupEnvVar() (string, bool) {
+	for _, name := range f.Names {
+		if val, ok := os.LookupEnv(name); ok {
+			return val, true
+		}
+	}
+	return "", false
+}
+
+// HasValue tells whether the field gets a value of its own, from its env var or its default.
+func (f envField) HasValue() bool {
+	_, ok := f.LookupEnvVar()
+	return ok || f.Options.DefaultValue != nil
+}
+
+// LoadDefault sets the field to its default.
+// A field with an env var skips it, since the env var overwrites it anyway,
+// except a field taking a JSON object, since the env var's JSON object is merged onto the default.
+func (f envField) LoadDefault() error {
+	if f.Options.DefaultValue == nil {
+		return nil
+	}
+	if _, ok := f.LookupEnvVar(); ok && !tagint.IsJSONObject(f.Value.Type()) {
+		return nil
+	}
+	return f.set(*f.Options.DefaultValue)
+}
+
+func (f envField) LoadEnvVar() error {
+	raw, ok := f.LookupEnvVar()
+	if !ok {
+		return nil
+	}
+	return f.set(raw)
+}
+
+func (f envField) set(raw string) error {
+	opts := convkit.Options{
+		Separator:  tagint.Separator(pointer.Deref(f.Options.Separator), raw),
+		TimeLayout: pointer.Deref(f.Options.TimeLayout),
+	}
+	val, err := tagint.ParseOnto(f.Value, raw, opts)
+	if err != nil {
+		return errParsingEnvValue(f.StructField, err)
+	}
+	if !f.Value.CanSet() {
 		return ErrInvalidValue.F("setable struct field was expected")
 	}
+	f.Value.Set(val)
+	return nil
+}
 
-	field.Set(val)
-
-	return validate.StructField(ctx, sf, field)
+// Check validates the field when it has a value of its own, and reports it as missing when it is required but has none.
+//
+// mayHaveValue tells whether the field may have got a value without having one of its own:
+// from the JSON value of an outer struct field, or, for a struct field, from its inner fields.
+// Such a value satisfies required, unless it is a zero value.
+func (f envField) Check(ctx context.Context, mayHaveValue bool) error {
+	if f.HasValue() {
+		return validate.StructField(ctx, f.StructField, f.Value)
+	}
+	if !f.Options.IsRequired {
+		return nil
+	}
+	if mayHaveValue && !reflectkit.IsZero(f.Value) {
+		return nil
+	}
+	name, _ := slicekit.First(f.Names)
+	return errParsingEnvValue(f.StructField, errMissingEnvironmentVariable(name))
 }
 
 const envTagKey = "env"
@@ -200,11 +292,16 @@ var (
 	tagsForDefaultValue = []string{"env-default", "default"}
 	tagsForRequired     = []string{"env-required", "env-require", "required", "require"}
 	tagsForSeparator    = []string{"env-separator", "separator"}
-	tagsForTimeLayout   = []string{"env-time-layout", "layout"}
 )
 
-func getLookupEnvOptions(tag reflect.StructTag) (lookupEnvOptions, error) {
-	var opts lookupEnvOptions
+// envTimeLayoutTag is the env specific variant of the shared "layout" tag, and takes precedence over it.
+const envTimeLayoutTag = "env-time-layout"
+
+func getLookupEnvOptions(sf reflect.StructField) (lookupEnvOptions, error) {
+	var (
+		opts lookupEnvOptions
+		tag  = sf.Tag
+	)
 	for _, key := range tagsForDefaultValue {
 		value, ok := tag.Lookup(key)
 		if ok {
@@ -231,12 +328,10 @@ func getLookupEnvOptions(tag reflect.StructTag) (lookupEnvOptions, error) {
 			break
 		}
 	}
-	for _, key := range tagsForTimeLayout {
-		value, ok := tag.Lookup(key)
-		if ok {
-			opts.TimeLayout = &value
-			break
-		}
+	if value, ok := tag.Lookup(envTimeLayoutTag); ok {
+		opts.TimeLayout = &value
+	} else if value, ok, _ := tagint.TimeLayout.Lookup(sf); ok {
+		opts.TimeLayout = &value
 	}
 	return opts, nil
 }
@@ -263,11 +358,8 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 		return reflect.Value{}, false, err
 	}
 	parseOpts := convkit.Options{
-		Separator:  zerokit.Coalesce(pointer.Deref(opts.Separator), ","),
+		Separator:  tagint.Separator(pointer.Deref(opts.Separator), val),
 		TimeLayout: pointer.Deref(opts.TimeLayout),
-	}
-	if json.Valid([]byte(val)) { // then prefer JSON format instead
-		parseOpts.Separator = ""
 	}
 	if opts.Parser != nil {
 		parseOpts.ParseFunc = func(data []byte, ptr any) error {

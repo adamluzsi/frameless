@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -158,6 +160,26 @@ func TestLoad(t *testing.T) {
 			var c Example
 			assert.NoError(t, env.Load(&c))
 			assert.Empty(t, c)
+		})
+		t.Run("os env has the value under the second key, then it takes precedence over the default", func(t *testing.T) {
+			type Example struct {
+				F string `env:"THE_ENV_KEY_1, THE_ENV_KEY_2" default:"the-default"`
+			}
+			testcase.UnsetEnv(t, "THE_ENV_KEY_1")
+			testcase.SetEnv(t, "THE_ENV_KEY_2", "24")
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, "24", c.F)
+		})
+		t.Run("os env has the value under the second key, then it satisfies required", func(t *testing.T) {
+			type Example struct {
+				F string `env:"THE_ENV_KEY_1, THE_ENV_KEY_2" required:"true"`
+			}
+			testcase.UnsetEnv(t, "THE_ENV_KEY_1")
+			testcase.SetEnv(t, "THE_ENV_KEY_2", "24")
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, "24", c.F)
 		})
 	})
 
@@ -361,6 +383,19 @@ func TestLoad(t *testing.T) {
 		})
 	})
 
+	t.Run("[]string struct field with a JSON array value", func(t *testing.T) {
+		type Example struct {
+			V []string `env:"THE_ENV_KEY"`
+		}
+
+		t.Run("then list elements can contain the separator", func(t *testing.T) {
+			testcase.SetEnv(t, envKey, `["foo,bar","baz"]`)
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, []string{"foo,bar", "baz"}, c.V)
+		})
+	})
+
 	t.Run("integrates with enum package", func(t *testing.T) {
 		type Example struct {
 			V string `env:"THE_ENV_KEY" enum:"A;B;C;"`
@@ -440,6 +475,34 @@ func testLoadTimePackageIntegration(t *testing.T) {
 			assert.NoError(t, env.Load(&c))
 			assert.Empty(t, c)
 		})
+	})
+
+	t.Run("time.Time struct field with the shared layout tag", func(t *testing.T) {
+		const TimeLayout = "2006-01-02"
+		type Example struct {
+			V time.Time `env:"THE_ENV_KEY" layout:"2006-01-02"`
+		}
+
+		refTime, err := time.Parse(TimeLayout, rnd.Time().Format(TimeLayout))
+		assert.NoError(t, err)
+		testcase.SetEnv(t, envKey, refTime.Format(TimeLayout))
+		var c Example
+		assert.NoError(t, env.Load(&c))
+		assert.Equal(t, refTime, c.V)
+	})
+
+	t.Run("time.Time struct field with both env-time-layout and layout tag", func(t *testing.T) {
+		const TimeLayout = "2006-01-02T15"
+		type Example struct {
+			V time.Time `env:"THE_ENV_KEY" env-time-layout:"2006-01-02T15" layout:"2006-01-02"`
+		}
+
+		refTime, err := time.Parse(TimeLayout, rnd.Time().Format(TimeLayout))
+		assert.NoError(t, err)
+		testcase.SetEnv(t, envKey, refTime.Format(TimeLayout))
+		var c Example
+		assert.NoError(t, env.Load(&c), "env-time-layout takes precedence over layout")
+		assert.Equal(t, refTime, c.V)
 	})
 }
 
@@ -534,6 +597,30 @@ func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal, envInvVa
 			var c ExampleConfig[[]T]
 			assert.NoError(t, env.Load(&c))
 			assert.NotEmpty(t, c)
+			assert.Equal(t, vs, c.O)
+		})
+		t.Run("os env has a single list element as value", func(t *testing.T) {
+			testcase.SetEnv(t, envKey, envVal)
+			var c ExampleConfig[[]T]
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, []T{expVal}, c.V)
+		})
+		t.Run("os env has a single list element as value for a field with a separator tag", func(t *testing.T) {
+			testcase.SetEnv(t, othEnvKey, envVal)
+			var c ExampleConfig[[]T]
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, []T{expVal}, c.O)
+		})
+		t.Run("os env has valid list value as json for a field with a separator tag", func(t *testing.T) {
+			var vs []T
+			rnd.Repeat(3, 7, func() {
+				vs = append(vs, expVal)
+			})
+			bs, err := json.Marshal(vs)
+			assert.NoError(t, err)
+			testcase.SetEnv(t, othEnvKey, string(bs))
+			var c ExampleConfig[[]T]
+			assert.NoError(t, env.Load(&c))
 			assert.Equal(t, vs, c.O)
 		})
 		t.Run("os env has the value, but the value is incorrect", func(t *testing.T) {
@@ -1099,5 +1186,519 @@ func TestLoad_typeWithValidator(t *testing.T) {
 		c.V.Error = expErr
 
 		assert.ErrorIs(t, env.Load(&c), expErr)
+	})
+}
+
+func TestLoad_opaque(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const (
+		nameEnvKey  = "FL_PKG_ENV_OPAQUE_NAME"  // the env tag of Config.Name, and ForeignConfig.Name
+		tokenEnvKey = "FL_PKG_ENV_OPAQUE_TOKEN" // the env tag of ForeignConfig.Token
+		levelEnvKey = "FL_PKG_ENV_OPAQUE_LEVEL" // the env tag of Settings.Level
+		jsonEnvKey  = "FL_PKG_ENV_OPAQUE_JSON"  // the env tag of Config.JSON
+	)
+
+	// ForeignConfig mimics a type which was designed with different principles than the env package,
+	// such as the config type of a third-party library.
+	// Its tags share their names with the env tags, but they don't follow the env conventions.
+	type ForeignConfig struct {
+		Name  string `env:"FL_PKG_ENV_OPAQUE_NAME" default:"foreign-default"` // the same env var as Config.Name
+		Token string `env:"FL_PKG_ENV_OPAQUE_TOKEN" required:"true"`
+	}
+	// Settings follows the env conventions, so its tags are used when the env package looks into it.
+	type Settings struct {
+		Level string `env:"FL_PKG_ENV_OPAQUE_LEVEL" default:"info"`
+	}
+	type Config struct {
+		Name string `env:"FL_PKG_ENV_OPAQUE_NAME"`
+
+		ForeignConfig `opaque:""`
+		Field         ForeignConfig `opaque:"true"`
+		Alias         ForeignConfig `norecurse:""`
+
+		// JSON is an input itself, which takes a JSON value, but the tags of its type are not used.
+		JSON ForeignConfig `env:"FL_PKG_ENV_OPAQUE_JSON" opaque:""`
+
+		// Settings is looked into as usual, since its opaque tag is turned off.
+		Settings Settings `opaque:"false"`
+	}
+
+	var (
+		config = let.Var(s, func(t *testcase.T) *Config {
+			return &Config{}
+		})
+		name = let.StringNC(s, 8, random.CharsetAlpha())
+	)
+	act := func(t *testcase.T) error {
+		return env.Load(config.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) {
+		t.SetEnv(nameEnvKey, name.Get(t))
+		// ForeignConfig.Token is required, so it would fail the loading if it were used.
+		t.UnsetEnv(tokenEnvKey)
+		t.UnsetEnv(levelEnvKey)
+		t.UnsetEnv(jsonEnvKey)
+	})
+
+	s.Then("the struct's own fields are loaded, even when an opaque field's type uses the same env var", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Name, name.Get(t))
+	})
+
+	s.Then("the fields of an opaque field's type are not loaded, so their default tags are not applied, and their required tags are not enforced", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).ForeignConfig, ForeignConfig{})
+		assert.Equal(t, config.Get(t).Field, ForeignConfig{})
+		assert.Equal(t, config.Get(t).JSON, ForeignConfig{})
+	})
+
+	s.Then("the norecurse alias works the same as the opaque tag", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Alias, ForeignConfig{})
+	})
+
+	s.Then(`a field tagged with opaque:"false" is looked into as usual`, func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Settings.Level, "info")
+	})
+
+	s.When("the env var of an opaque field's type is set", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(tokenEnvKey, t.Random.StringNC(8, random.CharsetAlpha()))
+		})
+
+		s.Then("it is not read", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Empty(t, config.Get(t).ForeignConfig.Token)
+			assert.Empty(t, config.Get(t).Field.Token)
+			assert.Empty(t, config.Get(t).Alias.Token)
+			assert.Empty(t, config.Get(t).JSON.Token)
+		})
+	})
+
+	s.When("the opaque field is an input itself, and its env var holds a JSON value", func(s *testcase.Spec) {
+		var (
+			foreign = let.Var(s, func(t *testcase.T) ForeignConfig {
+				return ForeignConfig{
+					Name:  t.Random.StringNC(8, random.CharsetAlpha()),
+					Token: t.Random.StringNC(8, random.CharsetAlpha()),
+				}
+			})
+			foreignJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(foreign.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+		)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(jsonEnvKey, foreignJSON.Get(t))
+		})
+
+		s.Then("the JSON value is parsed into the field", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).JSON, foreign.Get(t))
+		})
+
+		s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+			foreignJSON.Let(s, func(t *testcase.T) string {
+				return fmt.Sprintf(`{"Name":%d}`, t.Random.Int())
+			})
+
+			s.Then("it fails with an invalid value error", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), env.ErrInvalidValue)
+			})
+		})
+	})
+}
+
+func TestLoad_opaqueWithInvalidValue(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type Settings struct {
+		Level string `env:"FL_PKG_ENV_OPAQUE_LEVEL" default:"info"`
+	}
+	type Config struct {
+		Settings Settings `opaque:"maybe"`
+	}
+
+	config := let.Var(s, func(t *testcase.T) *Config {
+		return &Config{}
+	})
+	act := func(t *testcase.T) error {
+		return env.Load(config.Get(t))
+	}
+
+	s.Then("it panics with the field, the tag and the invalid value, so a mistyped tag can't go unnoticed", func(t *testcase.T) {
+		msg := fmt.Sprint(assert.Panic(t, func() { _ = act(t) }))
+		assert.Contains(t, msg, "Settings")
+		assert.Contains(t, msg, "opaque")
+		assert.Contains(t, msg, "maybe")
+	})
+}
+
+func TestLoad_structFieldWithEnvTag(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const (
+		retryEnvKey  = "FL_PKG_ENV_STRUCT_RETRY"   // the env tag of Config.Retry
+		dbEnvKey     = "FL_PKG_ENV_STRUCT_DB"      // the env tag of Config.DB
+		dbHostEnvKey = "FL_PKG_ENV_STRUCT_DB_HOST" // the env tag of DB.Host
+		dbPortEnvKey = "FL_PKG_ENV_STRUCT_DB_PORT" // the env tag of DB.Port
+
+		authEnvKey      = "FL_PKG_ENV_STRUCT_AUTH"       // the env tag of Config.Auth
+		authTokenEnvKey = "FL_PKG_ENV_STRUCT_AUTH_TOKEN" // the env tag of Auth.Token
+	)
+
+	// RetryPolicy has no env tags of its own, so it can only be loaded as a whole, from a JSON value.
+	type RetryPolicy struct {
+		Max     int
+		Backoff time.Duration
+	}
+	// DB has env tags of its own, and it can be loaded as a whole from a JSON value too.
+	type DB struct {
+		Host string `env:"FL_PKG_ENV_STRUCT_DB_HOST" default:"localhost"`
+		Port int    `env:"FL_PKG_ENV_STRUCT_DB_PORT" default:"5432"`
+	}
+	// Auth has a required inner field, which can be provided either by its own env var or as part of a JSON value.
+	type Auth struct {
+		Token string `env:"FL_PKG_ENV_STRUCT_AUTH_TOKEN" required:"true"`
+	}
+	type Config struct {
+		Retry RetryPolicy `env:"FL_PKG_ENV_STRUCT_RETRY"`
+		DB    DB          `env:"FL_PKG_ENV_STRUCT_DB"`
+		Auth  Auth        `env:"FL_PKG_ENV_STRUCT_AUTH"`
+	}
+
+	var (
+		config = let.Var(s, func(t *testcase.T) *Config {
+			return &Config{}
+		})
+		// innerToken is set as the env var of the required inner field, so the scenarios not about it stay valid.
+		innerToken = let.StringNC(s, 8, random.CharsetAlpha())
+	)
+	act := func(t *testcase.T) error {
+		return env.Load(config.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) {
+		t.UnsetEnv(retryEnvKey)
+		t.UnsetEnv(dbEnvKey)
+		t.UnsetEnv(dbHostEnvKey)
+		t.UnsetEnv(dbPortEnvKey)
+		t.UnsetEnv(authEnvKey)
+		t.SetEnv(authTokenEnvKey, innerToken.Get(t))
+	})
+
+	s.Then("the inner fields are loaded from their own tags, like their defaults", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).DB, DB{Host: "localhost", Port: 5432})
+		assert.Equal(t, config.Get(t).Retry, RetryPolicy{})
+	})
+
+	s.Then("a required inner field is loaded from its own env var", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Auth, Auth{Token: innerToken.Get(t)})
+	})
+
+	s.When("the env var of a struct field without env tags of its own holds a JSON value", func(s *testcase.Spec) {
+		var (
+			retry = let.Var(s, func(t *testcase.T) RetryPolicy {
+				return RetryPolicy{
+					Max:     t.Random.IntBetween(1, 10),
+					Backoff: time.Duration(t.Random.IntBetween(1, 60)) * time.Second,
+				}
+			})
+			retryJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(retry.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+		)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(retryEnvKey, retryJSON.Get(t))
+		})
+
+		s.Then("the JSON value is loaded into the field", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).Retry, retry.Get(t))
+		})
+
+		s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+			retryJSON.Let(s, func(t *testcase.T) string {
+				return fmt.Sprintf(`{"Max":%q}`, t.Random.StringNC(8, random.CharsetAlpha()))
+			})
+
+			s.Then("it fails with an invalid value error", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), env.ErrInvalidValue)
+			})
+		})
+	})
+
+	s.When("the env vars of the inner fields are set", func(s *testcase.Spec) {
+		var (
+			innerHost = let.StringNC(s, 8, random.CharsetAlpha())
+			innerPort = let.IntB(s, 1000, 1999)
+		)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(dbHostEnvKey, innerHost.Get(t))
+			t.SetEnv(dbPortEnvKey, strconv.Itoa(innerPort.Get(t)))
+		})
+
+		s.Then("the inner fields are loaded from them", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).DB, DB{Host: innerHost.Get(t), Port: innerPort.Get(t)})
+		})
+	})
+
+	s.When("the env var of a struct field with env tags of its own holds a JSON value", func(s *testcase.Spec) {
+		var (
+			db = let.Var(s, func(t *testcase.T) DB {
+				return DB{
+					Host: t.Random.StringNC(8, random.CharsetAlpha()),
+					Port: t.Random.IntBetween(2000, 2999),
+				}
+			})
+			dbJSON = let.Var(s, func(t *testcase.T) string {
+				data, err := json.Marshal(db.Get(t))
+				assert.Must(t).NoError(err)
+				return string(data)
+			})
+		)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(dbEnvKey, dbJSON.Get(t))
+		})
+
+		s.Then("the JSON value is loaded onto the inner fields, overwriting their defaults", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).DB, db.Get(t))
+		})
+
+		s.And("the env vars of the inner fields are set too", func(s *testcase.Spec) {
+			var (
+				innerHost = let.StringNC(s, 8, random.CharsetAlpha())
+				innerPort = let.IntB(s, 1000, 1999)
+			)
+			s.Before(func(t *testcase.T) {
+				t.SetEnv(dbHostEnvKey, innerHost.Get(t))
+				t.SetEnv(dbPortEnvKey, strconv.Itoa(innerPort.Get(t)))
+			})
+
+			s.Then("the inner fields are loaded first, then the JSON value overwrites them", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, config.Get(t).DB, db.Get(t))
+			})
+		})
+
+		s.And("the JSON value has only some of the fields", func(s *testcase.Spec) {
+			dbJSON.Let(s, func(t *testcase.T) string {
+				return fmt.Sprintf(`{"Host":%q}`, db.Get(t).Host)
+			})
+
+			s.Then("the JSON value is merged onto the inner fields, so the absent ones keep their loaded value", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, config.Get(t).DB, DB{Host: db.Get(t).Host, Port: 5432})
+			})
+		})
+
+		s.And("the JSON value doesn't match the field's type", func(s *testcase.Spec) {
+			dbJSON.Let(s, func(t *testcase.T) string {
+				return fmt.Sprintf(`{"Port":%q}`, t.Random.StringNC(8, random.CharsetAlpha()))
+			})
+
+			s.Then("it fails with an invalid value error", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), env.ErrInvalidValue)
+			})
+		})
+	})
+
+	// required is checked once the whole loading is complete,
+	// so a required inner field can be satisfied by the JSON value of its outer struct field too.
+	s.When("the env var of a required inner field is not set", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			t.UnsetEnv(authTokenEnvKey)
+		})
+
+		s.Then("it fails with a missing environment variable error that names the env var", func(t *testcase.T) {
+			err := act(t)
+
+			assert.ErrorIs(t, err, env.ErrMissingEnvironmentVariable)
+			assert.Contains(t, err.Error(), authTokenEnvKey)
+		})
+
+		s.And("the env var of the outer struct field holds a JSON value with it", func(s *testcase.Spec) {
+			auth := let.Var(s, func(t *testcase.T) Auth {
+				return Auth{Token: t.Random.StringNC(8, random.CharsetAlpha())}
+			})
+			s.Before(func(t *testcase.T) {
+				data, err := json.Marshal(auth.Get(t))
+				assert.Must(t).NoError(err)
+				t.SetEnv(authEnvKey, string(data))
+			})
+
+			s.Then("required is satisfied by the JSON value", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, config.Get(t).Auth, auth.Get(t))
+			})
+		})
+
+		s.And("the env var of the outer struct field holds a JSON value without it", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				t.SetEnv(authEnvKey, `{}`)
+			})
+
+			s.Then("it still fails with a missing environment variable error that names the env var", func(t *testcase.T) {
+				err := act(t)
+
+				assert.ErrorIs(t, err, env.ErrMissingEnvironmentVariable)
+				assert.Contains(t, err.Error(), authTokenEnvKey)
+			})
+		})
+	})
+
+	s.When("the env var of a required inner field is set to an empty value", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(authTokenEnvKey, "")
+		})
+
+		s.Then("required is satisfied, since the env var is present, even though the loaded value is empty", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).Auth, Auth{})
+		})
+	})
+}
+
+func TestLoad_structFieldWithDefaultJSON(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const (
+		replicaEnvKey      = "FL_PKG_ENV_STRUCT_REPLICA"       // the env tag of Config.Replica
+		replicaHostEnvKey  = "FL_PKG_ENV_STRUCT_REPLICA_HOST"  // the env tag of Replica.Host
+		replicaPortEnvKey  = "FL_PKG_ENV_STRUCT_REPLICA_PORT"  // the env tag of Replica.Port
+		replicaUserEnvKey  = "FL_PKG_ENV_STRUCT_REPLICA_USER"  // the env tag of Replica.User
+		replicaTokenEnvKey = "FL_PKG_ENV_STRUCT_REPLICA_TOKEN" // the env tag of Replica.Token
+	)
+	// the values in the default tag of Config.Replica
+	const (
+		defaultHost  = "replica.internal"
+		defaultToken = "from-default"
+	)
+
+	// Replica has inner defaults and required inner fields.
+	type Replica struct {
+		Host  string `env:"FL_PKG_ENV_STRUCT_REPLICA_HOST" default:"localhost"`
+		Port  int    `env:"FL_PKG_ENV_STRUCT_REPLICA_PORT" default:"5432"`
+		User  string `env:"FL_PKG_ENV_STRUCT_REPLICA_USER" required:"true"`
+		Token string `env:"FL_PKG_ENV_STRUCT_REPLICA_TOKEN" required:"true"`
+	}
+	// Config puts a JSON value into a default tag. Horrifying, but possible.
+	// The default JSON overwrites an inner default (Host), satisfies a required inner field (Token),
+	// and lacks an inner field with a default (Port) and a required inner field (User).
+	type Config struct {
+		Replica Replica `env:"FL_PKG_ENV_STRUCT_REPLICA" default:"{\"Host\":\"replica.internal\",\"Token\":\"from-default\"}"`
+	}
+
+	var (
+		config = let.Var(s, func(t *testcase.T) *Config {
+			return &Config{}
+		})
+		// innerUser is set as the env var of the required inner field that the default JSON lacks,
+		// so the scenarios not about it stay valid.
+		innerUser = let.StringNC(s, 8, random.CharsetAlpha())
+	)
+	act := func(t *testcase.T) error {
+		return env.Load(config.Get(t))
+	}
+
+	s.Before(func(t *testcase.T) {
+		t.UnsetEnv(replicaEnvKey)
+		t.UnsetEnv(replicaHostEnvKey)
+		t.UnsetEnv(replicaPortEnvKey)
+		t.UnsetEnv(replicaTokenEnvKey)
+		t.SetEnv(replicaUserEnvKey, innerUser.Get(t))
+	})
+
+	s.Then("the default JSON is merged onto the inner fields, overwriting their defaults, while the absent ones keep theirs", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Replica.Host, defaultHost)
+		assert.Equal(t, config.Get(t).Replica.Port, 5432)
+	})
+
+	s.Then("the default JSON satisfies a required inner field that has no input", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+
+		assert.Equal(t, config.Get(t).Replica.Token, defaultToken)
+	})
+
+	s.When("the env vars of the inner fields are set", func(s *testcase.Spec) {
+		var (
+			innerHost  = let.StringNC(s, 8, random.CharsetAlpha())
+			innerPort  = let.IntB(s, 1000, 1999)
+			innerToken = let.StringNC(s, 8, random.CharsetAlpha())
+		)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(replicaHostEnvKey, innerHost.Get(t))
+			t.SetEnv(replicaPortEnvKey, strconv.Itoa(innerPort.Get(t)))
+			t.SetEnv(replicaTokenEnvKey, innerToken.Get(t))
+		})
+
+		s.Then("they win over the default JSON, since a default never overwrites an input", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).Replica, Replica{
+				Host:  innerHost.Get(t),
+				Port:  innerPort.Get(t),
+				User:  innerUser.Get(t),
+				Token: innerToken.Get(t),
+			})
+		})
+	})
+
+	s.When("the env var of the struct field holds a JSON value", func(s *testcase.Spec) {
+		port := let.IntB(s, 2000, 2999)
+		s.Before(func(t *testcase.T) {
+			t.SetEnv(replicaEnvKey, fmt.Sprintf(`{"Port":%d}`, port.Get(t)))
+		})
+
+		s.Then("it is merged onto the value the field has without it, including its default JSON", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+
+			assert.Equal(t, config.Get(t).Replica, Replica{
+				Host:  defaultHost,
+				Port:  port.Get(t),
+				User:  innerUser.Get(t),
+				Token: defaultToken,
+			})
+		})
+	})
+
+	s.When("the env var of a required inner field that the default JSON lacks is not set", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			t.UnsetEnv(replicaUserEnvKey)
+		})
+
+		s.Then("it fails with a missing environment variable error that names the env var", func(t *testcase.T) {
+			err := act(t)
+
+			assert.ErrorIs(t, err, env.ErrMissingEnvironmentVariable)
+			assert.Contains(t, err.Error(), replicaUserEnvKey)
+		})
 	})
 }

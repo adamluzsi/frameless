@@ -59,15 +59,51 @@ func StubStderr(tb testint.TB, out *os.File) {
 	})
 }
 
+var executable = os.Executable
+
+func Executable() (string, error) {
+	m.Lock()
+	defer m.Unlock()
+	return executable()
+}
+
+func StubExecutable(tb testint.TB, path string) {
+	tb.Helper()
+
+	m.Lock()
+	defer m.Unlock()
+
+	prev := executable
+	executable = func() (string, error) { return path, nil }
+
+	tb.Cleanup(func() {
+		m.Lock()
+		defer m.Unlock()
+		executable = prev
+	})
+}
+
 var args *[]string
 
 func StubArgs(tb testint.TB, vs []string) {
-	var og = args
-	tb.Cleanup(func() { args = og })
+	tb.Helper()
+
+	m.Lock()
+	defer m.Unlock()
+
+	prev := args
 	args = &vs
+
+	tb.Cleanup(func() {
+		m.Lock()
+		defer m.Unlock()
+		args = prev
+	})
 }
 
 func Args() []string {
+	m.Lock()
+	defer m.Unlock()
 	if args != nil {
 		return *args
 	}

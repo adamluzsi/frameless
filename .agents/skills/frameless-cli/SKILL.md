@@ -1,6 +1,6 @@
 ---
 name: frameless-cli
-description: Build and unit test Go command-line adapters with go.llib.dev/frameless/pkg/cli. Covers struct-tag inputs (flag, arg, env, default, enum, required, sep, min/max/range/length/regexp), ServeMux subcommands, help text and exit codes, and httptest-style in-process tests with cli.ResponseRecorder and cli.Request instead of exec-ing a built binary or swapping os.Args/os.Stdout. Use when writing or changing a CLI entrypoint (main, cmd/), adding commands, flags, positional args or env config, replacing flag/os.Args/cobra/urfave code in a frameless project, testing CLI output, exit codes or stdin handling without a shell, or changing pkg/cli itself. Applies to any Go project that imports go.llib.dev/frameless.
+description: Build and unit test Go command-line adapters with go.llib.dev/frameless/pkg/cli. Covers struct-tag inputs (flag, arg, env, default, enum, required, sep, layout, min/max/range/length/regexp), cli.WithDefaults, ServeMux subcommands, help text and exit codes, and httptest-style in-process tests with cli.ResponseRecorder and cli.Request instead of exec-ing a built binary or swapping os.Args/os.Stdout. Use when writing or changing a CLI entrypoint (main, cmd/), adding commands, flags, positional args or env config, replacing flag/os.Args/cobra/urfave code in a frameless project, testing CLI output, exit codes or stdin handling without a shell, or changing pkg/cli itself. Applies to any Go project that imports go.llib.dev/frameless.
 compatibility: Go projects importing go.llib.dev/frameless/pkg/cli.
 license: MIT (matches go.llib.dev/frameless)
 metadata:
@@ -46,7 +46,7 @@ Do not add `spf13/cobra`, `urfave/cli`, `alecthomas/kong` or similar to a projec
 | `http.Error(w, msg, code)` | `cli.Error(w, msg, code)` (writes to stderr) |
 | `http.ListenAndServe` | `cli.Main(ctx, h)` |
 | `httptest.NewRecorder()` | `&cli.ResponseRecorder{}` (zero value is ready) |
-| `rec.Code`, `rec.Body` | `rr.Code`, `rr.Out` (stdout), `rr.Err` (stderr), `rr.CombinedOutput()` |
+| `rec.Code`, `rec.Body` | `rr.Code`, `rr.Out` (stdout), `rr.Err` (stderr), `rr.CombinedOutput()`; as writers: `rr.Stdout()`, `rr.Stderr()` |
 | `httptest.NewRequest(...)` | `(&cli.Request{Args: args, Body: stdin}).WithContext(ctx)` |
 | `h.ServeHTTP(rec, req)` | `cli.ServeCLI(h, rr, req)` |
 
@@ -111,10 +111,11 @@ func main() {
 Rules:
 
 - Keep `main` thin. Put commands and a `NewMux(deps...)` constructor in an importable package, so tests run the exact routing table production uses.
-- Use value types with value receivers for handlers. The pipeline parses into a copy, so every run starts from the registered value. Pointer handlers (`&Cmd{}`) work, but parsing writes into the shared instance and state leaks between runs.
+- Prefer value types with value receivers for handlers. The pipeline parses into a copy, so every run starts from the registered value. Pointer handlers (`&Cmd{}`) are fine too, since a CLI process runs its handler only once. Parsing writes into the registered instance, though, so in tests build a fresh pointer handler (and the mux holding it) for every run.
 - Inject dependencies as exported, **untagged** fields (ports/interfaces) when you register the command.
   - The parser walks exported nested and embedded structs, pointers and interface values, including dependency values.
   - A tagged field inside a dependency becomes CLI input. An `env`-only field there even becomes required and can fail every run with exit code 2.
+  - When a dependency's type has `flag`/`arg`/`env` tags of its own (another CLI framework's command, a config type with other tag conventions), tag the field `opaque:""` (alias `norecurse:""`). The parser then doesn't look inside the value: its tags aren't inputs, and the value is left untouched. `pkg/env` understands the same tag.
   - Unexported fields are ignored.
 - Write results to `w`. Report failures with `cli.Error(w, msg, cli.ExitCodeError)` and then `return`. On success you don't need to call `ExitCode`, because `0` is the default.
 - For warnings that shouldn't fail the run, write to stderr through `cli.ErrorWriter`:
@@ -132,7 +133,7 @@ Rules:
   - `Usage(pattern string) (string, error)` (`cli.HelpUsage`) replaces the generated usage entirely.
   - `cli.Usage(h, "cmd")` renders usage for a handler.
 - For tabular output, use `cli.FPrintTable(w, rows, cli.TableRowPrefix("  "), cli.TablePadding(2))`.
-- Use `cli.ResponseWriter` and `cli.ServeMux`. The names `cli.Response` and `cli.Mux` are deprecated, even though the package README still uses them.
+- Use `cli.ResponseWriter` and `cli.ServeMux`. The names `cli.Response` and `cli.Mux` are deprecated.
 
 ## Declaring inputs
 
@@ -140,40 +141,32 @@ Rules:
 | --- | --- |
 | `flag:"name,n"` | Flag with aliases (leading dashes in the tag are ignored). `-n v`, `-n=v` and `--name v` are equivalent. A bool flag on its own means `true`. Optional by default. |
 | `arg:"0"` | Positional argument by index. Indexes must be sequential. **Required by default.** |
-| `arg:"1:"`, `arg:":"`, `arg:"1:3"` | Variadic or ranged positionals. Needs a slice field; a non-slice panics. |
+| `arg:"1:"`, `arg:":"`, `arg:"1:3"` | Variadic or ranged positionals. Needs a slice field; a non-slice panics. With no user values, it falls back to env, the pre-set value, then `default` (e.g. `default:"a.txt,b.txt"`), like any other input. A range given only some of its values is exit code 2. |
 | `env:"APP_X,X"` | Environment variable(s), first match wins. An env-only field is **required by default**. |
-| `default:"v"` | Default value; makes the field optional. |
+| `default:"v"` | Default value; makes the field optional. Used only when the user gave no value and the registered handler's field is still zero (see below). |
 | `required:"true"`, `opt:"true"`/`optional:"true"` | Override required/optional. |
 | `desc:"..."`/`description:"..."` | Text for the generated help. |
-| `sep:","`/`separator:","` | Splits a value into slice elements. |
+| `sep:","`/`separator:","` | Splits a value into slice elements. Without the tag, it is `,`. A JSON array value (`["a,b","c"]`) is parsed as JSON, with or without the tag. `\,` escapes the separator. Same rules as `pkg/env`. The help shows only an explicit tag. |
+| `layout:"2006-01-02"` | `time.Parse` layout of a `time.Time` input (also its pointer/slice). Without it, the input is RFC3339. The help shows the layout. `pkg/env` reads the same tag. |
 | `enum:"a,b"` | Allowed values; listed in the error message. A trailing punctuation character sets an explicit separator and keeps values verbatim: `enum:"a,b,"`, `enum:"x|y|"`. |
 | `min`, `max`, `range:"0..100,200.."`, `length:"1..32"`/`len`, `char:"a-z"`, `regexp:"^v\\d+$"`/`rgx`/`match` | Validation from `pkg/validate`. A failure is exit code 2. |
+| `opaque:""`/`norecurse:""` | Don't look for inputs inside the field's value (embedded, named or pointer field). It is not an ignore: with its own `flag`/`env`/`arg` tag, the field is still an input, e.g. a struct taking a JSON value. A bool tag: empty or `true` is on, `false` is off, anything else panics. Shared with `pkg/env`. |
 
-- Precedence: flag > env > `default` > the value pre-set in the registered struct.
-  - A `default` tag **overwrites** a pre-set value.
-  - A pre-set value survives, and satisfies `required`, only on a field with no `default` when no flag or env is given.
+- Precedence when the command runs, per input field: flag or arg > env > the value pre-set on the registered handler > `default` tag.
+  - A pre-set value is never overwritten by the `default` tag, and the other inputs still get theirs: `GreetCommand{Lang: "hu", Greeter: g}` keeps `hu`. A pre-set value also satisfies `required`.
+  - A zero value can't be told apart from an unset one, so a field pre-set to its zero value still gets its `default`. Think twice before `default:"true"` on a bool: code can't turn it off, only the user with `-flag=false`. Prefer a flag that is off by default, like `no-color`.
+  - `cli.WithDefaults(Cmd{...})` applies the `default` tags without running the pipeline, for direct `cmd.ServeCLI(rr, req)` tests. It fills only zero input fields, doesn't read env, updates pointer handlers in place, and panics with `cli.ErrInvalidDefaultValue` on a bad `default` tag.
   - Don't use tagged fields to inject configuration; use untagged fields.
+  - A struct field with its own `flag`/`env`/`default` tag takes a JSON object, while its inner fields keep their own inputs. Later layers win: inner defaults < the struct field's `default` JSON < inner inputs < the struct field's own input. A JSON object is **merged** onto the field's value, so the inner fields it doesn't mention keep theirs. The order of the flags doesn't matter: `-db '{...}' -db-host x` and `-db-host x -db '{...}'` both let the JSON win.
+  - `required`, `enum` and the other validation tags are checked once every input is applied. A required inner field without an input is satisfied by the struct field's JSON (input or `default`) giving it a non-empty value; `{}` doesn't. A given input satisfies it even when empty (`-token ""`).
 - Supported field types:
   - `string`, `bool`, integers, unsigned integers, floats
-  - `time.Duration` and `url.URL`
+  - `time.Duration`, `url.URL`, and `time.Time` (with `layout`, RFC3339 otherwise)
   - pointers
-  - slices: use `sep`, a JSON array value (`["a","b"]`), or repeat the flag
+  - slices: split on `sep` (`,` without the tag), a JSON array value (`["a","b"]`), or repeat the flag
   - maps, as a JSON value
+  - structs, as a JSON object value (keys follow `encoding/json`), merged onto the field's value; the struct's own tags stay inputs too, unless the field is `opaque:""`
   - any `encoding.TextUnmarshaler`, and types registered with `convkit.Register`
-- `time.Time` fails with "missing TimeLayout ParseOption". Wrap it:
-
-  ```go
-  type Date struct{ time.Time }
-
-  func (d *Date) UnmarshalText(text []byte) error {
-  	t, err := time.Parse(time.DateOnly, string(text))
-  	if err != nil {
-  		return err
-  	}
-  	d.Time = t
-  	return nil
-  }
-  ```
 
 - Share flags across commands by embedding a struct:
 
@@ -185,9 +178,9 @@ Rules:
 
   type ReportCommand struct {
   	CommonFlags
-  	Since Date     `flag:"since" desc:"YYYY-MM-DD"`
-  	Tags  []string `flag:"tag" sep:","` // --tag a,b --tag c  →  [a b c]
-  	Files []string `arg:"0:"`
+  	Since time.Time `flag:"since" layout:"2006-01-02" desc:"report start date"`
+  	Tags  []string  `flag:"tag" sep:","` // --tag a,b --tag c  →  [a b c]
+  	Files []string  `arg:"0:"`
   }
   ```
 
@@ -210,9 +203,9 @@ Pick the level that matches what you are testing:
 
 | What | How | Parsing, defaults, validation, help? |
 | --- | --- | --- |
-| Handler logic with inputs already bound | `cmd.ServeCLI(rr, &cli.Request{...})`, with every field set in the struct literal | No. Set fields that have a `default` tag yourself. |
+| Handler logic with inputs already bound | `cmd.ServeCLI(rr, &cli.Request{...})`, with every field set in the struct literal | No. Set fields that have a `default` tag yourself, or start from `cli.WithDefaults(Cmd{...})`. |
 | Flags, args, env, defaults, validation, routing, help, exit codes | `cli.ServeCLI(mux, rr, req)` with `NewMux(fakes...)` | Yes, the same pipeline `cli.Main` runs |
-| Binding only | `err := cli.ConfigureHandler(&cmd, req)`, then assert fields | Parsing and defaults; no help output, handler not called |
+| Binding only | `err := cli.ConfigureHandler(&cmd, req)`, then assert fields | Parsing and defaults; no help output, handler not called. Declare a fresh `cmd` for every run, since it's written in place. |
 
 The full-pipeline act, in `go.llib.dev/testcase` spec style (see the `testcase-spec` skill):
 
@@ -290,17 +283,14 @@ Cover at least these scenarios per command:
 
 ### Portability: what still depends on the host
 
-The pipeline is pure Go and runs in-process. Two details of framework-generated text still come from the host:
+The pipeline is pure Go and runs in-process. Framework-generated text (help, usage, `Invalid input:` reports) always uses `\n` line endings, like handler output, and the program name never has an `.exe` extension, so it is identical on Linux, macOS and Windows.
 
-- Help, usage and error text use the OS line separator (`\r\n` on Windows). Handler output written with `fmt.Fprintln` always uses `\n`.
-- The `Usage:` line includes the test binary's name (`greetcli.test`, or `greetcli.test.exe` on Windows).
-
-So compare handler output exactly, but match framework text loosely: `assert.Contains`, `assert.MatchRegexp(t, rr.Err.String(), `Usage: \S+ greet`)`, or normalise with `strings.ReplaceAll(s, "\r\n", "\n")`. Prefer asserting exit codes and fake calls over help wording.
+The one host detail left is the program name in the `Usage:` line: it is the running binary's name, which in `go test` is the test binary (`greetcli.test`). Compare handler output and framework text exactly, but match the `Usage:` line with a pattern (`assert.MatchRegexp(t, rr.Err.String(), `Usage: \S+ greet`)`). Prefer asserting exit codes and fake calls over help wording.
 
 ### Test rules
 
 - Use fakes for dependencies, not mocks. Pass them as pointers, so the value-copied handler and the test share state. On bad input, assert that the fake was **not** called.
-- Build a fresh `*cli.Request` for every run, because the mux and the parser rewrite `r.Args`. Clone the args you log.
+- Build a fresh `*cli.Request` for every run, because the mux and the parser rewrite `r.Args`. Clone the args you log. Do the same for pointer handlers and `ConfigureHandler` targets, because parsing writes into them.
 - Set `Body` when the command reads stdin. A zero `cli.Request` has a nil `Body`; only `cli.Main` uses `os.Stdin`.
 - Env is read with `os.LookupEnv`, which is process-global. Pin every variable a command reads with `testcase.SetEnv`/`testcase.UnsetEnv` (or `t.Setenv`), usually unset in a root `Before`, so the developer's shell or CI can't change outcomes. Tests that set env can't use `t.Parallel()`.
 - `rr.Code == 0` is also the zero value. Pair it with an output or fake assertion.
@@ -313,19 +303,22 @@ So compare handler output exactly, but match framework text loosely: `assert.Con
 
 - Run `go test ./pkg/cli/...`. The specs in `cli_test.go`, `help_test.go` and `table_test.go` use `go.llib.dev/testcase`; follow that style.
 - `cli.ServeCLI` and `cli.ConfigureHandler` share the binding logic. A new tag or field type must behave the same in both, show up in the generated help, and report bad values as exit code 2 with `Invalid input:`.
-- Framework text goes through `lineSeparator` and `execName()`. Tests in the package must not hard-code `\n` or the binary name for that text.
-- Keep `pkg/cli/README.md` and `pkg/cli/example/{direct,mux}` in sync with API changes. The README still uses the deprecated `cli.Response`/`cli.Mux` names.
+- Framework text goes through `printfln`/`lineSeparator` (always `"\n"`) and `execName()` (base name without `.exe`). Inside the package, `osint.StubExecutable(t, path)` pins the program name so help can be compared exactly; tests that stub it or set env can't run in parallel.
+- Keep `pkg/cli/README.md` and `pkg/cli/example/{direct,mux}` in sync with API changes. `TestREADME` fails on deprecated names and when the README's example sections drift from the example files.
+- Time layouts come from the shared `tagint.TimeLayout` tag handler (`pkg/internal/tagint`), which `pkg/env` uses too.
+- Every raw input (flag, arg element, env, `default` tag) is parsed by `metaRef.parseValue`, which applies the `sep` tag and the `layout` tag, and merges a JSON object onto the field's value through `tagint.ParseOnto`. Don't call `convkit.ParseReflect` directly, or that input skips them.
+- The list rules (`,` without a `sep` tag, a JSON array value is parsed as JSON) live in `pkg/internal/tagint.Separator`, which `pkg/env` uses too. Change them there, so both packages keep reading list values the same way. The same goes for the JSON object rules in `tagint.IsJSONObject` and `tagint.ParseOnto`.
+- `metaH.load` applies the values in layers: `loadDefault` over the refs in walk order (outer first, only onto zero fields; skipped when the ref has an input, unless it takes a JSON object), then `loadInput` inner first (`metaH.innerFirst`), then `check` in walk order. Parsing doesn't validate; `check` validates the refs that got a value of their own (`metaRef.loaded`) and reports a missing required one. `pkg/env` follows the same layers. Range and variadic args go through the same layers; `metaH.Validate` only rejects a partially provided range.
+- Input discovery is `metaFor`: a `reftree.Walk` over the handler, which returns `reftree.Skip` on an opaque field (`tagint.IsOpaque`) after the field itself is registered. `ServeCLI`, `ConfigureHandler`, `WithDefaults` and the help all go through it, so a discovery change applies to all of them.
+- The `opaque` tag handler lives in `pkg/internal/tagint`, and `pkg/env` uses it too. Change it there, so both packages skip the same fields.
 - Known rough edges, all candidates for upstream fixes:
   - flags after the first positional are silently ignored instead of rejected;
-  - `default` overwrites values pre-set on the registered handler;
-  - `time.Time` needs a wrapper type;
-  - tags inside dependency structs are processed;
-  - `ResponseRecorder` and `StdResponse` expose a misspelled `Stdeout()` method.
+  - tags inside dependency structs are processed, unless the field is tagged `opaque:""`.
 
 ## Reference
 
 - `pkg/cli/README.md`: overview, HTTP↔CLI terminology, tag examples
-- `pkg/cli/cli.go`: `Handler`, `Request`, `ResponseWriter`, `ServeMux`, `ServeCLI`, `Main`, `ConfigureHandler`, `ResponseRecorder`, exit codes, tag handling
+- `pkg/cli/cli.go`: `Handler`, `Request`, `ResponseWriter`, `ServeMux`, `ServeCLI`, `Main`, `ConfigureHandler`, `WithDefaults`, `ResponseRecorder`, exit codes, tag handling
 - `pkg/cli/help.go`, `pkg/cli/doc.go`: `Usage`, `HelpUsage`, `HelpSummary`, `HelpDescription`
 - `pkg/cli/table.go`: `FPrintTable`, `TableRowPrefix`, `TablePadding`
 - `pkg/cli/deprecated.go`: old names
@@ -341,5 +334,5 @@ So compare handler output exactly, but match framework text loosely: `assert.Con
 - [ ] Handlers write to `w`, read stdin from `r.Body`, pass `r.Context()` downstream, and `return` after `cli.Error`.
 - [ ] Every command has a `Summary()`. Enums, ranges and required inputs are declared as tags, not checked by hand.
 - [ ] Tests cover the happy path, each flag and env input, invalid input (code 2, handler not called), dependency failure (code 1), cancellation and help.
-- [ ] Env is pinned in tests, a fresh `cli.Request` is built for every run, and framework-generated text is matched loosely (line separators, binary name).
+- [ ] Env is pinned in tests, a fresh `cli.Request` is built for every run, and only the program name in the `Usage:` line is matched loosely.
 - [ ] Positional arguments come after flags in test args, with `--` before values that start with `-`.

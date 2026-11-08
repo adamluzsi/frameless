@@ -216,6 +216,13 @@ func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
 		}
 		return ptr.Elem(), nil
 
+	case reflect.Struct:
+		ptr := reflect.New(typ)
+		if err := json.Unmarshal([]byte(val), ptr.Interface()); err != nil {
+			return reflect.Value{}, err
+		}
+		return ptr.Elem(), nil
+
 	case reflect.Pointer:
 		rv, err := parse(typ.Elem(), val, opts)
 		if err != nil {

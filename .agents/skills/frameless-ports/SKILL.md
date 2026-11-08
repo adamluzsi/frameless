@@ -1,6 +1,6 @@
 ---
 name: frameless-ports
-description: Design dependencies the frameless way, using ports and adapters (hexagonal architecture) with dependency inversion. The consuming package owns a small role interface composed from go.llib.dev/frameless/port interfaces, plus a `<pkg>contract` package that every supplier, whether a real adapter or an in-memory fake, must pass. Use when code needs a dependency or collaborator (storage, queue, pub/sub, events, locks, files, codecs, transactions, metadata, migrations); when deciding where an interface belongs; when tempted to write mocks; when writing or running a domain contract; when discovering which ports, contracts and suppliers frameless offers; or when adding a port to frameless. Routes to frameless-crud, frameless-workflow, frameless-resilience and frameless-cli for their areas. Applies to any Go project that imports go.llib.dev/frameless.
+description: Design dependencies the frameless way, using ports and adapters (hexagonal architecture) with dependency inversion. The consuming package owns a small role interface composed from go.llib.dev/frameless/port interfaces, plus a `<pkg>contract` package that every supplier, whether a real adapter or an in-memory fake, must pass. Use when code needs a dependency or collaborator (storage, queue, pub/sub, events, locks, files, codecs, transactions, metadata, migrations); when integrating a third-party API, SDK or external service (payments, email); when deciding where an interface belongs; when tempted to write mocks; when writing or running a domain contract; when discovering which ports, contracts and suppliers frameless offers; or when adding a port to frameless. Routes to frameless-software-design for application layout and wiring, and to frameless-crud, frameless-workflow, frameless-resilience and frameless-cli for their areas. Applies to any Go project that imports go.llib.dev/frameless.
 compatibility: Go projects importing go.llib.dev/frameless; contracts also use go.llib.dev/testcase.
 license: MIT (matches go.llib.dev/frameless)
 metadata:
@@ -18,7 +18,7 @@ In frameless, the code that needs a dependency owns its definition, in two parts
 
 Every supplier runs that contract: a frameless adapter, your own adapter, or an in-memory fake. An interface inverts only the signatures. The contract inverts the behaviour too, so domain code can rely on one meaning of `Publish`, `Lock` or `FindByID`, whatever technology is behind it.
 
-Specialised skills: `frameless-crud` (entity storage and transactions), `frameless-workflow` (workflows), `frameless-resilience` (retries, backoff, rate limits) and `frameless-cli` (command-line adapters). This skill covers the shared model and the other ports.
+Specialised skills: `frameless-crud` (entity storage and transactions), `frameless-workflow` (workflows), `frameless-resilience` (retries, backoff, rate limits) and `frameless-cli` (command-line adapters). This skill covers the shared model and the other ports. For application structure, directory layout and wiring in `main`, see `frameless-software-design`.
 
 ## Stop signs
 
@@ -343,7 +343,7 @@ func TestInvoiceEvents(t *testing.T) {
 
 ## Reference
 
-- `examples/ports-and-adapters` in the frameless repository holds the complete example above, runnable, with a fake, a use-case spec and PostgreSQL suppliers. It is a separate module, so it isn't in the module cache. Online: https://github.com/adamluzsi/frameless/tree/main/examples/ports-and-adapters
+- `examples/ports-and-adapters` in the frameless repository holds the complete example above, runnable, with a fake, a use-case spec, PostgreSQL suppliers and a `cmd/collector` composition root. It is a separate module, so it isn't in the module cache. Online: https://github.com/adamluzsi/frameless/tree/main/examples/ports-and-adapters
 - Domain contracts in frameless to imitate:
   - `pkg/tasker/taskercontract`: `SchedulerLocks` over `guardcontract.LockerFactory`
   - `pkg/workflow/wfcontract`: `Queue`, `ProcessLocks`, `NotificationBroadcast`
