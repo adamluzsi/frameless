@@ -65,6 +65,22 @@ type Entity struct {
 }
 ```
 
+The tag decides: when a struct tags its own fields with `ext:"id"`,
+only the tagged fields are considered as its ID,
+and an untagged field is never taken as the ID just because its type matches.
+If no tagged field can hold the given ID type, `Set` returns `ErrIDFieldNotFound`, and `Lookup` reports it as not found.
+When an entity has external IDs of different types, tag each of them.
+
+```go
+type Entity struct {
+    Num  int `ext:"id"`
+    Name string
+}
+
+// returns ErrIDFieldNotFound, rather than writing "x" into Name
+err := extid.Set(&ent, "x")
+```
+
 ### Field with a Custom Identifier Type
 
 If your design uses dedicated identifier types, `extid` will recognise fields by their registered types.

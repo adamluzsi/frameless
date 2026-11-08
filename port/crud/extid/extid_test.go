@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/port/crud/extid"
 
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -441,24 +442,14 @@ func (o onlyIDByName) GetMarker() string { return o.ID }
 
 type ifaceByName interface{ GetMarker() string }
 
-// onlyIDByType is used to verify that Lookup finds a uniquely-typed ID
-// field even when neither the name nor a tag identifies it as such.
-// Currently a known gap (see the test body).
+// onlyIDByType is used to verify that Lookup and Set find a uniquely-typed ID
+// field through a named interface ENT type,
+// even when neither the name nor a tag identifies it as such.
 type onlyIDByType struct{ Identifier string }
 
 func (o onlyIDByType) Marker() string { return "marker" }
 
 type ifaceByType interface{ Marker() string }
-
-// ifaceHoldingPtrS is used to verify Lookup behavior when the interface
-// value boxes a pointer to a struct instead of a struct value.
-type ifaceHoldingPtrS interface{ Marker() string }
-
-type entForPtr struct {
-	ID string `ext:"id"`
-}
-
-func (e *entForPtr) Marker() string { return e.ID }
 
 func TestLookup_CustomInterfaceTypeWithNilValue_NotFoundReturnedWithoutPanic(t *testing.T) {
 	var subject customEventInterface
@@ -609,20 +600,6 @@ func TestLookup_CustomInterfaceTypeWithIDByFieldName_IDReturned(t *testing.T) {
 	assert.Equal(t, "named", id)
 }
 
-func TestLookup_CustomInterfaceTypeWithIDByTypeOnly_IDReturned(t *testing.T) {
-	// Concrete struct has a uniquely-typed ID field with neither the name "ID"
-	// nor an `ext:"id"` tag. Lookup should locate it via the
-	// extractIdentifierFieldByType path, but only if that path is aware that
-	// typ may be an interface.
-	var i ifaceByType = onlyIDByType{Identifier: "typed"}
-	id, ok := extid.Lookup[string, ifaceByType](i)
-	if !ok || id != "typed" {
-		t.Logf("KNOWN GAP: Lookup with custom interface ENT and ID-by-type-only field returns (id=%q, ok=%v). "+
-			"This is because extractIdentifierFieldByType bails out when key.ENT is an interface. "+
-			"Consider fixing extractIdentifierFieldByType to dereference through the interface.", id, ok)
-	}
-}
-
 func TestLookup_TwoFieldsTaggedAsID_AmbiguousNotFound(t *testing.T) {
 	// When two fields are tagged `ext:"id"`, the extractIdentifierFieldByType
 	// path treats this as ambiguous and returns nullLookup. However, the
@@ -651,16 +628,6 @@ func TestLookup_TwoFieldsTaggedAsID_ReturnsFirstHitFromExtractPath(t *testing.T)
 	sf, _, ok := extid.ExtractIdentifierField(S{})
 	assert.True(t, ok)
 	assert.Equal(t, "A", sf.Name)
-}
-
-func TestLookup_CustomInterfaceTypeHoldingPointerToStruct_IDReturned(t *testing.T) {
-	var i ifaceHoldingPtrS = &entForPtr{ID: "ptr-id"}
-	id, ok := extid.Lookup[string, ifaceHoldingPtrS](i)
-	if !ok || id != "ptr-id" {
-		t.Logf("KNOWN GAP: Lookup with custom interface ENT holding *Foo returns (id=%q, ok=%v). "+
-			"This is because refMakeExtractFunc only handles struct-kind vals, not pointer-kind vals. "+
-			"Consider extending it to follow the pointer.", id, ok)
-	}
 }
 
 func TestRegisterType_CleanupDeregistersType(t *testing.T) {
@@ -1226,5 +1193,619 @@ func TestGet(t *testing.T) {
 		}
 		var v = T{ID: t.Random.HexN(42), DI: MyIDType(t.Random.Int())}
 		assert.Equal(t, extid.Get[MyIDType](v), v.DI)
+	})
+}
+
+func TestLookup(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type Entity struct {
+		ID   string
+		Name string
+	}
+
+	var (
+		id   = let.StringNC(s, 8, random.CharsetAlpha())
+		name = let.Var(s, func(t *testcase.T) string {
+			return random.Unique(func() string {
+				return t.Random.StringNC(8, random.CharsetAlpha())
+			}, id.Get(t))
+		})
+		ent = let.Var(s, func(t *testcase.T) any {
+			return Entity{ID: id.Get(t), Name: name.Get(t)}
+		})
+	)
+	act := func(t *testcase.T) (string, bool) {
+		return extid.Lookup[string](ent.Get(t))
+	}
+
+	s.Then("the value of the ID field is returned", func(t *testcase.T) {
+		got, ok := act(t)
+		assert.True(t, ok)
+		assert.Equal(t, id.Get(t), got)
+	})
+
+	s.When("the only field of the ID type is neither tagged nor named ID", func(s *testcase.Spec) {
+		type Entity struct {
+			Name string
+			Num  int
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Name: id.Get(t), Num: t.Random.Int()}
+		})
+
+		s.Then("the field is found by its type, and its value is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, id.Get(t), got)
+		})
+	})
+
+	s.When("the ID field is promoted from an embedded struct, next to another field of the ID type", func(s *testcase.Spec) {
+		type Base struct{ ID string }
+		type Entity struct {
+			Base
+			Name string
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Base: Base{ID: id.Get(t)}, Name: name.Get(t)}
+		})
+
+		s.Then("the value of the promoted ID field is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, id.Get(t), got)
+		})
+	})
+
+	s.When(`the field tagged as ext:"id" is promoted from an embedded struct, next to another field of the ID type`, func(s *testcase.Spec) {
+		type Base struct {
+			Ref string `ext:"id"`
+		}
+		type Entity struct {
+			Base
+			Name string
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Base: Base{Ref: id.Get(t)}, Name: name.Get(t)}
+		})
+
+		s.Then("the value of the promoted tagged field is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, id.Get(t), got)
+		})
+	})
+
+	s.When(`a field of another type is tagged as ext:"id" before the tagged field of the ID type`, func(s *testcase.Spec) {
+		type Entity struct {
+			Num  int `ext:"id"`
+			Name string
+			Ref  string `ext:"id"`
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Num: t.Random.Int(), Name: name.Get(t), Ref: id.Get(t)}
+		})
+
+		s.Then("the value of the tagged field with the ID type is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, id.Get(t), got)
+		})
+	})
+
+	s.When(`a field of another type is tagged as ext:"id", next to an untagged field of the ID type`, func(s *testcase.Spec) {
+		type Entity struct {
+			Num  int `ext:"id"`
+			Name string
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Num: t.Random.Int(), Name: name.Get(t)}
+		})
+
+		s.Then("the tag decides the ID field, so the untagged field is not taken as the ID", func(t *testcase.T) {
+			_, ok := act(t)
+			assert.False(t, ok)
+		})
+	})
+
+	s.When("the only field of the ID type is unexported", func(s *testcase.Spec) {
+		type Entity struct {
+			ref string
+			Num int
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{ref: id.Get(t), Num: t.Random.Int()}
+		})
+
+		s.Then("the unexported field is not taken as the ID", func(t *testcase.T) {
+			_, ok := act(t)
+			assert.False(t, ok)
+		})
+	})
+
+	s.When(`the field tagged as ext:"id" is unexported`, func(s *testcase.Spec) {
+		type Entity struct {
+			ref string `ext:"id"`
+			Num int
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{ref: id.Get(t), Num: t.Random.Int()}
+		})
+
+		s.Then("the unexported field is not taken as the ID", func(t *testcase.T) {
+			_, ok := act(t)
+			assert.False(t, ok)
+		})
+
+		s.And("an untagged field of the ID type is present as well", func(s *testcase.Spec) {
+			type Entity struct {
+				ref  string `ext:"id"`
+				Name string
+			}
+			ent.Let(s, func(t *testcase.T) any {
+				return Entity{ref: id.Get(t), Name: name.Get(t)}
+			})
+
+			s.Then("the tag decides the ID field, so the untagged field is not taken as the ID either", func(t *testcase.T) {
+				_, ok := act(t)
+				assert.False(t, ok)
+			})
+		})
+	})
+
+	s.When("the ID field is promoted through a nil embedded pointer", func(s *testcase.Spec) {
+		type Base struct{ ID string }
+		type Entity struct {
+			*Base
+			Num int
+		}
+		ent.Let(s, func(t *testcase.T) any {
+			return Entity{Num: t.Random.Int()}
+		})
+
+		s.Then("it reports not found rather than panicking", func(t *testcase.T) {
+			var ok bool
+			assert.NotPanic(t, func() { _, ok = act(t) })
+			assert.False(t, ok)
+		})
+	})
+
+	s.When("the entity is a pointer to a nil interface value", func(s *testcase.Spec) {
+		ent.Let(s, func(t *testcase.T) any {
+			var iface ifaceByType
+			return &iface
+		})
+
+		s.Then("it reports not found rather than panicking", func(t *testcase.T) {
+			var ok bool
+			assert.NotPanic(t, func() { _, ok = act(t) })
+			assert.False(t, ok)
+		})
+
+		s.And("the interface type is registered", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				t.Cleanup(extid.RegisterType[ifaceByType, string](
+					func(e ifaceByType) string { return e.Marker() },
+					func(*ifaceByType, string) {},
+				))
+			})
+
+			s.Then("it reports not found rather than panicking", func(t *testcase.T) {
+				var ok bool
+				assert.NotPanic(t, func() { _, ok = act(t) })
+				assert.False(t, ok)
+			})
+		})
+	})
+
+	s.Describe("with a named interface as the ENT type", func(s *testcase.Spec) {
+		iface := let.Var(s, func(t *testcase.T) ifaceByType {
+			return onlyIDByType{Identifier: id.Get(t)}
+		})
+		act := func(t *testcase.T) (string, bool) {
+			return extid.Lookup[string](iface.Get(t))
+		}
+
+		s.Then("the value of the field found by its type is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, id.Get(t), got)
+		})
+
+		s.When("the interface holds a pointer to the entity", func(s *testcase.Spec) {
+			iface.Let(s, func(t *testcase.T) ifaceByType {
+				return &onlyIDByType{Identifier: id.Get(t)}
+			})
+
+			s.Then("the value of the field found by its type is returned", func(t *testcase.T) {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.Equal(t, id.Get(t), got)
+			})
+		})
+
+		s.When("the interface value is nil", func(s *testcase.Spec) {
+			iface.Let(s, func(t *testcase.T) ifaceByType {
+				return nil
+			})
+
+			s.Then("it reports not found rather than panicking", func(t *testcase.T) {
+				var ok bool
+				assert.NotPanic(t, func() { _, ok = act(t) })
+				assert.False(t, ok)
+			})
+		})
+
+		s.When("the entity's type is registered", func(s *testcase.Spec) {
+			regID := let.Var(s, func(t *testcase.T) string {
+				return random.Unique(func() string {
+					return t.Random.StringNC(8, random.CharsetAlpha())
+				}, id.Get(t))
+			})
+			s.Before(func(t *testcase.T) {
+				t.Cleanup(extid.RegisterType[onlyIDByType, string](
+					func(onlyIDByType) string { return regID.Get(t) },
+					func(*onlyIDByType, string) {},
+				))
+			})
+
+			s.Then("the ID is returned by the registered getter", func(t *testcase.T) {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.Equal(t, regID.Get(t), got)
+			})
+		})
+	})
+}
+
+func TestSet(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type Entity struct {
+		ID   string
+		Name string
+	}
+
+	var (
+		id   = let.StringNC(s, 8, random.CharsetAlpha())
+		name = let.Var(s, func(t *testcase.T) string {
+			return random.Unique(func() string {
+				return t.Random.StringNC(8, random.CharsetAlpha())
+			}, id.Get(t))
+		})
+		ptr = let.Var(s, func(t *testcase.T) any {
+			return &Entity{Name: name.Get(t)}
+		})
+	)
+	act := func(t *testcase.T) error {
+		return extid.Set(ptr.Get(t), id.Get(t))
+	}
+
+	s.Then("the ID field is set, and the other fields are left as they are", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+		assert.Equal[any](t, &Entity{ID: id.Get(t), Name: name.Get(t)}, ptr.Get(t))
+	})
+
+	s.When("the only field of the ID type is neither tagged nor named ID", func(s *testcase.Spec) {
+		type Entity struct {
+			Name string
+			Num  int
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t)}
+		})
+
+		s.Then("the field is found by its type and set, and the other fields are left as they are", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, &Entity{Name: id.Get(t), Num: num.Get(t)}, ptr.Get(t))
+		})
+
+		s.And("the entity is held by an interface", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				var ent any = Entity{Num: num.Get(t)}
+				return &ent
+			})
+
+			s.Then("the field is found by its type and set, and the other fields are left as they are", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, Entity{Name: id.Get(t), Num: num.Get(t)}, *ptr.Get(t).(*any))
+			})
+		})
+	})
+
+	s.When("the entity is held by a named interface", func(s *testcase.Spec) {
+		ptr.Let(s, func(t *testcase.T) any {
+			var ent ifaceByType = onlyIDByType{}
+			return &ent
+		})
+
+		s.Then("the field is found by its type and set", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, onlyIDByType{Identifier: id.Get(t)}, *ptr.Get(t).(*ifaceByType))
+		})
+
+		s.And("the entity's type is registered", func(s *testcase.Spec) {
+			const prefix = "registered:"
+			s.Before(func(t *testcase.T) {
+				t.Cleanup(extid.RegisterType[onlyIDByType, string](
+					func(e onlyIDByType) string { return e.Identifier },
+					func(e *onlyIDByType, id string) { e.Identifier = prefix + id },
+				))
+			})
+
+			s.Then("the ID is set by the registered setter", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, onlyIDByType{Identifier: prefix + id.Get(t)}, *ptr.Get(t).(*ifaceByType))
+			})
+		})
+	})
+
+	s.When("the ID field is promoted from an embedded struct, next to another field of the ID type", func(s *testcase.Spec) {
+		type Base struct{ ID string }
+		type Entity struct {
+			Base
+			Name string
+		}
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Name: name.Get(t)}
+		})
+
+		s.Then("the promoted ID field is set, and the other fields are left as they are", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, &Entity{Base: Base{ID: id.Get(t)}, Name: name.Get(t)}, ptr.Get(t))
+		})
+	})
+
+	s.When(`the field tagged as ext:"id" is promoted from an embedded struct, next to another field of the ID type`, func(s *testcase.Spec) {
+		type Base struct {
+			Ref string `ext:"id"`
+		}
+		type Entity struct {
+			Base
+			Name string
+		}
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Name: name.Get(t)}
+		})
+
+		s.Then("the promoted tagged field is set, and the other fields are left as they are", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, &Entity{Base: Base{Ref: id.Get(t)}, Name: name.Get(t)}, ptr.Get(t))
+		})
+	})
+
+	s.When(`a field of another type is tagged as ext:"id" before the tagged field of the ID type`, func(s *testcase.Spec) {
+		type Entity struct {
+			Num  int `ext:"id"`
+			Name string
+			Ref  string `ext:"id"`
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t), Name: name.Get(t)}
+		})
+
+		s.Then("the tagged field with the ID type is set, and the other fields are left as they are", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, &Entity{Num: num.Get(t), Name: name.Get(t), Ref: id.Get(t)}, ptr.Get(t))
+		})
+	})
+
+	s.When(`a field of another type is tagged as ext:"id", next to an untagged field of the ID type`, func(s *testcase.Spec) {
+		type Entity struct {
+			Num  int `ext:"id"`
+			Name string
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t), Name: name.Get(t)}
+		})
+
+		s.Then("the tag decides the ID field, so it returns an error, and the untagged field is left as it is", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), extid.ErrIDFieldNotFound)
+			assert.Equal[any](t, &Entity{Num: num.Get(t), Name: name.Get(t)}, ptr.Get(t))
+		})
+
+		s.And("the entity is held by an interface", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				var ent any = Entity{Num: num.Get(t), Name: name.Get(t)}
+				return &ent
+			})
+
+			s.Then("the tag decides the ID field, so it returns an error, and the untagged field is left as it is", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), extid.ErrIDFieldNotFound)
+				assert.Equal[any](t, Entity{Num: num.Get(t), Name: name.Get(t)}, *ptr.Get(t).(*any))
+			})
+		})
+	})
+
+	s.When("the only field of the ID type is unexported", func(s *testcase.Spec) {
+		type Entity struct {
+			ref string
+			Num int
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t)}
+		})
+
+		s.Then("the unexported field is not taken as the ID, and the entity is left as it is", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), extid.ErrIDFieldNotFound)
+			assert.Equal[any](t, &Entity{Num: num.Get(t)}, ptr.Get(t))
+		})
+	})
+
+	s.When(`the field tagged as ext:"id" is unexported`, func(s *testcase.Spec) {
+		type Entity struct {
+			ref string `ext:"id"`
+			Num int
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t)}
+		})
+
+		s.Then("the unexported field is not taken as the ID, and the entity is left as it is", func(t *testcase.T) {
+			assert.ErrorIs(t, act(t), extid.ErrIDFieldNotFound)
+			assert.Equal[any](t, &Entity{Num: num.Get(t)}, ptr.Get(t))
+		})
+
+		s.And("an untagged field of the ID type is present as well", func(s *testcase.Spec) {
+			type Entity struct {
+				ref  string `ext:"id"`
+				Name string
+			}
+			ptr.Let(s, func(t *testcase.T) any {
+				return &Entity{Name: name.Get(t)}
+			})
+
+			s.Then("the tag decides the ID field, so it returns an error, and the untagged field is left as it is", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), extid.ErrIDFieldNotFound)
+				assert.Equal[any](t, &Entity{Name: name.Get(t)}, ptr.Get(t))
+			})
+		})
+	})
+
+	s.When("the ID field is promoted through a nil embedded pointer", func(s *testcase.Spec) {
+		type Base struct{ ID string }
+		type Entity struct {
+			*Base
+			Num int
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t)}
+		})
+
+		s.Then("it returns an error rather than panicking, and the entity is left as it is", func(t *testcase.T) {
+			var err error
+			assert.NotPanic(t, func() { err = act(t) })
+			assert.ErrorIs(t, err, extid.ErrIDFieldNotFound)
+			assert.Equal[any](t, &Entity{Num: num.Get(t)}, ptr.Get(t))
+		})
+
+		s.And("the entity is held by an interface", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				var ent any = Entity{Num: num.Get(t)}
+				return &ent
+			})
+
+			s.Then("it returns an error rather than panicking, and the entity is left as it is", func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.ErrorIs(t, err, extid.ErrIDFieldNotFound)
+				assert.Equal[any](t, Entity{Num: num.Get(t)}, *ptr.Get(t).(*any))
+			})
+		})
+	})
+
+	s.When(`the field tagged as ext:"id" has a type which can't hold the ID`, func(s *testcase.Spec) {
+		type Entity struct {
+			Num int `ext:"id"`
+		}
+		num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Num: num.Get(t)}
+		})
+
+		s.Then("it returns an error rather than panicking, and the entity is left as it is", func(t *testcase.T) {
+			var err error
+			assert.NotPanic(t, func() { err = act(t) })
+			assert.ErrorIs(t, err, extid.ErrIDFieldNotFound)
+			assert.Equal[any](t, &Entity{Num: num.Get(t)}, ptr.Get(t))
+		})
+
+		s.And("the entity is held by an interface", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any {
+				var ent any = Entity{Num: num.Get(t)}
+				return &ent
+			})
+
+			s.Then("it returns an error rather than panicking, and the entity is left as it is", func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.ErrorIs(t, err, extid.ErrIDFieldNotFound)
+				assert.Equal[any](t, Entity{Num: num.Get(t)}, *ptr.Get(t).(*any))
+			})
+		})
+	})
+
+	s.Describe("with any as the ID type", func(s *testcase.Spec) {
+		type Entity struct {
+			ID   any
+			Name string
+		}
+		anyID := let.Var(s, func(t *testcase.T) any { return id.Get(t) })
+		ptr.Let(s, func(t *testcase.T) any {
+			return &Entity{Name: name.Get(t)}
+		})
+		act := func(t *testcase.T) error {
+			return extid.Set[any](ptr.Get(t), anyID.Get(t))
+		}
+
+		s.Then("the ID field is set, and the other fields are left as they are", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal[any](t, &Entity{ID: anyID.Get(t), Name: name.Get(t)}, ptr.Get(t))
+		})
+
+		s.When("the ID is nil, which is a valid value of the ID field's type", func(s *testcase.Spec) {
+			anyID.LetValue(s, nil)
+			ptr.Let(s, func(t *testcase.T) any {
+				return &Entity{ID: id.Get(t), Name: name.Get(t)}
+			})
+
+			s.Then("the ID field is set to nil, and the other fields are left as they are", func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.NoError(t, err)
+				assert.Equal[any](t, &Entity{Name: name.Get(t)}, ptr.Get(t))
+			})
+
+			s.And("the entity is held by an interface", func(s *testcase.Spec) {
+				ptr.Let(s, func(t *testcase.T) any {
+					var ent any = Entity{ID: id.Get(t), Name: name.Get(t)}
+					return &ent
+				})
+
+				s.Then("the ID field is set to nil, and the other fields are left as they are", func(t *testcase.T) {
+					var err error
+					assert.NotPanic(t, func() { err = act(t) })
+					assert.NoError(t, err)
+					assert.Equal[any](t, Entity{Name: name.Get(t)}, *ptr.Get(t).(*any))
+				})
+			})
+		})
+
+		s.When("the ID field has a concrete type", func(s *testcase.Spec) {
+			type Entity struct {
+				ID  string
+				Num int
+			}
+			num := let.Var(s, func(t *testcase.T) int { return t.Random.Int() })
+			ptr.Let(s, func(t *testcase.T) any {
+				return &Entity{Num: num.Get(t)}
+			})
+
+			s.Then("the ID's dynamic value is set to the ID field", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+				assert.Equal[any](t, &Entity{ID: id.Get(t), Num: num.Get(t)}, ptr.Get(t))
+			})
+
+			s.And("the ID is nil, which is not a valid value of the ID field's type", func(s *testcase.Spec) {
+				anyID.LetValue(s, nil)
+				ptr.Let(s, func(t *testcase.T) any {
+					return &Entity{ID: id.Get(t), Num: num.Get(t)}
+				})
+
+				s.Then("it returns an error rather than panicking, and the entity is left as it is", func(t *testcase.T) {
+					var err error
+					assert.NotPanic(t, func() { err = act(t) })
+					assert.ErrorIs(t, err, extid.ErrIDFieldNotFound)
+					assert.Equal[any](t, &Entity{ID: id.Get(t), Num: num.Get(t)}, ptr.Get(t))
+				})
+			})
+		})
 	})
 }

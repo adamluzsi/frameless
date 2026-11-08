@@ -1,12 +1,17 @@
 package reflectkit_test
 
 import (
+	"fmt"
 	"net/netip"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -16,6 +21,16 @@ func ExampleEqual() {
 }
 
 func TestEqual(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		v1 = let.Var[any](s, nil)
+		v2 = let.Var[any](s, nil)
+	)
+	act := func(t *testcase.T) bool {
+		return reflectkit.Equal(v1.Get(t), v2.Get(t))
+	}
+
 	rnd := random.New(random.CryptoSeed{})
 	tt := []struct {
 		desc    string
@@ -252,13 +267,164 @@ func TestEqual(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		t.Run(tc.desc, func(t *testing.T) {
-			got := reflectkit.Equal(tc.v1, tc.v2)
-			if got != tc.isEqual {
-				t.Errorf("DeepEqual() = %v, want %v", got, tc.isEqual)
-			}
+		s.Context(tc.desc, func(s *testcase.Spec) {
+			v1.Let(s, func(t *testcase.T) any { return tc.v1 })
+			v2.Let(s, func(t *testcase.T) any { return tc.v2 })
+
+			s.Then(fmt.Sprintf("Equal returns %t", tc.isEqual), func(t *testcase.T) {
+				assert.Equal(t, tc.isEqual, act(t))
+			})
 		})
 	}
+
+	s.Context("structs nested as the first field of other structs", func(s *testcase.Spec) {
+		// Order nests Customer as its first field,
+		// so an Order, its Customer and the Customer's ID all start at the same address.
+		type Customer struct{ ID string }
+		type Order struct {
+			Customer Customer
+			Note     string
+		}
+		var (
+			id   = let.StringNC(s, 8, random.CharsetAlpha())
+			note = let.StringNC(s, 8, random.CharsetAlpha())
+		)
+		v1.Let(s, func(t *testcase.T) any {
+			return []Order{{Customer: Customer{ID: id.Get(t)}, Note: note.Get(t)}}
+		})
+		v2.Let(s, func(t *testcase.T) any {
+			return []Order{{Customer: Customer{ID: id.Get(t)}, Note: note.Get(t)}}
+		})
+
+		s.Then("values with the same content are equal", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+
+		s.And("they differ only in the first field of the nested struct", func(s *testcase.Spec) {
+			othID := let.Var(s, func(t *testcase.T) string {
+				return random.Unique(func() string {
+					return t.Random.StringNC(8, random.CharsetAlpha())
+				}, id.Get(t))
+			})
+			v2.Let(s, func(t *testcase.T) any {
+				return []Order{{Customer: Customer{ID: othID.Get(t)}, Note: note.Get(t)}}
+			})
+
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+	})
+
+	type Node struct {
+		V    string
+		Next *Node
+	}
+
+	s.When("one value references the same pointer at two places", func(s *testcase.Spec) {
+		var (
+			a = let.StringNC(s, 8, random.CharsetAlpha())
+			b = let.Var(s, func(t *testcase.T) string {
+				return random.Unique(func() string {
+					return t.Random.StringNC(8, random.CharsetAlpha())
+				}, a.Get(t))
+			})
+		)
+		v1.Let(s, func(t *testcase.T) any {
+			shared := &Node{V: b.Get(t)}
+			return []*Node{{V: a.Get(t)}, shared, shared}
+		})
+
+		s.And("the other value has a different content at one of those places", func(s *testcase.Spec) {
+			v2.Let(s, func(t *testcase.T) any {
+				return []*Node{{V: a.Get(t)}, {V: b.Get(t)}, {V: a.Get(t)}}
+			})
+
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+
+		s.And("the other value has the same content at both places", func(s *testcase.Spec) {
+			v2.Let(s, func(t *testcase.T) any {
+				return []*Node{{V: a.Get(t)}, {V: b.Get(t)}, {V: b.Get(t)}}
+			})
+
+			s.Then("they are equal", func(t *testcase.T) {
+				assert.True(t, act(t))
+			})
+		})
+	})
+
+	s.When("the values are self-referencing", func(s *testcase.Spec) {
+		// ring makes a cyclic list, where the last node points back to the first one.
+		ring := func(vs ...string) *Node {
+			head := &Node{V: vs[0]}
+			last := head
+			for _, v := range vs[1:] {
+				last.Next = &Node{V: v}
+				last = last.Next
+			}
+			last.Next = head
+			return head
+		}
+		a := let.StringNC(s, 8, random.CharsetAlpha())
+		v1.Let(s, func(t *testcase.T) any { return ring(a.Get(t)) })
+		v2.Let(s, func(t *testcase.T) any { return ring(a.Get(t)) })
+
+		s.Then("the comparison terminates, and finds them equal", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+
+		s.And("the cycle of the other value is longer, with a different content", func(s *testcase.Spec) {
+			b := let.Var(s, func(t *testcase.T) string {
+				return random.Unique(func() string {
+					return t.Random.StringNC(8, random.CharsetAlpha())
+				}, a.Get(t))
+			})
+			v2.Let(s, func(t *testcase.T) any { return ring(a.Get(t), b.Get(t)) })
+
+			s.Then("they are not equal", func(t *testcase.T) {
+				assert.False(t, act(t))
+			})
+		})
+	})
+
+	s.When("the garbage collector runs while the values are compared", func(s *testcase.Spec) {
+		type Item struct {
+			GC GCTrigger
+			V  string
+		}
+		items := let.Var(s, func(t *testcase.T) [4]Item {
+			var items [4]Item
+			for i := range items {
+				items[i] = Item{V: t.Random.StringNC(8, random.CharsetAlpha())}
+			}
+			return items
+		})
+		v1.Let(s, func(t *testcase.T) any { return items.Get(t) })
+		v2.Let(s, func(t *testcase.T) any {
+			oth := items.Get(t)
+			last := len(oth) - 1
+			oth[last].V = random.Unique(func() string {
+				return t.Random.StringNC(8, random.CharsetAlpha())
+			}, oth[last].V)
+			return oth
+		})
+
+		s.Then("a difference after the collection is still found", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+}
+
+// GCTrigger runs the garbage collector each time it is compared,
+// so the memory which the comparison released before it is reused by the allocations after it.
+type GCTrigger struct{}
+
+func (GCTrigger) Equal(GCTrigger) bool {
+	runtime.GC()
+	return true
 }
 
 type NonComparableStruct struct {

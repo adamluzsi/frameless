@@ -42,6 +42,23 @@ func TestEqual(t *testing.T) {
 		assert.False(t, comp.Equal(t1, t2))
 	})
 
+	s.Test("non comparable values which differ only in the first field of a nested struct", func(t *testcase.T) {
+		// Order nests Customer as its first field,
+		// so an Order, its Customer and the Customer's ID all start at the same address.
+		type Customer struct{ ID string }
+		type Order struct {
+			Customer Customer
+			Note     string
+		}
+		id := t.Random.String()
+		othID := random.Unique(t.Random.String, id)
+		note := t.Random.String()
+
+		orders := []Order{{Customer: Customer{ID: id}, Note: note}}
+		assert.True(t, comp.Equal(orders, []Order{{Customer: Customer{ID: id}, Note: note}}))
+		assert.False(t, comp.Equal(orders, []Order{{Customer: Customer{ID: othID}, Note: note}}))
+	})
+
 	s.Test("byte slices", func(t *testcase.T) {
 		// Same contents: equal.
 		assert.True(t, comp.Equal([]byte("hello"), []byte("hello")))

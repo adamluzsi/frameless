@@ -16,7 +16,7 @@ func EqualT[T any](v1, v2 T) bool {
 }
 
 func Equal(v1, v2 reflect.Value) bool {
-	return reflectDeepEqual(&refMem{visited: make(map[uintptr]struct{})}, v1, v2)
+	return reflectDeepEqual(&refMem{}, v1, v2)
 }
 
 func RegisterIsEqual(typ reflect.Type, rfn func(v1, v2 reflect.Value) bool) {
@@ -28,14 +28,14 @@ var isEqualFuncRegister = map[reflect.Type]func(v1, v2 reflect.Value) bool{}
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func reflectDeepEqual(m *refMem, v1, v2 reflect.Value) (iseq bool) {
-	if !m.TryVisit(v1, v2) {
-		return true // probably OK since we already visited it
-	}
 	if !v1.IsValid() || !v2.IsValid() {
 		return v1.IsValid() == v2.IsValid()
 	}
 	if v1.Type() != v2.Type() {
 		return false
+	}
+	if !m.TryVisit(v1, v2) {
+		return true // the pair is under comparison already, further up through a reference cycle
 	}
 	if eq, ok := tryEqualityMethods(v1, v2); ok {
 		return eq

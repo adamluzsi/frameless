@@ -66,14 +66,18 @@ func Set[ID any](ptr any, id ID) error {
 
 		newStruct := reflect.New(concreteType).Elem()
 		newStruct.Set(structVal)
-		if _, val, ok := lookupByIDType(newStruct); ok {
-			val.Set(reflect.ValueOf(id))
+		if sf, val, ok := lookupByIDType(newStruct); ok {
+			if err := setIDField(sf, val, id); err != nil {
+				return err
+			}
 			ifaceVal.Set(newStruct)
 			return nil
 		}
 
-		if _, val, ok := extractIdentifierField(concreteType, newStruct); ok {
-			val.Set(reflect.ValueOf(id))
+		if sf, val, ok := extractIdentifierField(concreteType, newStruct); ok {
+			if err := setIDField(sf, val, id); err != nil {
+				return err
+			}
 			ifaceVal.Set(newStruct)
 			return nil
 		}
@@ -96,17 +100,31 @@ func Set[ID any](ptr any, id ID) error {
 		ID:  reflectkit.TypeOf[ID](),
 	})
 
-	if _, val, ok := lookupByIDType(r.Elem()); ok {
-		val.Set(reflect.ValueOf(id))
-		return nil
+	if sf, val, ok := lookupByIDType(r.Elem()); ok {
+		return setIDField(sf, val, id)
 	}
 
-	if _, val, ok := ExtractIdentifierField(ptr); ok {
-		val.Set(reflect.ValueOf(id))
-		return nil
+	if sf, val, ok := ExtractIdentifierField(ptr); ok {
+		return setIDField(sf, val, id)
 	}
 
 	return ErrIDFieldNotFound
+}
+
+// setIDField sets the id to the ID field.
+// When the field was found by convention, rather than by the type of the ID,
+// the field's type might not be able to hold the id.
+func setIDField[ID any](sf reflect.StructField, field reflect.Value, id ID) error {
+	rID := reflect.ValueOf(id)
+	if !rID.IsValid() { // a nil interface value is only a value of the ID's static type
+		rID = reflect.ValueOf(&id).Elem()
+	}
+	if !rID.Type().AssignableTo(field.Type()) {
+		return fmt.Errorf("%w: the %s field's type (%s) can't hold a %s ID",
+			ErrIDFieldNotFound, sf.Name, field.Type().String(), rID.Type().String())
+	}
+	field.Set(rID)
+	return nil
 }
 
 func Get[ID, ENT any](ent ENT) ID {
@@ -121,17 +139,23 @@ func Get[ID, ENT any](ent ENT) ID {
 // - A boolean OK indicating whether an ID field exists in the given ENT struct.
 //
 // The function prioritises the following when selecting an ID field:
+// - If the struct's own fields are tagged as 'ext:"id"', the tag decides, and untagged fields are not considered.
 // - Any field of type ID.
-// - If multiple fields of type ID exist, the one tagged as 'ext:"id"' is preferred.
+// - If multiple fields of type ID exist, the one tagged as 'ext:"id"' is preferred,
+// then the one named ID.
+//
+// Fields promoted from embedded structs are considered as well, following Go's rules of promotion.
+// Unexported fields are not considered.
 //
 // This function helps identify the primary ID field in ENT structs consistently.
 func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
-	var typ = reflectkit.TypeOf[ENT](ent)
+	// reflect.ValueOf takes the dynamic value of an interface ENT (e.g. workflow.Event),
+	// so its concrete type is used, just like in extid.Set.
 	var str = reflect.ValueOf(ent)
-	if typ == nil {
-		var zero ID
-		return zero, false
+	if !str.IsValid() {
+		return id, false
 	}
+	var typ = str.Type()
 	// Dereference pointer(s) to reach the underlying value.
 	// This mirrors extid.Set, which operates through *ENT,
 	// so that Lookup can locate the ID field regardless of whether
@@ -144,6 +168,9 @@ func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
 		}
 		typ = typ.Elem()
 		str = str.Elem()
+	}
+	if typ.Kind() == reflect.Interface && str.IsNil() { // e.g. a pointer to a nil interface value
+		return id, false
 	}
 	if tr, ok := register[typ]; ok {
 		id, ok := tr.Get(str.Interface()).(ID)
@@ -179,67 +206,90 @@ func extractIdentifierFieldByType(key idByTypeKey) func(reflect.Value) (reflect.
 		if key.ENT.Kind() != reflect.Struct {
 			return nullLookup
 		}
-
-		type Hit struct {
-			Index int
-			Field reflect.StructField
-			Tag   reflect.StructTag
-		}
-
-		var hits []Hit
-		for i := range key.ENT.NumField() {
-			field := key.ENT.Field(i)
-
-			if field.Type == key.ID {
-				hits = append(hits, Hit{
-					Index: i,
-					Field: field,
-					Tag:   field.Tag,
-				})
-			}
-		}
-
-		if len(hits) == 0 {
+		field, ok := identifierFieldByType(key.ENT, key.ID)
+		if !ok {
 			return nullLookup
 		}
-
-		if len(hits) == 1 {
-			var FieldIndex = hits[0].Index
-			return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
-				return v.Type().Field(FieldIndex), v.Field(FieldIndex), true
-			}
-		}
-
-		var (
-			candidate Hit
-			lastTag   *extTagField
-			init      bool
-		)
-		for _, hit := range hits {
-			if !init {
-				candidate = hit
-			}
-			tag, ok, err := extTag.Lookup(hit.Field)
-			if err != nil {
-				return nullLookup
-			}
-			if ok && tag.IsID {
-				if lastTag != nil && lastTag.IsID {
-					return nullLookup
-				}
-				candidate = hit
-				lastTag = &tag
-			}
-		}
-		if !init {
-			return nullLookup
-		}
-
-		var FieldIndex = candidate.Index
 		return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
-			return v.Type().Field(FieldIndex), v.Field(FieldIndex), true
+			return field, v.FieldByIndex(field.Index), true
 		}
 	})
+}
+
+// identifierFieldByType selects the ID field of the ENT struct type among its fields with the ID type.
+//
+// When the struct's own fields are tagged as `ext:"id"`, the tag decides the ID field,
+// so only the tagged fields are considered.
+//
+// Fields promoted through an embedded pointer are not considered,
+// since that pointer might be nil.
+//
+// When more than one field has the ID type, the one tagged as `ext:"id"` is selected, else the one named ID.
+// If more of them are tagged, the selection is ambiguous, and no field is selected.
+func identifierFieldByType(ENT, ID reflect.Type) (reflect.StructField, bool) {
+	var hits []reflect.StructField
+	for _, field := range idFieldCandidates(ENT) {
+		if field.Type != ID || !field.IsExported() || isPromotedThroughPointer(ENT, field.Index) {
+			continue
+		}
+		hits = append(hits, field)
+	}
+	if len(hits) == 1 {
+		return hits[0], true
+	}
+	var (
+		tagged []reflect.StructField
+		named  *reflect.StructField
+	)
+	for i, hit := range hits {
+		if isTaggedAsID(hit) {
+			tagged = append(tagged, hit)
+		}
+		if hit.Name == structIDFieldName {
+			named = &hits[i]
+		}
+	}
+	if len(tagged) == 1 {
+		return tagged[0], true
+	}
+	if len(tagged) == 0 && named != nil {
+		return *named, true
+	}
+	return reflect.StructField{}, false
+}
+
+func isPromotedThroughPointer(typ reflect.Type, index []int) bool {
+	for _, i := range index[:len(index)-1] {
+		typ = typ.Field(i).Type
+		if typ.Kind() == reflect.Pointer {
+			return true
+		}
+	}
+	return false
+}
+
+// idFieldCandidates returns the fields of the ENT struct type which may hold its ID.
+//
+// The `ext:"id"` tag is the authority on the ID field,
+// so when the struct's own fields are tagged, only the tagged fields are candidates,
+// even the unexported ones, which can't be used as the ID, but still express that no other field is the ID.
+// Otherwise every visible field is a candidate, including the ones promoted from embedded structs.
+func idFieldCandidates(ENT reflect.Type) []reflect.StructField {
+	var tagged []reflect.StructField
+	for i := range ENT.NumField() {
+		if field := ENT.Field(i); isTaggedAsID(field) {
+			tagged = append(tagged, field)
+		}
+	}
+	if 0 < len(tagged) {
+		return tagged
+	}
+	return reflect.VisibleFields(ENT)
+}
+
+func isTaggedAsID(field reflect.StructField) bool {
+	tag, ok, err := extTag.Lookup(field)
+	return err == nil && ok && tag.IsID
 }
 
 var cacheExtractIdentifierField synckit.Map[reflect.Type, func(reflect.Value) (reflect.StructField, reflect.Value, bool)]
@@ -275,6 +325,8 @@ type extTagField struct {
 	IsID bool
 }
 
+const structIDFieldName = `ID`
+
 var extTag = reflectkit.TagHandler[extTagField]{
 	Name: "ext",
 
@@ -300,7 +352,11 @@ func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructFi
 	}
 	{ // lookup by "ext":"id" tag
 		for i := range val.NumField() {
-			tag, ok, err := extTag.Lookup(val.Type().Field(i))
+			field := val.Type().Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			tag, ok, err := extTag.Lookup(field)
 			if err != nil {
 				continue
 			}
@@ -313,14 +369,11 @@ func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructFi
 		}
 	}
 	{ // lookup by ID field
-		const structIDFieldName = `ID`
-		byName := val.FieldByName(structIDFieldName)
-		if byName.Kind() != reflect.Invalid {
-			sf, ok := val.Type().FieldByName(structIDFieldName)
-			if ok && len(sf.Index) == 1 {
-				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
-					return sf, v.FieldByIndex(sf.Index), true
-				}
+		// The field is looked up on the type, as reflect.Value#FieldByName panics
+		// when the field is promoted through a nil embedded pointer.
+		if sf, ok := val.Type().FieldByName(structIDFieldName); ok && len(sf.Index) == 1 {
+			return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+				return sf, v.FieldByIndex(sf.Index), true
 			}
 		}
 	}

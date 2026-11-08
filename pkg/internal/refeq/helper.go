@@ -84,21 +84,40 @@ func TryToMakeAccessible(rv reflect.Value) (reflect.Value, bool) {
 	return reflect.Value{}, false
 }
 
-type refMem struct{ visited map[uintptr]struct{} }
+// refMem remembers the pairs of references which are under comparison already,
+// so the comparison of self-referencing values terminates.
+// A pair met again is taken as equal there, since its actual result is decided where it was met first.
+//
+// Only references (pointers, maps and slices) are remembered, as only they are able to close a cycle.
+// Any other value has no identity which could be remembered:
+// a struct shares its address with its first field,
+// and a copy of a value gets a new address each time it is made.
+//
+// A pair is remembered, rather than each side on its own,
+// because a reference which is at more than one place on one side
+// can be paired with a different value at each of those places on the other side.
+type refMem struct{ visited map[refPair]struct{} }
 
-func (i *refMem) TryVisit(v1, v2 reflect.Value) (ok bool) {
-	return i.tryVisit(v1) || i.tryVisit(v2)
+type refPair struct {
+	typ reflect.Type
+	// p1 and p2 are unsafe.Pointer values, not uintptr ones,
+	// so the garbage collector keeps the remembered memory regions,
+	// and their addresses can't be reused by an other value during the comparison.
+	p1, p2 unsafe.Pointer
+	// len tells apart the re-slices of the same backing array, like s[:1] and s[:2].
+	len int
 }
 
-func (i *refMem) tryVisit(v reflect.Value) (ok bool) {
-	if i.visited == nil {
-		i.visited = make(map[uintptr]struct{})
-	}
-	key, ok := i.addr(v)
+// TryVisit reports whether the pair of v1 and v2 is not yet under comparison,
+// and remembers it if it is a pair of references.
+// v1 and v2 are expected to be valid and of the same type.
+func (i *refMem) TryVisit(v1, v2 reflect.Value) (ok bool) {
+	key, ok := refPairOf(v1, v2)
 	if !ok {
-		// for values that can't be tracked, we allow visiting
-		// These are usually primitive types
 		return true
+	}
+	if i.visited == nil {
+		i.visited = make(map[refPair]struct{})
 	}
 	if _, ok := i.visited[key]; ok {
 		return false
@@ -107,11 +126,32 @@ func (i *refMem) tryVisit(v reflect.Value) (ok bool) {
 	return true
 }
 
-func (i *refMem) addr(v reflect.Value) (uintptr, bool) {
-	if v.CanAddr() {
-		return v.UnsafeAddr(), true
+// refPairOf returns the identity of a pair of references.
+// An empty or zero sized reference has nothing which could reference back to it,
+// and Go doesn't give it a distinct address either, so it has no identity.
+func refPairOf(v1, v2 reflect.Value) (refPair, bool) {
+	switch v1.Kind() {
+	case reflect.Pointer:
+		if v1.IsNil() || v2.IsNil() || v1.Type().Elem().Size() == 0 {
+			return refPair{}, false
+		}
+		return refPair{typ: v1.Type(), p1: v1.UnsafePointer(), p2: v2.UnsafePointer()}, true
+
+	case reflect.Map:
+		if v1.Len() == 0 || v2.Len() == 0 {
+			return refPair{}, false
+		}
+		return refPair{typ: v1.Type(), p1: v1.UnsafePointer(), p2: v2.UnsafePointer()}, true
+
+	case reflect.Slice:
+		if v1.Len() == 0 || v2.Len() == 0 || v1.Type().Elem().Size() == 0 {
+			return refPair{}, false
+		}
+		return refPair{typ: v1.Type(), p1: v1.UnsafePointer(), p2: v2.UnsafePointer(), len: v1.Len()}, true
+
+	default:
+		return refPair{}, false
 	}
-	return reflect.ValueOf(&v).Pointer(), true
 }
 
 var (

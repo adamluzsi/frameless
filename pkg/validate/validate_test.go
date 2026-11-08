@@ -11,6 +11,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/validateint"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -1187,6 +1188,151 @@ func TestSkipValidate(t *testing.T) {
 		type TT struct{ V T }
 		field, value := must.OK2(reflectkit.LookupField(reflect.ValueOf(TT{V: val}), "V"))
 		assert.ErrorIs(t, expErr, validate.StructField(validate.SkipValidate(t.Context()), field, value))
+	})
+}
+
+func TestSkipValidatable(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		ctx = let.Var(s, func(t *testcase.T) context.Context {
+			return validateint.SkipValidatable(t.Context())
+		})
+		validateErr = let.Error(s)
+	)
+
+	s.Describe("#Value", func(s *testcase.Spec) {
+		value := let.Var(s, func(t *testcase.T) any {
+			return SkipValidateStruct{ValidateErr: validateErr.Get(t)}
+		})
+		act := func(t *testcase.T) error {
+			return validate.Value(ctx.Get(t), value.Get(t))
+		}
+
+		s.Then("the Validate method of the value is not called", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.When("the context is not from SkipValidatable", func(s *testcase.Spec) {
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				return t.Context()
+			})
+
+			s.Then("the Validate method of the value is called", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), validateErr.Get(t))
+			})
+		})
+
+		s.When("a field of the value is a Validatable", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				type T struct{ V SkipValidateStruct }
+				return T{V: SkipValidateStruct{ValidateErr: validateErr.Get(t)}}
+			})
+
+			s.Then("the Validate method of the field is not called either", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the value has a field that breaks its validation tag", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				return StructTypeThatImplementsValidator{V: "qux", ValidateError: validateErr.Get(t)}
+			})
+
+			s.Then("the tag is still checked, without calling the Validate method", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, enum.ErrInvalid)
+				assert.False(t, errors.Is(err, validateErr.Get(t)))
+			})
+		})
+
+		s.When("the value only has the deprecated Validate method", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				return DeprecatedSelfValidatorMethod{ValidateErr: validateErr.Get(t)}
+			})
+
+			s.Then("the deprecated Validate method is still called", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), validateErr.Get(t))
+			})
+		})
+	})
+
+	s.Describe("#Struct", func(s *testcase.Spec) {
+		value := let.Var(s, func(t *testcase.T) any {
+			return SkipValidateStruct{ValidateErr: validateErr.Get(t)}
+		})
+		act := func(t *testcase.T) error {
+			return validate.Struct(ctx.Get(t), value.Get(t))
+		}
+
+		s.Then("the Validate method of the struct is not called", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.When("a field of the struct is a Validatable", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				type T struct{ V SkipValidateStruct }
+				return T{V: SkipValidateStruct{ValidateErr: validateErr.Get(t)}}
+			})
+
+			s.Then("the Validate method of the field is not called either", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the struct has a field that breaks its validation tag", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				return StructTypeThatImplementsValidator{V: "qux", ValidateError: validateErr.Get(t)}
+			})
+
+			s.Then("the tag is still checked, without calling the Validate method", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, enum.ErrInvalid)
+				assert.False(t, errors.Is(err, validateErr.Get(t)))
+			})
+		})
+	})
+
+	s.Describe("#StructField", func(s *testcase.Spec) {
+		Struct := let.Var(s, func(t *testcase.T) any {
+			type T struct{ V SkipValidateStruct }
+			return T{V: SkipValidateStruct{ValidateErr: validateErr.Get(t)}}
+		})
+		act := func(t *testcase.T) error {
+			_, field, value := toStructField(t, Struct.Get(t), "V")
+			return validate.StructField(ctx.Get(t), field, value)
+		}
+
+		s.Then("the Validate method of the field value is not called", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+		})
+
+		s.When("the field value has a Validatable field", func(s *testcase.Spec) {
+			Struct.Let(s, func(t *testcase.T) any {
+				type F struct{ V SkipValidateStruct }
+				type T struct{ V F }
+				return T{V: F{V: SkipValidateStruct{ValidateErr: validateErr.Get(t)}}}
+			})
+
+			s.Then("the Validate method of the inner field is not called either", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.When("the field value has a field that breaks its validation tag", func(s *testcase.Spec) {
+			Struct.Let(s, func(t *testcase.T) any {
+				type T struct {
+					V StructTypeThatImplementsValidator
+				}
+				return T{V: StructTypeThatImplementsValidator{V: "qux", ValidateError: validateErr.Get(t)}}
+			})
+
+			s.Then("the tag is still checked, without calling the Validate method", func(t *testcase.T) {
+				err := act(t)
+				assert.ErrorIs(t, err, enum.ErrInvalid)
+				assert.False(t, errors.Is(err, validateErr.Get(t)))
+			})
+		})
 	})
 }
 
