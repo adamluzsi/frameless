@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1351,6 +1350,21 @@ func TestServeCLI(t *testing.T) {
 		cli.ServeCLI(h, w, r)
 		assert.Equal(t, d.V, expV)
 		assert.Equal(t, d.B, expB)
+	})
+
+	s.When("two input fields of the command define the same flag", func(s *testcase.Spec) {
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return CommandWithFlagCollision{}
+		})
+
+		s.Then("it panics with the flag and the fields which define it, as it is a programming error", func(t *testcase.T) {
+			out := assert.Panic(t, func() { act(t) })
+
+			msg := fmt.Sprintf("%v", out)
+			assert.Contains(t, msg, "-host")
+			assert.Contains(t, msg, "Primary.Host")
+			assert.Contains(t, msg, "Replica.Host")
+		})
 	})
 
 	s.Context("validation", func(s *testcase.Spec) {
@@ -3079,6 +3093,75 @@ func TestServeCLI(t *testing.T) {
 				assert.Empty(t, response.Get(t).Err.String())
 			})
 		})
+
+		s.When("the command has args at a single position, a range and an open range", func(s *testcase.Spec) {
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				var mux cli.ServeMux
+				mux.Handle("cmd", CommandWithArgPositions{})
+				return &mux
+			})
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"cmd", "-help"}
+			})
+			s.Before(func(t *testcase.T) {
+				testcase.UnsetEnv(t, "CLI_TEST_ARG_POSITION_SINGLE_ENV")
+				testcase.UnsetEnv(t, "CLI_TEST_ARG_POSITION_RANGE_ENV")
+				testcase.UnsetEnv(t, "CLI_TEST_ARG_POSITION_VARIADIC_ENV")
+			})
+
+			s.Then("the help names the arg position that substitutes each env", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				out := response.Get(t).Out.String()
+				assert.Contains(t, out, "Substitute args[0]\n")
+				assert.Contains(t, out, "Substitute args[1:3]\n")
+				assert.Contains(t, out, "Substitute args[3:]\n")
+			})
+
+			s.And("the single position arg is missing", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"cmd"}
+				})
+
+				s.Then("the error report names the arg by its single position", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input:\n\targ[0]\n")
+				})
+			})
+
+			s.And("the range arg is missing", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"cmd", t.Random.StringNC(8, random.CharsetAlpha())}
+				})
+
+				s.Then("the error report names the arg by its range", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input:\n\targ[1:3]\n")
+				})
+			})
+
+			s.And("the open range arg is missing", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"cmd",
+						t.Random.StringNC(8, random.CharsetAlpha()),
+						t.Random.StringNC(8, random.CharsetAlpha()),
+						t.Random.StringNC(8, random.CharsetAlpha()),
+					}
+				})
+
+				s.Then("the error report names the arg by its open range", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "Invalid input:\n\targ[3:]\n")
+				})
+			})
+		})
 	})
 }
 
@@ -3132,6 +3215,46 @@ func (cmd CommandWithRequiredSliceArgs) ServeCLI(w cli.ResponseWriter, r *cli.Re
 	cmd.Callback.Call(cmd, w, r)
 }
 
+type CommandWithArgPositions struct {
+	Callback[CommandWithArgPositions]
+
+	Single   string   `arg:"0" env:"CLI_TEST_ARG_POSITION_SINGLE_ENV"`
+	Range    []string `arg:"1:3" env:"CLI_TEST_ARG_POSITION_RANGE_ENV"`
+	Variadic []string `arg:"3:" env:"CLI_TEST_ARG_POSITION_VARIADIC_ENV"`
+}
+
+func (cmd CommandWithArgPositions) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// CommandWithFlagCollision has two fields of the same config type, so their flags have the same names.
+type CommandWithFlagCollision struct {
+	Callback[CommandWithFlagCollision]
+
+	Primary FlagCollisionConfig
+	Replica FlagCollisionConfig
+}
+
+type FlagCollisionConfig struct {
+	Host string `flag:"host"`
+}
+
+func (cmd CommandWithFlagCollision) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+// CommandWithArgPositionGap has no arg at index 1.
+type CommandWithArgPositionGap struct {
+	Callback[CommandWithArgPositionGap]
+
+	First string `arg:"0"`
+	Third string `arg:"2"`
+}
+
+func (cmd CommandWithArgPositionGap) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
 type CommandWithSliceInputsWithoutSeparatorTag struct {
 	Callback[CommandWithSliceInputsWithoutSeparatorTag]
 
@@ -3172,16 +3295,6 @@ type CommandWithTimeFlags struct {
 }
 
 func (cmd CommandWithTimeFlags) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
-	cmd.Callback.Call(cmd, w, r)
-}
-
-type CommandWithInvalidDefaultTag struct {
-	Callback[CommandWithInvalidDefaultTag]
-
-	N int `flag:"n" default:"not-a-number"`
-}
-
-func (cmd CommandWithInvalidDefaultTag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -3278,175 +3391,6 @@ type CommandWithStructInputDefault struct {
 
 func (cmd CommandWithStructInputDefault) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
-}
-
-func TestWithDefaults(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	const envKey = "CLI_TEST_DEFAULT_TAG_ENV" // the env tag of CommandWithDefaultTags.Env
-
-	var handler = let.Var(s, func(t *testcase.T) cli.Handler {
-		return CommandWithDefaultTags{}
-	})
-	act := func(t *testcase.T) cli.Handler {
-		return cli.WithDefaults(handler.Get(t))
-	}
-
-	s.Before(func(t *testcase.T) {
-		testcase.UnsetEnv(t, envKey)
-	})
-
-	s.Then("the zero input fields get their default tag value", func(t *testcase.T) {
-		got, ok := act(t).(CommandWithDefaultTags)
-		assert.True(t, ok)
-		assert.Equal(t, got.Flag, "flag-default")
-		assert.Equal(t, got.Bool, true)
-		assert.Equal(t, got.Env, "env-default")
-		assert.Equal(t, got.Arg, "arg-default")
-	})
-
-	s.When("some of the input fields are already set", func(s *testcase.Spec) {
-		var (
-			flag = let.StringNC(s, 8, random.CharsetAlpha())
-			arg  = let.StringNC(s, 8, random.CharsetAlpha())
-		)
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithDefaultTags{Flag: flag.Get(t), Arg: arg.Get(t)}
-		})
-
-		s.Then("the set values are kept, and only the zero input fields get their default", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithDefaultTags)
-			assert.True(t, ok)
-			assert.Equal(t, got.Flag, flag.Get(t))
-			assert.Equal(t, got.Arg, arg.Get(t))
-			assert.Equal(t, got.Bool, true)
-			assert.Equal(t, got.Env, "env-default")
-		})
-	})
-
-	s.When("the handler has a dependency", func(s *testcase.Spec) {
-		dependency := let.StringNC(s, 8, random.CharsetAlpha())
-
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithDefaultTags{Dependency: dependency.Get(t)}
-		})
-
-		s.Then("the dependency is kept as is", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithDefaultTags)
-			assert.True(t, ok)
-			assert.Equal(t, got.Dependency, dependency.Get(t))
-			assert.Equal(t, got.Flag, "flag-default")
-		})
-	})
-
-	s.When("the environment variable of an input is set", func(s *testcase.Spec) {
-		envVal := let.StringNC(s, 8, random.CharsetAlpha())
-
-		s.Before(func(t *testcase.T) {
-			testcase.SetEnv(t, envKey, envVal.Get(t))
-		})
-
-		s.Then("the environment variable is not read, since it is only applied when the command runs", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithDefaultTags)
-			assert.True(t, ok)
-			assert.Equal(t, got.Env, "env-default")
-		})
-	})
-
-	s.When("the handler is a pointer", func(s *testcase.Spec) {
-		ptr := let.Var(s, func(t *testcase.T) *CommandWithDefaultTags {
-			return &CommandWithDefaultTags{}
-		})
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return ptr.Get(t)
-		})
-
-		s.Then("the same handler is returned, updated in place", func(t *testcase.T) {
-			got, ok := act(t).(*CommandWithDefaultTags)
-			assert.True(t, ok)
-			assert.True(t, got == ptr.Get(t))
-			assert.Equal(t, ptr.Get(t).Flag, "flag-default")
-			assert.Equal(t, ptr.Get(t).Bool, true)
-			assert.Equal(t, ptr.Get(t).Env, "env-default")
-			assert.Equal(t, ptr.Get(t).Arg, "arg-default")
-		})
-	})
-
-	s.When("the handler has a time.Time input with a layout tag", func(s *testcase.Spec) {
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithTimeFlags{}
-		})
-
-		s.Then("the default tag value is parsed with the layout", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithTimeFlags)
-			assert.True(t, ok)
-			exp := time.Date(2000, time.January, 2, 0, 0, 0, 0, time.UTC)
-			assert.True(t, got.Since.Equal(exp),
-				assert.MessageF("expected %s, got %s", exp, got.Since))
-		})
-	})
-
-	s.When("the handler has slice args without a separator tag", func(s *testcase.Spec) {
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithSliceArgDefaults{}
-		})
-
-		s.Then("the default tag values are split on commas", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithSliceArgDefaults)
-			assert.True(t, ok)
-			assert.Equal(t, got.Range, []string{"r1", "r2"})
-			assert.Equal(t, got.Variadic, []string{"v1", "v2", "v3"})
-		})
-	})
-
-	s.When(`the handler has fields tagged as opaque`, func(s *testcase.Spec) {
-		dependency := let.Var(s, func(t *testcase.T) *ForeignConfig {
-			return &ForeignConfig{}
-		})
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithOpaqueFields{Pointer: dependency.Get(t)}
-		})
-
-		s.Then("the default tags of an opaque field's type are not applied", func(t *testcase.T) {
-			got, ok := act(t).(CommandWithOpaqueFields)
-			assert.True(t, ok)
-			assert.Equal(t, got.ForeignConfig, ForeignConfig{})
-			assert.Equal(t, got.Field, ForeignConfig{})
-			assert.Equal(t, got.Alias, ForeignConfig{})
-			assert.Equal(t, got.Config, ForeignConfig{})
-			assert.True(t, got.Pointer == dependency.Get(t))
-			assert.Equal(t, *dependency.Get(t), ForeignConfig{})
-		})
-
-		s.Then(`the default tags of a field tagged with opaque:"false" are applied`, func(t *testcase.T) {
-			got, ok := act(t).(CommandWithOpaqueFields)
-			assert.True(t, ok)
-			assert.Equal(t, got.Settings.Level, "info")
-		})
-	})
-
-	s.When("a default tag value is not valid for its field", func(s *testcase.Spec) {
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return CommandWithInvalidDefaultTag{}
-		})
-
-		s.Then("it panics with ErrInvalidDefaultValue", func(t *testcase.T) {
-			out := assert.Panic(t, func() { act(t) })
-			err, ok := out.(error)
-			assert.True(t, ok, assert.MessageF("expected an error panic value, got %#v", out))
-			assert.ErrorIs(t, err, cli.ErrInvalidDefaultValue)
-		})
-	})
-
-	s.When("the handler is a nil pointer", func(s *testcase.Spec) {
-		handler.Let(s, func(t *testcase.T) cli.Handler {
-			return (*CommandWithDefaultTags)(nil)
-		})
-
-		s.Then("it panics", func(t *testcase.T) {
-			assert.Panic(t, func() { act(t) })
-		})
-	})
 }
 
 type CommandWithTypedDependency[Dependency any] struct {
@@ -3861,29 +3805,6 @@ func (cmd CommandWithOptArgWithEnum) ServeCLI(w cli.ResponseWriter, r *cli.Reque
 	cmd.Callback.Call(cmd, w, r)
 }
 
-func TestConfigureHandler(t *testing.T) {
-	req := &cli.Request{Args: []string{
-		/* flags */ "-str", "foo", "-int", "42", "-bool=true", "-sbool", "-fbool=0",
-		/* args */ "hello-world", "42", "True",
-	}}
-	var cmd CommandE2E
-
-	err := cli.ConfigureHandler(&cmd, req)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, cmd)
-
-	assert.Equal(t, cmd.Flag1, "foo")
-	assert.Equal(t, cmd.Flag2, "defval")
-	assert.Equal(t, cmd.Flag3, 42)
-	assert.Equal(t, cmd.Flag4, true)
-	assert.Equal(t, cmd.Flag5, true)
-	assert.Equal(t, cmd.Flag6, false)
-
-	assert.Equal(t, cmd.Arg1, "hello-world")
-	assert.Equal(t, cmd.Arg2, 42)
-	assert.Equal(t, cmd.Arg3, true)
-}
-
 type CommandWithUsageSupport struct{}
 
 func (CommandWithUsageSupport) Usage(path string) (string, error) {
@@ -3909,44 +3830,6 @@ func (CommandWithDependency) ServeCLI(w cli.ResponseWriter, r *cli.Request) {}
 func Example_dependencyInjection() {
 	cli.Main(context.Background(), CommandWithDependency{
 		Dependency: "important dependency that I need as part of the ServeCLI call",
-	})
-}
-
-func TestConfigureHandler_requiredFlag_defaultValueDependencyInjected(t *testing.T) {
-	cmd := CommandWithFlagWithRequired[string]{Flag: "42"}
-	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.ResponseWriter, r *cli.Request) { cmd = v }
-
-	err := cli.ConfigureHandler(&cmd, &cli.Request{})
-	assert.NoError(t, err, "expected no error, since default value is already provided")
-	assert.Equal(t, cmd.Flag, "42")
-}
-
-func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
-	cmd := CommandWithArgWithRequired[string]{Arg: "42"}
-	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.ResponseWriter, r *cli.Request) { cmd = v }
-
-	err := cli.ConfigureHandler(&cmd, &cli.Request{})
-	assert.NoError(t, err, "expected no error, since default value is already provided")
-	assert.Equal(t, cmd.Arg, "42")
-}
-
-func TestConfigureHandler_envIntegration(t *testing.T) {
-	const envName = "FLAGNAME"
-	t.Run("no env var", func(t *testing.T) {
-		testcase.UnsetEnv(t, envName)
-		cmd := CommandWithFlagWithEnv[string]{}
-		err := cli.ConfigureHandler(&cmd, &cli.Request{})
-		assert.NoError(t, err)
-		assert.Empty(t, cmd.Flag)
-	})
-
-	t.Run("with env var", func(t *testing.T) {
-		testcase.SetEnv(t, envName, "val")
-
-		cmd := CommandWithFlagWithEnv[string]{}
-		err := cli.ConfigureHandler(&cmd, &cli.Request{})
-		assert.NoError(t, err)
-		assert.Equal(t, cmd.Flag, "val")
 	})
 }
 
@@ -4061,46 +3944,6 @@ type StructWithOptionalEnvVariable struct {
 
 func (cmd CommandWithEmbeddedOptionalEnvVariable) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
-}
-
-func TestConfigureHandler_enumIntegration(t *testing.T) {
-	t.Run("no enum value", func(t *testing.T) {
-		cmd := CommandWithFlagWithEnum{}
-		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{}})
-		assert.NoError(t, err)
-		assert.Empty(t, cmd.Flag)
-	})
-
-	t.Run("with valid enum value", func(tt *testing.T) {
-		t := testcase.NewT(tt)
-		exp := random.Pick(t.Random, "foo", "bar", "baz")
-
-		cmd := CommandWithFlagWithEnum{}
-		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", exp}})
-		assert.NoError(t, err)
-		assert.Equal(t, cmd.Flag, exp)
-	})
-
-	t.Run("with invalid enum value", func(t *testing.T) {
-		cmd := CommandWithFlagWithEnum{}
-		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", "invalid"}})
-		assert.Error(t, err)
-
-		var got errorkit.UserError
-		assert.True(t, errors.As(err, &got))
-		assert.Equal(t, got.Code, "enum-error")
-	})
-}
-
-func TestConfigureHandler_unexportedStructField(t *testing.T) {
-	req := &cli.Request{Args: []string{"-ef", "fooinput"}}
-	var h CommandWithUnexportedField
-	err := cli.ConfigureHandler(&h, req)
-	assert.NoError(t, err)
-	assert.NotNil(t, h)
-	assert.Equal(t, "fooinput", h.ExportedFlag)
-
-	_ = h.unexportedFlag // we leave this undefined, not making it official that we support this.
 }
 
 type CommandWithUnexportedField struct {
@@ -4590,16 +4433,6 @@ func Test_variadicArgInput(t *testing.T) {
 		assert.Equal(t, out.Remaining, remaining)
 		assert.NotNil(t, lastRequest)
 		assert.Empty(t, lastRequest.Args)
-	})
-
-	s.Test("non slice type with variadic arg tag", func(t *testcase.T) {
-		p := assert.Panic(t, func() {
-			cli.ConfigureHandler(&NonSliceTypeWithVariadicArgTag{}, &cli.Request{
-				Args: []string{"foo", "bar", "baz"},
-			})
-		}, "it is expected that an implementation error results in a panic, as this is non-recoverable at runtime")
-
-		assert.Contains(t, fmt.Sprintf("%v", p), `variadic arg tag selector with ":" only supported for []T types`)
 	})
 
 	s.Test("when the expected argument count is less than the variadic argument slicing range then it should report missing arguments", func(t *testcase.T) {

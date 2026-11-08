@@ -28,13 +28,13 @@ import (
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/internal/tagint"
+	"go.llib.dev/frameless/pkg/internal/validateint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/port/ds/dsset"
 )
 
 const (
@@ -58,6 +58,9 @@ const (
 	ErrInvalidDefaultValue errorkitlite.Error = "ErrInvalidDefaultValue"
 )
 
+// ErrInvalidInput is the error of an input that is not valid,
+// like a missing required flag, an arg that can't be parsed, or a validate.Validatable value that is not valid.
+// Err holds the cause, without its stack trace, as the error is about the input of the user, not about the code.
 type ErrInvalidInput struct {
 	Err error
 
@@ -80,8 +83,35 @@ func (err ErrInvalidInput) ArgTag() (argTag, bool) {
 	return err.ref.ArgTag()
 }
 
+// Error tells which input is not valid, the way the user gives it, and why.
 func (err ErrInvalidInput) Error() string {
-	return "[ErrInvalidInput]"
+	var msg = "[ErrInvalidInput]"
+	if name, ok := err.inputName(); ok {
+		msg += " " + name
+	}
+	if err.Err != nil {
+		msg += ": " + err.Err.Error()
+	}
+	return msg
+}
+
+// inputName names the invalid input as a flag, an arg position, or an env var.
+// A field which is not an input, like a validate.Validatable dependency, is named by its field name.
+// An error of the handler itself has no name.
+func (err ErrInvalidInput) inputName() (string, bool) {
+	if err.ref.Node.Type != reftree.StructField {
+		return "", false
+	}
+	if name, ok := slicekit.First(err.ref.Flags()); ok {
+		return "-" + name, true
+	}
+	if tag, ok := err.ref.ArgTag(); ok && tag.Begin != nil {
+		return "arg" + tag.PositionExpr(), true
+	}
+	if name, ok := slicekit.First(err.ref.Envs()); ok {
+		return "$" + name, true
+	}
+	return err.ref.FieldName(), true
 }
 
 func (err ErrInvalidInput) Unwrap() error {
@@ -92,6 +122,37 @@ func (err ErrInvalidInput) Unwrap() error {
 
 type Handler interface {
 	ServeCLI(w ResponseWriter, r *Request)
+}
+
+// Middleware is an interface that a field of a Handler can implement,
+// typically a configuration struct, to wrap the Handler with additional behaviour.
+//
+// Once the inputs (flags, args, env vars, defaults) are loaded,
+// ServeCLI and Build look for Middleware fields in the Handler recursively,
+// and wrap the Handler with them.
+// They run in the order of their field declaration,
+// and an outer field runs before the Middleware fields it holds.
+// So with the fields Foo, Bar, Baz, the execution order is Foo -> Bar -> Baz -> Handler.
+//
+// Each Middleware runs once, even when more than one field holds it, like a shared pointer.
+// A Middleware embedded into a struct field runs through that field, when the field is a Middleware itself,
+// either through the promoted MiddlewareCLI method, or through its own one, which shadows it, like in Go.
+// The Handler is not a Middleware of itself, so a Middleware that the Handler embeds runs as any other field.
+//
+// MiddlewareCLI is called on the configured field value.
+// A pointer receiver implementation is supported as well, even when the field is not a pointer,
+// in which case MiddlewareCLI is called on the field itself.
+// This allows a Middleware to set up the field for the next Handlers,
+// like making a client from the configuration in the returned Handler,
+// and the Handler sees it, even when its ServeCLI has a value receiver.
+//
+// Like any Handler, the returned Handler owns the reply.
+// To fail the request, reply with cli.Error and don't call the next Handler.
+// Work that can fail, such as connecting to a dependency with the configured values,
+// belongs in the returned Handler, where the request and the response are at hand.
+// Returning a nil Handler is a programming error, which makes ServeCLI and Build panic.
+type Middleware interface {
+	MiddlewareCLI(next Handler) Handler
 }
 
 type Request struct {
@@ -373,17 +434,7 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 		printfln(o, msg)
 		return
 	}
-	if err := mh.Validate(r.Context()); err != nil {
-		w.ExitCode(ExitCodeBadRequest)
-		var msg = toHelp(r.Context(), h, err)
-		var o io.Writer = w
-		if !isHelp(err) {
-			o = errOut(w)
-		}
-		printfln(o, msg)
-		return
-	}
-	h = ptr.Elem().Interface().(Handler)
+	h = mh.Handler()
 	o := sandbox.Run(func() {
 		h.ServeCLI(w, r)
 	})
@@ -451,56 +502,36 @@ func Main(ctx context.Context, h Handler) {
 	osint.Exit(w.Code)
 }
 
-func ConfigureHandler[H Handler](ptr *H, r *Request) error {
-	return metaFor(reflect.ValueOf(ptr)).Configure(r)
-}
-
-// WithDefaults returns the handler with the `default` tag values applied to its zero value input fields.
-// Input fields that already have a value are kept as they are.
+// Build configures the handler with the inputs from the request,
+// the same way as ServeCLI would, and then wraps it with the Middleware fields it has.
+// The configured handler is set back to ptr as well,
+// while the returned Handler is the one wrapped with the Middlewares.
+// The returned Handler serves with the handler behind ptr at the time of the call,
+// so the changes that pointer receiver Middlewares make on its fields are visible to it.
 //
-// The `default` tag values are applied the same way when a command runs,
-// so you only need WithDefaults when the handler is used without going through
-// the argument parsing, for example when you call its ServeCLI method directly in a test:
+// Once the inputs are loaded, the validate.Validatable values are validated:
+// the fields of the handler recursively, inner fields first, and then the handler itself.
+// An empty input field (flag, arg, env) is left out,
+// so an optional input that was not given is not rejected for its zero value.
+// Each Middleware and Validatable is used once, even when more than one field holds it.
+// An embedded one is used through the struct that embeds it, when that struct is a Middleware or Validatable itself,
+// the same way as Go promotes or shadows the method of an embedded field.
 //
-//	cmd := cli.WithDefaults(MyCommand{Dependency: dep})
-//	cmd.ServeCLI(rr, req)
-//
-// Since a zero value can't be told apart from an unset one,
-// a field pre-set to its zero value still gets its `default` tag value.
-// A pointer handler is updated in place.
-// WithDefaults panics if a `default` tag value is not valid for its field.
-func WithDefaults[H Handler](h H) H {
-	if rv := reflect.ValueOf(h); !rv.IsValid() || (rv.Kind() == reflect.Pointer && rv.IsNil()) {
-		panic("nil cli.Handler")
+// The returned error is mostly about the inputs of the request,
+// like an invalid flag value, a missing required argument,
+// or a Validatable value which is not valid with the given inputs.
+// An arg definition that can't take inputs, like a gap between arg positions, is returned as an error too,
+// regardless of the inputs.
+// Other programming errors, like two input fields with the same flag name, make Build panic.
+func Build[H Handler](ptr *H, r *Request) (Handler, error) {
+	if ptr == nil {
+		panic("nil cli.Handler pointer")
 	}
-	ptr := reflect.New(reflect.TypeOf(h))
-	ptr.Elem().Set(reflect.ValueOf(h))
-	var (
-		ctx  = context.Background()
-		refs = metaFor(ptr).refs
-	)
-	var errInvalidDefault = func(ref *metaRef, err error) error {
-		defVal, _ := ref.LookupDefault()
-		return ErrInvalidDefaultValue.F("%s field's default value (%q) is invalid: %w", ref.FieldName(), defVal, err)
+	mh := metaFor(reflect.ValueOf(ptr))
+	if err := mh.Configure(r); err != nil {
+		return nil, err
 	}
-	for _, ref := range refs {
-		typ, ok := ref.LookupType()
-		if !ok {
-			continue
-		}
-		if err := ref.useDefault(typ); err != nil {
-			panic(errInvalidDefault(ref, err))
-		}
-	}
-	for _, ref := range refs {
-		if !ref.loaded {
-			continue
-		}
-		if err := ref.validate(ctx, ref.Node.Value); err != nil {
-			panic(errInvalidDefault(ref, err))
-		}
-	}
-	return ptr.Elem().Interface().(H)
+	return mh.Handler(), nil
 }
 
 func (m *ServeMux) entries() map[string]*muxEntry {
@@ -655,6 +686,15 @@ func (tag argTag) RangeExpr() string {
 	return fmt.Sprintf("[%d:%d]", *tag.Begin, *tag.End)
 }
 
+// PositionExpr formats the position of the arg as an index expression,
+// such as "[0]" for a single position, "[1:3]" for a range, or "[1:]" for a variadic arg.
+func (tag argTag) PositionExpr() string {
+	if tag.Begin != nil && !tag.IsSlice() {
+		return fmt.Sprintf("[%d]", *tag.Begin)
+	}
+	return tag.RangeExpr()
+}
+
 var argTagHandler = reflectkit.TagHandler[argTag]{
 	Name:  "arg",
 	Parse: parseArgTag,
@@ -793,24 +833,15 @@ func metaFor(ptr reflect.Value) metaH {
 		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non-pointer type", ptr.Type().String()))
 	}
 	var m = metaH{ptr: ptr}
-	_ = reftree.Walk(ptr, func(v reftree.Node) error {
-		if v.Type != reftree.StructField {
-			return nil
+	m.walkFields(func(field reftree.Node) bool {
+		var ref = &metaRef{Node: field}
+		if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
+			ref.Separator = sep
 		}
-		if v.StructField.IsExported() {
-			var ref = &metaRef{Node: v}
-			if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
-				ref.Separator = sep
-			}
-			if ref.IsRelevant() {
-				m.refs = append(m.refs, ref)
-			}
+		if ref.IsRelevant() {
+			m.refs = append(m.refs, ref)
 		}
-		// An opaque field can be an input itself, but its value is not looked into for further inputs.
-		if tagint.IsOpaque(v.StructField) {
-			return reftree.Skip
-		}
-		return nil
+		return true
 	})
 	return m
 }
@@ -820,8 +851,171 @@ type metaH struct {
 	refs []*metaRef
 }
 
-func (m metaH) Validate(ctx context.Context) (rErr error) {
-	defer errorkit.Recover(&rErr)
+// walkFields visits the exported fields of the handler recursively,
+// in field declaration order, where an outer field precedes its inner fields.
+// The fields of a visited field are looked into only when visit returns true.
+// An opaque field is visited, as it can be an input itself, but its value is not looked into.
+func (m metaH) walkFields(visit func(field reftree.Node) (stepIn bool)) {
+	_ = reftree.Walk(m.ptr, func(v reftree.Node) error {
+		if v.Type != reftree.StructField {
+			return nil
+		}
+		if v.StructField.IsExported() && !visit(v) {
+			return reftree.Skip
+		}
+		if tagint.IsOpaque(v.StructField) {
+			return reftree.Skip
+		}
+		return nil
+	})
+}
+
+// asInterface returns the value as T, when the value implements T, or its address does.
+// A nil value doesn't count as a T.
+func asInterface[T any](v reflect.Value) (T, bool) {
+	var zero T
+	if !v.IsValid() || !v.CanInterface() {
+		return zero, false
+	}
+	var typ = reflectkit.TypeOf[T]()
+	if v.CanAddr() && v.Addr().Type().Implements(typ) {
+		return v.Addr().Interface().(T), true
+	}
+	if !v.Type().Implements(typ) {
+		return zero, false
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		if v.IsNil() {
+			return zero, false
+		}
+	}
+	return v.Interface().(T), true
+}
+
+// middlewares collects the Middleware fields of the handler,
+// in field declaration order, where an outer field precedes its inner fields.
+// The handler is not a Middleware of itself, so the Middleware fields it embeds are collected.
+func (m metaH) middlewares() []Middleware {
+	var mws []Middleware
+	for _, ref := range fieldsOf[Middleware](m, false, nil) {
+		mw, _ := asInterface[Middleware](ref.Node.Value)
+		mws = append(mws, mw)
+	}
+	return mws
+}
+
+// fieldsOf collects the fields of the handler which implement T,
+// in field declaration order, where an outer field precedes its inner fields.
+//
+// Each T is collected once, so it is used once:
+//   - an embedded field is left out when the struct field that embeds it is a T itself,
+//     either through the method promoted from the embedded field, or through its own method, which shadows it, like in Go;
+//   - a T behind a pointer, which more than one field holds, is collected through the first field only.
+//
+// handlerIsT tells whether the handler itself is used as a T,
+// in which case the fields that the handler embeds are left out the same way.
+// A field for which skip returns true is left out, along with the fields it holds.
+func fieldsOf[T any](m metaH, handlerIsT bool, skip func(field reftree.Node) bool) []*metaRef {
+	var (
+		refs []*metaRef
+		seen = make(map[any]struct{})
+	)
+	m.walkFields(func(field reftree.Node) bool {
+		if skip != nil && skip(field) {
+			return false
+		}
+		v, ok := asInterface[T](field.Value)
+		if !ok || isPromoted[T](field, handlerIsT) {
+			return true
+		}
+		if key, ok := pointerIdentity(v); ok {
+			if _, dup := seen[key]; dup {
+				return true
+			}
+			seen[key] = struct{}{}
+		}
+		refs = append(refs, &metaRef{Node: field})
+		return true
+	})
+	return refs
+}
+
+// isPromoted tells whether the field is embedded into a struct field which is a T itself,
+// so the T of the field is used through that struct field instead.
+// When the handler embeds the field, it is the handler that the field is promoted to, if handlerIsT.
+func isPromoted[T any](field reftree.Node, handlerIsT bool) bool {
+	for field.StructField.Anonymous {
+		holder := field.Parent
+		for holder != nil && holder.Type != reftree.StructField {
+			switch holder.Type {
+			case reftree.Struct, reftree.Pointer, reftree.PointerElem, reftree.Interface, reftree.InterfaceElem:
+				holder = holder.Parent
+			default: // held by a slice, an array or a map, which don't promote methods
+				return false
+			}
+		}
+		if holder == nil { // embedded into the handler
+			return handlerIsT
+		}
+		if _, ok := asInterface[T](holder.Value); ok && holder.StructField.IsExported() {
+			return true
+		}
+		field = *holder
+	}
+	return false
+}
+
+// pointerIdentity returns v as an identity, when v is a pointer, which is the same for every field that holds it.
+// A pointer to a zero sized value is not an identity, since such values can share their address.
+func pointerIdentity(v any) (any, bool) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() || rv.Type().Elem().Size() == 0 {
+		return nil, false
+	}
+	return v, true
+}
+
+// refOf returns the input which the field is.
+// Every walk of the handler makes new nodes, so the field is matched to an input by its address,
+// and by its type, which tells apart an embedded struct from its first field that shares its address.
+// A field which is not addressable can't be set, so as an input, it is one that was not loaded.
+func (m metaH) refOf(field reftree.Node) (*metaRef, bool) {
+	if !field.Value.CanAddr() {
+		ref := &metaRef{Node: field}
+		return ref, ref.IsRelevant()
+	}
+	for _, ref := range m.refs {
+		if v := ref.Node.Value; v.CanAddr() && v.Type() == field.Value.Type() && v.Addr().Pointer() == field.Value.Addr().Pointer() {
+			return ref, true
+		}
+	}
+	return nil, false
+}
+
+// Handler returns the handler behind m.ptr, wrapped with the handler's Middleware fields.
+func (m metaH) Handler() Handler {
+	var h Handler = HandlerFunc(m.serveCLI)
+	mws := m.middlewares()
+	for i := len(mws) - 1; 0 <= i; i-- {
+		next := mws[i].MiddlewareCLI(h)
+		if next == nil {
+			panic(fmt.Sprintf("%T middleware returned a nil cli.Handler", mws[i]))
+		}
+		h = next
+	}
+	return h
+}
+
+// serveCLI serves with the handler that m.ptr points to at the time of the call, not at the time of the build,
+// so the changes that pointer receiver Middlewares make on its fields are visible to it,
+// even when its ServeCLI has a value receiver.
+func (m metaH) serveCLI(w ResponseWriter, r *Request) {
+	m.ptr.Elem().Interface().(Handler).ServeCLI(w, r)
+}
+
+// checkArgPositions checks that the args of the handler are defined at consecutive positions.
+func (m metaH) checkArgPositions() error {
 	// Only validate single-index args for sequential ordering
 	// Slice args (variadic/range) don't need strict index validation
 	var expectedIdx int
@@ -842,10 +1036,27 @@ func (m metaH) Validate(ctx context.Context) (rErr error) {
 			expectedIdx = *a.Begin + 1
 		}
 	}
+	return nil
+}
 
-	// Validate that range arguments have enough values when they are partially provided.
-	// A range or variadic arg without any user value is handled by metaH.load,
-	// since it may still get its value from the environment, its default tag, or the handler itself.
+// checkFlagCollisions panics when more than one input field of the handler defines the same flag name,
+// like two fields of the same config type, as it is a programming error.
+func (m metaH) checkFlagCollisions() {
+	var defined = make(map[string]*metaRef)
+	for _, flg := range m.Flags() {
+		for _, name := range flg.Names {
+			if other, ok := defined[name]; ok {
+				panic(fmt.Sprintf("flag collision on -%s: %s and %s", name, other.FieldPath(), flg.Ref.FieldPath()))
+			}
+			defined[name] = flg.Ref
+		}
+	}
+}
+
+// checkArgRanges checks that a range arg got every value of its range, when it got any.
+// A range or variadic arg without any user value is handled by metaH.load,
+// since it may still get its value from the environment, its default tag, or the handler itself.
+func (m metaH) checkArgRanges() error {
 	for _, ref := range m.refs {
 		tag, ok := ref.ArgTag()
 		if !ok || tag.Begin == nil || tag.End == nil {
@@ -859,20 +1070,17 @@ func (m metaH) Validate(ctx context.Context) (rErr error) {
 			return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
 		}
 	}
-
-	var ufn dsset.Set[string]
-	for _, flag := range m.Flags() {
-		for _, name := range flag.Names {
-			if ufn.Contains(name) {
-				return fmt.Errorf("flag collision on %s", name)
-			}
-			ufn.Append(name)
-		}
-	}
 	return nil
 }
 
+// Configure loads the inputs of the request into the handler.
+// The definition of the handler is checked first, so its errors come regardless of the inputs.
 func (m metaH) Configure(r *Request) error {
+	if err := m.checkArgPositions(); err != nil {
+		return err
+	}
+	m.checkFlagCollisions()
+
 	var flagSetOutput bytes.Buffer
 	var flagSet = flag.NewFlagSet("", flag.ContinueOnError)
 	flagSet.Usage = func() {}
@@ -984,14 +1192,10 @@ func (m metaH) Configure(r *Request) error {
 	}
 	r.Args = remainingArgs
 
+	if err := m.checkArgRanges(); err != nil {
+		return err
+	}
 	return m.load(r.Context())
-	// TODO: maybe validate the whole structure too?
-	//
-	// if validate.Value(ctx, m.ptr.Interface()) != nil {
-	// 	// some error but difficult to tell what
-	// 	// maybe integrate error handler
-	// return errInternalValidationError
-	// }
 }
 
 // load sets the input fields from their sources, in the order of their precedence,
@@ -1005,6 +1209,8 @@ func (m metaH) Configure(r *Request) error {
 // So a default never overwrites an input, and the order of the flags in the arguments doesn't matter.
 // The required inputs and the validation tags are checked only once every value is loaded,
 // since an inner field can get its value from the JSON value of its struct field as well.
+// The validate.Validatable values of the handler are validated last, see checkValidatables,
+// so the validation tag checks leave them out, as each must be validated only once.
 func (m metaH) load(ctx context.Context) error {
 	for _, ref := range m.refs {
 		if err := ref.loadDefault(); err != nil {
@@ -1017,16 +1223,61 @@ func (m metaH) load(ctx context.Context) error {
 		}
 	}
 	for _, ref := range m.refs {
-		if err := ref.check(ctx); err != nil {
+		if err := ref.check(validateint.SkipValidatable(ctx)); err != nil {
 			return err
+		}
+	}
+	return m.checkValidatables(ctx)
+}
+
+// checkValidatables validates the validate.Validatable fields of the handler recursively,
+// where an inner field is validated before the struct field that holds it,
+// and then the handler itself.
+// Each Validatable is validated once, see fieldsOf.
+//
+// An input which was not given, so it is empty, is left out, along with the fields it holds,
+// so an optional input is not rejected for its zero value.
+// An input given with an empty value is validated,
+// and so is an input with a value, even when it got the value through its inner inputs.
+func (m metaH) checkValidatables(ctx context.Context) error {
+	handler, handlerIsValidatable := asInterface[validate.Validatable](m.ptr.Elem())
+	refs := fieldsOf[validate.Validatable](m, handlerIsValidatable, func(field reftree.Node) bool {
+		ref, ok := m.refOf(field)
+		return ok && !ref.loaded && reflectkit.IsEmpty(field.Value)
+	})
+	for _, ref := range innerFirst(refs) {
+		v, _ := asInterface[validate.Validatable](ref.Node.Value)
+		if err := callValidate(ctx, v); err != nil {
+			return ErrInvalidInput{ref: *ref, Err: errorkit.WithoutTrace(err)}
+		}
+	}
+	if handlerIsValidatable {
+		if err := callValidate(ctx, handler); err != nil {
+			return ErrInvalidInput{Err: errorkit.WithoutTrace(err)}
 		}
 	}
 	return nil
 }
 
+// callValidate returns the error of Validate as a validate.Error, unless it is one already.
+func callValidate(ctx context.Context, v validate.Validatable) error {
+	err := v.Validate(ctx)
+	if err == nil {
+		return nil
+	}
+	if _, ok := err.(validate.Error); ok {
+		return err
+	}
+	return validate.Error{Cause: err}
+}
+
 // innerFirst returns the refs in an order where every inner field precedes the struct field that holds it.
 func (m metaH) innerFirst() []*metaRef {
-	refs := slices.Clone(m.refs)
+	return innerFirst(m.refs)
+}
+
+func innerFirst(refs []*metaRef) []*metaRef {
+	refs = slices.Clone(refs)
 	slices.SortStableFunc(refs, func(a, b *metaRef) int {
 		return b.depth() - a.depth()
 	})
@@ -1145,6 +1396,25 @@ func (ref metaRef) FieldName() string {
 	return ref.Node.StructField.Name
 }
 
+// FieldPath is the path of the field from the handler, like pkg.MyCommand.Config.Host,
+// which tells apart the fields of the same type at different places of the handler.
+func (ref metaRef) FieldPath() string {
+	var (
+		root  string
+		names []string
+	)
+	for n := range ref.Node.IterUpward() {
+		switch n.Type {
+		case reftree.StructField:
+			names = append(names, n.StructField.Name)
+		case reftree.Struct:
+			root = n.Value.Type().String()
+		}
+	}
+	slices.Reverse(names)
+	return strings.Join(append([]string{root}, names...), ".")
+}
+
 // depth is the number of nodes between the field and the root of the handler.
 func (ref metaRef) depth() int {
 	var n int
@@ -1167,7 +1437,7 @@ func (ref *metaRef) asInvalidInput(rErr *error) {
 	errorkit.FinishOnError(rErr, func() {
 		*rErr = ErrInvalidInput{
 			ref: *ref,
-			Err: *rErr,
+			Err: errorkit.WithoutTrace(*rErr),
 		}
 	})
 }

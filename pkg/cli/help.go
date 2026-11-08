@@ -49,13 +49,7 @@ func defaultInvalidInputErrorHandler(ctx context.Context, w io.Writer, eii ErrIn
 	printfln(w)
 	printfln(w, "Invalid input:")
 	if tag, ok := eii.ArgTag(); ok && tag.Begin != nil {
-		if tag.IsVariadic || tag.End == nil {
-			printfln(w, fmt.Sprintf("\targ[%d:]", *tag.Begin))
-		} else if *tag.End > *tag.Begin+1 {
-			printfln(w, fmt.Sprintf("\targ[%d:%d]", *tag.Begin, *tag.End))
-		} else {
-			printfln(w, fmt.Sprintf("\targ[%d]", *tag.Begin))
-		}
+		printfln(w, "\targ"+tag.PositionExpr())
 	}
 	if flags := eii.Flags(); 0 < len(flags) {
 		printfln(w, fmt.Sprintf("\tflag: %s", strings.Join(flags, ", ")))
@@ -275,13 +269,7 @@ func helpCreateUsage(h Handler, command string) string {
 					if ref.IsFlag() {
 						subs += " or "
 					}
-					if tag.IsVariadic || tag.End == nil {
-						subs += fmt.Sprintf(" args[%d:]", *tag.Begin)
-					} else if *tag.End > *tag.Begin+1 {
-						subs += fmt.Sprintf(" args[%d:%d]", *tag.Begin, *tag.End)
-					} else {
-						subs += fmt.Sprintf(" args[%d]", *tag.Begin)
-					}
+					subs += " args" + tag.PositionExpr()
 				}
 				lines = append(lines, subs)
 			}

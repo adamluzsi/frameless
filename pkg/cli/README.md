@@ -129,10 +129,6 @@ Think twice before you put `default:"true"` on a `bool` flag,
 because you can't turn it off from code. Only the user can, with `-flag=false`.
 Prefer a flag name that is off by default, like `no-color` instead of `color` with `default:"true"`.
 
-To apply the `default` tag values without running the command,
-for example when you call the handler's ServeCLI method directly in a test, use `cli.WithDefaults`.
-It sets the `default` tag value of every zero input field and keeps the rest.
-
 Range and variadic arguments (`arg:"0:2"`, `arg:"1:"`) follow the same order.
 When the user passes none of their values, they get their environment variable, pre-set value, or `default` tag value,
 which is split the same way as any other slice value:
@@ -183,6 +179,114 @@ An input that the user gave satisfies `required`, even when it is empty, like `-
 Tag the struct field with `opaque:""` when its type's own tags must not become inputs.
 The field then takes only the JSON object (see [Dependency injection](#dependency-injection)).
 
+## Validation
+
+Besides the validation tags, an input, a config struct or the command itself can validate itself
+by implementing `validate.Validatable` from `frameless/pkg/validate`.
+This is the place for rules that span more than one input:
+
+```go
+type RangeConfig struct {
+	Min int `flag:"min" default:"1"`
+	Max int `flag:"max" default:"10"`
+}
+
+func (c RangeConfig) Validate(ctx context.Context) error {
+	if c.Max < c.Min {
+		return fmt.Errorf("min (%d) can't be greater than max (%d)", c.Min, c.Max)
+	}
+	return nil
+}
+
+type ListCommand struct {
+	Range RangeConfig
+}
+```
+
+Once every input is applied, the `Validatable` fields of the command are validated, inner fields first,
+and then the command itself, when it is a `Validatable` too.
+A validation error is a bad request, so the command doesn't run.
+An input field that the user didn't give and that is still empty is not validated,
+so an optional input isn't rejected for its zero value.
+
+Each `Validatable` is validated once.
+An embedded `Validatable` is validated through the struct that embeds it, when that struct is a `Validatable` itself,
+the same way as Go promotes or shadows the `Validate` method of an embedded field.
+So when the command embeds a `Validatable` and has a `Validate` method of its own,
+the command's `Validate` decides whether to call the embedded one.
+
+## Middleware
+
+A config struct can do more than hold inputs.
+By implementing `cli.Middleware`, it wraps the command with its own behaviour, using the configured values,
+like making a client from the configuration before the command runs:
+
+```go
+type DBConfig struct {
+	URL string `flag:"db-url" env:"APP_DB_URL"`
+
+	db *sql.DB
+}
+
+func (c *DBConfig) MiddlewareCLI(next cli.Handler) cli.Handler {
+	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		db, err := sql.Open("postgres", c.URL)
+		if err != nil {
+			cli.Error(w, err.Error(), cli.ExitCodeError)
+			return
+		}
+		defer db.Close()
+		c.db = db
+		next.ServeCLI(w, r)
+	})
+}
+
+type MigrateCommand struct {
+	DBConfig
+}
+
+func (cmd MigrateCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	// cmd.db is ready to use
+}
+```
+
+- Once the inputs are applied and validated, the command is wrapped with every `Middleware` field it has,
+  found the same way as the inputs, including nested and embedded structs and the values behind pointers.
+- They run in field declaration order, and a struct field runs before the `Middleware` fields it holds.
+  With the fields `Foo`, `Bar` and `Baz`, the order is `Foo -> Bar -> Baz -> command`.
+- `MiddlewareCLI` is called on the configured field.
+  A pointer receiver works on a value field too,
+  and the command sees what it sets up, even when the command has a value receiver.
+- Like any handler, the handler that a `Middleware` returns owns the reply.
+  To fail the request, reply with `cli.Error` and don't call `next`.
+  Do the work that can fail inside the returned handler, where the request and the response are at hand.
+- Each `Middleware` runs once. A pointer that more than one field holds runs once,
+  and a `Middleware` embedded into a struct field that is a `Middleware` itself runs through that field,
+  the same way as Go promotes or shadows the method of an embedded field.
+  The command is not a `Middleware` of itself, so a `Middleware` that the command embeds runs as a field.
+- Returning a nil handler is a programming error, which panics.
+
+## Build
+
+`cli.Build(&cmd, req)` runs the same steps as `cli.ServeCLI` before the command runs.
+It applies the inputs onto `cmd` and validates them,
+then returns `cmd` wrapped with its middlewares, without running either.
+An invalid input comes back as an error instead of a bad request reply.
+
+```go
+var cmd MigrateCommand
+h, err := cli.Build(&cmd, &cli.Request{Args: []string{"-db-url", "postgres://localhost/app"}})
+if err != nil {
+	return err
+}
+h.ServeCLI(w, r) // DBConfig.MiddlewareCLI -> MigrateCommand.ServeCLI
+```
+
+`cli.Build` replaces the deprecated `ConfigureHandler`.
+
+Two input fields with the same flag name, like two fields of the same config type, are a programming error.
+They make `cli.Build` and `cli.ServeCLI` panic, naming the flag and both fields.
+
 ## Testing
 
 Testing with `frameless/pkg/cli` is designed to be simple, and it works the same way as `net/http/httptest`.
@@ -191,8 +295,8 @@ the standard output into `Out` (also available as an `io.Writer` with `Stdout()`
 and the standard error into `Err` (with `Stderr()`).
 
 To test the handler logic alone, set up your command value based on your testing scenario and call its ServeCLI method.
-This skips the input parsing, so you need to set every input yourself,
-or start from `cli.WithDefaults(MyCommand{})` to get the `default` tag values.
+This skips the input parsing, so you need to set every input yourself, including the ones with a `default` tag.
+To have them bound for you, use `cli.Build` (see [Build](#build)).
 
 ```go
 func TestMyCommand(t *testing.T) {
@@ -229,6 +333,9 @@ func TestMyCommand_input(t *testing.T) {
 	}
 }
 ```
+
+To test the input binding alone, use `cli.Build` and check the fields of the command (see [Build](#build)).
+Neither the middlewares nor the command run, unless you call the returned handler.
 
 The text the framework writes, like the help, the usage and the input error reports, is the same on every OS.
 It always uses `"\n"` line endings, and the program name in the usage has no `.exe` extension.

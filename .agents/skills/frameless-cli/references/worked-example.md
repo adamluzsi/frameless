@@ -5,7 +5,7 @@ This is a complete, verified example: a small greeting CLI with two commands, pl
 It shows:
 
 - direct handler tests;
-- binding-only tests with `cli.ConfigureHandler`;
+- binding-only tests with `cli.Build`;
 - full-pipeline tests with `cli.ServeCLI` over the real `NewMux`, covering flags, env precedence, enum validation, missing arguments, cancellation, help, stdin and the root mux.
 
 Replace `example.com/app` with your module path.
@@ -142,7 +142,7 @@ func TestGreetCommand(t *testing.T) {
 		})
 		subject = let.Var(s, func(t *testcase.T) greetcli.GreetCommand {
 			return greetcli.GreetCommand{
-				Lang:    "en", // a direct ServeCLI call does no parsing, so tag defaults are not applied (cli.WithDefaults would)
+				Lang:    "en", // a direct ServeCLI call does no parsing, so tag defaults are not applied (cli.Build would)
 				Name:    t.Random.StringNC(8, random.CharsetAlpha()),
 				Greeter: greeter.Get(t),
 			}
@@ -198,7 +198,7 @@ func TestGreetCommand(t *testing.T) {
 
 		act := func(t *testcase.T) (greetcli.GreetCommand, error) {
 			var cmd greetcli.GreetCommand
-			err := cli.ConfigureHandler(&cmd, &cli.Request{Args: args.Get(t)})
+			_, err := cli.Build(&cmd, &cli.Request{Args: args.Get(t)})
 			return cmd, err
 		}
 

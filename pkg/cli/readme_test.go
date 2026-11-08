@@ -23,7 +23,7 @@ func TestREADME(t *testing.T) {
 		readme := act(t)
 
 		var offending []string
-		for _, name := range []string{"cli.Response", "cli.Mux"} {
+		for _, name := range []string{"cli.Response", "cli.Mux", "cli.ConfigureHandler"} {
 			pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
 			for i, line := range strings.Split(readme, "\n") {
 				if pattern.MatchString(line) {
