@@ -20,6 +20,7 @@ import (
 	. "go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 	"go.llib.dev/testcase/tchttp"
 )
@@ -141,7 +142,9 @@ func TestRouter(t *testing.T) {
 					assert.Must(t).Equal("/", routing.PathLeft)
 				})
 			})
+		}
 
+		ThenHandlerIsReachableUnderThePath := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
 			s.When("the request path contains the registered path", func(s *testcase.Spec) {
 				const pathRest = "/foo/bar/baz"
 				path.Let(s, func(t *testcase.T) string {
@@ -191,11 +194,201 @@ func TestRouter(t *testing.T) {
 				path := t.Random.StringNC(5, random.CharsetAlpha())
 				return fmt.Sprintf("/%s", url.PathEscape(path))
 			})
+			registeredMethod := testcase.Let(s, func(t *testcase.T) string {
+				return method.Get(t)
+			})
 			s.Before(func(t *testcase.T) {
-				subject.Get(t).On(method.Get(t), registeredPath.Get(t), handler.Get(t))
+				subject.Get(t).On(registeredMethod.Get(t), registeredPath.Get(t), handler.Get(t))
 			})
 
 			ThenItRoutesTheRequestToTheHandler(s, registeredPath)
+
+			s.And("the request path goes deeper than the registered path", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join(registeredPath.Get(t), "foo", "bar")
+				})
+
+				s.Then("it replies with path not found, as a route only answers its own path", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusNotFound, rr.Code)
+					assert.Nil(t, lastRequest.Get(t))
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					assert.Equal(t, httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
+				})
+			})
+
+			s.And("the request method has no route on the registered path", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) string {
+					return registeredPath.Get(t)
+				})
+				registeredMethod.Let(s, func(t *testcase.T) string {
+					return random.Unique(func() string {
+						return random.Pick(t.Random,
+							http.MethodPost,
+							http.MethodPut,
+							http.MethodPatch,
+							http.MethodDelete,
+						)
+					}, method.Get(t))
+				})
+
+				s.Then("it replies with method not allowed", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+					assert.Nil(t, lastRequest.Get(t))
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					assert.Equal(t, httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
+				})
+
+				s.Then("the Allow header lists the methods registered on the path", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, registeredMethod.Get(t), rr.Header().Get("Allow"))
+				})
+			})
+		})
+
+		s.When("placeholder routes share a path level", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Get("/a/:id", handler.Get(t))
+				subject.Get(t).Get("/a/:nid/x", handler.Get(t))
+			})
+			value := let.StringNC(s, 5, random.CharsetAlpha())
+			path.Let(s, func(t *testcase.T) string {
+				return pathkit.Join("/a", value.Get(t))
+			})
+
+			s.Then("only the placeholder of the matched route is set", func(t *testcase.T) {
+				rr := act(t)
+				assert.Equal(t, http.StatusTeapot, rr.Code)
+				assert.NotNil(t, lastRequest.Get(t))
+				assert.Equal(t, map[string]string{"id": value.Get(t)},
+					httpkit.PathParams(lastRequest.Get(t).Context()))
+			})
+
+			s.And("the request matches the deeper route", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join("/a", value.Get(t), "x")
+				})
+
+				s.Then("only the placeholder of the deeper route is set", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusTeapot, rr.Code)
+					assert.NotNil(t, lastRequest.Get(t))
+					assert.Equal(t, map[string]string{"nid": value.Get(t)},
+						httpkit.PathParams(lastRequest.Get(t).Context()))
+				})
+			})
+		})
+
+		s.When("a route is registered under the path of a mounted handler", func(s *testcase.Spec) {
+			mountedRequest := testcase.LetValue[*http.Request](s, nil)
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Mount("/things", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					mountedRequest.Set(t, r)
+					w.WriteHeader(http.StatusAccepted)
+				}))
+				subject.Get(t).Post("/things/:id/activate", handler.Get(t))
+			})
+			id := let.StringNC(s, 5, random.CharsetAlpha())
+			path.Let(s, func(t *testcase.T) string {
+				return pathkit.Join("/things", id.Get(t))
+			})
+
+			s.Then("the mounted handler serves the paths that the route doesn't cover", func(t *testcase.T) {
+				rr := act(t)
+				assert.Equal(t, http.StatusAccepted, rr.Code)
+				assert.NotNil(t, mountedRequest.Get(t))
+
+				routing, ok := internal.RoutingContext.Lookup(mountedRequest.Get(t).Context())
+				assert.True(t, ok)
+				assert.Equal(t, pathkit.Join("/", id.Get(t)), routing.PathLeft)
+			})
+
+			s.Then("the placeholders of the route are not leaked to the mounted handler", func(t *testcase.T) {
+				act(t)
+				assert.NotNil(t, mountedRequest.Get(t))
+				assert.Empty(t, httpkit.PathParams(mountedRequest.Get(t).Context()))
+			})
+
+			s.And("the request matches the route", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodPost)
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join("/things", id.Get(t), "activate")
+				})
+
+				s.Then("the route's handler serves it", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusTeapot, rr.Code)
+					assert.Nil(t, mountedRequest.Get(t))
+					assert.NotNil(t, lastRequest.Get(t))
+					assert.Equal(t, id.Get(t), httpkit.PathParams(lastRequest.Get(t).Context())["id"])
+				})
+			})
+
+			s.And("the request matches the route's path but not its method", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodGet)
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join("/things", id.Get(t), "activate")
+				})
+
+				s.Then("the mounted handler serves it", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusAccepted, rr.Code)
+					assert.Nil(t, lastRequest.Get(t))
+				})
+			})
+		})
+
+		s.When("the registered path has characters that a request path escapes", func(s *testcase.Spec) {
+			segment := testcase.Let(s, func(t *testcase.T) string {
+				return t.Random.StringNC(3, random.CharsetAlpha()) + " " + t.Random.StringNC(3, random.CharsetAlpha())
+			})
+			registeredPath := testcase.Let(s, func(t *testcase.T) string {
+				return "/" + segment.Get(t)
+			})
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Get(registeredPath.Get(t), handler.Get(t))
+			})
+			path.Let(s, func(t *testcase.T) string {
+				return "/" + url.PathEscape(segment.Get(t))
+			})
+
+			s.Then("the route matches the escaped request path", func(t *testcase.T) {
+				rr := act(t)
+				assert.Equal(t, http.StatusTeapot, rr.Code)
+				assert.NotNil(t, lastRequest.Get(t))
+			})
+
+			s.And("the path is registered in its escaped form", func(s *testcase.Spec) {
+				registeredPath.Let(s, func(t *testcase.T) string {
+					return "/" + url.PathEscape(segment.Get(t))
+				})
+
+				s.Then("the route matches the escaped request path", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusTeapot, rr.Code)
+					assert.NotNil(t, lastRequest.Get(t))
+				})
+			})
+		})
+
+		s.When("a mounted handler is a router that mounts a handler too", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				var inner httpkit.Router
+				inner.Mount("/inner", handler.Get(t))
+				// a plain http.Handler, so the outer router doesn't merge the inner router's routes
+				subject.Get(t).Mount("/outer", http.HandlerFunc(inner.ServeHTTP))
+			})
+			path.LetValue(s, "/outer/inner/foo")
+
+			s.Then("the innermost handler sees the request path relative to its own mount point", func(t *testcase.T) {
+				rr := act(t)
+				assert.Equal(t, http.StatusTeapot, rr.Code)
+				assert.NotNil(t, lastRequest.Get(t))
+				assert.Equal(t, "/foo", lastRequest.Get(t).URL.Path)
+			})
 		})
 
 		s.When("path is registered", func(s *testcase.Spec) {
@@ -208,6 +401,32 @@ func TestRouter(t *testing.T) {
 			})
 
 			ThenHandlerIsReachable(s, registeredPath)
+			ThenHandlerIsReachableUnderThePath(s, registeredPath)
+
+			s.And("the request path is the mount point", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) string {
+					return registeredPath.Get(t)
+				})
+
+				s.Then("the mounted handler sees its mount point as the root path", func(t *testcase.T) {
+					act(t)
+					assert.NotNil(t, lastRequest.Get(t))
+					assert.Equal(t, "/", lastRequest.Get(t).URL.Path)
+				})
+			})
+
+			s.And("the request path goes deeper than the mount point", func(s *testcase.Spec) {
+				const pathRest = "/foo/bar/baz"
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join(registeredPath.Get(t), pathRest)
+				})
+
+				s.Then("the mounted handler sees the request path without the mount point", func(t *testcase.T) {
+					act(t)
+					assert.NotNil(t, lastRequest.Get(t))
+					assert.Equal(t, pathRest, lastRequest.Get(t).URL.Path)
+				})
+			})
 
 			s.And("registered path is a path variable section", func(s *testcase.Spec) {
 				registeredPath.LetValue(s, "/:pathvar")
@@ -216,6 +435,7 @@ func TestRouter(t *testing.T) {
 				})
 
 				ThenHandlerIsReachable(s, registeredPath)
+				ThenHandlerIsReachableUnderThePath(s, registeredPath)
 
 				s.Then("the path variable is available", func(t *testcase.T) {
 					rr := act(t)
@@ -244,6 +464,7 @@ func TestRouter(t *testing.T) {
 					})
 
 					ThenHandlerIsReachable(s, registeredPath)
+					ThenHandlerIsReachableUnderThePath(s, registeredPath)
 
 					s.Then("the non-dynamic path can be accessed, and not interpreted as a path parameter", func(t *testcase.T) {
 						w := httptest.NewRecorder()
@@ -684,7 +905,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Post", func(t *testing.T) {
@@ -704,7 +925,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Put", func(t *testing.T) {
@@ -724,7 +945,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Patch", func(t *testing.T) {
@@ -744,7 +965,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Head", func(t *testing.T) {
@@ -764,7 +985,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Delete", func(t *testing.T) {
@@ -784,7 +1005,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Connect", func(t *testing.T) {
@@ -804,7 +1025,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Options", func(t *testing.T) {
@@ -824,7 +1045,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("Trace", func(t *testing.T) {
@@ -844,7 +1065,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/foo", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 	t.Run("root path", func(t *testing.T) {
@@ -864,7 +1085,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/", nil)
 			router.ServeHTTP(rr, req)
-			assert.Equal(t, rr.Code, http.StatusNotFound)
+			assert.Equal(t, rr.Code, http.StatusMethodNotAllowed)
 		}
 	})
 }

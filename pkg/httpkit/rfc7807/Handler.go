@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 )
 
 type Handler struct {
@@ -30,14 +31,22 @@ func (h Handler) HandleError(w http.ResponseWriter, r *http.Request, err error) 
 		ctx = r.Context()
 	)
 	dto := h.ToDTO(ctx, err)
+	body, merr := json.Marshal(dto)
+	if merr != nil && dto.Extensions != nil {
+		logger.Warn(ctx, "rfc7807.Handler: the DTO Extensions can't be encoded as JSON, so the error reply is sent without them",
+			logging.ErrField(merr))
+		dto.Extensions = nil
+		body, merr = json.Marshal(dto)
+	}
+	if merr != nil {
+		logger.Error(ctx, "rfc7807.Handler: the DTO can't be encoded as JSON", logging.ErrField(merr))
+	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(dto.Status)
-	bytes, err := json.Marshal(dto)
-	if err != nil {
-		fmt.Println("WARN", "rfc7807.Handler", "json.Marshal", err.Error())
+	if merr != nil {
 		return
 	}
-	_, _ = w.Write(bytes)
+	_, _ = w.Write(body)
 }
 
 func (h Handler) toTitleCase(id constant.String) string {

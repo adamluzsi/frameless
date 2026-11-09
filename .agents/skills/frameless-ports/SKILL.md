@@ -100,6 +100,7 @@ grep -rlE 'guardcontract\.[A-Z]' <dir>/adapter <dir>/pkg --include=*_test.go
 - **Time:** call `clock.Now`, `clock.After` and `clock.Sleep` from `go.llib.dev/testcase/clock`. Control time in tests with `timecop.Travel` and `timecop.SetSpeed`. Don't inject a `Clock`.
 - **Logging:** call the `pkg/logger` package functions, and capture output in tests with `logger.Stub(t)`. Don't inject a `Logger`.
 - **Retries, backoff, rate limits:** use `pkg/resilience` (see `frameless-resilience`).
+- **URL and request paths:** build and parse them with `pkg/pathkit` (see `frameless-pathkit`).
 - **Configuration:** load it into structs with `pkg/env`.
 - **Pure domain logic and value objects:** use plain functions and types.
 

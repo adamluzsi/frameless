@@ -23,6 +23,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
@@ -151,16 +152,23 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 	s.Describe("#ServeHTTP", func(s *testcase.Spec) {
 		var (
-			method  = testcase.LetValue(s, http.MethodGet)
-			path    = testcase.LetValue(s, "/")
-			body    = testcase.LetValue[[]byte](s, nil)
-			Context = let.Context(s)
+			method      = testcase.LetValue(s, http.MethodGet)
+			path        = testcase.LetValue(s, "/")
+			body        = testcase.LetValue[[]byte](s, nil)
+			Context     = let.Context(s)
+			contentType = testcase.LetValue(s, mediatype.JSON)
+			accept      = testcase.LetValue(s, "")
 		)
 		act := func(t *testcase.T) *httptest.ResponseRecorder {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(method.Get(t), path.Get(t), bytes.NewReader(body.Get(t)))
 			r = r.WithContext(Context.Get(t))
-			r.Header.Set("Content-Type", "application/json")
+			if v := contentType.Get(t); v != "" {
+				r.Header.Set("Content-Type", v)
+			}
+			if v := accept.Get(t); v != "" {
+				r.Header.Set("Accept", v)
+			}
 			subject.Get(t).ServeHTTP(w, r)
 			return w
 		}
@@ -490,6 +498,28 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					assert.Must(t).NotEmpty(errDTO)
 					assert.Must(t).Equal(httpkit.ErrMalformedID.Code.String(), errDTO.Type.ID)
 				})
+
+				s.And("the handler has a custom ErrorHandler", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						h := subject.Super(t)
+						h.ErrorHandler = rfc7807.Handler{
+							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
+								if errors.Is(err, httpkit.ErrMalformedID) {
+									dto.Status = http.StatusTeapot
+								}
+							},
+						}
+						return h
+					})
+
+					s.Then("the custom ErrorHandler replies with the error", func(t *testcase.T) {
+						rr := act(t)
+						assert.Equal(t, http.StatusTeapot, rr.Code)
+
+						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+						assert.Equal(t, httpkit.ErrMalformedID.Code.String(), errDTO.Type.ID)
+					})
+				})
 			})
 		}
 
@@ -565,18 +595,138 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				ThenNotAllowed(s)
 			})
+
+			s.When("the request method is not supported on a resource path", func(s *testcase.Spec) {
+				method.Let(s, func(t *testcase.T) string {
+					return random.Pick(t.Random,
+						http.MethodPost,
+						http.MethodOptions,
+						http.MethodTrace,
+						"FOO",
+					)
+				})
+
+				ThenNotAllowed(s)
+			})
+
+			s.When("Show panics", func(s *testcase.Spec) {
+				panicErr := testcase.Let(s, func(t *testcase.T) error {
+					return errors.New(t.Random.StringNC(12, random.CharsetAlpha()))
+				})
+				logs := testcase.Let(s, func(t *testcase.T) logging.StubOutput {
+					return logger.Stub(t, func(l *logging.Logger) { l.Hijack = nil })
+				}).EagerLoading(s)
+				subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+					h := subject.Super(t)
+					h.Show = func(ctx context.Context, id XID) (X, bool, error) {
+						panic(panicErr.Get(t))
+					}
+					return h
+				})
+
+				s.Then("it replies with internal server error", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusInternalServerError, rr.Code)
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					assert.Equal(t, httpkit.ErrInternalServerError.Code.String(), errDTO.Type.ID)
+				})
+
+				s.Then("the panic is logged through the logger", func(t *testcase.T) {
+					act(t)
+					assert.Contains(t, logs.Get(t).String(), panicErr.Get(t).Error())
+				})
+			})
+
+			s.When("the request has neither Content-Type nor Accept header", func(s *testcase.Spec) {
+				contentType.LetValue(s, "")
+				accept.LetValue(s, "")
+
+				s.Then("it replies in JSON", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, mediatype.JSON, rr.Header().Get("Content-Type"))
+					assert.Equal(t, dto.Get(t), respondsWithJSON[X](t, rr))
+				})
+
+				s.And("a custom codec is configured for JSON, without setting the MediaType", func(s *testcase.Spec) {
+					marker := testcase.Let(s, func(t *testcase.T) string {
+						return strconv.Quote(t.Random.StringNC(12, random.CharsetAlpha()))
+					})
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						h := subject.Super(t)
+						h.MediaType = ""
+						h.Codecs = httpkit.Codecs{
+							mediatype.JSON: codecFunc{
+								MarshalerFunc: func(v any) ([]byte, error) {
+									return []byte(marker.Get(t)), nil
+								},
+								UnmarshalerFunc: json.Unmarshal,
+							},
+						}
+						return h
+					})
+
+					s.Then("the custom codec encodes the response", func(t *testcase.T) {
+						rr := act(t)
+						assert.Equal(t, http.StatusOK, rr.Code)
+						assert.Equal(t, marker.Get(t), rr.Body.String())
+					})
+				})
+			})
+
+			s.When("the Accept header ranks media types with quality values", func(s *testcase.Spec) {
+				accept.LetValue(s, "application/json; q=0.5, application/x-ndjson")
+
+				s.Then("it replies with the most preferred supported media type", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, "application/x-ndjson", rr.Header().Get("Content-Type"))
+				})
+			})
+
+			s.When("the Accept header lists media types without whitespace", func(s *testcase.Spec) {
+				accept.LetValue(s, "application/x-ndjson,application/json;q=0.5")
+
+				s.Then("it replies with the most preferred supported media type", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, "application/x-ndjson", rr.Header().Get("Content-Type"))
+				})
+			})
+
+			s.When("the Accept header excludes a media type with q=0", func(s *testcase.Spec) {
+				accept.LetValue(s, "application/json;q=0.1, application/x-ndjson;q=0")
+
+				s.Then("it doesn't reply with the excluded media type", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, mediatype.JSON, rr.Header().Get("Content-Type"))
+				})
+			})
+
+			s.When("the Accept header is a wildcard", func(s *testcase.Spec) {
+				accept.LetValue(s, "*/*")
+				contentType.LetValue(s, "")
+				subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+					h := subject.Super(t)
+					h.MediaType = "application/x-ndjson"
+					return h
+				})
+
+				s.Then("it replies with the handler's media type", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, "application/x-ndjson", rr.Header().Get("Content-Type"))
+				})
+			})
 		})
 
 		s.Describe(`#update`, func(s *testcase.Spec) {
 			var (
 				ent = GivenWeHaveStoredValue(s)
-				_   = method.Let(s, func(t *testcase.T) string {
-					return t.Random.Pick([]string{
-						http.MethodPut,
-						http.MethodPatch,
-					}).(string)
-				})
-				_ = path.Let(s, func(t *testcase.T) string {
+				_   = method.LetValue(s, http.MethodPut)
+				_   = path.Let(s, func(t *testcase.T) string {
 					return fmt.Sprintf("/%d", ent.Get(t).ID)
 				})
 				updatedENT = testcase.Let(s, func(t *testcase.T) X {
@@ -667,6 +817,33 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				})
 
 				ThenNotAllowed(s)
+			})
+		})
+
+		s.Describe(`PATCH /:id`, func(s *testcase.Spec) {
+			var (
+				ent = GivenWeHaveStoredValue(s)
+				_   = method.LetValue(s, http.MethodPatch)
+				_   = path.Let(s, func(t *testcase.T) string {
+					return fmt.Sprintf("/%d", ent.Get(t).ID)
+				})
+				newN = testcase.Let(s, func(t *testcase.T) int {
+					return random.Unique(t.Random.Int, ent.Get(t).N)
+				})
+				_ = body.Let(s, func(t *testcase.T) []byte {
+					return []byte(fmt.Sprintf(`{"N":%d}`, newN.Get(t)))
+				})
+			)
+
+			ThenNotAllowed(s)
+
+			s.Then("the stored entity is left unchanged", func(t *testcase.T) {
+				act(t)
+
+				got, found, err := mdb.Get(t).FindByID(context.Background(), ent.Get(t).ID)
+				assert.NoError(t, err)
+				assert.True(t, found)
+				assert.Equal(t, ent.Get(t), got)
 			})
 		})
 
@@ -948,6 +1125,103 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 		})
 
 	})
+
+	s.Describe("#ServeHTTP over an HTTP connection", func(s *testcase.Spec) {
+		server := testcase.Let(s, func(t *testcase.T) *httptest.Server {
+			srv := httptest.NewServer(subject.Get(t))
+			t.Defer(srv.Close)
+			return srv
+		})
+		act := func(t *testcase.T) (*http.Response, error) {
+			return server.Get(t).Client().Get(server.Get(t).URL)
+		}
+
+		ent := GivenWeHaveStoredValue(s)
+
+		s.Then("the index is streamed back as a complete list", func(t *testcase.T) {
+			resp, err := act(t)
+			assert.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			data, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+
+			var got []X
+			assert.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, []X{ent.Get(t)}, got)
+		})
+
+		s.When("the index fails after it already yielded an entity", func(s *testcase.Spec) {
+			var (
+				expErr       = let.Error(s)
+				yieldedCount = testcase.LetValue(s, 1)
+			)
+			subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+				h := subject.Super(t)
+				h.Index = func(ctx context.Context) iter.Seq2[X, error] {
+					return func(yield func(X, error) bool) {
+						for range yieldedCount.Get(t) {
+							if !yield(ent.Get(t), nil) {
+								return
+							}
+						}
+						yield(X{}, expErr.Get(t))
+					}
+				}
+				return h
+			})
+
+			s.Then("the response is aborted, so it can't be mistaken for a complete list", func(t *testcase.T) {
+				resp, err := act(t)
+				if err == nil {
+					defer resp.Body.Close()
+					_, err = io.ReadAll(resp.Body)
+				}
+				assert.Error(t, err)
+			})
+
+			s.Then("a RESTClient reading the index gets an error", func(t *testcase.T) {
+				client := httpkit.RESTClient[X, XID]{
+					HTTPClient: server.Get(t).Client(),
+					BaseURL:    server.Get(t).URL,
+				}
+
+				_, err := iterkit.CollectE(client.FindAll(context.Background()))
+				assert.Error(t, err)
+			})
+
+			s.And("part of the list was already sent to the client", func(s *testcase.Spec) {
+				yieldedCount.LetValue(s, 1024)
+
+				s.Then("the client receives the success status, but reading the body fails", func(t *testcase.T) {
+					resp, err := act(t)
+					assert.NoError(t, err)
+					defer resp.Body.Close()
+					assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+					_, err = io.ReadAll(resp.Body)
+					assert.Error(t, err)
+				})
+
+				s.Then("a RESTClient reading the index gets an error", func(t *testcase.T) {
+					client := httpkit.RESTClient[X, XID]{
+						HTTPClient: server.Get(t).Client(),
+						BaseURL:    server.Get(t).URL,
+					}
+
+					_, err := iterkit.CollectE(client.FindAll(context.Background()))
+					assert.Error(t, err)
+				})
+			})
+		})
+	})
+}
+
+// codecFunc is a codec.Codec made from functions.
+type codecFunc struct {
+	codec.MarshalerFunc
+	codec.UnmarshalerFunc
 }
 
 func TestRESTHandler_formUrlencodedRequestBodyIsSupported(t *testing.T) {

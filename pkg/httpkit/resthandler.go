@@ -1,16 +1,20 @@
 package httpkit
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"go.llib.dev/frameless/pkg/httpkit/internal"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
@@ -82,8 +86,11 @@ type RESTHandler[ENT, ID any] struct {
 	Show func(ctx context.Context, id ID) (ent ENT, found bool, err error)
 	// Update will update/replace an entity with the new state.
 	// Update is a resource endpoint.
-	// 		PUT   /:id - update/replace
-	// 		PATCH /:id - partial update (WIP)
+	// 		PUT /:id - update/replace
+	//
+	// PATCH is not supported and replies with 405 Method Not Allowed.
+	// A partial update can't tell an omitted field from one set to its zero value (0, false, ""),
+	// so the request body always carries the entity's complete new state.
 	Update func(ctx context.Context, ptr *ENT) error
 	// Destroy will delete an entity, identified by its id.
 	// Destroy is a resource endpoint.
@@ -140,6 +147,7 @@ type RESTHandler[ENT, ID any] struct {
 	// applies to:
 	// 	- CREATE
 	// 	- INDEX
+	// 	- DESTROY ALL
 	CollectionContext func(context.Context) (context.Context, error)
 	// ResourceContext is called when a resource endpoint is called.
 	//
@@ -218,13 +226,13 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 		rawResourceID, err := url.PathUnescape(rawPathResourceID)
 		if err != nil {
-			defaultErrorHandler.HandleError(w, r, ErrMalformedID.Wrap(err))
+			h.getErrorHandler().HandleError(w, r, ErrMalformedID.Wrap(err))
 			return
 		}
 
 		id, err := h.getIDParser(rawResourceID)
 		if err != nil {
-			defaultErrorHandler.HandleError(w, r, ErrMalformedID.Wrap(err))
+			h.getErrorHandler().HandleError(w, r, ErrMalformedID.Wrap(err))
 			return
 		}
 
@@ -247,10 +255,12 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		switch r.Method {
 		case http.MethodGet:
 			h.show(w, r, id)
-		case http.MethodPut, http.MethodPatch:
+		case http.MethodPut:
 			h.update(w, r, id)
 		case http.MethodDelete:
 			h.destroy(w, r, id)
+		default:
+			h.errMethodNotAllowed(w, r)
 		}
 	}
 
@@ -270,11 +280,15 @@ func (h RESTHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Request
 	if v == nil {
 		return
 	}
-	if err, ok := v.(error); ok {
-		h.errInternalServerError(w, r, err)
-		return
+	err, ok := v.(error)
+	if !ok {
+		err = fmt.Errorf("recover: %v", v)
 	}
-	h.errInternalServerError(w, r, fmt.Errorf("recover: %v", v))
+	if errors.Is(err, http.ErrAbortHandler) {
+		// the response is aborted on purpose, which only the http.Server can do.
+		panic(v)
+	}
+	h.errInternalServerError(w, r, err)
 }
 
 func (h RESTHandler[ENT, ID]) getErrorHandler() ErrorHandler {
@@ -286,7 +300,9 @@ func (h RESTHandler[ENT, ID]) getErrorHandler() ErrorHandler {
 
 func (h RESTHandler[ENT, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
-		fmt.Println("ERROR", err.Error())
+		logger.Error(r.Context(), "internal server error in httpkit.RESTHandler",
+			logging.Field("entity_type", reflectkit.TypeOf[ENT]().String()),
+			logging.ErrField(err))
 	}
 	h.getErrorHandler().HandleError(w, r, ErrInternalServerError)
 }
@@ -365,44 +381,43 @@ func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWri
 }
 
 func (h RESTHandler[ENT, ID]) indexStreamReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], sp codec.StreamProducer) {
-	var encoder = sp.NewStreamEncoder(w)
-
 	next, stop := iter.Pull2(index)
 	defer stop()
 
 	ent, err, ok := next()
-	if !ok {
-		_ = encoder.Close()
-		return
-	}
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	defer func() {
-		if err := encoder.Close(); err != nil {
-			logger.Debug(ctx, "finishing the index list encoding encountered an error",
-				logging.ErrField(err))
-			return
-		}
-	}()
+	var encoder = sp.NewStreamEncoder(w)
 
-	index = iterkit.Merge2(iterkit.AsSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
-
-	for ent, err := range index {
-		if err != nil {
-			logger.Error(ctx, "error during iterating index result",
-				logging.Field("entity_type", reflectkit.TypeOf[ENT]().String()),
-				logging.ErrField(err))
-			break
-		}
-
-		if err := encoder.Encode(ent); err != nil {
-			logger.Warn(ctx, "error while encoding response", logging.ErrField(err))
-			break
+	if ok {
+		index = iterkit.Merge2(iterkit.AsSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
+		for ent, err := range index {
+			if err != nil {
+				logger.Error(ctx, "error during iterating index result",
+					logging.Field("entity_type", reflectkit.TypeOf[ENT]().String()),
+					logging.ErrField(err))
+				abortResponse()
+			}
+			if err := encoder.Encode(ent); err != nil {
+				logger.Warn(ctx, "error while encoding response", logging.ErrField(err))
+				abortResponse()
+			}
 		}
 	}
+
+	if err := encoder.Close(); err != nil {
+		logger.Debug(ctx, "finishing the index list encoding encountered an error",
+			logging.ErrField(err))
+	}
+}
+
+// abortResponse aborts a response that is already underway with a success status code.
+// The client receives an incomplete response, rather than one that looks complete but misses data.
+func abortResponse() {
+	panic(http.ErrAbortHandler)
 }
 
 func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) iter.Seq2[ENT, error] {
@@ -829,7 +844,7 @@ func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) codec.Codec {
 }
 
 func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Codec, MediaType) {
-	var mtype = h.MediaType
+	var mtype = cmp.Or(h.MediaType, mediatype.JSON)
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		mtype = mediaType
 	}
@@ -839,17 +854,44 @@ func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Codec, Me
 	return defaultCodec()
 }
 
+// responseBodyCodec picks the codec of the most preferred media type of the Accept header.
+// When none of them is supported, it replies with the media type of the request,
+// as RFC 9110 allows to disregard the Accept header, instead of replying with 406 Not Acceptable.
 func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (codec.Codec, MediaType) {
-	var accept = r.Header.Get(headerKeyAccept)
+	var accept = strings.Join(r.Header.Values(headerKeyAccept), ",")
 	if accept == "" {
 		return h.contentTypeCodec(r)
 	}
-	for _, mediaType := range strings.Fields(accept) {
-		if c, mt, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
+	ranges, excluded := parseAccept(accept)
+	for _, mediaRange := range ranges {
+		if c, mt, ok := h.lookupCodecForMediaRange(r, mediaRange, excluded); ok {
 			return c, mt
 		}
 	}
 	return h.contentTypeCodec(r)
+}
+
+func (h RESTHandler[ENT, ID]) lookupCodecForMediaRange(r *http.Request, mediaRange string, excluded map[string]struct{}) (codec.Codec, MediaType, bool) {
+	if !strings.Contains(mediaRange, "*") {
+		return findCodecByMediaType(h.Codecs, mediaRange)
+	}
+	// for a wildcard, the media type of the request and the handler's media type are preferred.
+	var candidates []MediaType
+	if mt, ok := h.getRequestBodyMediaType(r); ok {
+		candidates = append(candidates, mt)
+	}
+	candidates = append(candidates, cmp.Or(h.MediaType, mediatype.JSON))
+	candidates = append(candidates, slices.Sorted(maps.Keys(h.Codecs))...)
+	candidates = append(candidates, slices.Sorted(maps.Keys(defaultCodecs))...)
+	for _, mt := range candidates {
+		if _, ok := excluded[mt]; ok || !mediaRangeMatches(mediaRange, mt) {
+			continue
+		}
+		if c, mt, ok := findCodecByMediaType(h.Codecs, mt); ok {
+			return c, mt, true
+		}
+	}
+	return nil, "", false
 }
 
 func (h RESTHandler[ENT, ID]) getRequestBodyMediaType(r *http.Request) (MediaType, bool) {

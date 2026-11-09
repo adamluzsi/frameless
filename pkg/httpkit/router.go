@@ -1,8 +1,11 @@
 package httpkit
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"iter"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -37,66 +40,62 @@ type _Node struct {
 	defaultH    http.Handler
 
 	fixNodes _FixNodes
-	dynNodes _DynNode
+	dynNodes _DynNodes
 
 	mux *http.ServeMux
 }
 
+// _FixNodes are the literal path segments, keyed by their unescaped value.
 type _FixNodes map[string] /* path */ *_Node
 
+// _DynNodes are the path parameter placeholders of a path level, in the order they were registered.
+type _DynNodes []_DynNode
+
 type _DynNode struct {
-	node     *_Node
-	varnames []string
+	VarName string
+	Node    *_Node
 }
 
-func (dn *_DynNode) NodeFor(pathParamName string) *_Node {
-	if dn.node == nil {
-		dn.node = &_Node{}
-		dn.node.init()
-	}
-	if slices.Contains(dn.varnames, pathParamName) {
-		return dn.node
-	}
-	dn.varnames = append(dn.varnames, pathParamName)
-	return dn.node
-}
-
-func (dn *_DynNode) LookupNode(ctx context.Context, rawpathpart string) (context.Context, *_Node, bool) {
-	if len(dn.varnames) == 0 || dn.node == nil {
-		return nil, nil, false
-	}
-	for _, varname := range dn.varnames {
-		varval, err := url.PathUnescape(rawpathpart)
-		if err != nil {
-			varval = rawpathpart
-		}
-		ctx = WithPathParam(ctx, varname, varval)
-	}
-	return ctx, dn.node, true
-}
-
-func (r *_Node) LookupNode(ctx context.Context, rawpathpart string) (context.Context, *_Node, bool) {
-	if r == nil {
-		return nil, nil, false
-	}
-	if r.fixNodes != nil {
-		if sr, ok := r.fixNodes[rawpathpart]; ok {
-			return ctx, sr, true
+func (dns *_DynNodes) NodeFor(varName string) *_Node {
+	for _, dn := range *dns {
+		if dn.VarName == varName {
+			return dn.Node
 		}
 	}
-	if ctx, sr, ok := r.dynNodes.LookupNode(ctx, rawpathpart); ok {
-		return ctx, sr, true
-	}
-	return nil, nil, false
+	node := &_Node{}
+	node.init()
+	*dns = append(*dns, _DynNode{VarName: varName, Node: node})
+	return node
 }
 
-func (r *_Node) LookupHandler(method string) (http.Handler, bool) {
-	if r.methodsH != nil {
-		if handler, ok := r.methodsH[method]; ok {
-			return handler, ok
+// children yields the sub nodes that match a raw (escaped) request path segment,
+// together with the context that holds the path parameter of a placeholder node.
+//
+// A literal segment is matched before the placeholders.
+// When more placeholders could match, the one registered last is tried first,
+// the same way registering a route again replaces the earlier one.
+func (r *_Node) children(ctx context.Context, rawpathpart string) iter.Seq2[context.Context, *_Node] {
+	return func(yield func(context.Context, *_Node) bool) {
+		value := unescapePathSegment(rawpathpart)
+		if child, ok := r.fixNodes[value]; ok {
+			if !yield(ctx, child) {
+				return
+			}
+		}
+		for i := len(r.dynNodes) - 1; 0 <= i; i-- {
+			dn := r.dynNodes[i]
+			if !yield(WithPathParam(ctx, dn.VarName, value), dn.Node) {
+				return
+			}
 		}
 	}
-	return r.defaultH, r.defaultH != nil
+}
+
+func unescapePathSegment(raw string) string {
+	if v, err := url.PathUnescape(raw); err == nil {
+		return v
+	}
+	return raw
 }
 
 func (r *_Node) Merge(oth *_Node) {
@@ -120,11 +119,8 @@ func (r *_Node) Merge(oth *_Node) {
 	if 0 < len(oth.middlewares) {
 		r.middlewares = append(r.middlewares, oth.middlewares...)
 	}
-	if oth.dynNodes.node != nil {
-		for _, vn := range oth.dynNodes.varnames {
-			r.dynNodes.NodeFor(vn)
-		}
-		r.dynNodes.node.Merge(oth.dynNodes.node)
+	for _, dn := range oth.dynNodes {
+		r.dynNodes.NodeFor(dn.VarName).Merge(dn.Node)
 	}
 }
 
@@ -137,66 +133,155 @@ func (r *_Node) init() {
 	}
 }
 
+// ServeHTTP routes the request to the handler that matches the request path.
+//
+// A route registered with On (Get, Post, etc.) only matches its own path,
+// and when it is registered for other methods only, the reply is 405 Method Not Allowed.
+// A handler registered with Mount, Resource or Handle matches its path and every path under it.
+// It is used when no route matches the request,
+// and the one closest to the requested path wins.
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if router.root == nil {
 		defaultErrorHandler.HandleError(w, r, ErrPathNotFound)
 		return
 	}
 	r, route := internal.WithRoutingContext(r)
-	var (
-		ctx       = r.Context()
-		node      = router.root
-		mux       = node.mux
-		muxRoute  = *route
-		mws       = slicekit.Clone(router.root.middlewares)
-		pathParts []string
-	)
-	for _, pathpart := range pathkit.Split(route.PathLeft) {
-		sctx, snode, ok := node.LookupNode(ctx, pathpart)
-		if !ok {
-			break
-		}
-		if 0 < len(snode.middlewares) {
-			mws = append(mws, snode.middlewares...)
-		}
-		pathParts = append(pathParts, pathpart)
-		node = snode
-		ctx = sctx
-		if snode.mux != nil { // mux fallback handler
-			// mux route should not include the final path part
-			// since the mux contain that information if that should be handled or not
-			muxRoute = route.Peek(pathkit.Join(pathParts...))
-			mux = snode.mux
-		}
+	m := _Matcher{
+		Method:   r.Method,
+		Segments: pathkit.Split(route.PathLeft),
 	}
-	r = r.WithContext(ctx)
-	route.Travel(pathkit.Join(pathParts...))
-	handler := router.toHTTPHandler(r, node, mux, muxRoute)
-	handler = WithMiddleware(handler, mws...)
-	handler.ServeHTTP(w, r)
+	match, ok := m.Route(router.root, r.Context())
+	if !ok {
+		handler, mws := m.NoMatch()
+		WithMiddleware(handler, mws...).ServeHTTP(w, r)
+		return
+	}
+	route.Travel(pathkit.Join(m.Segments[:match.Depth]...))
+	r = r.WithContext(match.Context)
+	handler := match.Handler
+	if match.Prefix && route.Current != "/" {
+		// a mounted handler receives the request path relative to its mount point.
+		handler = withRequestPath(route.PathLeft, handler)
+	}
+	WithMiddleware(handler, match.Middlewares...).ServeHTTP(w, r)
 }
 
-func (router *Router) toHTTPHandler(r *http.Request, node *_Node, mux *http.ServeMux, muxRoute internal.Routing) http.Handler {
-	endpoint, ok := node.LookupHandler(r.Method)
-	if ok {
-		return endpoint
+type _Matcher struct {
+	Method string
+	// Segments are the raw (escaped) segments of the request path.
+	Segments []string
+
+	// allowed holds the methods of the first route that matched the path, but not the method.
+	allowed    []string
+	allowedMWs []MiddlewareFactoryFunc
+
+	// deepest is the node that matched the most of the request path.
+	deepestDepth int
+	deepestMWs   []MiddlewareFactoryFunc
+}
+
+type _Match struct {
+	Handler     http.Handler
+	Context     context.Context
+	Middlewares []MiddlewareFactoryFunc
+	// Depth is the number of path segments the match consumed.
+	Depth int
+	// Prefix tells that Handler is a mounted handler, which handles the paths under it as well.
+	Prefix bool
+}
+
+func (m *_Matcher) Route(root *_Node, ctx context.Context) (_Match, bool) {
+	m.deepestDepth = -1
+	if match, ok := m.exact(root, ctx, 0, nil); ok {
+		return match, true
 	}
-	if mux != nil {
-		var handler http.Handler = mux
-		if muxRoute.Current != "/" {
-			handler = stripPrefix(muxRoute.Current, handler) // TODO: testme
-			// handler = http.StripPrefix(muxRoute.Current, handler) // TODO: testme
+	return m.prefix(root, ctx, 0, nil)
+}
+
+// exact looks up a handler for the entire request path.
+func (m *_Matcher) exact(node *_Node, ctx context.Context, depth int, mws []MiddlewareFactoryFunc) (_Match, bool) {
+	mws = append(slices.Clip(mws), node.middlewares...)
+	if m.deepestDepth < depth {
+		m.deepestDepth = depth
+		m.deepestMWs = mws
+	}
+	if depth == len(m.Segments) {
+		if handler, ok := node.methodsH[m.Method]; ok {
+			return _Match{Handler: handler, Context: ctx, Middlewares: mws, Depth: depth}, true
 		}
-		return handler
+		if node.defaultH != nil {
+			return _Match{Handler: node.defaultH, Context: ctx, Middlewares: mws, Depth: depth, Prefix: true}, true
+		}
+		if 0 < len(node.methodsH) && m.allowed == nil {
+			m.allowed = slices.SortedFunc(maps.Keys(node.methodsH), compareHTTPMethods)
+			m.allowedMWs = mws
+		}
+		return _Match{}, false
+	}
+	for sctx, snode := range node.children(ctx, m.Segments[depth]) {
+		if match, ok := m.exact(snode, sctx, depth+1, mws); ok {
+			return match, true
+		}
+	}
+	return _Match{}, false
+}
+
+// prefix looks up the mounted handler closest to the request path.
+func (m *_Matcher) prefix(node *_Node, ctx context.Context, depth int, mws []MiddlewareFactoryFunc) (_Match, bool) {
+	mws = append(slices.Clip(mws), node.middlewares...)
+	if depth < len(m.Segments) {
+		for sctx, snode := range node.children(ctx, m.Segments[depth]) {
+			if match, ok := m.prefix(snode, sctx, depth+1, mws); ok {
+				return match, true
+			}
+		}
+	}
+	if node.defaultH != nil {
+		return _Match{Handler: node.defaultH, Context: ctx, Middlewares: mws, Depth: depth, Prefix: true}, true
+	}
+	if node.mux != nil {
+		return _Match{Handler: node.mux, Context: ctx, Middlewares: mws, Depth: depth, Prefix: true}, true
+	}
+	return _Match{}, false
+}
+
+// NoMatch returns the handler that replies when no handler matched the request.
+func (m *_Matcher) NoMatch() (http.Handler, []MiddlewareFactoryFunc) {
+	if 0 < len(m.allowed) {
+		allow := strings.Join(m.allowed, ", ")
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Allow", allow)
+			defaultErrorHandler.HandleError(w, r, ErrMethodNotAllowed)
+		}), m.allowedMWs
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defaultErrorHandler.HandleError(w, r, ErrPathNotFound)
+	}), m.deepestMWs
+}
+
+// withRequestPath makes the next handler receive the request with the given escaped path.
+func withRequestPath(escapedPath string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := *r.URL
+		if p, err := url.ParseRequestURI(escapedPath); err == nil {
+			u.Path, u.RawPath = p.Path, p.RawPath
+		} else {
+			u.Path, u.RawPath = escapedPath, ""
+		}
+		nr := new(http.Request)
+		*nr = *r
+		nr.URL = &u
+		next.ServeHTTP(w, nr)
 	})
 }
 
 // Mount will mount a handler to the router.
-// Mounting a handler will make the path observed as its root point to the handler.
-// TODO: make this true :D
+// The mounted handler receives the requests of the path and of every path under it,
+// unless a route matches the request more closely.
+// The handler receives the request path relative to the mount point,
+// so for Mount("/foo", h), the request to /foo/bar/baz reaches h as /bar/baz.
+//
+// When the handler is a *Router, its routes are merged into the router under the path.
 func (router *Router) Mount(path string, handler http.Handler) {
 	ro := router.mkpath(path)
 	switch h := handler.(type) {
@@ -247,13 +332,12 @@ func (router *Router) mkpath(path string) *_Node {
 	ro = router.root
 	for _, part := range pathkit.Split(path) {
 		ro.init()
-		if ro.fixNodes == nil {
-			ro.fixNodes = make(_FixNodes)
-		}
 		if vn, ok := isPathParamPlaceholder(part); ok {
 			ro = ro.dynNodes.NodeFor(vn)
 			continue
 		}
+		// like with http.ServeMux, a path segment is matched by its unescaped value.
+		part = unescapePathSegment(part)
 		if _, ok := ro.fixNodes[part]; !ok {
 			ro.fixNodes[part] = &_Node{}
 		}
@@ -262,6 +346,9 @@ func (router *Router) mkpath(path string) *_Node {
 	return ro
 }
 
+// On registers a handler for a method on the path.
+// The handler only receives requests of the exact path,
+// with the path parameters of the path's placeholders, like "/users/:id".
 func (router *Router) On(method, path string, handler http.Handler) {
 	router.Namespace(path, func(r *Router) {
 		r.init()
@@ -434,13 +521,9 @@ func nodeRoutes(node *_Node) RouteInfo {
 		ri = append(ri, entries...)
 	}
 	{ // dynamic paths
-		var (
-			// :var1,:var2,:var3
-			dynvarpath = strings.Join(slicekit.Map(node.dynNodes.varnames,
-				func(vn string) string { return ":" + vn }), ",")
-			dynroutes = nodeRoutes(node.dynNodes.node).WithMountPoint(dynvarpath)
-		)
-		ri = append(ri, dynroutes...)
+		for _, dn := range node.dynNodes {
+			ri = append(ri, nodeRoutes(dn.Node).WithMountPoint(":"+dn.VarName)...)
+		}
 	}
 	{ // default handler
 		if node.defaultH != nil {
@@ -546,6 +629,13 @@ func httpMethodPriority(method string) int {
 		}
 	}
 	return math.MaxInt
+}
+
+func compareHTTPMethods(a, b string) int {
+	if c := cmp.Compare(httpMethodPriority(a), httpMethodPriority(b)); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
 }
 
 var httpMethodOrdering = []string{

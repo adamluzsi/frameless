@@ -45,7 +45,67 @@ func example() {
 
 The codec of a media type defines the wire format of the entity.
 If the API should expose a DTO rather than the entity itself,
-put the mapping into the codec of that media type, for example with `dtokit.Map` before marshalling and after unmarshalling.
+put the mapping into the codec of that media type.
+With JSON, register the mapping on a `jsonkit.Codec`,
+which then writes and reads the entity through its DTO, in single values, lists and request bodies alike:
+
+```go
+func FooJSONCodec() *jsonkit.Codec {
+	var c jsonkit.Codec
+	jsonkit.CodecRegister(&c, "foo", jsonkit.DataTransferObjectMapping[Foo, FooJSONDTO]{
+		ToDTO: func(ctx context.Context, ent Foo) (FooJSONDTO, error) { /* ... */ },
+		ToENT: func(ctx context.Context, dto FooJSONDTO) (Foo, error) { /* ... */ },
+	})
+	return &c
+}
+```
+
+`examples/restful-api/adapter/httpapi` registers the DTOs of an API's entities on one such codec.
+
+The response media type is negotiated with the `Accept` header:
+media ranges are ranked by their `q` weight, `q=0` excludes a media type, and `*/*` or `type/*` wildcards are supported.
+When none of the accepted media types has a codec,
+the handler replies with the media type of the request, or with `MediaType` (JSON by default), rather than with 406 Not Acceptable,
+as RFC 9110 (§12.5.1) allows a server to disregard the `Accept` header.
+The `Content-Type` of the reply tells the client which media type it got.
+
+`PUT /:id` replaces the entity: the request body carries its complete new state.
+`PATCH` is not supported, and replies with 405 Method Not Allowed.
+A partial update can't tell a field the request body omits from one set to its zero value (`0`, `false`, `""`),
+so it would either ignore intended changes or wipe fields the client didn't mention.
+
+When `Index` fails after the list's streaming already started,
+the handler aborts the response (`http.ErrAbortHandler`), so the client can't mistake a truncated list for a complete one.
+
+A custom `ErrorHandler` should call `httpkit.ErrorMapping` in its `rfc7807.Handler.Mapping`,
+to keep the status codes of httpkit's own errors, like 404 for `httpkit.ErrEntityNotFound`.
+
+### Router
+
+`Router` is an `http.Handler` that routes requests by their path.
+
+- `Get`, `Post`, `Put`, `Patch`, `Delete`, etc. (`On`) register a route that only matches its exact path.
+  When the path has routes, but not for the request's method, the reply is 405 Method Not Allowed, with an `Allow` header.
+- `Mount`, `Resource` and `Handle` register a handler for a path and every path under it.
+  When no route matches a request, the handler mounted the closest to the request path receives it.
+  A mounted handler receives the request path relative to its mount point: for `Mount("/foo", h)`, `/foo/bar` reaches `h` as `/bar`.
+- Path segments like `:id` are placeholders, which values are available with `httpkit.PathParams`.
+  Literal path segments are matched by their unescaped value, like with `http.ServeMux`.
+
+```go
+func example() {
+	var router httpkit.Router
+	router.Resource("/foos", fooRestfulResource)
+	router.Post("/foos/:id/activate", activateHandler)
+	router.Mount("/static", http.FileServer(http.Dir("./public")))
+}
+```
+
+### RESTClient
+
+`RESTClient` is a `crud` repository that consumes a RESTful resource, like the one a `RESTHandler` serves.
+It path escapes the formatted IDs and the path parameters it substitutes into its `BaseURL` (`/foos/:foo_id/bars`),
+so `IDFormatter` and `httpkit.WithPathParam` should receive the unescaped values.
 
 #### Automatic Resource Relationships
 

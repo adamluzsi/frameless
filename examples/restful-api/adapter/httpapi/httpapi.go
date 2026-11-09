@@ -8,14 +8,12 @@ import (
 	"restapi/domain/mydomain"
 
 	"go.llib.dev/frameless/pkg/contextkit"
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/frameless/port/codec"
 )
 
 type Config struct {
@@ -45,6 +43,8 @@ func MakeHandler(c Config) http.Handler {
 
 var errorHandler = rfc7807.Handler{
 	Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
+		// keep the status codes of httpkit's own errors, like 404 for httpkit.ErrEntityNotFound.
+		httpkit.ErrorMapping(ctx, err, dto)
 		switch {
 		case errors.Is(err, ErrUnauthorized):
 			dto.Type.ID = "unauthorized"
@@ -56,6 +56,17 @@ var errorHandler = rfc7807.Handler{
 }
 
 const ErrUnauthorized errorkit.Error = "Unauthorized"
+
+// jsonCodec is the JSON codec of the API.
+// It writes and reads the domain entities through their JSON DTOs,
+// so the JSON format of the API doesn't change with the domain types.
+// The type IDs only show up when an entity is held by an interface, like an `any` field.
+var jsonCodec = func() *jsonkit.Codec {
+	var c jsonkit.Codec
+	jsonkit.CodecRegister(&c, "restapi:user", dtoUserMapping)
+	jsonkit.CodecRegister(&c, "restapi:note", dtoNoteMapping)
+	return &c
+}()
 
 //* USER API - BEGIN *//
 
@@ -73,7 +84,7 @@ func MakeUsersAPI(c Config) httpkit.RESTHandler[mydomain.User, mydomain.UserID] 
 
 		MediaType: mediatype.JSON,
 		Codecs: httpkit.Codecs{
-			mediatype.JSON: dtoCodec[mydomain.User, UserJSONDTO]{Mapping: dtoUserMapping, Codec: &jsonkit.Codec{}},
+			mediatype.JSON: jsonCodec,
 		},
 
 		ResourceContext: func(ctx context.Context, id mydomain.UserID) (context.Context, error) {
@@ -97,7 +108,7 @@ func ValidateIsAuthorisedForUser(c Config, req *http.Request, id mydomain.UserID
 	return nil
 }
 
-var dtoUserMapping = dtokit.Mapping[mydomain.User, UserJSONDTO]{
+var dtoUserMapping = jsonkit.DataTransferObjectMapping[mydomain.User, UserJSONDTO]{
 	ToENT: func(ctx context.Context, dto UserJSONDTO) (mydomain.User, error) {
 		return mydomain.User(dto), nil
 	},
@@ -132,7 +143,7 @@ func MakeNotesAPI(c Config) httpkit.RESTHandler[mydomain.Note, mydomain.NoteID] 
 
 		MediaType: mediatype.JSON,
 		Codecs: httpkit.Codecs{
-			mediatype.JSON: dtoCodec[mydomain.Note, NoteJSONDTO]{Mapping: dtoNoteMapping, Codec: &jsonkit.Codec{}},
+			mediatype.JSON: jsonCodec,
 		},
 	}
 }
@@ -141,10 +152,12 @@ type NoteJSONDTO struct {
 	ID     mydomain.NoteID `json:"id"`
 	Title  string          `json:"title"`
 	Body   string          `json:"body"`
-	UserID mydomain.UserID `json:"uder_id"`
+	UserID mydomain.UserID `json:"user_id"`
 }
 
-var dtoNoteMapping = dtokit.Mapping[mydomain.Note, NoteJSONDTO]{
+var dtoNoteMapping = jsonkit.DataTransferObjectMapping[mydomain.Note, NoteJSONDTO]{
+	// The UserID is not read from the request body,
+	// as the Note belongs to the user of the request path, see MakeNotesAPI.
 	ToENT: func(ctx context.Context, dto NoteJSONDTO) (mydomain.Note, error) {
 		return mydomain.Note{
 			ID:    dto.ID,
@@ -155,52 +168,4 @@ var dtoNoteMapping = dtokit.Mapping[mydomain.Note, NoteJSONDTO]{
 	ToDTO: func(ctx context.Context, ent mydomain.Note) (NoteJSONDTO, error) {
 		return NoteJSONDTO(ent), nil
 	},
-}
-
-// dtoCodec makes a codec.Codec encode ENT values through their DTO,
-// as httpkit.RESTHandler marshals and unmarshals the ENT type itself with its Codecs.
-type dtoCodec[ENT, DTO any] struct {
-	Mapping dtokit.Mapping[ENT, DTO]
-	Codec   codec.Codec
-}
-
-func (c dtoCodec[ENT, DTO]) Marshal(v any) ([]byte, error) {
-	ctx := context.Background()
-	switch v := v.(type) {
-	case ENT:
-		dto, err := c.Mapping.MapToDTO(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		return c.Codec.Marshal(dto)
-	case []ENT:
-		dtos := make([]DTO, 0, len(v))
-		for _, ent := range v {
-			dto, err := c.Mapping.MapToDTO(ctx, ent)
-			if err != nil {
-				return nil, err
-			}
-			dtos = append(dtos, dto)
-		}
-		return c.Codec.Marshal(dtos)
-	default:
-		return c.Codec.Marshal(v)
-	}
-}
-
-func (c dtoCodec[ENT, DTO]) Unmarshal(data []byte, ptr any) error {
-	p, ok := ptr.(*ENT)
-	if !ok {
-		return c.Codec.Unmarshal(data, ptr)
-	}
-	var dto DTO
-	if err := c.Codec.Unmarshal(data, &dto); err != nil {
-		return err
-	}
-	ent, err := c.Mapping.MapToENT(context.Background(), dto)
-	if err != nil {
-		return err
-	}
-	*p = ent
-	return nil
 }

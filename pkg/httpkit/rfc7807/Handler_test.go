@@ -9,6 +9,8 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	rfc78072 "go.llib.dev/frameless/pkg/httpkit/rfc7807"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -112,6 +114,33 @@ func TestHandler(t *testing.T) {
 					dto := respondedWith(t)
 					assert.Must(t).Equal(val.Get(t), dto.Detail)
 				})
+			})
+		})
+
+		s.When("the mapping sets Extensions that can't be encoded as JSON", func(s *testcase.Spec) {
+			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+				return func(ctx context.Context, err error, dto *rfc78072.DTO) {
+					dto.Status = http.StatusTeapot
+					dto.Extensions = map[string]any{"fn": func() {}}
+				}
+			})
+			logs := testcase.Let(s, func(t *testcase.T) logging.StubOutput {
+				return logger.Stub(t)
+			}).EagerLoading(s)
+
+			s.Then("it replies with the mapped status and a problem+json body without the Extensions", func(t *testcase.T) {
+				dto := respondedWith(t)
+				assert.Equal(t, http.StatusTeapot, w.Get(t).Code)
+				assert.Equal(t, "application/problem+json", w.Get(t).Header().Get("Content-Type"))
+				assert.Equal(t, http.StatusTeapot, dto.Status)
+				assert.Equal(t, "internal-server-error", dto.Type.ID)
+				assert.Nil(t, dto.Extensions)
+			})
+
+			s.Then("it logs a warning about the dropped Extensions", func(t *testcase.T) {
+				act(t)
+				assert.Contains(t, logs.Get(t).String(), "warn")
+				assert.Contains(t, logs.Get(t).String(), "rfc7807")
 			})
 		})
 

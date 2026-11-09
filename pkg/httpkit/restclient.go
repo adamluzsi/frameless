@@ -44,6 +44,7 @@ type RESTClient[ENT, ID any] struct {
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
 	Codecs Codecs
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
+	// The formatted ID is path escaped by the RESTClient, so IDFormatter should not escape it.
 	//
 	// default: httpkit.IDFormatter[ID].Format
 	IDFormatter func(ID) (string, error)
@@ -55,6 +56,7 @@ type RESTClient[ENT, ID any] struct {
 	// If you need to select a RESTful subresource and return it as a RestClient,
 	// you can use this function to add the selected resource's path parameter
 	// to the context using httpkit.WithPathParam.
+	// The path parameter values are path escaped when they are substituted into the BaseURL.
 	//
 	// default: ignored
 	WithContext func(context.Context) context.Context
@@ -83,7 +85,7 @@ type RESTClient[ENT, ID any] struct {
 	DisableStreaming bool
 	// KeepAliveInterval is the interval in between the response body guaranteed to be read, to avoid read timeout.
 	//
-	// default: 5s
+	// default: 25s
 	KeepAliveInterval time.Duration
 }
 
@@ -175,6 +177,25 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		}
 
 		details = append(details, logging.Field("status code", resp.StatusCode))
+
+		if resp.StatusCode == http.StatusNotFound {
+			_ = resp.Body.Close()
+			var zero ENT
+			yield(zero, crud.ErrNotFound)
+			return
+		}
+
+		if !statusOK(resp) {
+			responseBody, err := r.bodyReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if err == nil {
+				err = makeClientErrUnexpectedResponse(req, resp, responseBody)
+			}
+			var zero ENT
+			yield(zero, err)
+			return
+		}
+
 		c, respMediaType, ok := r.contentTypeBasedCodec(resp)
 		if !ok {
 			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
@@ -528,9 +549,13 @@ func (r RESTClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 		return err
 	}
 
-	responseBody, err := bodyReadAll(resp.Body, r.BodyReadLimit)
+	responseBody, err := r.bodyReadAll(resp.Body)
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return crud.ErrNotFound
 	}
 
 	if !statusOK(resp) {
@@ -541,10 +566,19 @@ func (r RESTClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 }
 
 func (r RESTClient[ENT, ID]) formatID(id ID) (string, error) {
+	var (
+		formatted string
+		err       error
+	)
 	if r.IDFormatter != nil {
-		return r.IDFormatter(id)
+		formatted, err = r.IDFormatter(id)
+	} else {
+		formatted, err = IDConverter[ID]{}.FormatID(id)
 	}
-	return IDConverter[ID]{}.FormatID(id)
+	if err != nil {
+		return "", err
+	}
+	return url.PathEscape(formatted), nil
 }
 
 func statusOK(resp *http.Response) bool {
@@ -612,7 +646,7 @@ func (r RESTClient[ENT, ID]) bodyReadAll(body io.ReadCloser) ([]byte, error) {
 	if errors.Is(err, iokit.ErrReadLimitReached) {
 		return nil, ErrResponseEntityTooLarge
 	}
-	return data, nil
+	return data, err
 }
 
 func (r RESTClient[ENT, ID]) withKeepAlive(body io.ReadCloser) *iokit.KeepAliveReader {
@@ -636,7 +670,7 @@ func pathsubst(ctx context.Context, uri string) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("missing path param: %s", key)
 			}
-			part = val
+			part = url.PathEscape(val)
 		}
 		pathParts = append(pathParts, part)
 	}
