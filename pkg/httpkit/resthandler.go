@@ -22,7 +22,6 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
-	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/crud/relationship"
@@ -78,11 +77,13 @@ type RESTHandler[ENT, ID any] struct {
 	Create func(ctx context.Context, ptr *ENT) error
 	// Index will return the entities, optionally filtered with the query argument.
 	// Index is a collection endpoint.
-	//		GET /
+	//		GET  /
+	//		HEAD / - replies as GET, net/http's server discards the body
 	Index func(ctx context.Context) iter.Seq2[ENT, error]
 	// Show will return a single entity, looked up by its ID.
 	// Show is a resource endpoint.
-	// 		GET /:id
+	// 		GET  /:id
+	// 		HEAD /:id - replies as GET, net/http's server discards the body
 	Show func(ctx context.Context, id ID) (ent ENT, found bool, err error)
 	// Update will update/replace an entity with the new state.
 	// Update is a resource endpoint.
@@ -177,26 +178,11 @@ type RESTHandler[ENT, ID any] struct {
 	ScopeAware bool
 	// DisableOwnershipConstraint will disable the ownership check when the RESTHandler is in a sub-resource scope.
 	DisableOwnershipConstraint bool
-	// CommitManager [WIP]
-	//
-	// CommitManager is meant to make the API interaction transactional.
-	CommitManager comproto.OnePhaseCommitProtocol
 }
 
 func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.handlePanic(w, r)
-	ctx := r.Context()
-	ctx = internal.WithRequest(ctx, r)
-	if h.CommitManager != nil {
-		var err error
-		ctx, err = h.CommitManager.BeginTx(ctx)
-		if err != nil {
-			h.getErrorHandler().HandleError(w, r, err)
-			return
-		}
-		defer h.CommitManager.CommitTx(ctx)
-	}
-	r = r.WithContext(ctx)
+	r = r.WithContext(internal.WithRequest(r.Context(), r))
 	r, rc := internal.WithRoutingContext(r)
 	switch rc.PathLeft {
 	case `/`, ``:
@@ -209,7 +195,7 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			r = r.WithContext(colCTX)
 		}
 		switch r.Method {
-		case http.MethodGet:
+		case http.MethodGet, http.MethodHead:
 			h.index(w, r)
 		case http.MethodPost:
 			h.create(w, r)
@@ -253,7 +239,7 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 
 		switch r.Method {
-		case http.MethodGet:
+		case http.MethodGet, http.MethodHead:
 			h.show(w, r, id)
 		case http.MethodPut:
 			h.update(w, r, id)
@@ -736,18 +722,9 @@ func (h RESTHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, rerr error) {
+func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (bool, error) {
 	if res.Destroy == nil || res.Index == nil {
 		return false, nil
-	}
-
-	if res.CommitManager != nil {
-		var err error
-		ctx, err = res.CommitManager.BeginTx(ctx)
-		if err != nil {
-			return true, err
-		}
-		defer comproto.FinishOnePhaseCommit(&rerr, res.CommitManager, ctx)
 	}
 
 	// Only entities owned by the parent resource belong to this sub-collection.

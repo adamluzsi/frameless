@@ -1,6 +1,6 @@
 ---
 name: frameless-httpkit
-description: Build HTTP APIs and API clients with go.llib.dev/frameless/pkg/httpkit. Covers Router (:name path params, Namespace, Use middleware, Mount), RESTHandler and RESTHandlerFromCRUD (REST resources served from crud repositories, nested resources with ownership scoping, auth in ResourceContext, DTO codecs, Filters), RESTClient (a crud repository backed by a remote REST API), rfc7807 problem+json errors, middleware and RoundTripper stacks, access logs and retrying transports. Use when writing or changing an HTTP handler, REST endpoint, router or server wiring; exposing a repository or use case over HTTP; mapping errors to status codes; integrating a remote REST API or replacing a hand-written HTTP client; adding auth, logging or other middleware; testing handlers with httptest or clients with crudcontract; replacing gorilla/mux, chi, gin or echo in a frameless project; or changing pkg/httpkit itself. Applies to any Go project that imports go.llib.dev/frameless.
+description: Build HTTP APIs and API clients with go.llib.dev/frameless/pkg/httpkit. Covers Router (:name path params, Namespace, Use, Mount), RESTHandler and RESTHandlerFromCRUD (REST resources from crud repositories, nested resources, auth, DTO codecs, Filters), RESTClient (a crud repository over a remote REST API), rfc7807 problem+json errors, middleware and RoundTripper stacks, access logs, TransactionMiddleware and retrying transports. Use when writing or changing HTTP handlers, REST endpoints, routers or server wiring; exposing a repository or use case over HTTP; mapping errors to status codes; integrating a remote REST API or replacing a hand-written HTTP client; adding auth, logging or transaction middleware; testing handlers with httptest or clients with crudcontract; replacing gorilla/mux, chi, gin or echo; or changing pkg/httpkit itself. Applies to any Go project that imports go.llib.dev/frameless.
 compatibility: Go projects importing go.llib.dev/frameless/pkg/httpkit.
 license: MIT (matches go.llib.dev/frameless)
 metadata:
@@ -19,7 +19,7 @@ metadata:
 | `RESTHandler[ENT, ID]` | a REST resource (`GET/POST/DELETE /`, `GET/PUT/DELETE /:id`) built from crud-shaped functions |
 | `RESTClient[ENT, ID]` | the other side: a crud repository (`Create`, `FindAll`, `FindByID`, `Update`, `DeleteByID`, …) over a remote REST API |
 | `rfc7807` | `application/problem+json` error replies, and `httpkit.ErrorMapping` for the built-in errors |
-| `WithMiddleware`, `WithRoundTripper`, `AccessLog`, `RetryRoundTripper`, `Mount` | server and client plumbing |
+| `WithMiddleware`, `WithRoundTripper`, `AccessLog`, `TransactionMiddleware`, `RetryRoundTripper`, `Mount` | server and client plumbing |
 
 In hexagonal terms (see `frameless-software-design`), `Router` and `RESTHandler` are **driving adapters**. They live in an adapter package such as `adapter/httpapi` and call the domain. `RESTClient` is a **driven adapter**: it can supply a domain's repository role interface and run that domain's contract (see `frameless-ports`, `frameless-crud`).
 
@@ -34,6 +34,7 @@ If you are about to write any of these, use httpkit instead:
 - a retry loop around `client.Do` → `RetryRoundTripper` (see `frameless-resilience`)
 - `fmt.Sprintf("%s/users/%s", base, id)` → `pathkit.Join` with `url.PathEscape` (see `frameless-pathkit`)
 - `mw1(mw2(mw3(h)))` → `httpkit.WithMiddleware(h, mw1, mw2, mw3)`
+- `BeginTx`/`CommitTx`/`RollbackTx` calls inside a handler or a `RESTHandler` operation → wrap the handler in an `httpkit.TransactionMiddleware`
 - `json:"..."` tags on domain entities to shape the wire format → a DTO mapping in the codec
 - mocking `http.Client` or the handler's dependencies → `httptest`, `memory` repositories and `RoundTripperFunc`
 
@@ -74,7 +75,7 @@ Matching rules, all verified:
 - **Fixed segments win over placeholders.** `/a/fixed` beats `/a/:id`. Fixed segments match by their unescaped value, like `http.ServeMux` (`r.Get("/a b", h)` serves `/a%20b`).
 - **Each placeholder name gets its own branch.** With `/a/:id` and `/a/:nid/x`, a request sets only the name of the route it matched. When two placeholders could match, the one registered last is tried first.
 - **A mounted handler sees the path relative to its mount point.** `Mount("/m", h)` hands `/m/a/b` to `h` as `/a/b`, so don't wrap `h` in `http.StripPrefix` too. Middlewares see the original request. A `Handle` inside a `Namespace` sees the path relative to the namespace.
-- **`HEAD` is not routed to `GET` routes.** Register `Head` explicitly, or the request gets a 405.
+- **`HEAD` is served by `GET` routes**, as with `http.ServeMux`, unless the path has a `Head` route. The `Allow` header of a 405 lists `HEAD` next to `GET`. `net/http`'s server drops the body, but an `httptest.ResponseRecorder` still records it, so don't assert an empty body in tests.
 
 On a plain `http.ServeMux`, `httpkit.Mount(mux, "/api", h)` registers both `/api` and `/api/`, strips the prefix, and keeps the routing context, so a `RESTHandler` or `Router` below it works unchanged.
 
@@ -103,10 +104,10 @@ h := httpkit.RESTHandler[Order, OrderID]{
 
 | Request | Field | Success | Notes |
 | --- | --- | --- | --- |
-| `GET /` | `Index` | 200, list | `Filters` apply. Streamed when the codec is a `codec.StreamProducer` (JSON and ndjson are). |
+| `GET /` | `Index` | 200, list | `Filters` apply. Streamed when the codec is a `codec.StreamProducer` (JSON and ndjson are). `HEAD /` replies the same way. |
 | `POST /` | `Create` | 201 and the created entity | `crud.ErrAlreadyExists` → 409 |
 | `DELETE /` | `DestroyAll` | 204 | see nested resources |
-| `GET /:id` | `Show` | 200 and the entity | not found → 404 `entity-not-found` |
+| `GET /:id` | `Show` | 200 and the entity | not found → 404 `entity-not-found`. `HEAD /:id` replies the same way. |
 | `PUT /:id` | `Update` | 204, no body | replaces the whole entity: the body is decoded into a zero `ENT` and the ID is set from the path. `Show` runs first when set; `crud.ErrNotFound` → 404. |
 | `PATCH /:id` | none | 405 | not supported: a partial update can't tell an omitted field from one set to its zero value (`0`, `false`, `""`). Send the full state with `PUT`. |
 | `DELETE /:id` | `Destroy` | 204 | **needs `Show`**, `ScopeAware` or `DisableOwnershipConstraint`, otherwise 405, even at the top level. `crud.ErrNotFound` → 404. |
@@ -133,7 +134,8 @@ h := httpkit.RESTHandler[Order, OrderID]{
 | `Filters []func(ctx, ENT) bool` | drop entities from `Index` results |
 | `BodyReadLimit` | max request body size |
 | `ScopeAware`, `DisableOwnershipConstraint` | see nested resources |
-| `CommitManager` | WIP; don't rely on it |
+
+A `RESTHandler` has no transaction handling of its own. To run writes in a transaction, wrap it, or the router it's on, in an `httpkit.TransactionMiddleware` (see Middleware and transports).
 
 ### Auth, scoping and query parameters
 
@@ -323,6 +325,7 @@ func WithBearer(token string) httpkit.RoundTripperFactoryFunc {
 | `WithMiddleware(h, mws...)` | the first middleware is the outermost; `nil` entries are skipped |
 | `WithRoundTripper(transport, rts...)` | the first factory is the outermost; a `nil` transport means `http.DefaultTransport` |
 | `WithAccessLog`, `AccessLog{Next, AdditionalLoggingDetail}` | logs `http-access-log` through `pkg/logger` with the method, path, query, duration, status, remote address and body lengths |
+| `TransactionMiddleware{Next, CommitManager, ErrorHandler}` | runs each state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`, …) in a transaction of the `comproto.OnePhaseCommitProtocol` that handlers join through `r.Context()`. Commits on a status below 400; rolls back on 400 or above, or on a panic (which is passed on). The reply is buffered until the commit, so a failed commit replies an error instead of a false success. `ErrorHandler` (optional; defaults to rfc7807 with `ErrorMapping`, so 500) replies when the transaction can't begin or commit. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`) run without a transaction and stream. |
 | `RetryRoundTripper` | an alias of `resilience.HTTPRoundTripper` |
 | `RoundTripperFunc` | a function as an `http.RoundTripper`; handy in tests |
 | `NewClient()` | an `*http.Client` with a 30s timeout, and no retries |
@@ -407,8 +410,8 @@ func TestNewHandler(t *testing.T) {
   `examples/restful-api` uses `replace go.llib.dev/frameless => ../..`, so it builds against your changes. `adapter/hashicorp/vault` is a separate module pinned to a released frameless version; it only picks up changes when that version is bumped.
 - Update `pkg/httpkit/README.md`, and this skill, when behaviour changes.
 - Known quirks. Don't build on them, and pin any fix with a test:
-  - `Router`: `Mount` of a `*Router` merges its routes, but drops a handler mounted at the merged router's root, and a fixed path segment that both routers have is replaced by the merged router's subtree rather than merged. `HEAD` isn't routed to `GET` routes.
-  - `dto.go` is commented-out WIP, and `CommitManager` is WIP.
+  - `Router`: `Mount` of a `*Router` merges its routes, but drops a handler mounted at the merged router's root, and a fixed path segment that both routers have is replaced by the merged router's subtree rather than merged.
+  - `dto.go` is commented-out WIP.
 
 ## Reference
 
@@ -417,6 +420,7 @@ func TestNewHandler(t *testing.T) {
 - `pkg/httpkit/restclient.go`: `RESTClient`, `DefaultRestClientHTTPClient`, `ClientErrUnexpectedResponse`
 - `pkg/httpkit/httpkit.go`: `Mount`, `WithMiddleware`, `WithRoundTripper`, `AccessLog`, `RoundTripperFunc`, `LookupRequest`
 - `pkg/httpkit/errors.go`: the built-in `UserError`s and `ErrorMapping`
+- `pkg/httpkit/transaction.go`: `TransactionMiddleware`
 - `pkg/httpkit/codec.go`, `params.go`, `mime.go`, `internal/`: codecs, ID conversion, path params, routing context
 - `pkg/httpkit/rfc7807/`: `Handler`, `DTO`, `DTOExt`; `example_test.go` shows a company error envelope
 - `pkg/httpkit/mediatype/`, `pkg/httpkit/formurlencoded/`

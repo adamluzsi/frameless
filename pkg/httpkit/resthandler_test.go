@@ -353,6 +353,26 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				ThenNotAllowed(s)
 			})
+
+			s.When("the request method is HEAD", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodHead)
+
+				s.Then("it replies as it would to a GET", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, mediatype.JSON, rr.Header().Get("Content-Type"))
+				})
+
+				s.And("Index is not set", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						rapi := subject.Super(t)
+						rapi.Index = nil
+						return rapi
+					})
+
+					ThenNotAllowed(s)
+				})
+			})
 		})
 
 		s.Describe(`#create`, func(s *testcase.Spec) {
@@ -594,6 +614,27 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				})
 
 				ThenNotAllowed(s)
+			})
+
+			s.When("the request method is HEAD", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodHead)
+
+				s.Then("it replies as it would to a GET", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusOK, rr.Code)
+					assert.Equal(t, mediatype.JSON, rr.Header().Get("Content-Type"))
+				})
+
+				s.And("the requested entity is not found", func(s *testcase.Spec) {
+					path.Let(s, func(t *testcase.T) string {
+						return fmt.Sprintf("/%d", t.Random.Int()+42)
+					})
+
+					s.Then("it will respond with 404", func(t *testcase.T) {
+						rr := act(t)
+						assert.Equal(t, http.StatusNotFound, rr.Code)
+					})
+				})
 			})
 
 			s.When("the request method is not supported on a resource path", func(s *testcase.Spec) {

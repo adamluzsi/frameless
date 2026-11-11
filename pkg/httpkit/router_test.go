@@ -249,6 +249,48 @@ func TestRouter(t *testing.T) {
 			})
 		})
 
+		s.When("a GET route is registered", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Get("/things", handler.Get(t))
+			})
+			path.LetValue(s, "/things")
+
+			s.And("the request method is HEAD", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodHead)
+
+				s.Then("the GET route's handler replies to it", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusTeapot, rr.Code)
+					assert.NotNil(t, lastRequest.Get(t))
+					assert.Equal(t, http.MethodHead, lastRequest.Get(t).Method)
+				})
+
+				s.And("the path has a HEAD route as well", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						subject.Get(t).Head("/things", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.WriteHeader(http.StatusAccepted)
+						}))
+					})
+
+					s.Then("the HEAD route replies", func(t *testcase.T) {
+						rr := act(t)
+						assert.Equal(t, http.StatusAccepted, rr.Code)
+						assert.Nil(t, lastRequest.Get(t))
+					})
+				})
+			})
+
+			s.And("the request method has no route on the path", func(s *testcase.Spec) {
+				method.LetValue(s, http.MethodPost)
+
+				s.Then("the Allow header lists HEAD next to GET", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+					assert.Equal(t, "GET, HEAD", rr.Header().Get("Allow"))
+				})
+			})
+		})
+
 		s.When("placeholder routes share a path level", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				subject.Get(t).Get("/a/:id", handler.Get(t))

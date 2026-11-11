@@ -69,6 +69,8 @@ the handler replies with the media type of the request, or with `MediaType` (JSO
 as RFC 9110 (§12.5.1) allows a server to disregard the `Accept` header.
 The `Content-Type` of the reply tells the client which media type it got.
 
+`HEAD /` and `HEAD /:id` reply as `GET` does, through `Index` and `Show`, and `net/http`'s server discards the body.
+
 `PUT /:id` replaces the entity: the request body carries its complete new state.
 `PATCH` is not supported, and replies with 405 Method Not Allowed.
 A partial update can't tell a field the request body omits from one set to its zero value (`0`, `false`, `""`),
@@ -86,6 +88,8 @@ to keep the status codes of httpkit's own errors, like 404 for `httpkit.ErrEntit
 
 - `Get`, `Post`, `Put`, `Patch`, `Delete`, etc. (`On`) register a route that only matches its exact path.
   When the path has routes, but not for the request's method, the reply is 405 Method Not Allowed, with an `Allow` header.
+- Like with `http.ServeMux`, a `Get` route serves `HEAD` requests too, unless the path has a `Head` route.
+  `net/http`'s server discards the body of a `HEAD` reply, and keeps its headers, including `Content-Length`.
 - `Mount`, `Resource` and `Handle` register a handler for a path and every path under it.
   When no route matches a request, the handler mounted the closest to the request path receives it.
   A mounted handler receives the request path relative to its mount point: for `Mount("/foo", h)`, `/foo/bar` reaches `h` as `/bar`.
@@ -140,6 +144,34 @@ The same scope applies to `DELETE /users/42/notes`: it removes only the Notes of
 This enhancement ensures that entity relationships are enforced directly within the API structure, promoting both clarity and reliability.
 
 If your RESTHandler operations are scope aware by default, you can disable this behavior by setting `ScopeAware: true` in the RESTHandler.
+
+## TransactionMiddleware
+
+`TransactionMiddleware` runs each state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`, ...)
+in a transaction of a `comproto.OnePhaseCommitProtocol`, such as a `postgresql.Connection` or a `memory.Memory`.
+The handlers down the line join the transaction through the request context.
+
+```go
+var router httpkit.Router
+router.Resource("/users", usersAPI)
+
+handler := httpkit.TransactionMiddleware{
+	Next:          &router,
+	CommitManager: conn,
+	ErrorHandler:  errorHandler, // optional
+}
+```
+
+- A reply with a status code below 400 commits the transaction.
+- A reply with an error status code (400 or above) rolls it back, and is sent as it is.
+- A panic rolls the transaction back, and the panic is passed on.
+- The reply is held back until the commit, so when the commit fails, the client gets an error reply instead of a false success.
+- When the transaction can't begin or can't be committed, the `ErrorHandler` replies the error.
+  It defaults to `rfc7807.Handler{Mapping: httpkit.ErrorMapping}`, which replies 500.
+
+Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`) don't change state.
+They run without a transaction, and their reply streams to the client as it's written,
+so a long `Index` reply isn't held in memory.
 
 ## RoundTripperFunc
 

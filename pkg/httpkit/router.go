@@ -133,6 +133,30 @@ func (r *_Node) init() {
 	}
 }
 
+// methodHandler returns the handler of the route registered for the method.
+// Like with http.ServeMux, a GET route serves the HEAD requests too, unless a HEAD route is registered,
+// and net/http's server discards the body of the reply.
+func (r *_Node) methodHandler(method string) (http.Handler, bool) {
+	if handler, ok := r.methodsH[method]; ok {
+		return handler, true
+	}
+	if method == http.MethodHead {
+		handler, ok := r.methodsH[http.MethodGet]
+		return handler, ok
+	}
+	return nil, false
+}
+
+// allowedMethods lists the methods that the node has a route for, in the order of httpMethodOrdering.
+func (r *_Node) allowedMethods() []string {
+	methods := slices.Collect(maps.Keys(r.methodsH))
+	if _, ok := r.methodHandler(http.MethodHead); ok && !slices.Contains(methods, http.MethodHead) {
+		methods = append(methods, http.MethodHead)
+	}
+	slices.SortFunc(methods, compareHTTPMethods)
+	return methods
+}
+
 // ServeHTTP routes the request to the handler that matches the request path.
 //
 // A route registered with On (Get, Post, etc.) only matches its own path,
@@ -206,14 +230,14 @@ func (m *_Matcher) exact(node *_Node, ctx context.Context, depth int, mws []Midd
 		m.deepestMWs = mws
 	}
 	if depth == len(m.Segments) {
-		if handler, ok := node.methodsH[m.Method]; ok {
+		if handler, ok := node.methodHandler(m.Method); ok {
 			return _Match{Handler: handler, Context: ctx, Middlewares: mws, Depth: depth}, true
 		}
 		if node.defaultH != nil {
 			return _Match{Handler: node.defaultH, Context: ctx, Middlewares: mws, Depth: depth, Prefix: true}, true
 		}
 		if 0 < len(node.methodsH) && m.allowed == nil {
-			m.allowed = slices.SortedFunc(maps.Keys(node.methodsH), compareHTTPMethods)
+			m.allowed = node.allowedMethods()
 			m.allowedMWs = mws
 		}
 		return _Match{}, false
