@@ -1,0 +1,379 @@
+package workflow
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/txkit"
+)
+
+// idempotentExecutor records each invocation in the process' event history and
+// replays the recorded result when the same logical step is encountered again.
+//
+// Identity is established through the workflow.Path carried in the execution
+// context (see workflow.WithName / workflow.CurrentPath): two invocations share
+// the same logical identity when they (a) declare the same ID and (b) execute
+// under the same path. The path is provided by the surrounding Definition
+// hierarchy — for example, a Sequence contributes one segment per iteration —
+// so callers do not need to maintain any per-process state themselves.
+type idempotentExecutor[E Event, ID ~string] struct {
+	ID        ID
+	Do        nonIdempotentFunc
+	Input     []VarName
+	Output    []VarName
+	CastEvent func(e E) (executionEvent[ID], bool)
+	// MakeEvent returns an E value (intentionally not a *E) which can be used with Event interface variables.
+	MakeEvent func(id ID, path Path, input []any, output []any) (E, error)
+	// AcceptDefinition configures idempotentExecutor to let it know,
+	// the E event type supports signal persistence.
+	AcceptDefinition func(e *E, def Definition)
+	// MakeEventError, when set, returns an Event value (typically a workflow.EventError)
+	// describing the failure produced by Do. It is recorded once per genuine failure
+	// so that the workflow has a per-occurrence audit trail of what went wrong.
+	//
+	// It is only invoked for errors that are neither a workflow.RuntimeSignal
+	// (control flow) nor a workflow.Definition (happy follow-up); those are
+	// handled by commitEventsTx / handleResultDefinition respectively.
+	//
+	// When nil, no error event is recorded (the legacy behaviour).
+	MakeEventError func(id ID, path Path, err error) (EventError, error)
+}
+
+type nonIdempotentFunc func(ctx context.Context, input []any) (output []any, _ error)
+
+func (ie idempotentExecutor[E, ID]) commitEventsTx(rErr *error, eventsRepo EventRepository, tx context.Context) (committed bool) {
+	// The commit decision cannot be made on "is rErr nil", because in this
+	// package a non-nil error is not necessarily a failure.
+	//
+	// A RuntimeSignal is not an error. It is the runtime's own control flow
+	// (suspend, replace, complete), raised deliberately by a step that ran fine,
+	// so it must not be handled as a rainy case.
+	//
+	// That distinction matters here because these transactions are layered:
+	// steps nest, and every nesting level opens its own transaction around the
+	// events it records. The layers have no checkpoints between them — a
+	// rollback is reported upwards as a failure, and the level above takes it
+	// for a rainy case and rolls back in turn, all the way to the top. Rolling
+	// back on a signal would therefore not undo "the signal"; it would discard
+	// every event recorded by every enclosing step, because one step at the
+	// bottom used control flow.
+	//
+	// Those events describe work that genuinely happened — variables set earlier
+	// in the process, and the enclosing steps' own recorded executions.
+	// TestRuntime_Execute_participantFollowUpDefinition pins one such case.
+	// Missing or incompatible participants likewise yield to another node;
+	// preserve prior work unless an independent fatal error is also present.
+	if *rErr != nil && !isRuntimeSignal(*rErr) && (ErrIsFatal(*rErr) || (!isParticipantNotFound(*rErr) && !isParticipantSignatureMismatch(*rErr))) {
+		*rErr = errorkitlite.Merge(*rErr, eventsRepo.RollbackTx(tx))
+		return false
+	}
+	if err := eventsRepo.CommitTx(tx); err != nil {
+		*rErr = errorkitlite.Merge(*rErr, err)
+		return false
+	}
+	return true
+}
+
+// finishDoTx settles the txkit transaction the non-idempotent function ran in.
+//
+// It is a best-effort compensation, not a distributed transaction:
+// when the event log did not record the call (the function failed, or the
+// events could not be persisted), the rollback steps registered through
+// txkit.OnRollback are run, so the function gets a chance to undo its side
+// effects before it is repeated. Once the call is recorded, it is committed.
+func finishDoTx(rErr *error, doTx context.Context, committed bool) {
+	// doTx derives from the event log's transaction, which is already finished
+	// (and possibly canceled) by now; that must not turn a commit into a rollback.
+	doTx = context.WithoutCancel(doTx)
+	if committed {
+		_ = txkit.Commit(doTx)
+		return
+	}
+	if err := txkit.Rollback(doTx); err != nil && !errors.Is(err, txkit.ErrTxDone) {
+		*rErr = errorkitlite.Merge(*rErr, err)
+	}
+}
+
+type executionEvent[ID ~string] struct {
+	// ID of the participant/condition/etc which did the trick
+	ID ID
+	// Path identifies the position within the definition tree at which the
+	// execution took place. Two events with the same ID but different paths
+	// represent distinct logical steps and are cached independently.
+	Path Path
+
+	// Input is the cached input variable setting
+	Input []any
+	// Output is the cached output variable setting
+	Output []any
+	// Result is the cached return value of the executeWR
+	Result []any
+	// Definition in case the execution result is a Definition,
+	// then we handle that as a happy case and cache it too
+	Definition Definition
+}
+
+func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, pid ProcessID) error {
+	_, err := ie.executeWR(ctx, pid)
+	return err
+}
+
+func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID) (_ []any, rErr error) {
+	ctx = WithName(ctx, string(ie.ID))
+	baseContext := ctx
+	_ = baseContext
+
+	path := CurrentPath(ctx)
+
+	var (
+		matchedAt  int
+		matchingEE executionEvent[ID]
+		found      bool
+	)
+
+	eventsRepo, err := LookupEventsRepository(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// most transaction locking happens at row level,
+	// with mostly on mutation,
+	// so the cost of transaction should be acceptable here
+	tx, err := eventsRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// tx is finished instead of ctx on purpose: ctx is reassigned further down
+	// for the output variable transaction, and a closure would capture that
+	// later value rather than this transaction.
+	var (
+		ttl  *ctxTTL
+		doTx context.Context
+	)
+	defer func() {
+		committed := ie.commitEventsTx(&rErr, eventsRepo, tx)
+		if doTx != nil {
+			finishDoTx(&rErr, doTx, committed)
+		}
+		ttl.Finish(&rErr, tx)
+	}()
+
+	ctx = tx
+
+	var events []Event
+	for event, err := range eventsRepo.FindByProcessID(ctx, pid) {
+		if err != nil {
+			return nil, err
+		}
+
+		events = append(events, event)
+		if found {
+			continue // the rest of the history is only read for historyAt
+		}
+
+		e, ok := event.(E)
+		if !ok {
+			continue
+		}
+
+		ee, ok := ie.CastEvent(e)
+		if !ok {
+			continue
+		}
+
+		if ee.ID == ie.ID && ee.Path.Equal(path) {
+			found = true
+			matchingEE = ee
+			matchedAt = len(events) - 1
+		}
+	}
+
+	if found {
+		var mEvents = historyAt(events, matchedAt)
+		if len(ie.Input) == len(matchingEE.Input) {
+			for i, key := range ie.Input {
+				// invalidate on input value mismatch
+				// it is idempotent only if input arguments the same too.
+				//
+				// mEvents holds the history as of the matching execution event,
+				// so the variable value is evaluated as of that historical position
+				// rather than the current one.
+				// It is resolved like the Input of a new call, iteration variables included.
+				// A value that can't be resolved counts as a mismatch,
+				// so the new call reports the failure.
+				historicalValue, _, err := lookupVar(ctx, mEvents, key)
+				if err != nil || !reflectkit.Equal(historicalValue, matchingEE.Input[i]) {
+					found = false
+					break
+				}
+			}
+		} else { // invalidate previous call since input argument count changed
+			found = false
+		}
+	}
+
+	// Definition results intentionally discard outputs, regardless of mapping.
+	if found && matchingEE.Definition == nil && len(ie.Output) != len(matchingEE.Output) {
+		found = false
+	}
+
+	if found {
+		// The producer is complete, but its recorded follow-up may still be
+		// suspended. Resume it under the original path and transaction so its
+		// completed steps remain cached and unfinished work is not skipped.
+		if matchingEE.Definition != nil {
+			if err := matchingEE.Definition.Execute(ctx, pid); err != nil {
+				return nil, err
+			}
+		}
+		// Variable mutations are already recorded in the event history.
+		return slicekit.Clone(matchingEE.Result), nil
+	}
+
+	ttl, _ = ctxTimeToLiveH.Lookup(ctx)
+	if ttl != nil {
+		ttl.Active++
+	}
+
+	vars := Vars{
+		ProcessID:        pid,
+		EventsRepository: eventsRepo,
+	}
+
+	// A call without Input records no Input values, so the event is the same after a round-trip through a codec.
+	var input []any
+	if len(ie.Input) > 0 {
+		input = make([]any, len(ie.Input))
+	}
+	for i, key := range ie.Input {
+		value, ok, err := vars.Lookup(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok { // validate this at process definition level too as static validation
+			return nil, ErrFatal.F("missing input argument: input argument of #%d -> %s", i, key)
+		}
+		input[i] = value
+	}
+
+	doTx, err = txkit.Begin(ctx)
+	if err != nil {
+		doTx = nil
+		return nil, err
+	}
+
+	output, err := ie.Do(doTx, slicekit.Clone(input))
+	if err != nil {
+		if def, ok := err.(Definition); ok {
+			return ie.handleResultDefinition(ctx, eventsRepo, pid, path, input, def)
+		}
+		// A RuntimeSignal is the runtime's own control flow (suspend, terminate,
+		// complete, halt) and is deliberately raised by a step that ran fine.
+		// It is not a failure to be audited, so it must not produce an EventError.
+		//
+		// A missing or incompatible participant alone is a node availability
+		// issue, not a failed call. Independently fatal errors still count as
+		// genuine failures. Record failures as
+		// an EventError so the process has a per-occurrence audit trail.
+		if !isRuntimeSignal(err) && (ErrIsFatal(err) || (!isParticipantNotFound(err) && !isParticipantSignatureMismatch(err))) {
+			ie.recordErrorEvent(baseContext, eventsRepo, pid, path, err)
+		}
+		return nil, err
+	}
+
+	{
+		// memorize the call event, and make it idempotent for the next occurrence
+		// transaction might be needed here,
+		// but to pull it off scientifically correctly requires some thinking.
+		var newEvent Event
+		newEvent, err = ie.MakeEvent(ie.ID, path, input, output)
+		if err != nil {
+			return nil, err
+		}
+		if newEvent.GetProcessID() != pid {
+			return nil, fmt.Errorf("incorrect MakeEvent[%T] implementation, process id mismatch", newEvent)
+		}
+		if err := eventsRepo.Create(ctx, &newEvent); err != nil {
+			return nil, err
+		}
+	}
+
+	// add new variables as well to the event history
+	for i, key := range ie.Output {
+		if err := vars.Set(ctx, key, output[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	return slicekit.Clone(output), nil
+}
+
+// recordErrorEvent persists an EventError describing a genuine failure from Do.
+//
+// It deliberately writes the event in a *sibling* transaction — one that is
+// not nested inside the executor's own tx — so the audit record survives the
+// rollback that commitEventsTx performs on a non-signal error. Without this,
+// every failed attempt would erase its own audit trail.
+//
+// It is best-effort: any failure to create the event is swallowed. The audit
+// record is a diagnostic, never a reason to mask the original error.
+func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, eventsRepo EventRepository, pid ProcessID, path Path, gotErr error) {
+	if ie.MakeEventError == nil {
+		return
+	}
+	eventError, err := ie.MakeEventError(ie.ID, path, gotErr)
+	if err != nil {
+		return
+	}
+	if eventError.GetProcessID() != pid {
+		return
+	}
+	var event Event = eventError
+	_ = eventsRepo.Create(ctx, &event)
+}
+
+// handleResultDefinition will handle a Definition result from a participant's
+// function execution.
+//
+// A Definition return value is a "happy" error: it represents control flow
+// that the runtime will execute on the caller's behalf (e.g. Spawn launches a
+// sub-workflow, SwitchDefinition mutates the active definition). It is
+// handled here so that:
+//
+//   - The event is persisted with the Definition attached, so replay does not
+//     repeat the participant call that produced it.
+//   - The Definition is executed on both the initial call and cache hits, so
+//     suspended follow-up work can resume using its own steps' cached results.
+//
+// The follow-up produces nil output and propagates its execution outcome, so
+// the surrounding Definition continues only after the follow-up succeeds.
+func (ie idempotentExecutor[E, ID]) handleResultDefinition(
+	ctx context.Context, eventsRepo EventRepository,
+	pid ProcessID, path Path, input []any, def Definition,
+) (_ []any, rErr error) {
+	if def == nil {
+		return nil, fmt.Errorf("nil workflow.Definition is an implementation error")
+	}
+	event, err := ie.MakeEvent(ie.ID, path, input, nil)
+	if err != nil {
+		return nil, err
+	}
+	if ie.AcceptDefinition != nil {
+		ie.AcceptDefinition(&event, def)
+	}
+	var newEvent Event = event
+	if newEvent.GetProcessID() != pid {
+		return nil, fmt.Errorf("incorrect MakeEvent[%T] implementation, process id mismatch", event)
+	}
+	if err := eventsRepo.Create(ctx, &newEvent); err != nil {
+		return nil, err
+	}
+	if err := def.Execute(ctx, pid); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}

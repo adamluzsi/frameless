@@ -277,8 +277,9 @@ func TestBatch(tt *testing.T) {
 				t.Log("then we reach the timeout")
 				timecop.Travel(t, timeout.Get(t)+time.Second)
 
+				prev := w
 				w = assert.NotWithin(t, waitTimeout, func(ctx context.Context) {
-					w.Wait()
+					prev.Wait()
 				}, "we still didn't got anything since nothing was sent")
 
 				assert.Equal(t, 0, total.Len())
@@ -313,8 +314,9 @@ func TestBatch(tt *testing.T) {
 					}
 				}, "expected that batcher took out the values as soon it could")
 
+				prev := w
 				w = assert.NotWithin(t, waitTimeout, func(ctx context.Context) {
-					w.Wait()
+					prev.Wait()
 				}, "expected that we still didn't got any values back")
 				assert.Equal(t, 0, total.Len())
 

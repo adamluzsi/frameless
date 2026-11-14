@@ -398,6 +398,7 @@ func TestMyDomainEntityRepository_memory(t *testing.T) {
 Reach for a generic implementation before writing SQL by hand:
 
 - `adapter/postgresql.Repository[ENT, ID]` with a `flsql.Mapping`, or `adapter/mariadb.Repository[ENT, ID]`. These, and `adapter/hashicorp/vault`, are separate Go modules: `go get go.llib.dev/frameless/adapter/postgresql`.
+- `adapter/localfs.Repository[ENT, ID]` keeps each entity in a human-editable file of a `localfs.RepositoryFileSystem` directory (settings, credentials, local tool state), with transactions on all platforms. Its consumer-owned interface composes `FileOpener`, `FileInfoReader`, `DirectoryMaker`, `Remover` and `Renamer`. `FS` defaults to `localfs.FileSystem{}`. Native local storage uses inter-process directory locking on Linux, macOS and Windows; other backends default to a per-repository memory locker. Inject a shared `Locker` when repositories share non-local storage. Atomic file visibility depends on `FS.Rename`; multi-file commits are not all-or-nothing. It is a separate Go module too: `go get go.llib.dev/frameless/adapter/localfs`.
 - `pkg/httpkit.RESTClient[ENT, ID]` for a remote REST resource (`httpkit.RESTHandlerFromCRUD` exposes a repository as one)
 - `pkg/cache.Cache[ENT, ID]` for read/write-through caching in front of a source
 
@@ -473,7 +474,7 @@ func (r MyDomainEntityRepository) DeleteByID(ctx context.Context, id mydomain.My
 - Follow the existing shape: `option.ToConfig`, type-asserted optional capabilities, ctx-cancel scenarios, race scenarios via `raceConcurrently` (resolve `testcase` variables before racing), `t.Eventually`/`c.Helper()` for reads, `c.OnePhaseCommit != nil` variants, and cleanup through `t.Cleanup`/`tryDelete`.
 - Register new contracts in `port/crud/crudcontract/crudcontract_test.go` (the compile-time list and `contracts()`). Implement new ports in `adapter/memory.Repository` first.
 - Dependants: `adapter/*`, `pkg/cache`, `pkg/httpkit`, `pkg/tasker`, `pkg/workflow`, `port/migration`, `internal/spechelper`. Run `go test -race ./port/crud/... ./port/comproto/... ./adapter/memory/... ./pkg/cache/... ./pkg/httpkit/... ./pkg/tasker/... ./pkg/workflow/... ./port/migration/... ./internal/spechelper/...`.
-- `adapter/postgresql`, `adapter/mariadb`, and `adapter/hashicorp/vault` are separate modules. Run `go test -race ./...` inside each, with its environment (for example `PG_DATABASE_URL`; see `scripts/testing-postgresql`). Without it they skip, and a skip is not a pass.
+- `adapter/postgresql`, `adapter/mariadb`, `adapter/localfs` and `adapter/hashicorp/vault` are separate modules. Run `go test -race ./...` inside each, with its environment (for example `PG_DATABASE_URL`; see `scripts/testing-postgresql`). Without it they skip, and a skip is not a pass.
 
 ## Reference
 

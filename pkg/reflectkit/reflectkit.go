@@ -668,9 +668,9 @@ func mergeStruct(structs ...reflect.Value) (reflect.Value, bool) {
 	return out, true
 }
 
-func TypeImplements[T, Interface any]() bool {
+func TypeImplements[T, Interface any](i ...T) bool {
 	var (
-		RT = TypeOf[T]()
+		RT = TypeOf[T](i...)
 		RI = TypeOf[Interface]()
 	)
 	if RI.Kind() != reflect.Interface {

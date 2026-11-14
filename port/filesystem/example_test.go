@@ -39,7 +39,10 @@ func ExampleReadDir() {
 }
 
 func ExampleWalkDir() {
-	var fsys filesystem.FileSystem = &memory.FileSystem{}
+	var fsys interface {
+		filesystem.FileOpener
+		filesystem.FileInfoReader
+	} = &memory.FileSystem{}
 
 	_ = filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		return fs.SkipDir

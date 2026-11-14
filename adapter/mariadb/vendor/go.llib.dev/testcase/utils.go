@@ -1,0 +1,180 @@
+package testcase
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/internal"
+	"go.llib.dev/testcase/internal/doubles"
+	"go.llib.dev/testcase/internal/env"
+)
+
+// Race is a test helper that allows you to create a race situation easily.
+// Race will execute each provided anonymous lambda function in a different goroutine,
+// and make sure they are scheduled at the same time.
+//
+// This is useful when you work on a component that requires thread-safety.
+// By using the Race helper, you can write an example use of your component,
+// and run the testing suite with `go test -race`.
+// The race detector then should be able to notice issues with your implementation.
+func Race(functions ...func()) {
+	if len(functions) == 0 {
+		return
+	}
+	var fns []func()
+	for _, fn := range functions {
+		if fn != nil {
+			fns = append(fns, fn)
+		}
+	}
+	var (
+		start sync.WaitGroup
+		rdy   sync.WaitGroup
+		wg    sync.WaitGroup
+	)
+	start.Add(1) // get ready for the race
+	wg.Add(len(fns))
+	rdy.Add(len(fns))
+	var total int32
+	for _, fn := range fns {
+		go func(blk func()) {
+			defer wg.Done()
+			rdy.Done()   // signal that participant is ready
+			start.Wait() // line up participants
+			blk()
+			atomic.AddInt32(&total, 1)
+		}(fn)
+	}
+	runtime.Gosched()
+	rdy.Wait()   // wait until everyone lined up
+	start.Done() // start the race
+	wg.Wait()    // wait members to finish
+	if total != int32(len(fns)) {
+		runtime.Goexit()
+	}
+}
+
+// FakeTB is a testing double fake implmentation of testing.TB
+type FakeTB = doubles.TB
+
+// SkipUntil is equivalent to SkipNow if the test is executing prior to the given deadline time.
+// SkipUntil is useful when you need to skip something temporarily, but you don't trust your memory enough to return to it on your own.
+func SkipUntil(tb testing.TB, year int, month time.Month, day int, hour int) {
+	tb.Helper()
+	const skipTimeFormat = "2006-01-02"
+	target := time.Date(year, month, day, hour, 0, 0, 0, time.Local)
+	fdate := target.Format(skipTimeFormat)
+	if time.Now().Before(target) {
+		tb.Skipf("Skip time %s", fdate)
+	}
+	tb.Logf("[SkipUntil] expired on %s", fdate)
+	tb.Log("consider removing [SkipUntil]")
+}
+
+// OnFail will execute a funcion block in case the test fails.
+func OnFail(tb testing.TB, fn func()) {
+	tb.Helper()
+	tb.Cleanup(func() {
+		tb.Helper()
+		if tb.Failed() {
+			fn()
+		}
+	})
+}
+
+//-------------------------------------------------- Env Var Helpers -------------------------------------------------//
+
+// SetEnv will set the os environment variable for the current program to a given value,
+// and prepares a cleanup function to restore the original state of the environment variable.
+//
+// Spec using this helper should be flagged with Spec.HasSideEffect or Spec.Sequential.
+func SetEnv(tb testing.TB, key, value string) {
+	tb.Helper()
+	tb.Setenv(key, value)
+	env.SetEnv(tb, key, value)
+	OnFail(tb, func() {
+		tb.Helper()
+		tb.Logf("env %s=%q", key, value)
+	})
+}
+
+// UnsetEnv will unset the os environment variable value for the current program,
+// and prepares a cleanup function to restore the original state of the environment variable.
+//
+// Spec using this helper should be flagged with Spec.HasSideEffect or Spec.Sequential.
+func UnsetEnv(tb testing.TB, key string) {
+	tb.Helper()
+	//tb.Setenv(key, "") // to trigger parallel error check
+	env.UnsetEnv(tb, key)
+	OnFail(tb, func() {
+		tb.Helper()
+		tb.Logf("env unset %s", key)
+	})
+}
+
+// GetEnv will help to look up an environment variable which is mandatory for a given test.
+//
+// GetEnv simplifies writing tests that depend on environment variables,
+// making the process more convenient.
+//
+// In some cases, you may need to conditionally skip tests based on the presence
+// or absence of a specific environment variable.
+//
+// In other scenarios, certain tests must always run,
+// and their failure should indicate a development environment setup issue
+// if the required environment variable is missing.
+//
+// GetEnv helps streamline these situations, ensuring more reliable and controlled test execution.
+//
+// If onNotFound func not provided, testing.TB#SkipNow will be opted as default.
+func GetEnv(tb testing.TB, key string, onNotFound ...func()) string {
+	tb.Helper()
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		var message = fmt.Sprintf("%s environment variable not found", key)
+		tb.Log(message)
+		if len(onNotFound) == 0 {
+			onNotFound = append(onNotFound, tb.SkipNow)
+		}
+		for _, fn := range onNotFound {
+			fn()
+		}
+	}
+	return val
+}
+
+//---------------------------------------------- Global Variable Helpers ----------------------------------------------//
+
+var g globals
+
+type globals struct {
+	m sync.Mutex
+	c *sync.Cond
+	// ps is the in-flight pointer inventory.
+	// Pointer types are comparable.
+	// Two pointer values are equal if they point to the same variable or if both have value nil.
+	// Pointers to distinct zero-size variables may or may not be equal.
+	ps map[uintptr] /* Pointer */ int64 /* GoID */
+}
+
+func SetGlobal[T any](tb testing.TB, p *T, v T) {
+	tb.Helper()
+	assert.NotNil(tb, p, assert.MessageF("%T cannot be nil", p))
+	internal.NoParallel(tb, `testing: test using SetGlobal can not be concurrently executed`)
+
+	original := *p // pass by value copy
+	var restore = func() {
+		g.m.Lock()
+		defer g.m.Unlock()
+		*p = original
+	}
+
+	tb.Cleanup(restore)
+	*p = v
+}

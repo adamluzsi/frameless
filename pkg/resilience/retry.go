@@ -57,9 +57,6 @@ func Retries(ctx context.Context, rs RetryStrategy) iter.Seq[RetryAttempt] {
 	rs = GetRetryStrategy(rs)
 	return func(yield func(RetryAttempt) bool) {
 		for attempt := MakeRetryAttempt(); rs.ShouldTry(ctx, attempt); attempt.Next() {
-			if !rs.ShouldTry(ctx, attempt) {
-				return
-			}
 			if !yield(attempt) {
 				return
 			}
@@ -213,13 +210,15 @@ func (rs Jitter) getMaxRetries() int {
 //
 // Waiter will check if a retry attempt should be made
 // compared to when an operation was initially started.
+// Between attempts, it pauses for the WaitDuration.
 type Waiter struct {
 	// Timeout refers to the maximum duration we can wait
 	// before a retry attempt is deemed unreasonable.
 	//
 	// Default: 30 seconds
 	Timeout time.Duration
-	// WaitDuration is the time how lone Waiter.Wait should wait between attempting a new retry during Waiter.While.
+	// WaitDuration is the pause between two attempts,
+	// both in Waiter.ShouldTry (and therefore in Retries) and in Waiter.While.
 	//
 	// Default: 1ms
 	WaitDuration time.Duration
@@ -227,12 +226,32 @@ type Waiter struct {
 
 var _ RetryStrategy = Waiter{}
 
+// ShouldTry reports whether an attempt can still start before the Timeout elapses since attempt.StartedAt.
+//
+// After a failed attempt, it pauses for the WaitDuration before it allows the retry.
+// When the deadline would pass during the pause, it refuses the retry without waiting.
+// When ctx is cancelled during the pause, it stops waiting and refuses the retry.
 func (rs Waiter) ShouldTry(ctx context.Context, attempt RetryAttempt) bool {
-	var (
-		now      = clock.Now()
-		deadline = attempt.StartedAt.Add(rs.getTimeout())
-	)
-	return now.Before(deadline) && ctx.Err() == nil
+	if ctx.Err() != nil {
+		return false
+	}
+	deadline := attempt.StartedAt.Add(rs.getTimeout())
+	if !clock.Now().Before(deadline) {
+		return false
+	}
+	if attempt.FailureCount == 0 {
+		return true
+	}
+	waitDuration := rs.getWaitDuration()
+	if !clock.Now().Add(waitDuration).Before(deadline) {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-clock.After(waitDuration):
+		return clock.Now().Before(deadline)
+	}
 }
 
 func (rs Waiter) getTimeout() time.Duration {

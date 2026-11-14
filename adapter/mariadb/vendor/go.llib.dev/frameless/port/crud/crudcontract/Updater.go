@@ -1,0 +1,247 @@
+package crudcontract
+
+import (
+	"context"
+
+	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/option"
+
+	"go.llib.dev/frameless/internal/spechelper"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
+
+	"go.llib.dev/testcase"
+)
+
+// Updater will request an update for a wrapped entity object in the Resource
+func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) contract.Contract {
+	c := option.ToConfig[Config[ENT, ID]](opts)
+	s := testcase.NewSpec(nil)
+
+	s.Describe("#Update", func(s *testcase.Spec) {
+		store, sOK := storer[ENT, ID](c, subject)
+		d, dOK := subject.(crud.ByIDDeleter[ID])
+		f, fOK := subject.(crud.ByIDFinder[ENT, ID])
+
+		s.Before(func(t *testcase.T) {
+			spechelper.TryCleanup(t, c.MakeContext(t), subject)
+		})
+
+		var (
+			requestContext = testcase.Let(s, func(t *testcase.T) context.Context {
+				return c.MakeContext(t)
+			})
+			entityWithChanges = testcase.Var[*ENT]{ID: `entity-with-changes`}
+		)
+		act := func(t *testcase.T) error {
+			return subject.Update(
+				requestContext.Get(t),
+				entityWithChanges.Get(t),
+			)
+		}
+
+		updaterBenchmark[ENT, ID](s, subject, c)
+
+		if sOK {
+			s.When(`an entity already stored`, func(s *testcase.Spec) {
+				ptr := testcase.Let(s, func(t *testcase.T) *ENT {
+					ent := pointer.Of(c.MakeEntity(t))
+					store(t, ent)
+					return ent
+				}).EagerLoading(s)
+
+				s.And(`the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
+					entityWithChanges.Let(s, func(t *testcase.T) *ENT {
+						v := *ptr.Get(t)
+						c.ModifyEntity(t, &v)
+						return &v
+					})
+
+					if fOK {
+						s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
+							assert.Must(t).NoError(act(t))
+
+							c.Helper().HasEntity(t, f, c.MakeContext(t), entityWithChanges.Get(t))
+						})
+					}
+
+					// "Concurrent calls are race-free" is a happy-case concurrency check.
+					// Each goroutine updates a distinct entity concurrently.
+					// The implementation must persist every update without race.
+					s.Test(`concurrent calls to Update are race-free`, func(t *testcase.T) {
+						ctx := c.MakeContext(t)
+
+						type pair struct {
+							ptr *ENT
+							id  ID
+						}
+						var pairs []pair
+						t.Random.Repeat(2, 5, func() {
+							ent := pointer.Of(c.MakeEntity(t))
+							store(t, ent)
+							c.ModifyEntity(t, ent)
+							if id, ok := lookupNonZeroID(c, *ent); ok {
+								pairs = append(pairs, pair{ptr: ent, id: id})
+							}
+						})
+
+						var ops []func()
+						for i := range pairs {
+							p := pairs[i]
+							ops = append(ops, func() {
+								assert.NoError(t, subject.Update(ctx, p.ptr))
+							})
+							t.Cleanup(func() {
+								tryDelete(t, c, subject, *p.ptr)
+							})
+						}
+						raceConcurrently(ops)
+
+						if fOK {
+							for _, p := range pairs {
+								c.Helper().HasEntity(t, f, ctx, p.ptr)
+							}
+						}
+					})
+
+					s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
+						requestContext.Let(s, func(t *testcase.T) context.Context {
+							ctx, cancel := context.WithCancel(c.MakeContext(t))
+							cancel()
+							return ctx
+						})
+
+						s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
+							assert.Must(t).ErrorIs(context.Canceled, act(t))
+						})
+					})
+				})
+			})
+		}
+
+		if sOK && dOK {
+			s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
+				entityWithChanges.Let(s, func(t *testcase.T) *ENT {
+					newEntity := pointer.Of(c.MakeEntity(t))
+					store(t, newEntity)
+					c.Helper().Delete(t, d, c.MakeContext(t), newEntity)
+					return newEntity
+				})
+
+				s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
+					assert.Must(t).ErrorIs(crud.ErrNotFound, act(t))
+				})
+			})
+		}
+
+		if c.OnePhaseCommit != nil {
+			s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
+				if sOK {
+					s.Test(`BeginTx -> Update -> CommitTx will create the entity in the resource`, func(t *testcase.T) {
+						tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+						assert.Must(t).NoError(err)
+
+						modifiedValue := c.MakeEntity(t)
+						ptr := &modifiedValue
+						store(t, ptr)
+						c.ModifyEntity(t, ptr)
+
+						assert.NoError(t, subject.Update(tx, ptr))
+						id := c.Helper().HasID(t, ptr)
+
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(tx, id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, *ptr, got)
+							})
+							{
+								expOG, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.NotEqual(t, modifiedValue, expOG)
+							}
+						}
+
+						assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
+						t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, modifiedValue, got)
+							})
+						}
+					})
+
+					s.Test(`BeginTx -> Update -> Rollback will undo the entity creation in the resource`, func(t *testcase.T) {
+						tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+						assert.Must(t).NoError(err)
+
+						modifiedValue := c.MakeEntity(t)
+						ptr := &modifiedValue
+						store(t, ptr)
+						c.ModifyEntity(t, ptr)
+
+						assert.NoError(t, subject.Update(tx, ptr))
+						id := c.Helper().HasID(t, ptr)
+
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(tx, id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, *ptr, got)
+							})
+							{
+								expOG, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.NotEqual(t, expOG, modifiedValue)
+							}
+						}
+
+						assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
+						t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+
+						if fOK {
+							curVal, found, err := f.FindByID(c.MakeContext(t), id)
+							assert.NoError(t, err)
+							assert.True(t, found)
+							assert.NotEqual(t, curVal, modifiedValue)
+						}
+					})
+				}
+
+				s.Test(`A finished transaction will make Update yield error`, func(t *testcase.T) {
+					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+					assert.Must(t).NoError(err)
+
+					assert.NoError(t, random.Pick(t.Random, c.OnePhaseCommit.CommitTx, c.OnePhaseCommit.RollbackTx)(tx))
+
+					ptr := pointer.Of(c.MakeEntity(t))
+					assert.Error(t, subject.Update(tx, ptr))
+				})
+			})
+		}
+	})
+
+	return s.AsSuite("Updater")
+}
+
+func updaterBenchmark[ENT, ID any](s *testcase.Spec, subject crud.Updater[ENT], c Config[ENT, ID]) {
+	ent := testcase.Let(s, func(t *testcase.T) *ENT {
+		ptr := pointer.Of(c.MakeEntity(t))
+		shouldStore(t, c, subject, ptr)
+		return ptr
+	})
+
+	s.Benchmark("", func(t *testcase.T) {
+		assert.Must(t).NoError(subject.Update(c.MakeContext(t), ent.Get(t)))
+	})
+}

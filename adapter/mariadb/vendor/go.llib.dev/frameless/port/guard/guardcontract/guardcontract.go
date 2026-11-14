@@ -1,0 +1,680 @@
+package guardcontract
+
+import (
+	"context"
+	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"go.llib.dev/frameless/internal/spechelper"
+	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/guard"
+	"go.llib.dev/frameless/port/option"
+
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
+)
+
+// TODO:
+// - add coverage for context cancellation during lock hanging
+
+var Timeout = testcase.Var[time.Duration]{
+	ID: "assertion Timeout.Get(t)",
+	Init: func(t *testcase.T) time.Duration {
+		return time.Second
+	},
+}
+
+func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig[LockerConfig](opts)
+
+	s.After(func(t *testcase.T) {
+		_ = subject.Unlock(c.MakeContext(t))
+	})
+
+	s.Describe(".Lock", func(s *testcase.Spec) {
+		var (
+			Context = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+				return c.MakeContext(t)
+			})
+		)
+		act := func(t *testcase.T) (context.Context, error) {
+			ctx, err := subject.Lock(Context.Get(t))
+			if err == nil {
+				t.Defer(subject.Unlock, ctx)
+			}
+			return ctx, err
+		}
+
+		s.Then("it locks successfully and returns a context that works with Unlock", func(t *testcase.T) {
+			ctx, err := act(t)
+			assert.Must(t).NoError(err)
+			assert.Must(t).NotNil(ctx)
+			assert.Must(t).NoError(ctx.Err())
+			assert.Must(t).NoError(subject.Unlock(ctx))
+		})
+
+		s.Then("calling lock will prevent other lock acquisitions", func(t *testcase.T) {
+			var lockContext context.Context
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				var err error
+				lockContext, err = act(t)
+				assert.NoError(t, err)
+			})
+
+			w := assert.NotWithin(t, Timeout.Get(t), func(context.Context) {
+				ctx, err := subject.Lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+				assert.Must(t).NotNil(ctx)
+				assert.Must(t).NoError(ctx.Err())
+				assert.Must(t).NoError(subject.Unlock(ctx))
+			})
+
+			assert.Must(t).NoError(subject.Unlock(lockContext))
+
+			// after unlock, the other Lock call unblocks
+			assert.Within(t, Timeout.Get(t), func(context.Context) { w.Wait() })
+		})
+
+		s.Then("calling unlock not with the locked context will yield an error", func(t *testcase.T) {
+			assert.Must(t).ErrorIs(guard.ErrNoLock, subject.Unlock(c.MakeContext(t)))
+		})
+
+		s.When("the lock is already taken", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.Within(t, Timeout.Get(t), func(context.Context) {
+					lctx, err := act(t)
+					assert.NoError(t, err)
+					t.Defer(subject.Unlock, lctx)
+				})
+			})
+
+			s.Then("the Locking will hangs", func(t *testcase.T) {
+				d := t.Random.DurationBetween(250*time.Millisecond, time.Second)
+
+				assert.NotWithin(t, d, func(ctx context.Context) {
+					ctx, cancel := contextkit.Merge(ctx, Context.Get(t))
+					defer cancel()
+					// assert.NotWithin abandons this block once the timeout is
+					// up, so it can still be running when the enclosing test
+					// releases the lock. Should it win the race and acquire the
+					// lock, it must give it back, else the subject stays locked
+					// forever and every later test hangs on it.
+					lockCtx, err := subject.Lock(ctx)
+					if err == nil {
+						_ = subject.Unlock(lockCtx)
+					}
+				})
+			})
+		})
+
+		s.When("context is already done", func(s *testcase.Spec) {
+			Context.Let(s, func(t *testcase.T) context.Context {
+				ctx := Context.Super(t)
+				ctx, cancel := context.WithCancel(ctx)
+				cancel()
+				return ctx
+			})
+
+			s.Then("it will return back with the context error", func(t *testcase.T) {
+				assert.Within(t, Timeout.Get(t), func(ctx context.Context) {
+					_, err := act(t)
+					assert.Must(t).ErrorIs(Context.Get(t).Err(), err)
+				})
+			})
+		})
+
+		s.When("the current context already a lock context", func(s *testcase.Spec) {
+			Context.Let(s, func(t *testcase.T) context.Context {
+				var lockContext context.Context
+				assert.Within(t, Timeout.Get(t), func(ctx context.Context) {
+					lockCtx, err := subject.Lock(Context.Super(t))
+					assert.Must(t).NoError(err)
+					t.Defer(subject.Unlock, lockCtx)
+					lockContext = lockCtx
+				})
+				return lockContext
+			})
+
+			s.Then("since we have it already the lock ownership, it returns without doing much", func(t *testcase.T) {
+				assert.Must(t).Within(Timeout.Get(t), func(context.Context) {
+					ctx, err := act(t)
+					assert.Must(t).NoError(err)
+					assert.Must(t).NotNil(ctx)
+					assert.Must(t).NoError(subject.Unlock(ctx))
+				})
+			})
+		})
+
+		s.When("context has a value", func(s *testcase.Spec) {
+			type ctxKey struct{}
+			ctxVal := let.String(s)
+
+			Context.Let(s, func(t *testcase.T) context.Context {
+				c := Context.Super(t)
+				return context.WithValue(c, ctxKey{}, ctxVal.Get(t))
+			})
+
+			s.Then("the lock context will contain the previously injected values", func(t *testcase.T) {
+				ctx, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.Must(t).NotNil(ctx)
+				assert.Must(t).NoError(ctx.Err())
+				defer subject.Unlock(ctx)
+
+				gotVal, ok := ctx.Value(ctxKey{}).(string)
+				assert.True(t, ok, "expected that the stored value under the given key will be there")
+				assert.Equal(t, ctxVal.Get(t), gotVal)
+			})
+		})
+	})
+
+	s.Describe(".Unlock", Unlocker(subject, subject.Lock, c).Spec)
+
+	s.Context("lock ownership", lockOwnershipSpec(c, subject.Lock, subject.Unlock))
+
+	return s.AsSuite("Locker")
+}
+
+func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig[LockerConfig](opts)
+
+	// Reuse tests from Locker contract for Unlock method
+	s.Describe(".Unlock", Unlocker(subject, func(ctx context.Context) (context.Context, error) {
+		for {
+			lctx, ok, err := subject.TryLock(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				return lctx, nil
+			}
+		}
+	}, c).Spec)
+
+	s.Describe(".TryLock", func(s *testcase.Spec) {
+		var (
+			Context = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+				return c.MakeContext(t)
+			})
+		)
+
+		act := func(t *testcase.T) (context.Context, bool, error) {
+			var (
+				ctx      context.Context
+				acquired bool
+				err      error
+			)
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				ctx, acquired, err = subject.TryLock(Context.Get(t))
+				if acquired {
+					t.Defer(subject.Unlock, ctx)
+				}
+			}, "TryLock was not suppose to hang in any possible scenario")
+			return ctx, acquired, err
+		}
+
+		s.Then("it can acquire the lock", func(t *testcase.T) {
+			ctx, isAcquired, err := act(t)
+			assert.Must(t).NoError(err)
+			assert.True(t, isAcquired)
+			assert.Must(t).NotNil(ctx)
+			assert.Must(t).NoError(ctx.Err())
+			assert.Must(t).NoError(subject.Unlock(ctx))
+		})
+
+		s.Then("it returns true and a valid context if the lock is available", func(t *testcase.T) {
+			ctx, acquired, err := act(t)
+			assert.Must(t).NoError(err)
+			assert.True(t, acquired)
+			assert.Must(t).NotNil(ctx)
+			assert.Must(t).NoError(ctx.Err())
+			assert.Must(t).NoError(subject.Unlock(ctx))
+		})
+
+		s.When("the lock is already acquired", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				ctx, isAcquired, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.True(t, isAcquired)
+				assert.Must(t).NotNil(ctx)
+				assert.Must(t).NoError(ctx.Err())
+				t.Defer(subject.Unlock, ctx)
+			})
+
+			s.Then("it returns immediately with false as the lock is not available", func(t *testcase.T) {
+				ctx, acquired, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.Must(t).False(acquired)
+				assert.Must(t).Nil(ctx)
+			})
+		})
+
+		s.When("context is already done", func(s *testcase.Spec) {
+			Context.Let(s, func(t *testcase.T) context.Context {
+				ctx := Context.Super(t)
+				ctx, cancel := context.WithCancel(ctx)
+				cancel()
+				return ctx
+			})
+
+			s.Then("it returns back with the context error", func(t *testcase.T) {
+				_, _, err := act(t)
+				assert.Must(t).ErrorIs(Context.Get(t).Err(), err)
+			})
+		})
+
+		s.When("context has a value", func(s *testcase.Spec) {
+			type ctxKey struct{}
+			ctxVal := let.String(s)
+
+			Context.Let(s, func(t *testcase.T) context.Context {
+				c := Context.Super(t)
+				return context.WithValue(c, ctxKey{}, ctxVal.Get(t))
+			})
+
+			s.Then("the acquired lock context will contain the previously injected values", func(t *testcase.T) {
+				ctx, isAcquired, err := act(t)
+				assert.Must(t).NoError(err)
+				assert.True(t, isAcquired)
+				assert.Must(t).NotNil(ctx)
+				assert.Must(t).NoError(ctx.Err())
+				defer subject.Unlock(ctx)
+
+				gotVal, ok := ctx.Value(ctxKey{}).(string)
+				assert.True(t, ok, "expected that the stored value under the given key will be there")
+				assert.Equal(t, ctxVal.Get(t), gotVal)
+			})
+		})
+	})
+
+	return s.AsSuite("NonBlockingLocker")
+}
+
+func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Context, error), opts ...LockerOption) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig(opts)
+
+	var (
+		Context = testcase.Let[context.Context](s, nil)
+	)
+	act := func(t *testcase.T) error {
+		return subject.Unlock(Context.Get(t))
+	}
+
+	s.When("context is a lock context, made by a lock call", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx := c.MakeContext(t)
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				lctx, err := lock(ctx)
+				assert.Must(t).NoError(err)
+				t.Defer(subject.Unlock, lctx)
+				ctx = lctx
+			}, "unable to lock, could it be that due to implementation issue, the previous test the lock in a locked state?")
+			return ctx
+		})
+
+		s.Then("it unlocks without an issue", func(t *testcase.T) {
+			assert.Must(t).NoError(act(t))
+		})
+
+		s.Then("the already locked context should not hang locking it again", func(t *testcase.T) {
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				ctx, err := lock(Context.Get(t))
+				assert.Must(t).NoError(err)
+				t.Defer(subject.Unlock, ctx)
+			})
+		})
+
+		s.Then("unlocks multiple time without an issue", func(t *testcase.T) {
+			t.Random.Repeat(3, 7, func() {
+				assert.Within(t, Timeout.Get(t), func(context.Context) {
+					assert.Must(t).NoError(act(t))
+				})
+			})
+		})
+
+		s.Then("after unlock, the context is cancelled", func(t *testcase.T) {
+			assert.Must(t).NoError(act(t))
+			assert.Must(t).Error(Context.Get(t).Err())
+		})
+
+		s.And("context is cancelled during locking", func(s *testcase.Spec) {
+			Context.Let(s, func(t *testcase.T) context.Context {
+				ctx, cancel := context.WithCancel(c.MakeContext(t))
+				ctx, err := lock(ctx)
+				assert.Must(t).NoError(err)
+				t.Defer(subject.Unlock, ctx)
+				cancel()
+				return ctx
+			})
+
+			s.Then("it will return back with the context error while also unlocking itself", func(t *testcase.T) {
+				assert.Must(t).ErrorIs(Context.Get(t).Err(), act(t))
+				assert.Must(t).Within(3*time.Second, func(ctx context.Context) {
+					lctx, err := lock(ctx)
+					assert.Must(t).NoError(err)
+					t.Defer(subject.Unlock, lctx)
+				})
+			})
+		})
+	})
+
+	s.When("context is not issued by a .Lock call", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			return c.MakeContext(t)
+		})
+
+		s.Then("it raise ErrNoLock error", func(t *testcase.T) {
+			assert.Must(t).ErrorIs(guard.ErrNoLock, act(t))
+		})
+	})
+
+	return s.AsSuite("Unlocker")
+}
+
+// LockHoldDuration is how long the contract holds a lock while observing that the ownership is kept.
+// A Locker must keep the lock for as long as the holder holds it,
+// so this is not a limit on the implementation, only the observation window of the test.
+// It is long enough to span the internal lease renewals of implementations configured with a short lease.
+var LockHoldDuration = testcase.Var[time.Duration]{
+	ID: "guard Lock hold duration",
+	Init: func(t *testcase.T) time.Duration {
+		return t.Random.DurationBetween(time.Second/2, time.Second)
+	},
+}
+
+// lockOwnershipSpec describes what a lock holder can expect regarding the ownership of an acquired lock.
+func lockOwnershipSpec(c LockerConfig, lock func(context.Context) (context.Context, error), unlock func(context.Context) error) func(s *testcase.Spec) {
+	return func(s *testcase.Spec) {
+
+		s.Test("a held lock is kept for as long as the holder holds it", func(t *testcase.T) {
+			var lockCtx context.Context
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				var err error
+				lockCtx, err = lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+			})
+			t.Defer(unlock, lockCtx)
+
+			assertLockHeldFor(t, LockHoldDuration.Get(t), lockCtx)
+			assert.Must(t).NoError(unlock(lockCtx))
+		})
+
+		s.Test("a lock acquisition that waits longer than the lock is held still keeps mutual exclusion", func(t *testcase.T) {
+			var holderCtx context.Context
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				var err error
+				holderCtx, err = lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+			})
+			t.Defer(unlock, holderCtx)
+
+			var released atomic.Bool
+			waiter := assert.NotWithin(t, LockHoldDuration.Get(t), func(ctx context.Context) {
+				waiterCtx, err := lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+				defer func() { assert.Should(t).NoError(unlock(waiterCtx)) }()
+				assert.Should(t).True(released.Load(),
+					"the waiting lock acquisition must not succeed while the lock is still held")
+			}, "the waiting lock acquisition must block while the lock is held")
+
+			assert.Must(t).NoError(holderCtx.Err(), "the holder lost its lock while it held it")
+			released.Store(true)
+			assert.Must(t).NoError(unlock(holderCtx))
+			assert.Within(t, c.Waiter.Timeout, func(context.Context) { waiter.Wait() },
+				"expected that the waiting lock acquisition succeeds once the lock is released")
+		})
+
+		s.Test("when the lock ownership is lost, it is signalled with ErrLockLost rather than a plain cancellation", func(t *testcase.T) {
+			if c.MakeLockLost == nil {
+				t.Skip("MakeLockLost is not configured")
+			}
+			var lockCtx context.Context
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				var err error
+				lockCtx, err = lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+			})
+			t.Defer(unlock, lockCtx)
+
+			c.MakeLockLost(t, lockCtx)
+
+			assert.Within(t, c.Waiter.Timeout, func(ctx context.Context) {
+				select {
+				case <-lockCtx.Done():
+				case <-ctx.Done():
+				}
+			}, "expected that the lock context is cancelled once the lock ownership is lost")
+
+			cause := context.Cause(lockCtx)
+			assert.ErrorIs(t, guard.ErrLockLost, cause)
+			assert.False(t, errors.Is(cause, context.Canceled),
+				"the cause of a lost lock must not look like a regular context cancellation")
+
+			unlockErr := unlock(lockCtx)
+			assert.ErrorIs(t, guard.ErrLockLost, unlockErr,
+				"expected that Unlock reports the lost lock ownership")
+			assert.False(t, errors.Is(unlockErr, context.Canceled),
+				"a lost lock must not be reported by Unlock as a regular context cancellation")
+
+			assert.Within(t, c.Waiter.Timeout, func(context.Context) {
+				lctx, err := lock(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+				assert.Must(t).NoError(unlock(lctx))
+			}, "expected that the lost lock can be acquired again")
+		})
+	}
+}
+
+// assertLockHeldFor asserts that none of the lock contexts get cancelled during the given duration.
+func assertLockHeldFor(t *testcase.T, d time.Duration, lockCtxs ...context.Context) {
+	t.Helper()
+	deadline := time.After(d)
+	for {
+		for i, lockCtx := range lockCtxs {
+			if lockCtx.Err() != nil {
+				t.Fatalf("lock #%d was lost while it was held: %v", i, context.Cause(lockCtx))
+			}
+		}
+		select {
+		case <-deadline:
+			return
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+type LockerOption interface {
+	option.Option[LockerConfig]
+}
+
+type LockerConfig struct {
+	MakeContext func(testing.TB) context.Context
+	Waiter      assert.Waiter
+	// MakeLockLost is an optional utility for implementations that can lose lock ownership
+	// due to an internal issue, such as a lost database connection or a vanished lock record.
+	// It should make the lock behind the given lock context lost in an implementation specific way.
+	// The contract then verifies that the loss is signalled with guard.ErrLockLost.
+	// When nil, the lock loss scenarios are skipped.
+	MakeLockLost func(t testing.TB, lockCtx context.Context)
+}
+
+func (c *LockerConfig) Init() {
+	c.MakeContext = func(testing.TB) context.Context {
+		return context.Background()
+	}
+	c.Waiter = assert.Waiter{
+		WaitDuration: time.Millisecond,
+		Timeout:      5 * time.Second,
+	}
+}
+
+func (c LockerConfig) Configure(t *LockerConfig) {
+	*t = reflectkit.MergeStruct(*t, c)
+}
+
+func LockerFactory[Key any, L guard.Unlocker](subject guard.LockerFactory[Key, L], opts ...LockerFactoryOption[Key]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig(opts)
+
+	if reflectkit.TypeImplements[L, guard.Locker]() {
+		var getLocker = func(t *testcase.T, key Key) guard.Locker {
+			var ul guard.Unlocker = subject.LockerFor(key)
+			l, ok := ul.(guard.Locker)
+			if !ok {
+				t.Skipf("expected that %T implements guard.Locker", ul)
+			}
+			return l
+		}
+
+		s.Test("returned value behaves like a locks.Locker", func(t *testcase.T) {
+			testcase.RunSuite(t, Locker(getLocker(t, c.MakeKey(t)), c.LockerConfig))
+		})
+
+		s.Test("many locks held concurrently are all kept for as long as they are held", func(t *testcase.T) {
+			var (
+				ctx         = c.MakeContext(t)
+				lockContext []context.Context
+				keys        []Key
+			)
+			// concurrent holders put the implementation's lease renewal under load
+			t.Random.Repeat(7, 32, func() {
+				keys = append(keys, random.Unique(func() Key { return c.MakeKey(t) }, keys...))
+			})
+			assert.Within(t, c.Waiter.Timeout, func(context.Context) {
+				for _, key := range keys {
+					l := getLocker(t, key)
+					lockCtx, err := l.Lock(ctx)
+					assert.Must(t).NoError(err)
+					t.Defer(l.Unlock, lockCtx)
+					lockContext = append(lockContext, lockCtx)
+				}
+			})
+
+			assertLockHeldFor(t, LockHoldDuration.Get(t), lockContext...)
+
+			for i, key := range keys {
+				assert.Must(t).NoError(getLocker(t, key).Unlock(lockContext[i]))
+			}
+		})
+
+		s.Test("result Lock with different name don't interfere with each other", func(t *testcase.T) {
+			var (
+				ctx = c.MakeContext(t)
+				k1  = c.MakeKey(t)
+				k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+				l1  = getLocker(t, k1)
+				l2  = getLocker(t, k2)
+			)
+			assert.Must(t).Within(3*time.Second, func(context.Context) {
+				lockCtx1, err := l1.Lock(ctx)
+				assert.Must(t).NoError(err)
+				lockCtx2, err := l2.Lock(ctx)
+				assert.Must(t).NoError(err)
+				assert.Must(t).NoError(l1.Unlock(lockCtx1))
+				assert.Must(t).NoError(l2.Unlock(lockCtx2))
+			})
+		})
+
+		s.Test("a lock taken with an already-locked context can be unlocked without invalidating the outer lock context", func(t *testcase.T) {
+			var (
+				ctx = c.MakeContext(t)
+				k1  = c.MakeKey(t)
+				k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+				l1  = getLocker(t, k1)
+				l2  = getLocker(t, k2)
+			)
+			assert.Must(t).Within(3*time.Second, func(context.Context) {
+				outerCtx, err := l1.Lock(ctx)
+				assert.Must(t).NoError(err)
+				t.Cleanup(func() { _ = l1.Unlock(outerCtx) })
+
+				innerCtx, err := l2.Lock(outerCtx)
+				assert.Must(t).NoError(err)
+
+				// releasing the inner lock must not poison the outer lock context.
+				assert.Must(t).NoError(l2.Unlock(innerCtx))
+				assert.Must(t).NoError(outerCtx.Err(),
+					"unlocking a nested lock context must not cancel its parent lock context")
+			})
+		})
+	}
+
+	if reflectkit.TypeImplements[L, guard.NonBlockingLocker]() {
+		s.Context("factory also supports non-blocking lock issuing with LockerFor",
+			NonBlockingLockerFactory[Key](wNonBlockingLockerFactory[Key, L]{factory: subject}, c).Spec)
+
+	}
+
+	return s.AsSuite("LockerFactory")
+}
+
+type wNonBlockingLockerFactory[Key any, L guard.Unlocker] struct {
+	factory guard.LockerFactory[Key, L]
+}
+
+func (f wNonBlockingLockerFactory[Key, L]) NonBlockingLockerFor(key Key) guard.NonBlockingLocker {
+	var l guard.Unlocker = f.factory.LockerFor(key)
+	return l.(guard.NonBlockingLocker)
+}
+
+func NonBlockingLockerFactory[Key any](subject guard.NonBlockingLockerFactory[Key], opts ...LockerFactoryOption[Key]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig(opts)
+
+	s.Test("returned value behaves like a locks.NonBlockingLock", func(t *testcase.T) {
+		testcase.RunSuite(t, NonBlockingLocker(subject.NonBlockingLockerFor(c.MakeKey(t)), c.LockerConfig))
+	})
+
+	s.Test("result NonBlockingLock with different name don't interfere with each other", func(t *testcase.T) {
+		var (
+			ctx = c.MakeContext(t)
+			k1  = c.MakeKey(t)
+			k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+			l1  = subject.NonBlockingLockerFor(k1)
+			l2  = subject.NonBlockingLockerFor(k2)
+		)
+		assert.Must(t).Within(3*time.Second, func(context.Context) {
+			lockCtx1, ok, err := l1.TryLock(ctx)
+			assert.NoError(t, err)
+			assert.True(t, ok)
+			t.Defer(l1.Unlock, lockCtx1)
+
+			lockCtx2, ok, err := l2.TryLock(ctx)
+			assert.NoError(t, err)
+			assert.True(t, ok)
+			t.Defer(l2.Unlock, lockCtx2)
+		})
+	})
+
+	return s.AsSuite("NonBlockingLockerFactory")
+}
+
+type LockerFactoryOption[Key any] interface {
+	option.Option[LockerFactoryConfig[Key]]
+}
+
+type LockerFactoryConfig[Key any] struct {
+	MakeKey func(testing.TB) Key
+	LockerConfig
+}
+
+func (c *LockerFactoryConfig[Key]) Init() {
+	c.LockerConfig.Init()
+	c.MakeContext = func(t testing.TB) context.Context {
+		return context.Background()
+	}
+	c.MakeKey = spechelper.MakeValue[Key]
+}
+
+func (c LockerFactoryConfig[Key]) Configure(t *LockerFactoryConfig[Key]) {
+	*t = reflectkit.MergeStruct(*t, c)
+}

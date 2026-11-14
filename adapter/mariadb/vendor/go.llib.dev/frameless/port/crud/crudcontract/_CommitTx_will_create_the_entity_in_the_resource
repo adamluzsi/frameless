@@ -1,0 +1,26 @@
+--- FAIL: Test_memory (3.00s)
+    --- FAIL: Test_memory/Creator (3.00s)
+        --- FAIL: Test_memory/Creator/Creator (3.00s)
+            --- FAIL: Test_memory/Creator/Creator/#Create (3.00s)
+                --- FAIL: Test_memory/Creator/Creator/#Create/OnePhaseCommitProtocol_BeginTx_->_Create_->_CommitTx_will_create_the_entity_in_the_resource (3.00s)
+                    Creator.go:211: [NoError] Non-nil error value is received.
+                        value:
+                        
+                        &errors.errorString{
+                        	s: "context canceled",
+                        }
+                        
+                        error:	context canceled
+    Log.go:16:                                                       
+        	 	 
+        	 	  Creator
+        	 	    Creator
+        	 	      describe #Create
+        	 	        OnePhaseCommitProtocol
+        	 	          [91mBeginTx -> Create -> CommitTx will create the entity in the resource [FAIL][0m
+        	 	
+    Log.go:16:                                                       
+        	 	 TESTCASE_SEED=-8310631943739058736
+FAIL
+exit status 1
+FAIL	go.llib.dev/frameless/port/crud/crudcontract	3.351s

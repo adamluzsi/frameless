@@ -233,6 +233,10 @@ func (l *Logger) getLevel() Level {
 	return l.Level
 }
 
+// Clone returns a copy of the Logger's configuration.
+// The clone always starts with synchronous logging:
+// the original's logging strategy, including an active AsyncLogging pipeline, is bound to the original Logger,
+// so sharing it would make the clone write with the original's configuration to the original's Out.
 func (l *Logger) Clone() *Logger {
 	return &Logger{
 		Out:          l.Out,
@@ -244,9 +248,8 @@ func (l *Logger) Clone() *Logger {
 		MarshalFunc:  l.MarshalFunc,
 		KeyFormatter: l.KeyFormatter,
 		Hijack:       l.Hijack,
-		strategy: _LoggerStrategy{
-			strategy: l.strategy.strategy,
-		},
+		TestingTB:    l.TestingTB,
+		FlushTimeout: l.FlushTimeout,
 	}
 }
 
