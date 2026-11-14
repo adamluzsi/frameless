@@ -766,6 +766,12 @@ func TestServeMux(t *testing.T) {
 							"expected that the unknown command name is mentioned")
 					})
 
+					s.Then("the usage shows the program alone, as the unknown name is not part of the command path", func(t *testcase.T) {
+						act(t)
+
+						assert.MatchRegexp(t, response.Get(t).Err.String(), `(?m)^Usage: \S+$`)
+					})
+
 					s.Context("but when other commands are registered", func(s *testcase.Spec) {
 						mux.Let(s, func(t *testcase.T) *cli.ServeMux {
 							m := mux.Super(t)
@@ -789,6 +795,105 @@ func TestServeMux(t *testing.T) {
 						})
 					})
 				})
+			})
+		})
+
+		s.When("a group of sub-commands is registered", func(s *testcase.Spec) {
+			var (
+				groupName      = let.StringNC(s, 5, CommandNameCharset)
+				subCommandName = let.Var(s, func(t *testcase.T) string {
+					return random.Unique(func() string { return t.Random.StringNC(5, CommandNameCharset) },
+						groupName.Get(t))
+				})
+				outerCommandName = let.Var(s, func(t *testcase.T) string {
+					return random.Unique(func() string { return t.Random.StringNC(5, CommandNameCharset) },
+						groupName.Get(t), subCommandName.Get(t))
+				})
+				subCommandReply = let.String(s)
+			)
+
+			mux.Let(s, func(t *testcase.T) *cli.ServeMux {
+				m := mux.Super(t)
+				m.Handle(outerCommandName.Get(t), StubServeCLIFunc(nil))
+				m.Sub(groupName.Get(t)).Handle(subCommandName.Get(t), StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {
+					fmt.Fprint(w, subCommandReply.Get(t))
+				}))
+				return m
+			})
+
+			thenTheCommandsOfTheGroupAreListed := func(s *testcase.Spec) {
+				s.Then("the sub-commands of the group are listed, not the commands of the outer mux", func(t *testcase.T) {
+					act(t)
+
+					errOut := response.Get(t).Err.String()
+					assert.Contains(t, errOut, "- "+subCommandName.Get(t))
+					assert.NotContains(t, errOut, "- "+outerCommandName.Get(t))
+				})
+			}
+
+			s.And("the args point to a sub-command of the group", func(s *testcase.Spec) {
+				request.Let(s, func(t *testcase.T) *cli.Request {
+					r := request.Super(t)
+					r.Args = append([]string{groupName.Get(t), subCommandName.Get(t)}, r.Args...)
+					return r
+				})
+
+				s.Then("the sub-command is executed", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.Equal(t, response.Get(t).Out.String(), subCommandReply.Get(t))
+				})
+			})
+
+			s.And("the args stop at the group", func(s *testcase.Spec) {
+				request.Let(s, func(t *testcase.T) *cli.Request {
+					r := request.Super(t)
+					r.Args = []string{groupName.Get(t)}
+					return r
+				})
+
+				s.Then("bad request error code returned", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				})
+
+				thenTheCommandsOfTheGroupAreListed(s)
+			})
+
+			s.And("the args point to an unknown sub-command of the group", func(s *testcase.Spec) {
+				unknownName := let.Var(s, func(t *testcase.T) string {
+					return random.Unique(func() string { return t.Random.StringNC(5, CommandNameCharset) },
+						subCommandName.Get(t))
+				})
+
+				request.Let(s, func(t *testcase.T) *cli.Request {
+					r := request.Super(t)
+					r.Args = []string{groupName.Get(t), unknownName.Get(t)}
+					return r
+				})
+
+				s.Then("bad request error code returned", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+				})
+
+				s.Then("the unknown sub-command is reported", func(t *testcase.T) {
+					act(t)
+
+					assert.Empty(t, response.Get(t).Out.String())
+					assert.Contains(t, response.Get(t).Err.String(), "command is unknown: "+unknownName.Get(t))
+				})
+
+				s.Then("the usage shows the path of the group, without the unknown name", func(t *testcase.T) {
+					act(t)
+
+					assert.MatchRegexp(t, response.Get(t).Err.String(), `(?m)^Usage: \S+ `+regexp.QuoteMeta(groupName.Get(t))+`$`)
+				})
+
+				thenTheCommandsOfTheGroupAreListed(s)
 			})
 		})
 
@@ -1094,6 +1199,146 @@ func TestServeMux(t *testing.T) {
 		})
 	})
 
+	s.Describe("#Handle", func(s *testcase.Spec) {
+		var (
+			pattern = let.Var(s, makePattern)
+			reply   = let.String(s)
+			handler = let.Var(s, func(t *testcase.T) cli.Handler {
+				return StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {
+					fmt.Fprint(w, reply.Get(t))
+				})
+			})
+		)
+		act := func(t *testcase.T) {
+			mux.Get(t).Handle(pattern.Get(t), handler.Get(t))
+		}
+
+		serve := func(t *testcase.T, m *cli.ServeMux, args ...string) *cli.ResponseRecorder {
+			rr := &cli.ResponseRecorder{}
+			m.ServeCLI(rr, &cli.Request{Args: args, Body: &bytes.Buffer{}})
+			return rr
+		}
+
+		// thenItPanicsWithAConflict expects the panic message to point at both registrations,
+		// the same way as http.ServeMux does.
+		thenItPanicsWithAConflict := func(t *testcase.T, registeredPattern, reason string) {
+			msg := fmt.Sprint(assert.Panic(t, func() { act(t) }))
+			t.OnFail(func() { t.Log("panic message:", msg) })
+
+			assert.Contains(t, msg, fmt.Sprintf("pattern %q (registered at ", pattern.Get(t)))
+			assert.Contains(t, msg, fmt.Sprintf("conflicts with pattern %q (registered at ", registeredPattern))
+			assert.Equal(t, strings.Count(msg, "cli_test.go:"), 2, "expected the location of both registrations")
+			assert.Contains(t, msg, reason)
+		}
+
+		s.Then("the handler is routed by the pattern", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, serve(t, mux.Get(t), pattern.Get(t)).Out.String(), reply.Get(t))
+		})
+
+		s.When("the pattern is a path of names", func(s *testcase.Spec) {
+			var (
+				groupName   = let.Var(s, makePattern)
+				commandName = let.Var(s, makePattern)
+			)
+			pattern.Let(s, func(t *testcase.T) string {
+				return groupName.Get(t) + " " + commandName.Get(t)
+			})
+
+			s.Then("the handler is routed through the group of sub-commands", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, serve(t, mux.Get(t), groupName.Get(t), commandName.Get(t)).Out.String(), reply.Get(t))
+			})
+
+			s.Then("the handler is registered in the group that Sub returns", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, serve(t, mux.Get(t).Sub(groupName.Get(t)), commandName.Get(t)).Out.String(), reply.Get(t))
+			})
+
+			s.And("a name in the path is already registered as a command", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					mux.Get(t).Handle(groupName.Get(t), StubServeCLIFunc(nil))
+				})
+
+				s.Then("it panics, as a name can't be both a command and a group of sub-commands", func(t *testcase.T) {
+					thenItPanicsWithAConflict(t, groupName.Get(t),
+						fmt.Sprintf("%q is a command, so it can't be a group of sub-commands as well", groupName.Get(t)))
+				})
+			})
+		})
+
+		s.When("the handler is a ServeMux", func(s *testcase.Spec) {
+			subCommandName := let.Var(s, makePattern)
+
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				sub := &cli.ServeMux{}
+				sub.Handle(subCommandName.Get(t), handler.Super(t))
+				return sub
+			})
+
+			s.Then("the commands of the mounted mux are routed", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, serve(t, mux.Get(t), pattern.Get(t), subCommandName.Get(t)).Out.String(), reply.Get(t))
+			})
+		})
+
+		s.When("the pattern is already registered as a command", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				mux.Get(t).Handle(pattern.Get(t), StubServeCLIFunc(nil))
+			})
+
+			s.Then("it panics, like http.ServeMux on a duplicate registration", func(t *testcase.T) {
+				thenItPanicsWithAConflict(t, pattern.Get(t),
+					fmt.Sprintf("the %q command is registered twice", pattern.Get(t)))
+			})
+		})
+
+		s.When("the pattern is already registered as a group of sub-commands", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				mux.Get(t).Sub(pattern.Get(t))
+			})
+
+			s.Then("it panics, as a name can't be both a group of sub-commands and a command", func(t *testcase.T) {
+				thenItPanicsWithAConflict(t, pattern.Get(t),
+					fmt.Sprintf("%q is a group of sub-commands, so it can't be a command as well", pattern.Get(t)))
+			})
+		})
+
+		s.When("the pattern is empty", func(s *testcase.Spec) {
+			pattern.Let(s, func(t *testcase.T) string {
+				return random.Pick(t.Random, "", " ", "\t")
+			})
+
+			s.Then("it panics", func(t *testcase.T) {
+				assert.Equal[any](t, assert.Panic(t, func() { act(t) }), "pattern cannot be empty")
+			})
+		})
+
+		s.When("the handler is nil", func(s *testcase.Spec) {
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				return nil
+			})
+
+			s.Then("it panics, like http.ServeMux on a nil handler", func(t *testcase.T) {
+				assert.Equal[any](t, assert.Panic(t, func() { act(t) }), "nil cli.Handler")
+			})
+		})
+
+		s.When("the handler is a nil cli.HandlerFunc", func(s *testcase.Spec) {
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				return cli.HandlerFunc(nil)
+			})
+
+			s.Then("it panics, like http.ServeMux on a nil handler", func(t *testcase.T) {
+				assert.Equal[any](t, assert.Panic(t, func() { act(t) }), "nil cli.Handler")
+			})
+		})
+	})
+
 	s.Describe("#Sub", func(s *testcase.Spec) {
 		var (
 			pattern = let.Var(s, makePattern)
@@ -1162,6 +1407,37 @@ func TestServeMux(t *testing.T) {
 				sub.Get(t).ServeCLI(rr, req)
 
 				assert.Contains(t, string(rr.CombinedOutput()), commandName.Get(t))
+			})
+		})
+
+		s.When("the pattern is a path of names", func(s *testcase.Spec) {
+			var (
+				groupName = let.Var(s, makePattern)
+				subName   = let.Var(s, makePattern)
+			)
+			pattern.Let(s, func(t *testcase.T) string {
+				return groupName.Get(t) + " " + subName.Get(t)
+			})
+
+			s.Then("it returns the same Mux as calling Sub with each name", func(t *testcase.T) {
+				sub := act(t)
+
+				assert.True(t, sub == mux.Get(t).Sub(groupName.Get(t)).Sub(subName.Get(t)))
+			})
+		})
+
+		s.When("the pattern is already registered as a command", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				mux.Get(t).Handle(pattern.Get(t), StubServeCLIFunc(nil))
+			})
+
+			s.Then("it panics, as a name can't be both a command and a group of sub-commands", func(t *testcase.T) {
+				msg := fmt.Sprint(assert.Panic(t, func() { act(t) }))
+				t.OnFail(func() { t.Log("panic message:", msg) })
+
+				assert.Contains(t, msg, fmt.Sprintf("conflicts with pattern %q (registered at ", pattern.Get(t)))
+				assert.Equal(t, strings.Count(msg, "cli_test.go:"), 2, "expected the location of both registrations")
+				assert.Contains(t, msg, fmt.Sprintf("%q is a command, so it can't be a group of sub-commands as well", pattern.Get(t)))
 			})
 		})
 	})
@@ -3017,12 +3293,27 @@ func TestServeCLI(t *testing.T) {
 
 		thenItIsOSIndependent(s)
 
+		thenBlankLinesOnlySeparateSections := func(s *testcase.Spec) {
+			s.Then("a single blank line separates the sections, and none trails the text", func(t *testcase.T) {
+				act(t)
+
+				out := string(response.Get(t).CombinedOutput())
+				assert.NotContains(t, out, "\n\n\n")
+				assert.True(t, strings.HasSuffix(out, "\n"), assert.Message("expected that the text ends with a line break"))
+				assert.False(t, strings.HasSuffix(out, "\n\n"), assert.Message("expected no blank line at the end"))
+			})
+		}
+
+		thenBlankLinesOnlySeparateSections(s)
+
 		s.When("the help of a command is requested", func(s *testcase.Spec) {
 			args.Let(s, func(t *testcase.T) []string {
 				return []string{"cmd", "-help"}
 			})
 
 			thenItIsOSIndependent(s)
+
+			thenBlankLinesOnlySeparateSections(s)
 		})
 
 		s.When("the input is invalid", func(s *testcase.Spec) {
@@ -3038,6 +3329,8 @@ func TestServeCLI(t *testing.T) {
 			})
 
 			thenItIsOSIndependent(s)
+
+			thenBlankLinesOnlySeparateSections(s)
 		})
 
 		s.When("the command is unknown", func(s *testcase.Spec) {
@@ -3048,6 +3341,16 @@ func TestServeCLI(t *testing.T) {
 			})
 
 			thenItIsOSIndependent(s)
+
+			thenBlankLinesOnlySeparateSections(s)
+		})
+
+		s.When("the mux has no commands", func(s *testcase.Spec) {
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				return &cli.ServeMux{}
+			})
+
+			thenBlankLinesOnlySeparateSections(s)
 		})
 
 		s.When("the executable has a Windows .exe extension", func(s *testcase.Spec) {
@@ -3087,10 +3390,96 @@ func TestServeCLI(t *testing.T) {
 					"Usage: "+name.Get(t)+" cmd [OPTION]...\n"+
 					"\n"+
 					"Options:\n"+
-					"  -flag=[string]\n"+
-					"\n"+
-					"\n")
+					"  -flag=[string]\n")
 				assert.Empty(t, response.Get(t).Err.String())
+			})
+
+			s.And("the command has a summary and a description", func(s *testcase.Spec) {
+				handler.Let(s, func(t *testcase.T) cli.Handler {
+					var mux cli.ServeMux
+					mux.Sub("grp").Handle("cmd", CommandWithHelpText{
+						summary:     "the summary",
+						description: "the description",
+					})
+					return &mux
+				})
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"grp", "cmd", "-help"}
+				})
+
+				s.Then("a single blank line separates the usage, the summary and the description", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+					assert.Equal(t, response.Get(t).Out.String(), ""+
+						"Usage: "+name.Get(t)+" grp cmd\n"+
+						"\n"+
+						"the summary\n"+
+						"\n"+
+						"the description\n")
+				})
+			})
+		})
+
+		s.When("the help of a group is requested with a known executable name", func(s *testcase.Spec) {
+			name := let.StringNC(s, 8, random.CharsetAlpha())
+
+			handler.Let(s, func(t *testcase.T) cli.Handler {
+				var mux cli.ServeMux
+				grp := mux.Sub("grp").
+					WithSummary("the summary").
+					WithDescription("the description")
+				grp.Handle("cmd", CommandWithHelpText{summary: "the cmd summary"})
+				grp.Handle("other", CommandWithHelpText{})
+				return &mux
+			})
+			args.Let(s, func(t *testcase.T) []string {
+				return []string{"grp", "-help"}
+			})
+			s.Before(func(t *testcase.T) {
+				osint.StubExecutable(t, filepath.Join("bin", name.Get(t)))
+			})
+
+			s.Then("a single blank line separates the usage, the summary, the description and the commands", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.Equal(t, response.Get(t).Out.String(), ""+
+					"Usage: "+name.Get(t)+" grp\n"+
+					"\n"+
+					"the summary\n"+
+					"\n"+
+					"the description\n"+
+					"\n"+
+					"Commands:\n"+
+					" - cmd: the cmd summary\n"+
+					" - other\n")
+				assert.Empty(t, response.Get(t).Err.String())
+			})
+
+			s.And("the sub-command is unknown", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string {
+					return []string{"grp", "unknown"}
+				})
+
+				s.Then("a blank line separates the help of the group and the error", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Empty(t, response.Get(t).Out.String())
+					assert.Equal(t, response.Get(t).Err.String(), ""+
+						"Usage: "+name.Get(t)+" grp\n"+
+						"\n"+
+						"the summary\n"+
+						"\n"+
+						"the description\n"+
+						"\n"+
+						"Commands:\n"+
+						" - cmd: the cmd summary\n"+
+						" - other\n"+
+						"\n"+
+						"command is unknown: unknown\n")
+				})
 			})
 		})
 
@@ -4452,10 +4841,27 @@ func Test_variadicArgInput(t *testing.T) {
 
 		cli.ServeCLI(&mux, rr, req)
 		assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
-		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ VS1 VS2 VS3 VS4 VS5`,
+		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ cmd VS1 VS2 VS3 VS4 VS5`,
 			"expected that the usage showcase how many values expected for the VS input arg field")
 		assert.Contains(t, rr.Err.String(), "too few arguments for VS",
 			"expected that the error output points out that too few argument is provided for VS")
+	})
+
+	s.Test("when the help of a command with only variadic arguments is requested, then the usage keeps the command path", func(t *testcase.T) {
+		var mux cli.ServeMux
+		mux.Sub("grp").Handle("cmd", CommandWithVariadicArg2{})
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: []string{"grp", "cmd", "-help"},
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, rr.Code, cli.ExitCodeOK)
+		assert.MatchRegexp(t, rr.Out.String(), `(?m)^Usage: \S+ grp cmd Args$`)
 	})
 
 	s.Test("when optional variadic argument is simply not provided at all, then it should be accepted without an issue", func(t *testcase.T) {
@@ -4504,7 +4910,7 @@ func Test_variadicArgInput(t *testing.T) {
 		cli.ServeCLI(&mux, rr, req)
 		assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
 		assert.False(t, ran, "expected that the command's ServeCLI was not executed due to bad input")
-		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ VS1 VS2 VS3 VS4 VS5`,
+		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ cmd VS1 VS2 VS3 VS4 VS5`,
 			"expected that the usage showcase how many values expected for the VS input arg field")
 		assert.Contains(t, rr.Err.String(), "too few arguments for VS",
 			"expected that the error output points out that too few argument is provided for VS")

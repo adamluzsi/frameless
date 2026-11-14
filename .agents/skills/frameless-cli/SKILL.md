@@ -113,6 +113,7 @@ func main() {
 Rules:
 
 - Keep `main` thin. Put commands and a `NewMux(deps...)` constructor in an importable package, so tests run the exact routing table production uses.
+- Group related commands under a sub-mux: `taskmux := mux.Sub("task")`, then `taskmux.Handle("add", TaskAddCommand{...})`, so `llmate task add write the readme` runs `TaskAddCommand`. Give the sub-mux a `WithSummary`, and put the command's flags after the command path. A name is either a command or a group, never both. Like `http.ServeMux`, `Handle` and `Sub` panic on a misuse and name both registration sites: a duplicate command, a handler on a group's name, a group under a command's name, an empty pattern, or a nil handler. A verified example covering routing rules, the registration panics, free-text variadic args, help and the spec is in [references/subcommands.md](references/subcommands.md).
 - Prefer value types with value receivers for handlers. The pipeline parses into a copy, so every run starts from the registered value. Pointer handlers (`&Cmd{}`) are fine too, since a CLI process runs its handler only once. Parsing writes into the registered instance, though, so in tests build a fresh pointer handler (and the mux holding it) for every run.
 - Inject dependencies as exported, **untagged** fields (ports/interfaces) when you register the command.
   - The parser walks exported nested and embedded structs, pointers and interface values, including dependency values.
@@ -353,6 +354,8 @@ The one host detail left is the program name in the `Usage:` line: it is the run
 - `cli.ServeCLI`, `cli.Build` and the deprecated `cli.ConfigureHandler` all go through `metaH.Configure`, so they share the binding logic and the definition checks. A new tag or field type must behave the same in all of them, show up in the generated help, and report bad values as exit code 2 with `Invalid input:`.
 - `metaH.Configure` checks the definition first, regardless of the inputs: `checkArgPositions` (returns an error) and `checkFlagCollisions` (panics with the flag and both `metaRef.FieldPath`s). Then it parses flags, assigns args, rejects a partially given range (`checkArgRanges`), and calls `load`.
 - Framework text goes through `printfln`/`lineSeparator` (always `"\n"`) and `execName()` (base name without `.exe`). Inside the package, `osint.StubExecutable(t, path)` pins the program name so help can be compared exactly; tests that stub it or set env can't run in parallel.
+- `helpCreateUsage` builds a command's help from sections (usage, summary, description, options, arguments, environments) joined by one blank line. The `Usage:` line always has the full command path. `toHelp` puts one blank line before an input error and trims the trailing ones, and `ServeCLI` ends the text with one line break.
+- `ServeMux.help` builds a group's help the same way, from usage, summary, description and the `Commands:` list. An unknown name adds `command is unknown: <name>` after one more blank line. A command or group without a summary is listed as ` - name`, without a colon.
 - Keep `pkg/cli/README.md` and `pkg/cli/example/{direct,mux}` in sync with API changes. `TestREADME` fails on deprecated names and when the README's example sections drift from the example files.
 - Time layouts come from the shared `tagint.TimeLayout` tag handler (`pkg/internal/tagint`), which `pkg/env` uses too.
 - Every raw input (flag, arg element, env, `default` tag) is parsed by `metaRef.parseValue`, which applies the `sep` tag and the `layout` tag, and merges a JSON object onto the field's value through `tagint.ParseOnto`. Don't call `convkit.ParseReflect` directly, or that input skips them.
@@ -361,6 +364,7 @@ The one host detail left is the program name in the `Usage:` line: it is the run
 - Input discovery is `metaFor`: a `reftree.Walk` over the handler (`metaH.walkFields`), which returns `reftree.Skip` on an opaque field (`tagint.IsOpaque`) after the field itself is registered. `ServeCLI`, `Build`, `ConfigureHandler` and the help all go through it, so a discovery change applies to all of them.
 - Middleware and Validatable discovery is `fieldsOf[T]`, over the same `walkFields`. `asInterface` accepts a pointer receiver on an addressable field. `isPromoted` leaves out an embedded field whose holder is a T, following Go's method promotion. A pointer identity set keeps a shared pointer from being collected twice. `metaH.Handler` wraps the handler with the middlewares; `checkValidatables` validates inner first, then the handler.
 - The `opaque` tag handler lives in `pkg/internal/tagint`, and `pkg/env` uses it too. Change it there, so both packages skip the same fields.
+- A `ServeMux` entry (`muxEntry`) is either a command (`Handler`) or a group (`Mux`), never both. `Handle` and `Sub` resolve a path through `ServeMux.group`, which creates the missing groups and panics when a name on the path is a command. The panic text comes from `conflict`, which follows the `http.ServeMux` wording (`pattern %q (registered at %s) conflicts with pattern %q (registered at %s)`), with the location from `registeredAt`. `registeredAt` uses `runtime.Caller(2)`, so call it directly in the exported method. Existing entries are only read, and new ones are only added after them, so a panic leaves the mux as it was. In `ServeMux.ServeCLI`, a group gets the rest of the args and answers a missing or unknown sub-command with its own help. A name joins the command path (`ctxCommandName`, read by the `Usage:` line) only after it is routed, so an unknown name never shows up in the usage.
 - Known rough edges, all candidates for upstream fixes:
   - flags after the first positional are silently ignored instead of rejected;
   - tags inside dependency structs are processed, unless the field is tagged `opaque:""`.
@@ -375,6 +379,7 @@ The one host detail left is the program name in the `Usage:` line: it is the run
 - `pkg/cli/example/direct`, `pkg/cli/example/mux`: runnable examples
 - `pkg/cli/*_test.go`: behaviour specs
 - [references/worked-example.md](references/worked-example.md): a complete adapter with its spec
+- [references/subcommands.md](references/subcommands.md): command groups with `ServeMux.Sub` (`llmate task add ...`), with its spec
 
 ## Checklist
 

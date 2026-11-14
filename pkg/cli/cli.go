@@ -228,19 +228,6 @@ func (m *ServeMux) Description() string {
 	return m.description
 }
 
-func (m *ServeMux) helpSummaryDescription(w io.Writer) {
-	var hasSummary = 0 < len(m.summary)
-	if hasSummary {
-		printfln(w, m.summary)
-	}
-	if 0 < len(m.description) {
-		if hasSummary {
-			m.helpLineBreak(w, 1)
-		}
-		printfln(w, m.description)
-	}
-}
-
 // Multiplexer is an interface that, when implemented by a command,
 // delegates the parsing of input arguments and options to the Handler in cli.Main.
 //
@@ -249,31 +236,96 @@ type Multiplexer interface {
 	Handle(pattern string, h Handler)
 }
 
+// muxEntry is either a command (Handler) or a group of sub-commands (Mux), never both.
 type muxEntry struct {
 	Handler Handler
-	// meta    *meta
-	Mux *ServeMux
+	Mux     *ServeMux
+
+	// pattern and loc tell which registration made the entry, for the conflict panics.
+	pattern string
+	loc     string
 }
 
+// Handle registers the handler for the given pattern.
+// A pattern is a command name, or a path of names separated by spaces, like "task add".
+// The names before the last one are groups of sub-commands, the same as Sub makes them.
+//
+// A name is either a command or a group of sub-commands, never both.
+// Like http.ServeMux, Handle panics if the pattern is empty, the handler is nil,
+// or the pattern conflicts with one that is already registered:
+// the same command is registered twice, or a name would be both a command and a group.
 func (m *ServeMux) Handle(pattern string, h Handler) {
 	path := m.toPath(pattern)
 	if len(path) == 0 {
 		panic("pattern cannot be empty")
 	}
-	e := m.entryFor(path)
-	if e.Handler != nil {
-		panic(fmt.Sprintf("The %q pattern already had a handler registered", pattern))
+	if h == nil {
+		panic("nil cli.Handler")
 	}
-	e.Handler = h
+	if fn, ok := h.(HandlerFunc); ok && fn == nil {
+		panic("nil cli.Handler")
+	}
+	var (
+		loc    = registeredAt()
+		parent = m.group(path[:len(path)-1], pattern, loc)
+		name   = path[len(path)-1]
+	)
+	if e, ok := parent.entries()[name]; ok {
+		reason := fmt.Sprintf("the %q command is registered twice", strings.Join(path, " "))
+		if e.Mux != nil {
+			reason = fmt.Sprintf("%q is a group of sub-commands, so it can't be a command as well", strings.Join(path, " "))
+		}
+		panic(conflict(pattern, loc, e, reason))
+	}
+	parent.entries()[name] = &muxEntry{Handler: h, pattern: pattern, loc: loc}
 }
 
+// Sub returns the ServeMux of the group of sub-commands under the given pattern,
+// and makes the group when it is not registered yet,
+// so repeated calls with the same pattern return the same ServeMux.
+// A pattern with spaces is a path, so Sub("task queue") is the same as Sub("task").Sub("queue").
+//
+// Sub panics if the pattern is empty, or a name in it is already registered as a command,
+// since a name is either a command or a group of sub-commands, never both.
 func (m *ServeMux) Sub(pattern string) *ServeMux {
 	path := m.toPath(pattern)
 	if len(path) == 0 {
 		panic("pattern cannot be empty")
 	}
-	e := m.entryFor(path)
-	return e.Mux
+	return m.group(path, pattern, registeredAt())
+}
+
+// group returns the ServeMux at the end of the path of group names,
+// and makes the groups that are not registered yet.
+func (m *ServeMux) group(path []string, pattern, loc string) *ServeMux {
+	mux := m
+	for i, name := range path {
+		e, ok := mux.entries()[name]
+		if !ok {
+			e = &muxEntry{Mux: &ServeMux{}, pattern: pattern, loc: loc}
+			mux.entries()[name] = e
+		}
+		if e.Mux == nil {
+			reason := fmt.Sprintf("%q is a command, so it can't be a group of sub-commands as well", strings.Join(path[:i+1], " "))
+			panic(conflict(pattern, loc, e, reason))
+		}
+		mux = e.Mux
+	}
+	return mux
+}
+
+func conflict(pattern, loc string, registered *muxEntry, reason string) string {
+	return fmt.Sprintf("pattern %q (registered at %s) conflicts with pattern %q (registered at %s):\n%s",
+		pattern, loc, registered.pattern, registered.loc, reason)
+}
+
+// registeredAt returns the location of the code which called ServeMux.Handle or ServeMux.Sub.
+// It must be called directly from them.
+func registeredAt() string {
+	if _, file, line, ok := runtime.Caller(2); ok {
+		return fmt.Sprintf("%s:%d", file, line)
+	}
+	return "unknown location"
 }
 
 func (m *ServeMux) ServeCLI(w ResponseWriter, r *Request) {
@@ -283,37 +335,15 @@ func (m *ServeMux) ServeCLI(w ResponseWriter, r *Request) {
 	}
 	if len(r.Args) == 0 {
 		w.ExitCode(2)
-		o := errOut(w)
-		m.helpUsage(r.Context(), o)
-		m.helpSummaryDescription(o)
-		m.helpLineBreak(o, 1)
-		m.helpCommands(o)
+		printfln(errOut(w), m.help(r.Context()))
 		return
 	}
 
 	name, ok := slicekit.Shift(&r.Args)
 	if !ok {
 		w.ExitCode(2)
-		o := errOut(w)
-		m.helpUsage(r.Context(), o)
-		m.helpSummaryDescription(o)
-		m.helpLineBreak(o, 1)
-		m.helpCommands(o)
+		printfln(errOut(w), m.help(r.Context()))
 		return
-	}
-
-	{ // configure command name
-		var (
-			ctx        = r.Context()
-			cmd string = name
-		)
-		if !isHelpFlag(name) {
-			if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
-				cmd = cmdName + " " + name
-			}
-
-			r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
-		}
 	}
 
 	entry, ok := m.entries()[name]
@@ -328,40 +358,20 @@ func (m *ServeMux) ServeCLI(w ResponseWriter, r *Request) {
 			o = errOut(w)
 		}
 
-		m.helpUsage(r.Context(), o)
-		m.helpSummaryDescription(o)
-		m.helpLineBreak(o, 1)
-		m.helpCommands(o)
-
-		if !isHelp {
-			printfln(o, "command is unknown: "+name, "")
+		help := m.help(r.Context())
+		if !isHelp { // a blank line between the help and the error, as with the help of a command
+			help += lineSeparator + lineSeparator + "command is unknown: " + name
 		}
-
+		printfln(o, help)
 		return
 	}
 
-	if entry.Mux != nil && 0 < len(r.Args) {
-		next := r.Args[0]
-		if _, ok := entry.Mux.entries()[next]; ok {
-			entry.Mux.ServeCLI(w, r)
-			return
-		}
-		// If any remaining arg is a help flag and there's no Handler, recurse into sub-mux to show its help
-		if entry.Handler == nil {
-			if slices.ContainsFunc(r.Args, isHelpFlag) {
-				entry.Mux.ServeCLI(w, r)
-				return
-			}
-		}
-	}
+	// the name joins the command path only once it is routed,
+	// so the usage of an unknown name shows the path of this mux, not the unknown name.
+	r = r.WithContext(ctxCommandName.ContextWith(r.Context(), joinCommandName(commandName(r.Context()), name)))
 
-	if entry.Handler == nil {
-		w.ExitCode(2)
-		o := errOut(w)
-		m.helpUsage(r.Context(), o)
-		m.helpSummaryDescription(o)
-		m.helpLineBreak(o, 1)
-		m.helpCommands(o)
+	if entry.Mux != nil { // a group routes the rest of the args, and answers a missing or unknown sub-command itself
+		entry.Mux.ServeCLI(w, r)
 		return
 	}
 
@@ -373,26 +383,6 @@ func isHelpFlag(v string) bool {
 	fs.SetOutput(io.Discard)
 	err := fs.Parse([]string{v})
 	return errors.Is(err, flag.ErrHelp)
-}
-
-func (m *ServeMux) entryFor(path []string) *muxEntry {
-	var (
-		ent *muxEntry
-		mux = m
-	)
-	for _, name := range path {
-		e, ok := mux.entries()[name]
-		if !ok {
-			e = &muxEntry{}
-			mux.entries()[name] = e
-		}
-		if e.Mux == nil {
-			e.Mux = &ServeMux{}
-		}
-		mux = e.Mux
-		ent = e
-	}
-	return ent
 }
 
 func (m ServeMux) toPath(pattern string) []string {
@@ -548,6 +538,13 @@ var ctxCommandName contextkit.ValueHandler[ctxCommandNameKey, string]
 func commandName(ctx context.Context) string {
 	cmd, _ := ctxCommandName.Lookup(ctx)
 	return cmd
+}
+
+func joinCommandName(path, name string) string {
+	if path == "" {
+		return name
+	}
+	return path + " " + name
 }
 
 func execName() string {

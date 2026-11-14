@@ -426,7 +426,6 @@ Options:
 Arguments:
   Files [[]string]
 
-
 Invalid input:
 	flag: format
 

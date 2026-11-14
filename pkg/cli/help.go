@@ -22,18 +22,16 @@ func isHelp(err error) bool {
 }
 
 func toHelp(ctx context.Context, h Handler, err error) string {
-	isHelpErr := isHelp(err)
-
 	usage, usageErr := Usage(h, commandName(ctx))
 	if usageErr != nil {
 		panic(usageErr.Error())
 	}
 	var o = &bytes.Buffer{}
 
-	printfln(o, usage)
-	printfln(o)
+	printfln(o, strings.TrimRight(usage, lineSeparator))
 
-	if !isHelpErr && err != nil {
+	if err != nil && !isHelp(err) {
+		printfln(o) // a blank line between the help and the error
 		// TODO: we could integrate a check here to see if Handler implements an ErrorHandler to handle validation issues
 		if eii, ok := errorkit.As[ErrInvalidInput](err); ok {
 			defaultInvalidInputErrorHandler(ctx, o, eii)
@@ -42,11 +40,11 @@ func toHelp(ctx context.Context, h Handler, err error) string {
 		}
 	}
 
-	return o.String()
+	// the caller ends the help with the line break, so no blank lines trail it.
+	return strings.TrimRight(o.String(), lineSeparator)
 }
 
 func defaultInvalidInputErrorHandler(ctx context.Context, w io.Writer, eii ErrInvalidInput) {
-	printfln(w)
 	printfln(w, "Invalid input:")
 	if tag, ok := eii.ArgTag(); ok && tag.Begin != nil {
 		printfln(w, "\targ"+tag.PositionExpr())
@@ -81,23 +79,28 @@ func Usage(h Handler, command string) (string, error) {
 	return helpCreateUsage(h, command), nil
 }
 
-func (m ServeMux) helpLineBreak(w io.Writer, n int) {
-	w.Write([]byte(strings.Repeat(lineSeparator, n)))
-}
-
-func (m ServeMux) helpUsage(ctx context.Context, w io.Writer) {
-	usageName := execName()
+// help returns the help of the mux: its usage, summary, description and commands.
+// Like the help of a command, a blank line separates the sections, and no line break ends it.
+func (m *ServeMux) help(ctx context.Context) string {
+	usage := "Usage: " + execName()
 	if cmd, ok := ctxCommandName.Lookup(ctx); ok {
-		usageName += " " + cmd
+		usage += " " + cmd
 	}
-	var msg []string
-	msg = append(msg, fmt.Sprintf("Usage: %s", usageName))
-	printfln(w, msg...)
+	var sections = []string{usage}
+	if 0 < len(m.summary) {
+		sections = append(sections, m.summary)
+	}
+	if 0 < len(m.description) {
+		sections = append(sections, m.description)
+	}
+	if cmds := m.helpCommands(); 0 < len(cmds) {
+		sections = append(sections, strings.Join(append([]string{"Commands:"}, cmds...), lineSeparator))
+	}
+	return strings.Join(sections, lineSeparator+lineSeparator)
 }
 
 func helpCreateUsage(h Handler, command string) string {
 	const indent = "  "
-	var lines []string
 
 	ptr := reflect.New(reflect.TypeOf(h))
 	ptr.Elem().Set(reflect.ValueOf(h))
@@ -115,21 +118,15 @@ func helpCreateUsage(h Handler, command string) string {
 		}
 	}
 
-	// Check if we have any non-range (single-index) arguments
-	var hasSingleIndexArg bool
-	for _, arg := range args {
-		if tag, ok := arg.Ref.ArgTag(); ok {
-			if !arg.Variadic && tag.Begin != nil && tag.End == nil {
-				hasSingleIndexArg = true
-				break
-			}
-		}
+	// sections are separated by a blank line
+	var sections []string
+	section := func(lines ...string) {
+		sections = append(sections, strings.Join(lines, lineSeparator))
 	}
 
 	var usage string
 	usage += "Usage: " + execName()
-	// Include command name unless we only have range arguments (which get expanded)
-	if 0 < len(command) && !(!hasSingleIndexArg && len(args) > 0) {
+	if 0 < len(command) {
 		usage += " " + command
 	}
 	if 0 < len(flags) {
@@ -148,18 +145,18 @@ func helpCreateUsage(h Handler, command string) string {
 		}
 	}
 
-	lines = append(lines, usage, "")
+	section(usage)
 
-	if s, ok := h.(HelpSummary); ok {
-		lines = append(lines, "", s.Summary(), "")
+	if s, ok := h.(HelpSummary); ok && 0 < len(s.Summary()) {
+		section(s.Summary())
 	}
 
-	if s, ok := h.(HelpDescription); ok {
-		lines = append(lines, "", s.Description(), "")
+	if s, ok := h.(HelpDescription); ok && 0 < len(s.Description()) {
+		section(s.Description())
 	}
 
 	if 0 < len(flags) {
-		lines = append(lines, "Options:")
+		lines := []string{"Options:"}
 		for _, flag := range m.Flags() {
 			name, ok := slicekit.First(flag.Names)
 			if !ok {
@@ -199,13 +196,11 @@ func helpCreateUsage(h Handler, command string) string {
 				lines = append(lines, fmt.Sprintf("    -%s", flag.Names[i]))
 			}
 		}
+		section(lines...)
 	}
 
 	if 0 < len(args) {
-		if 0 < len(flags) {
-			lines = append(lines, "") // empty line for seperation
-		}
-		lines = append(lines, "Arguments:")
+		lines := []string{"Arguments:"}
 		for _, arg := range args {
 			line := fmt.Sprintf("  %s [%s]", arg.Name, arg.Ref.Node.StructField.Type.String())
 
@@ -224,11 +219,11 @@ func helpCreateUsage(h Handler, command string) string {
 
 			lines = append(lines, line)
 		}
+		section(lines...)
 	}
 
 	if 0 < len(envs) {
-		lines = append(lines, "") // empty line for seperation
-		lines = append(lines, "Environments:")
+		lines := []string{"Environments:"}
 		for _, ref := range envs {
 			refEnvs := ref.Envs()
 
@@ -275,35 +270,31 @@ func helpCreateUsage(h Handler, command string) string {
 			}
 
 		}
+		section(lines...)
 	}
 
-	return strings.Join(lines, lineSeparator)
+	return strings.Join(sections, lineSeparator+lineSeparator)
 }
 
-func (m ServeMux) helpCommands(w io.Writer) {
-	var msg []string
-
+// helpCommands returns the sorted lines of the commands list, one for each registered name.
+func (m *ServeMux) helpCommands() []string {
 	var cmds []string
 	for name, entry := range m.entries() {
-		var line string
-		line = " - " + name
-
+		var summary string
 		if entry.Handler != nil {
 			if h, ok := (entry.Handler).(HelpSummary); ok {
-				line += ": " + h.Summary()
+				summary = h.Summary()
 			}
-		} else if entry.Mux != nil && entry.Mux.summary != "" {
-			line += ": " + entry.Mux.summary
+		} else if entry.Mux != nil {
+			summary = entry.Mux.summary
 		}
 
+		line := " - " + name
+		if 0 < len(summary) {
+			line += ": " + summary
+		}
 		cmds = append(cmds, line)
 	}
-
-	if 0 < len(cmds) {
-		msg = append(msg, "Commands:")
-		sort.Strings(cmds)
-		msg = append(msg, cmds...)
-	}
-
-	printfln(w, msg...)
+	sort.Strings(cmds)
+	return cmds
 }

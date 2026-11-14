@@ -416,6 +416,16 @@ func (cmd TestCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 
 The `cli.ServeMux` allows you to dispatch the cli request between commands and sub-commands in your application.
 A command can also be registered with its full path, e.g. `m.Handle("sub bar", BarCommand{})`.
+Calling `sub bar` runs `BarCommand`, while calling `sub` alone, or with an unknown name, prints the commands of `sub` with exit code 2.
+
+A name is either a command or a group of sub-commands, never both.
+Like `http.ServeMux`, `Handle` and `Sub` panic on an incorrect registration,
+and the message points at both the new and the earlier registration:
+
+- the same command is registered twice, e.g. `m.Handle("foo", ...)` twice;
+- a command is registered on a group's name, e.g. `m.Handle("sub", ...)` after `m.Sub("sub")`;
+- a group is made under a command's name, e.g. `m.Sub("foo")` or `m.Handle("foo bar", ...)` after `m.Handle("foo", ...)`;
+- the pattern is empty, or the handler is nil.
 
 From [example/mux/main.go](example/mux/main.go):
 
