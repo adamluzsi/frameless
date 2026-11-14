@@ -1,6 +1,6 @@
 module background-processing
 
-go 1.26.0
+go 1.27
 
 require (
 	go.llib.dev/frameless v0.340.1

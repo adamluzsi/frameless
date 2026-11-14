@@ -66,6 +66,8 @@ func ExampleFileSystem() {
 func TestFileSystem(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	specFileSystemJail(s)
+
 	s.Test("implements fs.FS", func(t *testcase.T) {
 		fsys := localfs.FileSystem{RootPath: t.TempDir()}
 
@@ -126,11 +128,19 @@ func TestFileSystem(t *testing.T) {
 }
 
 func TestFileSystem_contractsFileSystem(t *testing.T) {
-	filesystemcontracts.FileSystem(localfs.FileSystem{RootPath: t.TempDir()}).Test(t)
+	t.Run("RootPath", func(t *testing.T) {
+		filesystemcontracts.FileSystem(localfs.FileSystem{RootPath: t.TempDir()}).Test(t)
+	})
+	t.Run("working directory", func(t *testing.T) {
+		// Without a RootPath, names are resolved from the working directory, like the os package does.
+		// This is where an fs.FS name escaping the file system would reach the rest of the disk.
+		t.Chdir(t.TempDir())
+		filesystemcontracts.FileSystem(localfs.FileSystem{}).Test(t)
+	})
 }
 
 func TestFileSystem_smoke(t *testing.T) {
-	mfs := &localfs.FileSystem{}
+	mfs := &localfs.FileSystem{RootPath: t.TempDir()}
 
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filemode.UserRWX)
@@ -179,7 +189,10 @@ func TestFileSystem_rootPath(t *testing.T) {
 		return filepath.Join(dir, makeName(t))
 	}
 
-	touchFile := func(t *testcase.T, fs filesystem.FileSystem, name string) error {
+	touchFile := func(t *testcase.T, fs interface {
+		filesystem.FileOpener
+		filesystem.Remover
+	}, name string) error {
 		t.Helper()
 		file, err := fs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, filemode.UserRWX)
 		if err == nil {
@@ -222,5 +235,12 @@ func TestFileSystem_rootPath(t *testing.T) {
 		assert.Must(t).ErrorIs(syscall.EACCES, fs.Mkdir(path, 0700))
 		assert.Must(t).ErrorIs(syscall.EACCES, func() error { _, err := fs.Stat(path); return err }())
 		assert.Must(t).ErrorIs(syscall.EACCES, fs.Remove(path))
+		assert.Must(t).ErrorIs(syscall.EACCES, fs.Rename(path, makeName(t)))
+
+		inside := makeName(t)
+		assert.Must(t).NoError(touchFile(t, fs, inside))
+		assert.Must(t).ErrorIs(syscall.EACCES, fs.Rename(inside, path))
+		_, err = fs.Stat(inside)
+		assert.Must(t).NoError(err, "the file stays inside the jail")
 	})
 }

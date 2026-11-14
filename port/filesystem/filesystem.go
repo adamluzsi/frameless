@@ -17,6 +17,11 @@ type File interface {
 }
 
 // FileSystem is a header interface for representing a file-system.
+// It combines FileOpener, FileInfoReader, DirectoryMaker and Remover.
+//
+// Consumers that need less should depend only on the role interfaces they use,
+// and compose Renamer when they need to rename files.
+// Unlike fs.FS, names follow the implementation's native path conventions.
 //
 // permission cheat sheet:
 //
@@ -39,23 +44,55 @@ type File interface {
 //	| ------rwx  | 0007 | Other |
 //	+------------+------+-------+
 type FileSystem interface {
-	// Stat returns a FileInfo describing the named file.
-	// If there is an error, it will be of type *PathError.
+	FileInfoReader
+	FileOpener
+	DirectoryMaker
+	Remover
+}
+
+// FileInfoReader reads metadata for a named file or directory.
+type FileInfoReader interface {
+	// Stat returns a FileInfo describing the named file or directory.
+	// If there is an error, it will be of type *fs.PathError.
 	Stat(name string) (fs.FileInfo, error)
-	// OpenFile is the generalized open call; most users will use Open
-	// or Create instead. It opens the named file with specified flag
-	// (O_RDONLY etc.). If the file does not exist, and the O_CREATE flag
-	// is passed, it is created with mode perm (before umask). If successful,
-	// methods on the returned File can be used for I/O.
-	// If there is an error, it will be of type *PathError.
+}
+
+var _ FileInfoReader = fs.StatFS(nil)
+
+// FileOpener opens or creates files with the requested access flags and permissions.
+type FileOpener interface {
+	// OpenFile opens the named file with the specified flags (os.O_RDONLY, etc.).
+	// If the file does not exist and os.O_CREATE is set, it is created with
+	// permissions perm (before umask).
+	// If there is an error, it will be of type *fs.PathError.
 	OpenFile(name string, flag int, perm fs.FileMode) (File, error)
+}
+
+// DirectoryMaker creates directories.
+type DirectoryMaker interface {
 	// Mkdir creates a new directory with the specified name and permission
 	// bits (before umask).
-	// If there is an error, it will be of type *PathError.
+	// If there is an error, it will be of type *fs.PathError.
 	Mkdir(name string, perm fs.FileMode) error
+}
+
+// Remover removes files and empty directories.
+type Remover interface {
 	// Remove removes the named file or (empty) directory.
-	// If there is an error, it will be of type *PathError.
+	// If there is an error, it will be of type *fs.PathError.
 	Remove(name string) error
+}
+
+// Renamer renames or moves files and directories.
+type Renamer interface {
+	// Rename renames (moves) oldName to newName.
+	// If newName already exists and is not a directory, Rename replaces it.
+	// If newName already exists and is a directory, Rename returns an error.
+	// The file keeps its content and mode.
+	// Whether replacing newName is atomic depends on the implementation,
+	// as with os.Rename, which is atomic on Unix, but not on every other platform.
+	// If there is an error, it will be of type *os.LinkError.
+	Rename(oldName, newName string) error
 }
 
 type FileInfo struct {

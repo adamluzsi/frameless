@@ -74,18 +74,18 @@ grep -rlE 'guardcontract\.[A-Z]' <dir>/adapter <dir>/pkg --include=*_test.go
 
 - Paste the printed directory into the next command. Don't use shell substitution.
 - In vendor mode, `go list` and `go doc` see only vendored packages, and `.Dir` is empty. Add `-mod=mod` (`go list -mod=mod …`, `GOFLAGS=-mod=mod go doc …`). It reads the module cache and leaves `go.mod` untouched.
-- `adapter/postgresql`, `adapter/mariadb` and `adapter/hashicorp/vault` are separate modules, so they aren't inside the root module's directory. Run `go get go.llib.dev/frameless/adapter/postgresql` first, then use `go doc` or the `.Dir` of that module.
+- `adapter/postgresql`, `adapter/mariadb`, `adapter/localfs` and `adapter/hashicorp/vault` are separate modules, so they aren't inside the root module's directory. Run `go get go.llib.dev/frameless/adapter/postgresql` first, then use `go doc` or the `.Dir` of that module.
 - `pkg/cache`, `pkg/tasker` and `pkg/workflow` are consumers in their own right. Each has role interfaces and a domain contract, the same pattern you are applying.
 
 ### Catalogue
 
 | Need | Port | Contract | Suppliers in frameless |
 | --- | --- | --- | --- |
-| entity storage | `port/crud` (see `frameless-crud`) | `crudcontract` | `memory.Repository`, `postgresql.Repository`, `mariadb.Repository`, `vault.Repository`, `httpkit.RESTClient` |
-| transactions | `comproto.OnePhaseCommitProtocol` | `comprotocontract` | `memory.Memory`, `postgresql.Connection`, `mariadb.Connection`, `flsql.ConnectionAdapter` |
-| queues, events, broadcasts | `pubsub.Publisher`, `pubsub.Subscriber` | `pubsubcontract`: `Queue`, `FIFO`, `LIFO`, `Ordering`, `Durable`, `Volatile`, `Blocking`, `Buffered`, `Broadcast`, `TransactionalPublisher`, `(Non)TransactionalMessageContext` | `memory.Queue` (`LIFO`, `Volatile`, `Blocking` flags), `memory.FanOutExchange`, `postgresql.Queue`, `postgresql.Broadcast` |
-| mutual exclusion | `guard.Locker`, `guard.NonBlockingLocker`, `guard.LockerFactory[K, L]` | `guardcontract` | `memory.NewLocker`, `memory.NewLockerFactory`, `postgresql.Lock`/`LockerFactory`, `mariadb.Locker`/`LockerFactory` |
-| files | `filesystem.FileSystem` | `filesystemcontract` | `memory.FileSystem`, `localfs.FileSystem` |
+| entity storage | `port/crud` (see `frameless-crud`) | `crudcontract` | `memory.Repository`, `postgresql.Repository`, `mariadb.Repository`, `localfs.Repository` (a file per entity in a `localfs.RepositoryFileSystem`), `vault.Repository`, `httpkit.RESTClient` |
+| transactions | `comproto.OnePhaseCommitProtocol` | `comprotocontract` | `memory.Memory`, `postgresql.Connection`, `mariadb.Connection`, `flsql.ConnectionAdapter`, `localfs.Repository` (all platforms; inter-process locking with native FS on Linux, macOS, Windows) |
+| queues, events, broadcasts | `pubsub.Publisher`, `pubsub.Subscriber` | `pubsubcontract`: `Queue`, `FIFO`, `LIFO`, `Ordering`, `Durable`, `Volatile`, `Blocking`, `Buffered`, `Broadcast`, `TransactionalPublisher`, `(Non)TransactionalMessageContext` | `memory.Queue` (`LIFO`, `Volatile`, `Blocking` flags), `memory.FanOutExchange`, `postgresql.Queue`, `postgresql.Broadcast`, `localfs.Watch` (subscribe-only; polls a directory of an `fs.FS` for file changes) |
+| mutual exclusion | `guard.Locker`, `guard.NonBlockingLocker`, `guard.LockerFactory[K, L]` | `guardcontract` | `memory.NewLocker`, `memory.NewLockerFactory`, `postgresql.Lock`/`LockerFactory`, `mariadb.Locker`/`LockerFactory`, `localfs.Locker` |
+| files | role interfaces in `port/filesystem`: `FileOpener`, `FileInfoReader`, `DirectoryMaker`, `Remover`, `Renamer` (`FileSystem` combines all of them except `Renamer`) | `filesystemcontract` | `memory.FileSystem`, `localfs.FileSystem` |
 | serialisation | `codec.Codec` | `codeccontract` | `jsonkit.Codec`, `jsonkit.LinesCodec`, `formurlencoded.Codec` |
 | metadata carried in ctx | `meta.MetaAccessor` | `metacontract` | `memory.EventLog`, `postgresql.MetaAccessor` |
 | schema migrations | `migration.StateRepository`, `migration.Migratable` | `migrationcontract` | `postgresql.NewMigrationStateRepository`, `mariadb.MakeMigrationStateRepository` |

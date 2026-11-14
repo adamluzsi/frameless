@@ -1,0 +1,1085 @@
+package synckit
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"iter"
+	"runtime"
+	"sync"
+	"sync/atomic"
+
+	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/sandbox"
+	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/ds"
+)
+
+type TryLocker interface {
+	TryLock() bool
+	Unlock()
+}
+
+var _ TryLocker = (*sync.Mutex)(nil)
+var _ TryLocker = (*sync.RWMutex)(nil)
+
+type Waiter interface{ Wait() }
+
+type RWLocker interface {
+	sync.Locker
+	RLock()
+	RUnlock()
+	RLocker() sync.Locker
+}
+
+type RWLockerFactory[K comparable] struct {
+	// ReadOptimised will make RLocker and rsync perform much faster,
+	// at the expense of having a global read locking when a read lock is made before a write locking.
+	// This cause a side effect that acquiring write locks for other keys will hang until the read operation is done.
+	//
+	// In the end, this shortcut leads to a whopping <350% increase in read operation speed,
+	// while also supporting write operations as well.
+	// However, it causes only a 0.17% decrease in write speed performance.
+	ReadOptimised bool
+
+	m     sync.RWMutex
+	locks map[K]*_Lock
+	_init sync.Once
+}
+
+func (l *RWLockerFactory[K]) RWLocker(key K) RWLocker {
+	return &rwlock{
+		sync:  func() func() { return l.sync(key) },
+		rsync: func() func() { return l.rsync(key) },
+	}
+}
+
+func (l *RWLockerFactory[K]) init() {
+	l._init.Do(func() { l.locks = map[K]*_Lock{} })
+}
+
+func (l *RWLockerFactory[K]) sync(key K) func() {
+	l.init()
+
+	l.m.RLock()
+	unlock := l.m.RUnlock
+
+	m, ok := l.locks[key]
+	if !ok {
+		l.m.RUnlock()
+
+		l.m.Lock()
+		unlock = l.m.Unlock
+
+		m, ok = l.locks[key]
+		if !ok {
+			m = &_Lock{}
+			l.locks[key] = m
+		}
+	}
+
+	m.incUserCount()
+	unlock()
+
+	// key related lock
+	m.Lock()
+
+	return func() {
+		m.Unlock()
+		l.release(key, m)
+	}
+}
+
+func (l *RWLockerFactory[K]) rsync(key K) func() {
+	l.init()
+
+	l.m.RLock()
+	unlock := l.m.RUnlock
+
+	m, ok := l.locks[key]
+	if !ok && l.ReadOptimised {
+		// Since there is no lock that can specifically match the key,
+		// the code is using a general lock called RLock to prevent multiple writes happening at the same time.
+		// This works well because writes are less frequent than reads.
+		// Although this method may result in slightly slower write speed,
+		// it's not a significant issue because ReadSync is used to quickly check values,
+		// such as the state of the pointer.
+		//
+		// In the end, this shortcut leads to a 350% increase in read operation speed
+		// but causes only a 0.17% decrease in write speed performance.
+		return l.m.RUnlock
+	}
+
+	if !ok { // no lock present, attempt to make one
+		l.m.RUnlock()
+
+		l.m.Lock()
+		unlock = l.m.Unlock
+
+		m, ok = l.locks[key]
+		if !ok {
+			m = &_Lock{}
+			l.locks[key] = m
+		}
+	}
+
+	// inc user count is protected by RLock
+	m.incUserCount()
+	unlock()
+
+	m.RLock()
+
+	return func() {
+		m.RUnlock()
+		l.release(key, m)
+	}
+}
+
+func (l *RWLockerFactory[K]) release(key K, m *_Lock) {
+	if isLast := m.decUserCount() == 0; !isLast {
+		return
+	}
+
+	l.m.Lock()
+	defer l.m.Unlock()
+
+	if isLast := m.getUserCount() == 0; !isLast {
+		return
+	}
+
+	delete(l.locks, key)
+}
+
+type _Lock struct {
+	sync.RWMutex
+	UserCount int64
+}
+
+func (l *_Lock) getUserCount() int64 { return atomic.LoadInt64(&l.UserCount) }
+
+// incUserCount
+// - must be used when initLocks.Mutex is in use
+func (l *_Lock) incUserCount() int64 { return atomic.AddInt64(&l.UserCount, 1) }
+
+// decUserCount
+// - must be used when initLocks.Mutex is in use
+func (l *_Lock) decUserCount() int64 { return atomic.AddInt64(&l.UserCount, -1) }
+
+type rwlock struct {
+	sync  func() func()
+	rsync func() func()
+
+	unlock  func()
+	runlock func()
+}
+
+func (a *rwlock) Lock() {
+	unlock := a.sync()
+	a.unlock = unlock
+}
+
+func (a *rwlock) RLock() {
+	unlock := a.rsync()
+	a.runlock = unlock
+}
+
+func (a *rwlock) uw(unlock *func()) {
+	if unlock == nil || *unlock == nil {
+		panic("synckit: unlock of unlocked mutex")
+	}
+	un := *unlock
+	*unlock = nil
+	un()
+}
+
+func (a *rwlock) Unlock()  { a.uw(&a.unlock) }
+func (a *rwlock) RUnlock() { a.uw(&a.runlock) }
+
+func (a *rwlock) RLocker() sync.Locker {
+	type Locker struct{ sync.Locker } // limit interface assertions
+	return Locker{Locker: &rwlock{sync: a.rsync}}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Map[K comparable, V any] struct {
+	mu sync.RWMutex
+	vs map[K]V
+}
+
+var _ ds.Map[string, int] = (*Map[string, int])(nil)
+var _ ds.ReadOnlyMap[string, int] = (*Map[string, int])(nil)
+var _ ds.MapConvertible[string, int] = (*Map[string, int])(nil)
+var _ ds.Len = (*Map[string, int])(nil)
+
+func (m *Map[K, V]) Set(key K, val V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.set(key, val)
+}
+
+func (m *Map[K, V]) set(k K, v V) {
+	if m.vs == nil {
+		m.vs = map[K]V{}
+	}
+	m.vs[k] = v
+}
+
+func (m *Map[K, V]) Get(key K) V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var zero V
+	if m.vs == nil {
+		return zero
+	}
+	return m.vs[key]
+}
+
+func (m *Map[K, V]) Lookup(key K) (V, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lookup(key)
+}
+
+func (m *Map[K, V]) lookup(key K) (V, bool) {
+	var zero V
+	if m.vs == nil {
+		return zero, false
+	}
+	v, ok := m.vs[key]
+	return v, ok
+}
+
+func (m *Map[K, V]) Delete(key K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.vs == nil {
+		return
+	}
+	delete(m.vs, key)
+}
+
+func (m *Map[K, V]) Do(fn func(vs map[K]V) error) error {
+	if fn == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.vs == nil {
+		m.vs = make(map[K]V)
+	}
+	return fn(m.vs)
+}
+
+func (m *Map[K, V]) GetOrInit(key K, init func() V) V {
+	{ // READ
+		m.mu.RLock()
+		if m.vs != nil {
+			if v, ok := m.vs[key]; ok {
+				m.mu.RUnlock()
+				return v
+			}
+		}
+		m.mu.RUnlock()
+	}
+	{ // WRITE
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.vs == nil {
+			m.vs = map[K]V{}
+		}
+		if v, ok := m.vs[key]; ok {
+			return v
+		}
+		if init == nil {
+			var zero V
+			return zero
+		}
+		v := init()
+		m.vs[key] = v
+		return v
+	}
+}
+
+func (m *Map[K, V]) GetOrInitErr(key K, init func() (V, error)) (V, error) {
+	{ // READ
+		m.mu.RLock()
+		if m.vs != nil {
+			if v, ok := m.vs[key]; ok {
+				m.mu.RUnlock()
+				return v, nil
+			}
+		}
+		m.mu.RUnlock()
+	}
+	{ // WRITE
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.vs == nil {
+			m.vs = map[K]V{}
+		}
+		if v, ok := m.vs[key]; ok {
+			return v, nil
+		}
+		if init == nil {
+			var zero V
+			return zero, nil
+		}
+		v, err := init()
+		if err != nil { // no cache
+			return v, err
+		}
+		m.vs[key] = v
+		return v, nil
+	}
+}
+
+func (m *Map[K, V]) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.vs)
+}
+
+func (m *Map[K, V]) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.vs = make(map[K]V)
+}
+
+func (m *Map[K, V]) Keys() iter.Seq[K] {
+	var keys = func() []K {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		return mapkit.Keys(m.vs)
+	}
+	return func(yield func(K) bool) {
+		for _, key := range keys() {
+			if !yield(key) {
+				return
+			}
+		}
+	}
+}
+
+func (m *Map[K, V]) Values() iter.Seq[V] {
+	var values = func() []V {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		return mapkit.Values(m.vs)
+	}
+	return func(yield func(V) bool) {
+		for _, value := range values() {
+			if !yield(value) {
+				return
+			}
+		}
+	}
+}
+
+func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
+	// TODO: make this operation only block when a specific key is affected
+
+	m.mu.Lock()
+	v, ok := m.lookup(key)
+	if !ok {
+		m.mu.Unlock()
+		return nil, nil, false
+	}
+	release = func() {
+		m.set(key, v)
+		m.mu.Unlock()
+	}
+	return &v, release, true
+}
+
+func (m *Map[K, V]) BorrowWithInit(key K, init func() V) (ptr *V, release func()) {
+	m.mu.Lock()
+	v, ok := m.lookup(key)
+	if !ok && init != nil {
+		v = init()
+	}
+	release = func() {
+		m.set(key, v)
+		m.mu.Unlock()
+	}
+	return &v, release
+}
+
+func (m *Map[K, V]) All() iter.Seq2[K, V] {
+	return m.iter(&m.mu)
+}
+
+func (m *Map[K, V]) RAll() iter.Seq2[K, V] {
+	return m.iter(m.mu.RLocker())
+}
+
+func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		var handle = func(key K) bool {
+			defer runtime.Gosched()
+			l.Lock()
+			defer l.Unlock()
+			if m.vs == nil {
+				return false // no point to continue, the map's content is nuked
+			}
+			v, ok := m.vs[key]
+			if !ok { // value were deleted in the meantime, skipping its processing
+				return true
+			}
+			return yield(key, v)
+		}
+		var visited = make(map[K]struct{})
+	loop:
+		for {
+			for key := range m.Keys() {
+				if _, ok := visited[key]; !ok {
+					if !handle(key) {
+						return
+					}
+					visited[key] = struct{}{}
+				}
+			}
+			for key := range m.Keys() {
+				if _, ok := visited[key]; !ok {
+					continue loop
+				}
+			}
+			break
+		}
+	}
+}
+
+func (m *Map[K, V]) ToMap() map[K]V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return mapkit.Clone(m.vs)
+}
+
+func (m *Map[K, V]) MarshalJSON() ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return json.Marshal(m.vs)
+}
+
+func (m *Map[K, V]) UnmarshalJSON(data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return json.Unmarshal(data, &m.vs)
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Slice[T any] struct {
+	mu sync.RWMutex
+	vs []T
+}
+
+var _ ds.ReadOnlyList[string] = (*Slice[string])(nil)
+var _ ds.List[string] = (*Slice[string])(nil)
+var _ ds.SliceConvertible[string] = (*Slice[string])(nil)
+var _ ds.Len = (*Slice[string])(nil)
+
+func (s *Slice[T]) Lookup(index int) (T, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slicekit.Lookup(s.vs, index)
+}
+
+func (s *Slice[T]) Set(index int, val T) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Set(s.vs, index, val)
+}
+
+func (s *Slice[T]) Append(vs ...T) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vs = append(s.vs, vs...)
+}
+
+func (s *Slice[T]) ToSlice() []T {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slicekit.Clone(s.vs)
+}
+
+func (s *Slice[T]) Values() iter.Seq[T] {
+	return s.iter(&s.mu)
+}
+
+func (s *Slice[T]) RValues() iter.Seq[T] {
+	return s.iter(s.mu.RLocker())
+}
+
+func (s *Slice[T]) iter(l sync.Locker) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		l.Lock()
+		defer l.Unlock()
+		for _, v := range s.vs {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+func (s *Slice[T]) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.vs)
+}
+
+func (s *Slice[T]) Delete(index int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Delete(&s.vs, index)
+}
+
+func (s *Slice[T]) Insert(index int, vs ...T) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Insert(&s.vs, index, vs...)
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Job interface {
+	Wait() error
+	Done() <-chan struct{}
+	Cancel()
+}
+
+// Go runs fn in a new goroutine, and returns a [Job] to interact with it.
+//
+// The fn receives a context that belongs to the job, derived from ctx.
+// It is released when fn returns, so ctx doesn't retain finished jobs.
+func Go(ctx context.Context, fn func(ctx context.Context) error) Job {
+	ctx, cancel := context.WithCancel(ctx)
+	var (
+		rerr error
+		done = make(chan struct{})
+	)
+	go func() {
+		defer close(done)
+		defer cancel()
+		err := fn(ctx)
+		rerr = err
+	}()
+	return &job{
+		context: ctx,
+		cancel:  cancel,
+		done:    done,
+		err:     &rerr,
+	}
+}
+
+var _ Job = (*job)(nil)
+
+type job struct {
+	context context.Context
+	cancel  func()
+	done    chan struct{}
+	err     *error
+}
+
+func (j *job) Done() <-chan struct{} {
+	return j.done
+}
+
+func (j *job) Wait() error {
+	<-j.done
+	return *j.err
+}
+
+func (j *job) Cancel() {
+	if j.cancel != nil {
+		j.cancel()
+	}
+}
+
+var _ Job = (*Group)(nil)
+
+type Group struct {
+	// Isolation ensures that each function in a Group runs separately,
+	// so if one encounters an error, it won’t affect the others.
+	Isolation bool
+	// ErrorOnGoexit makes Group#Wait and the Job#Wait of the jobs created within the group to return with error
+	// if goroutine was stopped due to `runtime.Goexit()`.
+	ErrorOnGoexit bool
+
+	wg  sync.WaitGroup
+	rwm sync.RWMutex
+
+	len int
+
+	_done   chan struct{}
+	cancels map[int]func()
+
+	errs  []error
+	panic *any
+}
+
+func (g *Group) Len() int {
+	g.rwm.RLock()
+	defer g.rwm.RUnlock()
+	return g.len
+}
+
+const ErrGoexit errorkitlite.Error = "ErrGoexit"
+
+// Go calls fn in a new goroutine and adds that task to the [Group].
+// When fn returns, the task is removed from the Group.
+//
+// If the Group is empty, Go must happen before a [Group.Wait].
+// Typically, this simply means Go is called to start tasks before Wait is called.
+// If the Group is not empty, Go may happen at any time.
+// This means a goroutine started by Go may itself call Go.
+// If a Group is reused to wait for several independent sets of tasks,
+// new Go calls must happen after all previous Wait calls have returned.
+//
+// In the terminology of [the Go memory model], the return from fn
+// "synchronizes before" the return of any Wait call that it unblocks.
+//
+// The fn receives a context that belongs to the task, derived from ctx.
+// It is released when fn returns, so ctx doesn't retain finished tasks.
+//
+// [the Go memory model]: https://go.dev/ref/mem
+func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	g.rwm.Lock()
+	defer g.rwm.Unlock()
+
+	ctx, cancel := context.WithCancel(ctx)
+	if g.cancels == nil {
+		g.cancels = make(map[int]func())
+	}
+
+	if g.len == 0 {
+		// the previous generation's done channel is already closed
+		g._done = make(chan struct{})
+	}
+
+	id := nextID(g.cancels)
+	g.cancels[id] = cancel
+
+	g.len++
+	g.wg.Add(1)
+
+	var (
+		m    sync.Mutex
+		done = make(chan struct{})
+		rerr error
+	)
+	go func() {
+		defer close(done)
+		defer g.wg.Done()
+		defer cancel()
+		var err error
+		o := sandbox.Run(func() {
+			err = fn(ctx)
+		})
+		if gerr := g.filterErr(ctx, err); gerr != nil && !g.Isolation {
+			g.Cancel()
+		}
+		m.Lock()
+		rerr = err
+		m.Unlock()
+		g.rwm.Lock()
+		defer g.rwm.Unlock()
+		if err != nil {
+			g.errs = append(g.errs, err)
+		}
+		if o.Panic {
+			g.panic = &o.PanicValue
+		}
+		if g.ErrorOnGoexit && o.Goexit {
+			g.errs = append(g.errs, ErrGoexit)
+		}
+		delete(g.cancels, id)
+		g.len--
+		if g.len == 0 && g._done != nil {
+			close(g._done)
+		}
+	}()
+	j := &job{
+		context: ctx,
+		cancel:  cancel,
+		done:    done,
+		err:     &rerr,
+	}
+	return j
+}
+
+// closedDoneChan represents a "nothing is running" state for Group#Done.
+var closedDoneChan = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
+
+func (g *Group) Done() <-chan struct{} {
+	g.rwm.RLock()
+	defer g.rwm.RUnlock()
+	if g.len == 0 || g._done == nil {
+		return closedDoneChan
+	}
+	return g._done
+}
+
+func (g *Group) filterErr(ctx context.Context, err error) error {
+	if err == nil {
+		return err
+	}
+	if ctx == nil {
+		return err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+		return nil
+	}
+	return err
+}
+
+// Cancel asks every task currently part of the Group to stop,
+// by cancelling the context which the Group passed to them.
+//
+// Cancel doesn't wait for the tasks to return,
+// they are still accounted as running tasks by Group#Len and Group#Done
+// until they actually return.
+func (g *Group) Cancel() {
+	g.rwm.Lock()
+	defer g.rwm.Unlock()
+	for _, cancel := range g.cancels {
+		cancel()
+	}
+}
+
+// Wait blocks until every task of the Group returns,
+// then it reports back their outcome.
+//
+// Wait drains the outcome of the tasks as part of reporting it back.
+// This enables the Group to be reused for a new set of tasks,
+// without being statefully bound to an already propagated failure.
+//
+// By the time Wait returns, the Group let go of everything it held on behalf of
+// the finished tasks, including the context which it made for them.
+func (g *Group) Wait() (rErr error) {
+	g.wg.Wait()
+	g.rwm.RLock()
+	// fast path
+	if len(g.errs) == 0 && g.panic == nil {
+		defer g.rwm.RUnlock()
+		return nil
+	}
+	g.rwm.RUnlock()
+	// slow path
+	g.rwm.Lock()
+	defer g.rwm.Unlock()
+	if g.panic != nil {
+		pv := *g.panic
+		g.panic = nil
+		panic(pv)
+	}
+	if len(g.errs) != 0 {
+		err := errorkitlite.Merge(g.errs...)
+		g.errs = nil
+		return err
+	}
+	return nil
+}
+
+func nextID[M ~map[int]V, V any](m M) int {
+	if m == nil {
+		return 0 // zero
+	}
+	for i := 0; ; i++ {
+		if _, ok := m[i]; !ok {
+			return i
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Phaser is a synchronization primitive for coordinating multiple goroutines.
+// I that combines the behavior of a latch, barrier, and phaser.
+// Goroutines may register via Wait, be released one at a time via Signal or all at once via Broadcast.
+// Ultimately, using Finish can ensure, that all wait is released, to ensure that all waiter is released.
+//
+// Like sync.Mutex, a zero value Phaser is ready to use right away.
+// If you’re using a sync.Mutex to protect shared resources,
+// you can pass it as an optional argument to Phaser.Wait.
+// This lets the mutex be released while waiting and automatically reacquired upon the end of waiting.
+type Phaser struct {
+	m sync.Mutex
+	o sync.Once
+	c *sync.Cond
+
+	len  int64
+	done int32
+}
+
+type phaserLockerUnlocker func()
+
+func (fn phaserLockerUnlocker) Lock() {}
+
+func (fn phaserLockerUnlocker) Unlock() { fn() }
+
+func (p *Phaser) init() {
+	p.o.Do(func() { p.c = sync.NewCond((*nopLocker)(nil)) })
+}
+
+func (p *Phaser) Len() int {
+	return int(atomic.LoadInt64(&p.len))
+}
+
+func (p *Phaser) Wait(ls ...sync.Locker) {
+	if atomic.LoadInt32(&p.done) != 0 {
+		return
+	}
+
+	p.init()
+
+	var ml = multiLocker(ls)
+
+	p.m.Lock()
+
+	if atomic.LoadInt32(&p.done) != 0 {
+		p.m.Unlock()
+		return
+	}
+
+	p.c.L = phaserLockerUnlocker(func() {
+		// we increment here, because by this time on locker#Unlock,
+		// the sync.Cond's runtime_notifyListAdd is already executed,
+		// and listens to Broadcast
+		atomic.AddInt64(&p.len, 1)
+		ml.Unlock()
+		p.c.L = (*nopLocker)(nil) // restore no operation locker
+		p.m.Unlock()
+	})
+	// during sync.Cond#Wait, ml#Unlock will be unlocked,
+	// and we need to re-acquire it after the wait finished
+	defer ml.Lock()
+	// during Wait the len is incremented,
+	// and afterwards we need to drecrement it.
+	defer atomic.AddInt64(&p.len, -1)
+	p.c.Wait()
+}
+
+func (p *Phaser) Signal() {
+	p.init()
+	p.c.Signal()
+}
+
+func (p *Phaser) Broadcast() {
+	p.init()
+	p.c.Broadcast()
+}
+
+// Finish lets all waiting goroutines continue immediately.
+// After it’s called, any new calls to Wait will also return right away.
+func (p *Phaser) Finish() {
+	p.m.Lock()
+	defer p.m.Unlock()
+	p.init()
+	atomic.CompareAndSwapInt32(&p.done, 0, 1)
+	p.c.Broadcast()
+}
+
+func IsDone(done <-chan struct{}) bool {
+	if done == nil {
+		return false
+	}
+	select {
+	case _, ok := <-done:
+		if !ok {
+			return true
+		}
+		panic("implementation-error")
+	default:
+		return false
+	}
+}
+
+// Limiter is a concurrency limiter: a sync.Locker that lets up to a fixed
+// number of goroutines hold the lock at the same time.
+//
+// Unlike sync.RWMutex, which allows any amount of read holder,
+// a Limiter allows up to Ceiling.Limit() concurrent holders.
+// It is handy to cap how much work runs in parallel.
+// for example to avoid overwhelming a downstream dependency.
+//
+// The limit is expressed through the C type parameter, keeping the
+// configuration part of the type itself,
+// which allows it to be part of a struct zero initialization.
+//
+//	// type level configuration, to limit at most runtime.NumCPU() goroutines at once
+//	var limiter synckit.Limiter[synckit.LimitByNumCPU]
+//
+//	// runtime configuration
+//	limiter := synckit.Limiter[synckit.LimitAtRuntime]{Ceiling: 10}
+//
+// Like sync.Mutex, a Limiter must not be copied after first use.
+//
+// Limiter by default has no limit.
+type Limiter struct {
+	o sync.Once
+	m sync.RWMutex
+	c *sync.Cond
+
+	limit int
+	held  int
+}
+
+func (l *Limiter) init() {
+	l.o.Do(func() {
+		l.c = sync.NewCond(&l.m)
+	})
+}
+
+var _ sync.Locker = (*Limiter)(nil)
+
+func (l *Limiter) Lock() {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	for !l.hasRoom() { // re-checked after every wake
+		l.c.Wait()
+	}
+	l.held++
+}
+
+func (l *Limiter) Unlock() {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	if l.held == 0 {
+		panic("synckit.Limiter: Unlock without Lock")
+	}
+	l.held--
+	l.c.Signal()
+}
+
+var _ TryLocker = (*Limiter)(nil)
+
+func (l *Limiter) TryLock() (ok bool) {
+	l.init()
+	l.m.Lock()
+	defer l.m.Unlock()
+	ok = l.hasRoom()
+	if ok {
+		l.held++
+	}
+	return
+}
+
+func (l *Limiter) Limit() int {
+	l.m.RLock()
+	defer l.m.RUnlock()
+	return l.limit
+}
+
+// SetLimit changes the cap at runtime.
+// Increasing wakes blocked goroutines.
+// Decreasing never preempts current holders.
+//
+// If n == 0, then we make Limiter unlimited.
+// Ideal default behaviour to have components have a Limiter in them,
+// but allow something to manage their Limit externally when needed.
+//
+// If n < 0, then we make Limiter disabled,
+// to block all locking attempts until new Limit is given.
+// Useful when you want to use a dynamic scaling,
+// and first you want to start up all worker goroutines,
+// and then dynamically periodically set the limit
+// to something that can
+func (l *Limiter) SetLimit(n int) {
+	l.init()
+	if l.Limit() == n { // fast check
+		return
+	}
+	l.m.Lock()
+	defer l.m.Unlock()
+	if l.limit == n {
+		// no change detected
+		// someone already updated the limit size
+		// (concurrently)
+		return
+	}
+	l.limit = n
+	if l.hasRoom() {
+		l.c.Broadcast() // let waiters re-check; the surplus re-parks
+	}
+}
+
+func (l *Limiter) hasRoom() bool {
+	if l.limit < 0 { // disabled
+		return false
+	}
+	if l.limit == 0 { // unlimited
+		return true
+	}
+	return l.held < l.limit
+}
+
+// limiterLimit reports the maximum number of concurrent holders a Limiter
+// allows. LimitByNumCPU and LimitAtRuntime are provided out of the box, but any
+// type with a Limit() int method can be used as a Limiter ceiling.
+type LimitCeiling interface {
+	// Limit reports the maximum number of concurrent holders.
+	// It must return a value greater than zero,
+	// and is consulted once, on the Limiter's first use.
+	Limit() int
+}
+
+type limitCeilingNOOP struct{}
+
+var _ LimitCeiling = limitCeilingNOOP{}
+
+func (limitCeilingNOOP) Limit() int { panic("not-implemented") }
+
+// LimiterWithCeiling is a Limiter that self-initialize with the zero value of LimitCeiling.
+// It is handful if you need to have a zero value based initialization for your Limiter.
+//
+// For example, when your Limiter is controlled by an environment variable,
+// or by the available number of the CPU.
+type LimiterWithCeiling[Ceiling LimitCeiling] struct {
+	l Limiter
+	c Ceiling
+}
+
+var _ TryLocker = (*LimiterWithCeiling[limitCeilingNOOP])(nil)
+
+func (l *LimiterWithCeiling[Ceiling]) TryLock() (ok bool) {
+	l.l.SetLimit(l.c.Limit())
+	return l.l.TryLock()
+}
+
+var _ sync.Locker = (*LimiterWithCeiling[limitCeilingNOOP])(nil)
+
+func (l *LimiterWithCeiling[Ceiling]) Lock() {
+	l.l.SetLimit(l.c.Limit())
+	l.l.Lock()
+}
+
+func (l *LimiterWithCeiling[Ceiling]) Unlock() {
+	l.l.Unlock()
+}
+
+func (l *LimiterWithCeiling[Ceiling]) Limit() int {
+	return l.l.Limit()
+}
+
+// LimitToNumCPU is a Limiter ceiling that caps concurrency at runtime.NumCPU().
+//
+// Its zero value is ready to use, so a Limiter[LimitToNumCPU] needs no further
+// configuration.
+type LimitToNumCPU struct{}
+
+var _ LimitCeiling = LimitToNumCPU{}
+
+func (LimitToNumCPU) Limit() int { return runtime.NumCPU() }

@@ -524,7 +524,7 @@ func TestWaiter(t *testing.T) {
 				return time.Hour
 			})
 
-			s.Then("it will instantly return", func(t *testcase.T) {
+			s.Then("it returns without waiting for the deadline", func(t *testcase.T) {
 				assert.Must(t).Within(time.Second, func(ctx context.Context) {
 					Context.Set(t, ctx)
 					act(t)
@@ -539,6 +539,100 @@ func TestWaiter(t *testing.T) {
 
 			s.Then("we are told to not avoid a new retry attempt", func(t *testcase.T) {
 				assert.Must(t).False(act(t))
+			})
+		})
+
+		s.When("it is the first attempt", func(s *testcase.Spec) {
+			attempt.Let(s, func(t *testcase.T) resilience.RetryAttempt {
+				a := attempt.Super(t)
+				a.FailureCount = 0
+				return a
+			})
+			waitDuration.Let(s, let.DurationBetween(s, time.Minute, time.Hour).Get)
+
+			s.Then("it allows the attempt without waiting", func(t *testcase.T) {
+				var got bool
+				assert.Within(t, time.Second, func(context.Context) {
+					got = act(t)
+				})
+				assert.True(t, got)
+			})
+		})
+
+		s.When("a previous attempt has failed", func(s *testcase.Spec) {
+			attempt.Let(s, func(t *testcase.T) resilience.RetryAttempt {
+				a := attempt.Super(t)
+				a.FailureCount = t.Random.IntBetween(1, 1024)
+				return a
+			})
+			waitDuration.Let(s, let.DurationBetween(s, time.Minute, time.Hour).Get)
+			timeout.Let(s, func(t *testcase.T) time.Duration {
+				return waitDuration.Get(t) + t.Random.DurationBetween(time.Minute, time.Hour)
+			})
+
+			const blockCheckDuration = 25 * time.Millisecond
+
+			s.Then("it waits WaitDuration before it allows the retry", func(t *testcase.T) {
+				var got bool
+				w := assert.NotWithin(t, blockCheckDuration, func(context.Context) {
+					got = act(t)
+				}, "expected ShouldTry to pause before the next attempt")
+
+				timecop.Travel(t, waitDuration.Get(t))
+
+				assert.Within(t, time.Second, func(context.Context) {
+					w.Wait()
+				}, "expected ShouldTry to return once WaitDuration has passed")
+				assert.True(t, got)
+			})
+
+			s.Then("it reports that retry shouldn't be attempted when the deadline passes while it waits", func(t *testcase.T) {
+				got := true
+				w := assert.NotWithin(t, blockCheckDuration, func(context.Context) {
+					got = act(t)
+				})
+
+				timecop.Travel(t, timeout.Get(t)+time.Second)
+
+				assert.Within(t, time.Second, func(context.Context) {
+					w.Wait()
+				})
+				assert.False(t, got)
+			})
+
+			s.And("the context is cancelled while it waits", func(s *testcase.Spec) {
+				cancellableContext, cancel := let.ContextWithCancel(s)
+				Context.Let(s, cancellableContext.Get)
+
+				s.Then("it stops waiting and reports that retry shouldn't be attempted", func(t *testcase.T) {
+					cancel := cancel.Get(t)
+
+					got := true
+					w := assert.NotWithin(t, blockCheckDuration, func(context.Context) {
+						got = act(t)
+					})
+
+					cancel()
+
+					assert.Within(t, time.Second, func(context.Context) {
+						w.Wait()
+					})
+					assert.False(t, got)
+				})
+			})
+
+			s.And("the deadline would pass before the WaitDuration is over", func(s *testcase.Spec) {
+				timeout.Let(s, func(t *testcase.T) time.Duration {
+					return t.Random.DurationBetween(time.Second, waitDuration.Get(t))
+				})
+
+				s.Then("it reports straight away that retry shouldn't be attempted", func(t *testcase.T) {
+					got := true
+					assert.Within(t, time.Second, func(context.Context) {
+						got = act(t)
+					})
+					assert.False(t, got)
+				})
 			})
 		})
 	})
@@ -1408,6 +1502,29 @@ func ExampleRetries_withFailureCountRangeArgument() {
 func TestRetries(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	s.Test("the RetryStrategy is asked once about each attempt, so a strategy that waits before an attempt waits only once", func(t *testcase.T) {
+		rs := &recordingRetryStrategy{Attempts: t.Random.IntBetween(1, 5)}
+
+		for range resilience.Retries(t.Context(), rs) {
+		}
+
+		var exp []int
+		for failureCount := range rs.Attempts + 1 { // the last one is refused
+			exp = append(exp, failureCount)
+		}
+		assert.Equal(t, rs.Asked, exp)
+	})
+
+	s.Test("the RetryStrategy is not asked about a next attempt after the iteration is stopped", func(t *testcase.T) {
+		rs := &recordingRetryStrategy{Attempts: t.Random.IntBetween(2, 5)}
+
+		for range resilience.Retries(t.Context(), rs) {
+			break
+		}
+
+		assert.Equal(t, rs.Asked, []int{0})
+	})
+
 	s.Context("failure count based retries", func(s *testcase.Spec) {
 		s.Test("on success", func(t *testcase.T) {
 			rs := resilience.FixedDelay{Delay: time.Nanosecond, Attempts: 3}
@@ -1486,4 +1603,15 @@ func TestRetries(t *testing.T) {
 		})
 	})
 
+}
+
+// recordingRetryStrategy permits a fixed number of attempts, and records the FailureCount of every attempt it is asked about.
+type recordingRetryStrategy struct {
+	Attempts int
+	Asked    []int
+}
+
+func (rs *recordingRetryStrategy) ShouldTry(ctx context.Context, attempt resilience.RetryAttempt) bool {
+	rs.Asked = append(rs.Asked, attempt.FailureCount)
+	return attempt.FailureCount < rs.Attempts && ctx.Err() == nil
 }

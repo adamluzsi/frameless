@@ -186,6 +186,16 @@ func TestStub(t *testing.T) {
 		logger.Info(context.Background(), msg)
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, "foo", msg))
 	})
+	t.Run("when the global logger has already logged before stubbing", func(t *testing.T) {
+		// Fatal is never filtered out by a LOG_LEVEL override,
+		// so the global logger is guaranteed to have written (to io.Discard during tests).
+		logger.Fatal(context.Background(), "warm-up")
+
+		buf := logger.Stub(t)
+		msg := random.New(random.CryptoSeed{}).UUID()
+		logger.Info(context.Background(), msg)
+		assert.Contains(t, buf.String(), msg)
+	})
 	t.Run("with optional HijackFunc", func(t *testing.T) {
 		type Entry struct {
 			Level   logging.Level

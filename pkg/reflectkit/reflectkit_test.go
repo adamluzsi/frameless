@@ -3069,6 +3069,24 @@ func TestTypeImplements(t *testing.T) {
 		assert.False(t, reflectkit.TypeImplements[MyInterface, testent.Fooer]())
 	})
 
+	s.Test("an any value is checked using its concrete type", func(t *testcase.T) {
+		var value any = testent.Foo{}
+		assert.True(t, reflectkit.TypeImplements[any, testent.Fooer](value))
+	})
+
+	s.Test("an any value whose concrete type lacks the interface does not match", func(t *testcase.T) {
+		var value any = testent.Bar{}
+		assert.False(t, reflectkit.TypeImplements[any, testent.Fooer](value))
+	})
+
+	s.Test("a nil any value does not implement a non-empty interface", func(t *testcase.T) {
+		assert.False(t, reflectkit.TypeImplements[any, testent.Fooer](nil))
+	})
+
+	s.Test("a typed nil value keeps its concrete method set", func(t *testcase.T) {
+		assert.True(t, reflectkit.TypeImplements[any, testent.Fooer]((*testent.Foo)(nil)))
+	})
+
 	s.Test("second type argument is not an interface type", func(t *testcase.T) {
 		assert.Panic(t, func() {
 			reflectkit.TypeImplements[testent.Foo, testent.Bar]()

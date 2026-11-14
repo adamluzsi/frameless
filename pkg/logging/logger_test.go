@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -356,19 +357,109 @@ func TestLogger_concurrentUse(t *testing.T) {
 }
 
 func TestLogger_Clone(t *testing.T) {
+	s := testcase.NewSpec(t)
+
 	var (
-		buf = &bytes.Buffer{}
-		lgr = logging.Logger{Out: buf}
-		cln = lgr.Clone()
+		originalOut = let.Var(s, func(t *testcase.T) *bytes.Buffer {
+			return &bytes.Buffer{}
+		})
+		original = let.Var(s, func(t *testcase.T) *logging.Logger {
+			return &logging.Logger{Out: originalOut.Get(t)}
+		})
+		cloneOut = let.Var(s, func(t *testcase.T) *bytes.Buffer {
+			return &bytes.Buffer{}
+		})
+		message = let.UUID(s)
 	)
-	assert.Equal(t, &lgr, cln)
-	ogLevel := lgr.Level
-	cln.Level = logging.LevelDebug
-	assert.Equal(t, ogLevel, lgr.Level)
-	assert.Equal(t, logging.LevelDebug, cln.Level)
-	assert.NotEqual(t, &lgr, cln)
-	cln.Debug(context.Background(), "msg")
-	assert.Contains(t, buf.String(), "msg")
+	act := let.Act(func(t *testcase.T) *logging.Logger {
+		return original.Get(t).Clone()
+	})
+
+	s.Then("the clone has the same configuration as the original", func(t *testcase.T) {
+		assert.Equal(t, original.Get(t), act(t))
+	})
+
+	s.Then("configuring the clone leaves the original untouched", func(t *testcase.T) {
+		ogLevel := original.Get(t).Level
+		cln := act(t)
+		cln.Level = logging.LevelDebug
+		assert.Equal(t, ogLevel, original.Get(t).Level)
+		assert.Equal(t, logging.LevelDebug, cln.Level)
+		assert.NotEqual(t, original.Get(t), cln)
+	})
+
+	s.Then("the clone logs to the original's output by default", func(t *testcase.T) {
+		act(t).Info(t.Context(), message.Get(t))
+		assert.Contains(t, originalOut.Get(t).String(), message.Get(t))
+	})
+
+	s.When("the original has every option configured", func(s *testcase.Spec) {
+		original.Let(s, func(t *testcase.T) *logging.Logger {
+			l := original.Super(t)
+			l.MessageKey = t.Random.UUID()
+			l.LevelKey = t.Random.UUID()
+			l.TimestampKey = t.Random.UUID()
+			l.Level = random.Pick(t.Random, enum.Values[logging.Level]()...)
+			l.Separator = t.Random.UUID()
+			l.MarshalFunc = json.Marshal
+			l.KeyFormatter = stringkit.ToPascal
+			l.Hijack = func(context.Context, logging.Level, string, logging.Fields) {}
+			l.TestingTB = t
+			l.FlushTimeout = time.Duration(t.Random.IntBetween(1, 1000)) * time.Millisecond
+
+			rv := reflect.ValueOf(l).Elem()
+			for i := 0; i < rv.NumField(); i++ {
+				if field := rv.Type().Field(i); field.IsExported() {
+					assert.Must(t).False(rv.Field(i).IsZero(),
+						assert.MessageF("configure Logger.%s here, so Logger.Clone is verified to copy it", field.Name))
+				}
+			}
+			return l
+		})
+
+		s.Then("the clone has the same configuration as the original", func(t *testcase.T) {
+			assert.Equal(t, original.Get(t), act(t))
+		})
+	})
+
+	s.When("the original logger has already logged", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			original.Get(t).Info(t.Context(), t.Random.String())
+		})
+
+		s.Then("the clone logs to its own output instead of the original's", func(t *testcase.T) {
+			cln := act(t)
+			cln.Out = cloneOut.Get(t)
+			cln.Info(t.Context(), message.Get(t))
+
+			assert.Contains(t, cloneOut.Get(t).String(), message.Get(t))
+			assert.NotContains(t, originalOut.Get(t).String(), message.Get(t))
+		})
+
+		s.Then("the clone formats log entries with its own configuration", func(t *testcase.T) {
+			cln := act(t)
+			cln.Out = cloneOut.Get(t)
+			cln.MessageKey = "msg"
+			cln.Info(t.Context(), message.Get(t))
+
+			assert.Contains(t, cloneOut.Get(t).String(), fmt.Sprintf(`"msg":%q`, message.Get(t)))
+		})
+	})
+
+	s.When("the original logger is logging asynchronously", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			original.Get(t).FlushTimeout = time.Millisecond
+			t.Cleanup(original.Get(t).AsyncLogging())
+		})
+
+		s.Then("the clone logs to its own output, independently of the original's async pipeline", func(t *testcase.T) {
+			cln := act(t)
+			cln.Out = cloneOut.Get(t)
+			cln.Info(t.Context(), message.Get(t))
+
+			assert.Contains(t, cloneOut.Get(t).String(), message.Get(t))
+		})
+	})
 }
 
 type TeeBuffer struct {
