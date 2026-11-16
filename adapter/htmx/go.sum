@@ -1,0 +1,4 @@
+go.llib.dev/frameless v0.346.0 h1:eMXhfYWlO3rsCORrHZ2yJCQVppW8DNEP2/ANNnSp7XA=
+go.llib.dev/frameless v0.346.0/go.mod h1:aGEaiomPqrX7Pas2DhdTerQBO5TYY87TZz2mdomYypM=
+go.llib.dev/testcase v0.195.0 h1:hASm0UFpHmX807vOGNJa1RrLbJL6ARQfyb3xXVZoFw4=
+go.llib.dev/testcase v0.195.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
