@@ -325,10 +325,13 @@ Its rules:
 
 - **A cache hit** needs the same ID at the same `Path`, the same input values
   (as the history saw them at that point), and matching input/output arity.
-- **Only success is recorded.** A genuine failure rolls back the call's events,
-  and an `EventError` is written in a *sibling* transaction for audit
-  (`recordErrorEvent`). A signal is neither a success nor a failure: it leaves
-  no call record.
+- **Only success is recorded.** A genuine failure rolls back the call's events.
+  Its `EventError` audit is constructed at the failure point (`recordErrorEvent`)
+  and written best-effort after the outermost executor transaction has finished,
+  using that executor's original context. Nested audits therefore survive the
+  enclosing rollback, and stores that lock on reads do not deadlock on an audit
+  write. Audits are flushed synchronously before the executor returns, but are
+  not crash-durable until written. A signal leaves no call record or failure audit.
 - **Transactions nest.** The events of a call and of the calls made inside it
   commit together (`commitEventsTx`). Signals commit what was recorded before
   them. Ordinary errors roll it back.

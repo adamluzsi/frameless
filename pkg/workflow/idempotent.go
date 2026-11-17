@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/txkit"
 )
 
@@ -124,8 +125,6 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, pid ProcessID) 
 
 func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID) (_ []any, rErr error) {
 	ctx = WithName(ctx, string(ie.ID))
-	baseContext := ctx
-	_ = baseContext
 
 	path := CurrentPath(ctx)
 
@@ -140,9 +139,16 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		return nil, err
 	}
 
-	// most transaction locking happens at row level,
-	// with mostly on mutation,
-	// so the cost of transaction should be acceptable here
+	// Nested calls share an audit buffer. Persist it only after the outermost
+	// executor has finished its transaction: an independent write can otherwise
+	// wait on that transaction's own lock, even if it has only read history.
+	audits, ok := ctx.Value(ctxKeyErrorEventRecorder{}).(*errorEventRecorder)
+	if !ok {
+		audits = new(errorEventRecorder)
+		defer audits.flush(ctx)
+		ctx = context.WithValue(ctx, ctxKeyErrorEventRecorder{}, audits)
+	}
+
 	tx, err := eventsRepo.BeginTx(ctx)
 	if err != nil {
 		return nil, err
@@ -280,7 +286,7 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 		// genuine failures. Record failures as
 		// an EventError so the process has a per-occurrence audit trail.
 		if !isRuntimeSignal(err) && (ErrIsFatal(err) || (!isParticipantNotFound(err) && !isParticipantSignatureMismatch(err))) {
-			ie.recordErrorEvent(baseContext, eventsRepo, pid, path, err)
+			ie.recordErrorEvent(audits, eventsRepo, pid, path, err)
 		}
 		return nil, err
 	}
@@ -312,16 +318,36 @@ func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, pid ProcessID
 	return slicekit.Clone(output), nil
 }
 
-// recordErrorEvent persists an EventError describing a genuine failure from Do.
+type ctxKeyErrorEventRecorder struct{}
+
+// errorEventRecorder keeps failure audits outside all enclosing executor
+// transactions. It is local to one execution tree, not retained across retries.
+// The originating repository is kept with each event in case a nested call
+// uses another runtime.
+type errorEventRecorder struct {
+	pending synckit.Slice[errorEventRecord]
+}
+
+type errorEventRecord struct {
+	repository EventRepository
+	event      EventError
+}
+
+func (r *errorEventRecorder) flush(ctx context.Context) {
+	for _, pending := range r.pending.ToSlice() {
+		var event Event = pending.event
+		_ = pending.repository.Create(ctx, &event)
+	}
+}
+
+// recordErrorEvent constructs an EventError at the point of failure, retaining
+// its original error, path and timestamp. Persistence waits until all enclosing
+// executor transactions have finished, so it neither waits on their locks nor
+// loses the audit to their rollback.
 //
-// It deliberately writes the event in a *sibling* transaction — one that is
-// not nested inside the executor's own tx — so the audit record survives the
-// rollback that commitEventsTx performs on a non-signal error. Without this,
-// every failed attempt would erase its own audit trail.
-//
-// It is best-effort: any failure to create the event is swallowed. The audit
-// record is a diagnostic, never a reason to mask the original error.
-func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, eventsRepo EventRepository, pid ProcessID, path Path, gotErr error) {
+// It is best-effort: event construction and persistence failures are swallowed.
+// The audit record is a diagnostic, never a reason to mask the original error.
+func (ie idempotentExecutor[E, ID]) recordErrorEvent(audits *errorEventRecorder, eventsRepo EventRepository, pid ProcessID, path Path, gotErr error) {
 	if ie.MakeEventError == nil {
 		return
 	}
@@ -332,8 +358,7 @@ func (ie idempotentExecutor[E, ID]) recordErrorEvent(ctx context.Context, events
 	if eventError.GetProcessID() != pid {
 		return
 	}
-	var event Event = eventError
-	_ = eventsRepo.Create(ctx, &event)
+	audits.pending.Append(errorEventRecord{repository: eventsRepo, event: eventError})
 }
 
 // handleResultDefinition will handle a Definition result from a participant's

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -516,6 +517,120 @@ func TestExecute(t *testing.T) {
 				})
 			})
 		}
+
+		s.When("a nested participant fails", func(s *testcase.Spec) {
+			var (
+				failure = let.Error(s)
+				key     = let.As[workflow.VarName](let.UUID(s))
+				value   = let.UUID(s)
+			)
+			leaf, leafID := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+				return func(context.Context) error { return failure.Get(t) }
+			})
+			participant.Let(s, func(t *testcase.T) func(context.Context, string) (string, error) {
+				return func(ctx context.Context, in string) (string, error) {
+					participantCalls.Set(t, participantCalls.Get(t)+1)
+					return "", workflow.Sequence{
+						workflow.SetVar{Name: key.Get(t), Value: value.Get(t)},
+						workflow.Execute{Participant: leafID.Get(t)},
+					}
+				}
+			})
+
+			s.Then("a nested failure keeps its audit while the enclosing call and variables roll back", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), failure.Get(t))
+				audits := failuresOf(t)
+				assert.Equal(t, len(audits), 1)
+				assert.Equal(t, audits[0].ParticipantID, leafID.Get(t))
+				assert.Equal(t, audits[0].Error, failure.Get(t).Error())
+				assert.Empty(t, participantEventsOf(t, c))
+				vars := workflow.Vars{ProcessID: processID.Get(t), EventsRepository: c.EventRepository.Get(t)}
+				_, found, err := vars.Lookup(t.Context(), key.Get(t))
+				assert.NoError(t, err)
+				assert.False(t, found)
+			})
+
+			s.Then("each nested failure gets a distinct audit and earlier attempts are not flushed again", func(t *testcase.T) {
+				assert.ErrorIs(t, act(t), failure.Get(t))
+				first := failuresOf(t)
+				assert.Equal(t, len(first), 1)
+				assert.ErrorIs(t, act(t), failure.Get(t))
+				audits := failuresOf(t)
+				assert.Equal(t, len(audits), 2)
+				assert.Equal(t, audits[0], first[0])
+				assert.NotEqual(t, audits[0].EventID, audits[1].EventID)
+				assert.Equal(t, audits[0].Path, audits[1].Path)
+			})
+
+			s.When("the enclosing participant invokes the failing step directly", func(s *testcase.Spec) {
+				participant.Let(s, func(t *testcase.T) func(context.Context, string) (string, error) {
+					return func(ctx context.Context, in string) (string, error) {
+						participantCalls.Set(t, participantCalls.Get(t)+1)
+						return "", (workflow.Execute{Participant: leafID.Get(t)}).Execute(ctx, processID.Get(t))
+					}
+				})
+
+				s.Then("both failed invocations are audited outside their shared rollback", func(t *testcase.T) {
+					assert.ErrorIs(t, act(t), failure.Get(t))
+					audits := failuresOf(t)
+					assert.Equal(t, len(audits), 2)
+					assert.Equal(t, audits[0].ParticipantID, leafID.Get(t))
+					assert.Equal(t, audits[1].ParticipantID, pid.Get(t))
+					for _, audit := range audits {
+						assert.Equal(t, audit.Error, failure.Get(t).Error())
+					}
+					assert.Empty(t, participantEventsOf(t, c))
+				})
+			})
+
+			s.When("the audit write fails", func(s *testcase.Spec) {
+				var auditFailure = let.Error(s)
+				c.Runtime.Let(s, func(t *testcase.T) workflow.Runtime {
+					rt := c.Runtime.Super(t)
+					armed := new(atomic.Bool)
+					armed.Store(true)
+					rt.Events = failingEventRepository{
+						WorkflowEventRepository: c.EventRepository.Get(t),
+						Err:                     auditFailure.Get(t),
+						Fails:                   armed,
+						FailsOn: func(event workflow.Event) bool {
+							_, ok := event.(workflow.EventError)
+							return ok
+						},
+					}
+					return rt
+				})
+
+				s.Then("audit persistence remains best-effort without masking the original failure", func(t *testcase.T) {
+					err := act(t)
+					assert.ErrorIs(t, err, failure.Get(t))
+					assert.False(t, errors.Is(err, auditFailure.Get(t)))
+					assert.Empty(t, failuresOf(t))
+					assert.Empty(t, participantEventsOf(t, c))
+				})
+			})
+
+			s.When("the participant's rollback compensation also fails", func(s *testcase.Spec) {
+				var rollbackFailure = let.Error(s)
+				leaf.Let(s, func(t *testcase.T) func(context.Context) error {
+					return func(ctx context.Context) error {
+						if err := txkit.OnRollback(ctx, func(context.Context) error { return rollbackFailure.Get(t) }); err != nil {
+							return err
+						}
+						return failure.Get(t)
+					}
+				})
+
+				s.Then("the audit describes the call failure rather than transaction cleanup errors", func(t *testcase.T) {
+					err := act(t)
+					assert.ErrorIs(t, err, failure.Get(t))
+					assert.ErrorIs(t, err, rollbackFailure.Get(t))
+					audits := failuresOf(t)
+					assert.Equal(t, len(audits), 1)
+					assert.Equal(t, audits[0].Error, failure.Get(t).Error())
+				})
+			})
+		})
 	})
 
 	// ExecuteWith identifies the call by its id argument, so neither ID is set.
@@ -1539,6 +1654,7 @@ func TestExecute(t *testing.T) {
 			})
 		})
 	})
+
 }
 
 // TestExecute_reflection pins how the Input values are passed to a registered function,
