@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"iter"
@@ -228,7 +229,13 @@ func (l *Lock) getLocks(ctx context.Context) iter.Seq2[*lockRecord, error] {
 		var queryMany = flsql.QueryMany(l.Connection, ctx, func(s flsql.Scanner) (*lockRecord, error) {
 			var rec lockRecord
 			rec.Name = l.Name
-			err := s.Scan(&rec.ID, &rec.Owner, &rec.Expires)
+			// "owner" is a TEXT column, and the stdlib uuid.UUID doesn't implement sql.Scanner,
+			// so pgx can't scan into it directly; NULL or empty stays the zero UUID.
+			var owner sql.NullString
+			err := s.Scan(&rec.ID, &owner, &rec.Expires)
+			if err == nil && owner.String != "" {
+				rec.Owner, err = uuid.Parse(owner.String)
+			}
 			return &rec, err
 		}, queryString, l.Name)
 		var now = clock.Now()
