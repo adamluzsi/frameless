@@ -78,6 +78,8 @@ func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 		dto.Status = http.StatusConflict
 	case errors.Is(err, ErrRequestEntityTooLarge):
 		dto.Status = http.StatusRequestEntityTooLarge
+	case errors.Is(err, ErrResponseUnsupportedMediaType):
+		dto.Status = http.StatusUnsupportedMediaType
 	case errors.Is(err, ErrEntityNotFound),
 		errors.Is(err, ErrPathNotFound):
 		dto.Status = http.StatusNotFound
