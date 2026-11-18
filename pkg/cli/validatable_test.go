@@ -165,6 +165,7 @@ func TestValidatable(t *testing.T) {
 
 	s.Describe("ServeCLI", func(s *testcase.Spec) {
 		var (
+			command  = let.Var(s, func(t *testcase.T) cli.Handler { return handler.Get(t) })
 			response = let.Var(s, func(t *testcase.T) *cli.ResponseRecorder {
 				return &cli.ResponseRecorder{}
 			})
@@ -177,7 +178,7 @@ func TestValidatable(t *testing.T) {
 			})
 		)
 		act := func(t *testcase.T) {
-			cli.ServeCLI(handler.Get(t), response.Get(t), request.Get(t))
+			cli.ServeCLI(command.Get(t), response.Get(t), request.Get(t))
 		}
 
 		s.Before(func(t *testcase.T) {
@@ -299,6 +300,37 @@ func TestValidatable(t *testing.T) {
 				assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
 				assert.Contains(t, response.Get(t).Err.String(), "level can't be empty")
 				assert.NotContains(t, trace.Get(t).Calls, "cmd")
+			})
+		})
+
+		s.When("the optional options flag contains a validatable level flag", func(s *testcase.Spec) {
+			command.Let(s, func(t *testcase.T) cli.Handler {
+				type cmd struct {
+					cli.HandlerFunc
+					Options struct {
+						Level VLevel `flag:"level"`
+					} `flag:"options"`
+				}
+				return cmd{HandlerFunc: handler.Get(t).ServeCLI}
+			})
+
+			s.Then("omitting both flags runs the command without validating level", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.Equal(t, trace.Get(t).Calls, []string{"cmd"})
+			})
+
+			s.And("-level= is explicitly supplied", func(s *testcase.Spec) {
+				args.Let(s, func(t *testcase.T) []string { return []string{"-level="} })
+
+				s.Then("level rejects the empty value before the command runs", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, trace.Get(t).Calls, []string{"level"})
+					assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+					assert.Contains(t, response.Get(t).Err.String(), "level can't be empty")
+				})
 			})
 		})
 
@@ -441,6 +473,19 @@ func TestValidatable(t *testing.T) {
 				verr, ok := eii.ValidateError()
 				assert.True(t, ok)
 				assert.Equal(t, verr.Cause, handlerErr.Get(t))
+			})
+
+			s.Then("building through a pointer to a cli.Handler wraps the concrete command's validation error", func(t *testcase.T) {
+				var h cli.Handler = ptr.Get(t)
+				var err error
+				assert.NotPanic(t, func() { _, err = cli.Build(&h, request.Get(t)) })
+
+				assert.ErrorIs(t, err, handlerErr.Get(t))
+				var eii cli.ErrInvalidInput
+				assert.True(t, errors.As(err, &eii))
+				verr, ok := eii.ValidateError()
+				assert.True(t, ok)
+				assert.ErrorIs(t, verr.Cause, handlerErr.Get(t))
 			})
 
 			s.Then("the error message tells the cause", func(t *testcase.T) {

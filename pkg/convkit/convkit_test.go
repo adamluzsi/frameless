@@ -2,10 +2,13 @@ package convkit_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"os/exec"
 	"reflect"
 	"strconv"
 	"strings"
@@ -185,6 +188,96 @@ func TestParse(t *testing.T) {
 	testParseForType[bool](t, true, "true", "baz")
 }
 
+type textPort uint16
+
+func (p *textPort) UnmarshalText(data []byte) error {
+	if p == nil {
+		return errors.New("UnmarshalText called on a nil receiver")
+	}
+	n, err := strconv.ParseUint(strings.TrimPrefix(string(data), "port:"), 10, 16)
+	if err != nil {
+		return err
+	}
+	*p = textPort(n)
+	return nil
+}
+
+func TestParse_textUnmarshaler(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("a value and a pointer both contain the port decoded by UnmarshalText", func(t *testcase.T) {
+		want := textPort(t.Random.IntBetween(1, 65535))
+		raw := fmt.Sprintf("port:%d", want)
+		value, err := convkit.Parse[textPort](raw)
+		assert.NoError(t, err)
+		assert.Equal(t, value, want)
+		ptr, err := convkit.Parse[*textPort](raw)
+		assert.NoError(t, err)
+		assert.Equal(t, ptr, &want)
+	})
+
+	s.Test("a pointer chain preserves the unmarshaler's range error and returns nil", func(t *testcase.T) {
+		got, err := convkit.Parse[**textPort]("port:65536")
+		assert.ErrorIs(t, err, strconv.ErrRange)
+		assert.Nil(t, got)
+	})
+}
+
+func TestParse_pointerDispatch(t *testing.T) {
+	type textPtr *ValueWithTextMarshaler
+	got, err := convkit.Parse[textPtr]("from method")
+	assert.NoError(t, err)
+	assert.Equal(t, got.Data, []byte("from method"))
+
+	t.Cleanup(convkit.Register(ImplT[ValueWithTextMarshaler]{
+		UnmarshalFunc: func(data []byte, p *ValueWithTextMarshaler) error {
+			p.Data = append([]byte("registered: "), data...)
+			return nil
+		},
+	}))
+	nested, err := convkit.Parse[**ValueWithTextMarshaler]("value")
+	assert.NoError(t, err)
+	assert.Equal(t, (*nested).Data, []byte("registered: value"))
+
+	t.Cleanup(convkit.Register(ImplT[*ValueWithTextMarshaler]{
+		UnmarshalFunc: func(data []byte, p **ValueWithTextMarshaler) error {
+			*p = &ValueWithTextMarshaler{Data: append([]byte("pointer: "), data...)}
+			return nil
+		},
+	}))
+	ptr, err := convkit.Parse[*ValueWithTextMarshaler]("value")
+	assert.NoError(t, err)
+	assert.Equal(t, ptr.Data, []byte("pointer: value"))
+}
+
+func TestParse_numericWidths(t *testing.T) {
+	type tiny int8
+	v, err := convkit.Parse[tiny]("-128")
+	assert.NoError(t, err)
+	assert.Equal(t, v, tiny(-128))
+	_, err = convkit.Parse[tiny]("-129")
+	assert.ErrorIs(t, err, strconv.ErrRange)
+	_, err = convkit.Parse[uint16]("65536")
+	assert.ErrorIs(t, err, strconv.ErrRange)
+
+	maxUint := ^uint(0)
+	u, err := convkit.Parse[uint](strconv.FormatUint(uint64(maxUint), 10))
+	assert.NoError(t, err)
+	assert.Equal(t, u, maxUint)
+	_, err = convkit.Parse[int](strconv.FormatUint(uint64(maxUint>>1)+1, 10))
+	assert.ErrorIs(t, err, strconv.ErrRange)
+
+	_, err = convkit.Parse[float32]("1e39")
+	assert.ErrorIs(t, err, strconv.ErrRange)
+	wide, err := convkit.Parse[float64]("1e39")
+	assert.NoError(t, err)
+	assert.Equal(t, wide, 1e39)
+	// Just above the float32 midpoint; rounding via float64 would yield 1.
+	f, err := convkit.Parse[float32]("0x1.00000100000001p0")
+	assert.NoError(t, err)
+	assert.Equal(t, f, float32(0x1.000002p0))
+}
+
 func TestOptions(t *testing.T) {
 	var (
 		qux     = "1;23;4"
@@ -288,6 +381,34 @@ func TestParse_timeTime(t *testing.T) {
 			assert.Error(t, err)
 		})
 	})
+}
+
+func TestParse_timePointerLayout(t *testing.T) {
+	// A regression to calling time.Time.UnmarshalText on a nil receiver may
+	// hang the process instead of panicking. Bound that failure to a child.
+	const child = "FRAMELESS_CONVKIT_TIME_POINTER_TEST"
+	if os.Getenv(child) != t.Name() {
+		exe, err := os.Executable()
+		assert.NoError(t, err)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, exe, "-test.run=^TestParse_timePointerLayout$", "-test.v")
+		cmd.Env = append(os.Environ(), child+"="+t.Name())
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, assert.Message(out))
+		assert.Contains(t, string(out), "--- PASS: "+t.Name()+" ")
+		return
+	}
+
+	opts := convkit.Options{TimeLayout: time.DateOnly}
+	got, err := convkit.Parse[*time.Time]("2024-02-29", opts)
+	assert.NoError(t, err)
+	assert.NotNil(t, got)
+	assert.Equal(t, *got, time.Date(2024, time.February, 29, 0, 0, 0, 0, time.UTC))
+
+	got, err = convkit.Parse[*time.Time]("2024-02-29T00:00:00Z", opts)
+	assert.Error(t, err)
+	assert.Nil(t, got)
 }
 
 func testParseForType[T any](t *testing.T, expVal T, valid, invalid string) {

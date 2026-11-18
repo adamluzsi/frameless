@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/cli"
@@ -12,9 +13,11 @@ import (
 )
 
 const mwNameEnvKey = "CLI_TEST_MW_NAME" // the env tag of MWName.Name
+const mwUserEnvKey = "CLI_TEST_MW_USER" // the env tag of MWConnect.User
 
 type MWTrace struct {
-	Calls []string
+	Calls          []string
+	ConnectAtBuild MWConnect
 	// Conn is the connection the command saw when it was executed.
 	Conn *MWConn
 }
@@ -34,13 +37,17 @@ func (c MWName) MiddlewareCLI(next cli.Handler) cli.Handler {
 
 // MWNested is a Middleware with a pointer receiver, which holds a Middleware field as well.
 type MWNested struct {
-	Trace *MWTrace `opaque:"true"`
-	Inner MWName
+	Trace   *MWTrace `opaque:"true"`
+	Inner   MWName
+	Connect MWConnect
+	conn    *MWConn
 }
 
 func (c *MWNested) MiddlewareCLI(next cli.Handler) cli.Handler {
+	c.Trace.ConnectAtBuild = c.Connect
 	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
 		c.Trace.Calls = append(c.Trace.Calls, "nested")
+		c.conn = c.Connect.conn
 		next.ServeCLI(w, r)
 	})
 }
@@ -50,8 +57,11 @@ type MWConn struct{ Addr string }
 // MWConnect is a Middleware with a pointer receiver that sets up a dependency on its own unexported field,
 // like a client made from the configuration, for the next handlers to use.
 type MWConnect struct {
-	Addr string
-	conn *MWConn
+	Addr     string `flag:"addr"`
+	User     string `env:"CLI_TEST_MW_USER" optional:"true"`
+	Database string `arg:"0" optional:"true"`
+	Driver   string `flag:"driver" default:"postgres"`
+	conn     *MWConn
 }
 
 func (c *MWConnect) MiddlewareCLI(next cli.Handler) cli.Handler {
@@ -90,7 +100,6 @@ func (c MWNil) MiddlewareCLI(next cli.Handler) cli.Handler {
 
 type MWCommand struct {
 	MWName
-	MWConnect
 	Nested    MWNested
 	Last      MWName
 	Promoting MWPromoting
@@ -104,7 +113,55 @@ type MWCommand struct {
 
 func (cmd MWCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Trace.Calls = append(cmd.Trace.Calls, "cmd")
-	cmd.Trace.Conn = cmd.conn
+	cmd.Trace.Conn = cmd.Nested.conn
+}
+
+type mwState struct {
+	open   bool
+	schema string
+	used   bool
+}
+
+type mwSubConfig struct {
+	state *mwState
+}
+
+func (c *mwSubConfig) MiddlewareCLI(next cli.Handler) cli.Handler {
+	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		conn := &mwState{open: true}
+		c.state = conn
+		defer func() {
+			conn.open = false
+			fmt.Fprintf(w, "close: schema=%s used=%t open=%t\n", conn.schema, conn.used, conn.open)
+		}()
+		next.ServeCLI(w, r)
+	})
+}
+
+type mwAppConfig struct {
+	Sub    mwSubConfig
+	Schema string `flag:"schema"`
+	label  string
+}
+
+func (c *mwAppConfig) MiddlewareCLI(next cli.Handler) cli.Handler {
+	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		if c.Sub.state == nil || !c.Sub.state.open {
+			cli.Error(w, "app config needs an open connection", cli.ExitCodeError)
+			return
+		}
+		c.Sub.state.schema = c.Schema
+		c.label = "report/" + c.Schema
+		next.ServeCLI(w, r)
+	})
+}
+
+type mwReportCommand struct{ Config *mwAppConfig }
+
+func (cmd mwReportCommand) ServeCLI(w cli.ResponseWriter, _ *cli.Request) {
+	conn := cmd.Config.Sub.state
+	fmt.Fprintf(w, "handle: label=%s schema=%s open=%t\n", cmd.Config.label, conn.schema, conn.open)
+	conn.used = true
 }
 
 func TestMiddleware(t *testing.T) {
@@ -126,9 +183,12 @@ func TestMiddleware(t *testing.T) {
 	handler := let.Var(s, func(t *testcase.T) MWCommand {
 		shared := &MWName{Trace: trace.Get(t), Name: sharedName.Get(t)}
 		return MWCommand{
-			MWName:    MWName{Trace: trace.Get(t), Name: embeddedName.Get(t)},
-			MWConnect: MWConnect{Addr: connAddr.Get(t)},
-			Nested:    MWNested{Trace: trace.Get(t), Inner: MWName{Trace: trace.Get(t), Name: innerName.Get(t)}},
+			MWName: MWName{Trace: trace.Get(t), Name: embeddedName.Get(t)},
+			Nested: MWNested{
+				Trace:   trace.Get(t),
+				Inner:   MWName{Trace: trace.Get(t), Name: innerName.Get(t)},
+				Connect: MWConnect{Addr: connAddr.Get(t)},
+			},
 			Last:      MWName{Trace: trace.Get(t), Name: lastName.Get(t)},
 			Promoting: MWPromoting{MWName: MWName{Trace: trace.Get(t), Name: promotingName.Get(t)}},
 			Shared:    shared,
@@ -142,13 +202,27 @@ func TestMiddleware(t *testing.T) {
 		return len(slicekit.Filter(trace.Get(t).Calls, func(c string) bool { return c == call }))
 	}
 
+	givenConnectInputs := func(t *testcase.T, req *cli.Request) MWConnect {
+		want := MWConnect{
+			Addr:     "db-" + t.Random.StringNC(8, random.CharsetAlpha()),
+			User:     t.Random.StringNC(8, random.CharsetAlpha()),
+			Database: t.Random.StringNC(8, random.CharsetAlpha()),
+			Driver:   "postgres",
+		}
+		testcase.SetEnv(t, mwUserEnvKey, want.User)
+		req.Args = []string{"-addr", want.Addr, want.Database}
+		return want
+	}
+
 	s.Before(func(t *testcase.T) {
 		testcase.UnsetEnv(t, mwNameEnvKey)
+		testcase.UnsetEnv(t, mwUserEnvKey)
 		t.OnFail(func() { t.Log("calls:", trace.Get(t).Calls) })
 	})
 
 	s.Describe("ServeCLI", func(s *testcase.Spec) {
 		var (
+			command  = let.Var(s, func(t *testcase.T) cli.Handler { return handler.Get(t) })
 			response = let.Var(s, func(t *testcase.T) *cli.ResponseRecorder {
 				return &cli.ResponseRecorder{}
 			})
@@ -157,7 +231,7 @@ func TestMiddleware(t *testing.T) {
 			})
 		)
 		act := func(t *testcase.T) {
-			cli.ServeCLI(handler.Get(t), response.Get(t), request.Get(t))
+			cli.ServeCLI(command.Get(t), response.Get(t), request.Get(t))
 		}
 
 		s.Before(func(t *testcase.T) {
@@ -168,16 +242,39 @@ func TestMiddleware(t *testing.T) {
 			})
 		})
 
-		s.Then("the middleware fields wrap the command in field declaration order, outer before inner", func(t *testcase.T) {
+		s.When("a value command depends on an app config with a nested sub config middleware", func(s *testcase.Spec) {
+			command.Let(s, func(t *testcase.T) cli.Handler { return mwReportCommand{Config: &mwAppConfig{}} })
+			request.Let(s, func(t *testcase.T) *cli.Request { return &cli.Request{Args: []string{"-schema=analytics"}} })
+
+			s.Then("the handler uses the configured connection and sub config teardown sees the same session's mutations", func(t *testcase.T) {
+				act(t)
+
+				rr := response.Get(t)
+				assert.Equal(t, rr.Code, cli.ExitCodeOK, assert.Message(rr.Err.String()))
+				assert.Equal(t, rr.Out.String(),
+					"handle: label=report/analytics schema=analytics open=true\n"+
+						"close: schema=analytics used=true open=false\n")
+			})
+		})
+
+		s.Then("the deepest middleware fields run first, preserving declaration order among siblings", func(t *testcase.T) {
 			act(t)
 
 			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
 			assert.Equal(t, trace.Get(t).Calls, []string{
-				embeddedName.Get(t), "nested", innerName.Get(t), lastName.Get(t), promotingName.Get(t), sharedName.Get(t), "cmd",
+				innerName.Get(t), embeddedName.Get(t), "nested", lastName.Get(t), promotingName.Get(t), sharedName.Get(t), "cmd",
 			})
 		})
 
-		s.Then("a pointer receiver middleware can set up its field for the command, even when the command has a value receiver", func(t *testcase.T) {
+		s.Then("the parent MiddlewareCLI sees the nested flag, env, positional arg and default values before returning a handler", func(t *testcase.T) {
+			want := givenConnectInputs(t, request.Get(t))
+			act(t)
+
+			assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+			assert.Equal(t, trace.Get(t).ConnectAtBuild, want)
+		})
+
+		s.Then("a middleware can use its initialized dependency before calling the value-receiver command", func(t *testcase.T) {
 			act(t)
 
 			assert.NotNil(t, trace.Get(t).Conn)
@@ -196,6 +293,51 @@ func TestMiddleware(t *testing.T) {
 			assert.Equal(t, count(t, sharedName.Get(t)), 1)
 		})
 
+		s.When("a field typed any holds a middleware", func(s *testcase.Spec) {
+			command.Let(s, func(t *testcase.T) cli.Handler {
+				type cmd struct {
+					cli.HandlerFunc
+					Field any
+				}
+				return cmd{
+					HandlerFunc: handler.Get(t).ServeCLI,
+					Field:       &MWName{Trace: trace.Get(t), Name: "dynamic"},
+				}
+			})
+
+			s.Then("the dynamic middleware runs before the command", func(t *testcase.T) {
+				assert.NotPanic(t, func() { act(t) })
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.Equal(t, trace.Get(t).Calls, []string{"dynamic", "cmd"})
+			})
+		})
+
+		s.When("a shallow field and a deeper middleware's child point to the same middleware", func(s *testcase.Spec) {
+			command.Let(s, func(t *testcase.T) cli.Handler {
+				type parent struct {
+					MWName
+					Child *MWName
+				}
+				type cmd struct {
+					cli.HandlerFunc
+					Shallow *MWName
+					Group   struct{ Parent parent }
+				}
+				child := &MWName{Trace: trace.Get(t), Name: "child"}
+				h := cmd{HandlerFunc: handler.Get(t).ServeCLI, Shallow: child}
+				h.Group.Parent = parent{MWName: MWName{Trace: trace.Get(t), Name: "parent"}, Child: child}
+				return h
+			})
+
+			s.Then("the shared child runs exactly once, before its parent and then the command", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, response.Get(t).Code, cli.ExitCodeOK)
+				assert.Equal(t, trace.Get(t).Calls, []string{"child", "parent", "cmd"})
+			})
+		})
+
 		s.When("the middleware inputs are not set", func(s *testcase.Spec) {
 			embeddedName.LetValue(s, "")
 			innerName.LetValue(s, "")
@@ -207,7 +349,7 @@ func TestMiddleware(t *testing.T) {
 				act(t)
 
 				assert.Equal(t, trace.Get(t).Calls, []string{
-					"mw-default", "nested", "mw-default", "mw-default", "mw-default", "mw-default", "cmd",
+					"mw-default", "mw-default", "nested", "mw-default", "mw-default", "mw-default", "cmd",
 				})
 			})
 
@@ -222,7 +364,7 @@ func TestMiddleware(t *testing.T) {
 					act(t)
 
 					assert.Equal(t, trace.Get(t).Calls, []string{
-						envName.Get(t), "nested", envName.Get(t), envName.Get(t), envName.Get(t), envName.Get(t), "cmd",
+						envName.Get(t), envName.Get(t), "nested", envName.Get(t), envName.Get(t), envName.Get(t), "cmd",
 					})
 				})
 			})
@@ -272,17 +414,26 @@ func TestMiddleware(t *testing.T) {
 			return cli.Build(ptr.Get(t), request.Get(t))
 		}
 
-		s.Then("the returned handler is wrapped by the middleware fields in field declaration order, outer before inner", func(t *testcase.T) {
+		s.Then("the returned handler runs the deepest middleware fields first, preserving declaration order among siblings", func(t *testcase.T) {
 			h, err := act(t)
 			assert.NoError(t, err)
 
 			h.ServeCLI(&cli.ResponseRecorder{}, &cli.Request{})
 			assert.Equal(t, trace.Get(t).Calls, []string{
-				embeddedName.Get(t), "nested", innerName.Get(t), lastName.Get(t), promotingName.Get(t), sharedName.Get(t), "cmd",
+				innerName.Get(t), embeddedName.Get(t), "nested", lastName.Get(t), promotingName.Get(t), sharedName.Get(t), "cmd",
 			})
 		})
 
-		s.Then("a pointer receiver middleware of the returned handler can set up its field for the command, even when the command has a value receiver", func(t *testcase.T) {
+		s.Then("the parent MiddlewareCLI sees the nested flag, env, positional arg and default values before returning a handler", func(t *testcase.T) {
+			want := givenConnectInputs(t, request.Get(t))
+			_, err := act(t)
+			assert.NoError(t, err)
+
+			assert.Equal(t, trace.Get(t).ConnectAtBuild, want)
+			assert.Empty(t, trace.Get(t).Calls)
+		})
+
+		s.Then("a middleware of the returned handler can use its initialized dependency before calling the value-receiver command", func(t *testcase.T) {
 			h, err := act(t)
 			assert.NoError(t, err)
 
@@ -312,7 +463,7 @@ func TestMiddleware(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Empty(t, trace.Get(t).Calls)
-			assert.Nil(t, ptr.Get(t).conn)
+			assert.Nil(t, ptr.Get(t).Nested.Connect.conn)
 		})
 
 		s.When("the middleware inputs are not set", func(s *testcase.Spec) {
@@ -339,7 +490,7 @@ func TestMiddleware(t *testing.T) {
 
 				h.ServeCLI(&cli.ResponseRecorder{}, &cli.Request{})
 				assert.Equal(t, trace.Get(t).Calls, []string{
-					"mw-default", "nested", "mw-default", "mw-default", "mw-default", "mw-default", "cmd",
+					"mw-default", "mw-default", "nested", "mw-default", "mw-default", "mw-default", "cmd",
 				})
 			})
 
@@ -356,7 +507,7 @@ func TestMiddleware(t *testing.T) {
 
 					h.ServeCLI(&cli.ResponseRecorder{}, &cli.Request{})
 					assert.Equal(t, trace.Get(t).Calls, []string{
-						envName.Get(t), "nested", envName.Get(t), envName.Get(t), envName.Get(t), envName.Get(t), "cmd",
+						envName.Get(t), envName.Get(t), "nested", envName.Get(t), envName.Get(t), envName.Get(t), "cmd",
 					})
 				})
 			})

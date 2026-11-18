@@ -252,11 +252,13 @@ func (cmd MigrateCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 
 - Once the inputs are applied and validated, the command is wrapped with every `Middleware` field it has,
   found the same way as the inputs, including nested and embedded structs and the values behind pointers.
-- They run in field declaration order, and a struct field runs before the `Middleware` fields it holds.
-  With the fields `Foo`, `Bar` and `Baz`, the order is `Foo -> Bar -> Baz -> command`.
+- At request time, the deepest middleware fields run first. Siblings run in declaration order.
+  If command `Foo` contains `Bar`, and `Bar` has a named middleware field `Baz`, the call order is `Baz -> Bar -> Foo`.
+  `Baz` can initialize its resource before calling `next`; `Bar` can then use it, and any cleanup `Baz` defers runs after `Bar` and `Foo` return.
 - `MiddlewareCLI` is called on the configured field.
   A pointer receiver works on a value field too,
   and the command sees what it sets up, even when the command has a value receiver.
+  For `Bar` to see changes to its `Baz` field, use a pointer receiver on `Bar` and read the field inside the returned handler.
 - Like any handler, the handler that a `Middleware` returns owns the reply.
   To fail the request, reply with `cli.Error` and don't call `next`.
   Do the work that can fail inside the returned handler, where the request and the response are at hand.
@@ -356,6 +358,9 @@ func main() {
 ```
 
 The cli package looks for inputs in nested and embedded structs too, including the values behind pointers and interfaces.
+A private named field and its children are not inputs. Exported fields promoted by an embedded struct are still visible.
+
+When `cli.ServeCLI` receives a value handler, it binds inputs to a request-local copy so the next invocation starts from the registered configuration. Untagged service pointers outside the input paths remain shared. Export an embedded pointer field if it contains inputs: reflection cannot replace a private embedded pointer in the copy. Passing a pointer handler, or calling `cli.Build`, binds in place instead.
 This lets you share inputs between commands by embedding a struct with tagged fields.
 It also means that a dependency whose type has `flag`, `arg` or `env` tags of its own would turn them into inputs,
 like the command struct of another CLI framework, or a config type with different tag conventions.

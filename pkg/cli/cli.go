@@ -130,9 +130,9 @@ type Handler interface {
 // Once the inputs (flags, args, env vars, defaults) are loaded,
 // ServeCLI and Build look for Middleware fields in the Handler recursively,
 // and wrap the Handler with them.
-// They run in the order of their field declaration,
-// and an outer field runs before the Middleware fields it holds.
-// So with the fields Foo, Bar, Baz, the execution order is Foo -> Bar -> Baz -> Handler.
+// At request time, the deepest Middleware fields run first. Siblings run in declaration order.
+// If command Foo has a Middleware field Bar, and Bar has a named Middleware field Baz,
+// the call order is Baz -> Bar -> Foo: Bar can use what Baz sets up before calling next.
 //
 // Each Middleware runs once, even when more than one field holds it, like a shared pointer.
 // A Middleware embedded into a struct field runs through that field, when the field is a Middleware itself,
@@ -145,6 +145,8 @@ type Handler interface {
 // This allows a Middleware to set up the field for the next Handlers,
 // like making a client from the configuration in the returned Handler,
 // and the Handler sees it, even when its ServeCLI has a value receiver.
+// A Middleware that needs a nested field's runtime state should use a pointer receiver
+// and read the field inside its returned Handler, not while building the chain.
 //
 // Like any Handler, the returned Handler owns the reply.
 // To fail the request, reply with cli.Error and don't call the next Handler.
@@ -407,8 +409,7 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 		return
 	}
 
-	ptr := reflect.New(reflect.TypeOf(h))
-	ptr.Elem().Set(reflect.ValueOf(h))
+	ptr := requestHandlerPtr(h)
 	var mh = metaFor(ptr)
 	if err := mh.Configure(r); err != nil {
 		var exitCode = ExitCodeBadRequest
@@ -462,7 +463,7 @@ func Main(ctx context.Context, h Handler) {
 		}
 	})
 
-	sigch := make(chan os.Signal)
+	sigch := make(chan os.Signal, 1)
 	signals := []os.Signal{
 		syscall.SIGINT,
 		syscall.SIGHUP,
@@ -764,9 +765,12 @@ func parseArgTag(field reflect.StructField, tagName, tagValue string) (argTag, e
 }
 
 func useArgTag(field reflect.StructField, value reflect.Value, v argTag) error {
-	// Validate that variadic tags are only used with slice types - panic on error
-	if v.IsVariadic && field.Type.Kind() != reflect.Slice {
-		panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, field.Type.String()))
+	if v.IsSlice() && field.Type.Kind() != reflect.Slice {
+		selector := "range"
+		if v.IsVariadic {
+			selector = "variadic"
+		}
+		panic(fmt.Sprintf(`%s arg tag selector with ":" only supported for []T types, got %s`, selector, field.Type))
 	}
 	return nil
 }
@@ -831,7 +835,7 @@ func metaFor(ptr reflect.Value) metaH {
 	}
 	var m = metaH{ptr: ptr}
 	m.walkFields(func(field reftree.Node) bool {
-		var ref = &metaRef{Node: field}
+		ref := newMetaRef(field)
 		if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
 			ref.Separator = sep
 		}
@@ -857,7 +861,7 @@ func (m metaH) walkFields(visit func(field reftree.Node) (stepIn bool)) {
 		if v.Type != reftree.StructField {
 			return nil
 		}
-		if v.StructField.IsExported() && !visit(v) {
+		if !walkableField(v.StructField) || (v.StructField.IsExported() && !visit(v)) {
 			return reftree.Skip
 		}
 		if tagint.IsOpaque(v.StructField) {
@@ -867,11 +871,20 @@ func (m metaH) walkFields(visit func(field reftree.Node) (stepIn bool)) {
 	})
 }
 
+// An unexported embedded struct can still promote exported input fields;
+// a private named field never exposes its children as command inputs.
+func walkableField(f reflect.StructField) bool {
+	return f.IsExported() || f.Anonymous && (f.Type.Kind() == reflect.Struct || f.Type.Kind() == reflect.Pointer)
+}
+
 // asInterface returns the value as T, when the value implements T, or its address does.
 // A nil value doesn't count as a T.
 func asInterface[T any](v reflect.Value) (T, bool) {
 	var zero T
-	if !v.IsValid() || !v.CanInterface() {
+	if v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	if !v.IsValid() || !v.CanInterface() || reflectkit.IsNil(v) {
 		return zero, false
 	}
 	var typ = reflectkit.TypeOf[T]()
@@ -881,17 +894,10 @@ func asInterface[T any](v reflect.Value) (T, bool) {
 	if !v.Type().Implements(typ) {
 		return zero, false
 	}
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
-		if v.IsNil() {
-			return zero, false
-		}
-	}
 	return v.Interface().(T), true
 }
 
-// middlewares collects the Middleware fields of the handler,
-// in field declaration order, where an outer field precedes its inner fields.
+// middlewares collects the Middleware fields in request execution order, deepest first.
 // The handler is not a Middleware of itself, so the Middleware fields it embeds are collected.
 func (m metaH) middlewares() []Middleware {
 	var mws []Middleware
@@ -903,39 +909,46 @@ func (m metaH) middlewares() []Middleware {
 }
 
 // fieldsOf collects the fields of the handler which implement T,
-// in field declaration order, where an outer field precedes its inner fields.
+// deepest first, preserving declaration order among siblings.
 //
 // Each T is collected once, so it is used once:
 //   - an embedded field is left out when the struct field that embeds it is a T itself,
 //     either through the method promoted from the embedded field, or through its own method, which shadows it, like in Go;
-//   - a T behind a pointer, which more than one field holds, is collected through the first field only.
+//   - fields sharing a pointer use its first occurrence in that order.
 //
 // handlerIsT tells whether the handler itself is used as a T,
 // in which case the fields that the handler embeds are left out the same way.
 // A field for which skip returns true is left out, along with the fields it holds.
 func fieldsOf[T any](m metaH, handlerIsT bool, skip func(field reftree.Node) bool) []*metaRef {
-	var (
-		refs []*metaRef
-		seen = make(map[any]struct{})
-	)
+	var refs []*metaRef
 	m.walkFields(func(field reftree.Node) bool {
 		if skip != nil && skip(field) {
 			return false
 		}
-		v, ok := asInterface[T](field.Value)
-		if !ok || isPromoted[T](field, handlerIsT) {
-			return true
+		if _, ok := asInterface[T](field.Value); ok && !isPromoted[T](field, handlerIsT) {
+			refs = append(refs, newMetaRef(field))
 		}
-		if key, ok := pointerIdentity(v); ok {
-			if _, dup := seen[key]; dup {
-				return true
-			}
-			seen[key] = struct{}{}
-		}
-		refs = append(refs, &metaRef{Node: field})
 		return true
 	})
-	return refs
+
+	// Deduplicate in execution order: a shallow alias must not hide a parent's child.
+	seen := make(map[any]bool)
+	handler, _ := asInterface[T](m.ptr.Elem())
+	if key, ok := pointerIdentity(handler); ok {
+		seen[key] = true // a field pointing back to the handler isn't a separate hook
+	}
+	return slices.DeleteFunc(innerFirst(refs), func(ref *metaRef) bool {
+		v, _ := asInterface[T](ref.Node.Value)
+		key, ok := pointerIdentity(v)
+		if !ok {
+			return false
+		}
+		if seen[key] {
+			return true
+		}
+		seen[key] = true
+		return false
+	})
 }
 
 // isPromoted tells whether the field is embedded into a struct field which is a T itself,
@@ -973,23 +986,6 @@ func pointerIdentity(v any) (any, bool) {
 	return v, true
 }
 
-// refOf returns the input which the field is.
-// Every walk of the handler makes new nodes, so the field is matched to an input by its address,
-// and by its type, which tells apart an embedded struct from its first field that shares its address.
-// A field which is not addressable can't be set, so as an input, it is one that was not loaded.
-func (m metaH) refOf(field reftree.Node) (*metaRef, bool) {
-	if !field.Value.CanAddr() {
-		ref := &metaRef{Node: field}
-		return ref, ref.IsRelevant()
-	}
-	for _, ref := range m.refs {
-		if v := ref.Node.Value; v.CanAddr() && v.Type() == field.Value.Type() && v.Addr().Pointer() == field.Value.Addr().Pointer() {
-			return ref, true
-		}
-	}
-	return nil, false
-}
-
 // Handler returns the handler behind m.ptr, wrapped with the handler's Middleware fields.
 func (m metaH) Handler() Handler {
 	var h Handler = HandlerFunc(m.serveCLI)
@@ -1011,10 +1007,8 @@ func (m metaH) serveCLI(w ResponseWriter, r *Request) {
 	m.ptr.Elem().Interface().(Handler).ServeCLI(w, r)
 }
 
-// checkArgPositions checks that the args of the handler are defined at consecutive positions.
+// checkArgPositions requires single-index args at the next position, but allows ranges to start after a gap.
 func (m metaH) checkArgPositions() error {
-	// Only validate single-index args for sequential ordering
-	// Slice args (variadic/range) don't need strict index validation
 	var expectedIdx int
 	for _, a := range m.Args() {
 		if !a.Variadic && a.End == nil && a.Begin != nil {
@@ -1030,7 +1024,11 @@ func (m metaH) checkArgPositions() error {
 				const format = "%s field's arg range starts at %d but previous args already consumed up to index %d"
 				return fmt.Errorf(format, a.Ref.FieldName(), *a.Begin, expectedIdx)
 			}
-			expectedIdx = *a.Begin + 1
+			if a.End != nil && *a.End > *a.Begin {
+				expectedIdx = *a.End // fixed ranges exclude their end
+			} else {
+				expectedIdx = *a.Begin + 1
+			}
 		}
 	}
 	return nil
@@ -1102,20 +1100,6 @@ func (m metaH) Configure(r *Request) error {
 		fv.Link()
 	}
 
-	// Validate that variadic arg tags are only used with slice types.
-	// This is a programming error that should panic immediately.
-	for _, ref := range m.refs {
-		if tag, ok := ref.ArgTag(); ok && tag.IsVariadic {
-			typ, ok := ref.LookupType()
-			if !ok {
-				continue
-			}
-			if typ.Kind() != reflect.Slice {
-				panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, typ.String()))
-			}
-		}
-	}
-
 	// Process arguments: capture all values based on original indices first.
 	// We process in order of begin index to handle overlapping ranges correctly.
 	var consumedIndices = make(map[int]bool)
@@ -1130,6 +1114,9 @@ func (m metaH) Configure(r *Request) error {
 	var allRanges []argRange
 
 	for _, a := range m.Args() {
+		if err := argTagHandler.HandleStructField(a.Ref.Node.StructField, a.Ref.Node.Value); err != nil {
+			return err
+		}
 		if a.Begin == nil {
 			continue
 		}
@@ -1198,8 +1185,8 @@ func (m metaH) Configure(r *Request) error {
 // load sets the input fields from their sources, in the order of their precedence,
 // so a later source overwrites an earlier one:
 //
-//  1. the `default` tag values, outer fields first, and only onto zero fields,
-//     so the default of an inner field only fills in what the default of its struct field left zero;
+//  1. the `default` tag values of fields that weren't pre-set, merging JSON defaults
+//     onto inner defaults so only omitted JSON members keep their inner defaults;
 //  2. the flags, args and env vars, inner fields first,
 //     so the JSON input of a struct field is merged onto the inputs of its inner fields.
 //
@@ -1209,22 +1196,97 @@ func (m metaH) Configure(r *Request) error {
 // The validate.Validatable values of the handler are validated last, see checkValidatables,
 // so the validation tag checks leave them out, as each must be validated only once.
 func (m metaH) load(ctx context.Context) error {
-	for _, ref := range m.refs {
-		if err := ref.loadDefault(); err != nil {
-			return err
-		}
+	innerFirst := m.innerFirst()
+	if err := m.loadDefaults(innerFirst); err != nil {
+		return err
 	}
-	for _, ref := range m.innerFirst() {
+	for _, ref := range innerFirst {
+		if !ref.binding.value().IsValid() {
+			continue // a default replaced the boxed value which declared this input
+		}
 		if err := ref.loadInput(); err != nil {
 			return err
 		}
 	}
+	if err := m.checkLiveInputs(validateint.SkipValidatable(ctx)); err != nil {
+		return err
+	}
+	return m.checkValidatables(ctx)
+}
+
+func (m metaH) loadDefaults(innerFirst []*metaRef) error {
+	var objects = make(map[*metaRef]string)
 	for _, ref := range m.refs {
-		if err := ref.check(validateint.SkipValidatable(ctx)); err != nil {
+		raw, ok := ref.LookupDefault()
+		if !ok || !reflectkit.IsZero(ref.binding.value()) {
+			continue
+		}
+		if tagint.IsJSONObject(ref.Type()) {
+			// Decide eligibility before an inner default makes the struct non-zero,
+			// but merge the object afterwards, even when it also has an input.
+			objects[ref] = raw
+			continue
+		}
+		if !ref.HasInput() {
+			if err := ref.loadDefault(raw); err != nil {
+				return err
+			}
+		}
+	}
+	for _, ref := range innerFirst {
+		if raw, ok := objects[ref]; ok {
+			if err := ref.loadDefault(raw); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkLiveInputs rediscovers fields after binding: JSON may have allocated,
+// replaced, or cleared a pointer. Don't carry an input over from a detached field.
+func (m *metaH) checkLiveInputs(ctx context.Context) error {
+	key := func(n reftree.Node) fieldKey { return bindingOf(n).key(n) }
+	loaded := make(map[fieldKey]bool, len(m.refs))
+	for _, ref := range m.refs {
+		loaded[ref.binding.key(ref.Node)] = ref.loaded
+	}
+	fromBoundField := func(n reftree.Node) bool {
+		// Map elements can occupy fresh storage on every walk, even in a pre-set
+		// dependency. A new address alone doesn't mean a value came from input.
+		for p := n.Parent; p != nil; p = p.Parent {
+			if p.Type == reftree.StructField && loaded[key(*p)] {
+				return true
+			}
+		}
+		return false
+	}
+	var live []*metaRef
+	m.walkFields(func(field reftree.Node) bool {
+		ref := newMetaRef(field)
+		if ref.IsRelevant() {
+			live = append(live, ref)
+		}
+		return true
+	})
+	m.refs = live
+	for _, ref := range live {
+		wasLoaded, known := loaded[ref.binding.key(ref.Node)]
+		ref.loaded = wasLoaded
+		if !known {
+			// Check newly decoded values and missing required fields, but don't
+			// treat an absent optional field as an input (or bind an empty slice arg).
+			empty := reflectkit.IsEmpty(ref.Node.Value)
+			if empty && !ref.IsRequired() {
+				continue
+			}
+			ref.loaded = !empty && fromBoundField(ref.Node)
+		}
+		if err := ref.check(ctx); err != nil {
 			return err
 		}
 	}
-	return m.checkValidatables(ctx)
+	return nil
 }
 
 // checkValidatables validates the validate.Validatable fields of the handler recursively,
@@ -1234,16 +1296,32 @@ func (m metaH) load(ctx context.Context) error {
 //
 // An input which was not given, so it is empty, is left out, along with the fields it holds,
 // so an optional input is not rejected for its zero value.
-// An input given with an empty value is validated,
-// and so is an input with a value, even when it got the value through its inner inputs.
+// An input given with an empty value is validated, even when it was given through an inner input.
 func (m metaH) checkValidatables(ctx context.Context) error {
+	// Loading a child can leave its enclosing struct zero. Its subtree is still in use.
+	hasInput := make(map[fieldKey]bool, len(m.refs))
+	for _, ref := range m.refs {
+		if !ref.loaded {
+			continue
+		}
+		for p := &ref.Node; p != nil; p = p.Parent {
+			if p.Type == reftree.StructField {
+				hasInput[bindingOf(*p).key(*p)] = true
+			}
+		}
+	}
 	handler, handlerIsValidatable := asInterface[validate.Validatable](m.ptr.Elem())
 	refs := fieldsOf[validate.Validatable](m, handlerIsValidatable, func(field reftree.Node) bool {
-		ref, ok := m.refOf(field)
-		return ok && !ref.loaded && reflectkit.IsEmpty(field.Value)
+		if !(metaRef{Node: field}).IsRelevant() || !reflectkit.IsEmpty(field.Value) {
+			return false
+		}
+		return !hasInput[bindingOf(field).key(field)]
 	})
-	for _, ref := range innerFirst(refs) {
-		v, _ := asInterface[validate.Validatable](ref.Node.Value)
+	for _, ref := range refs {
+		v, ok := asInterface[validate.Validatable](ref.binding.value())
+		if !ok { // an earlier Validate may have cleared this field
+			continue
+		}
 		if err := callValidate(ctx, v); err != nil {
 			return ErrInvalidInput{ref: *ref, Err: errorkit.WithoutTrace(err)}
 		}
@@ -1282,25 +1360,16 @@ func innerFirst(refs []*metaRef) []*metaRef {
 }
 
 func (ref metaRef) parseVariadicRaw(typ reflect.Type) error {
-	switch typ.Kind() {
-	case reflect.Slice:
-		sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
-		for _, raw := range ref.RawValues {
-			elemVal, err := ref.parseValue(typ.Elem(), raw)
-			if err != nil {
-				return err
-			}
-			sliceVal = reflect.Append(sliceVal, elemVal)
+	sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
+	for _, raw := range ref.RawValues {
+		elemVal, err := ref.parseValue(typ.Elem(), raw)
+		if err != nil {
+			return err
 		}
-		ref.Node.Value.Set(sliceVal)
-		return nil
-	default:
-		// For non-slice types with variadic tag, this should have been caught by validation
-		if len(ref.RawValues) > 0 {
-			return ref.parseRaw(typ, ref.RawValues[0])
-		}
-		return nil
+		sliceVal = reflect.Append(sliceVal, elemVal)
 	}
+	ref.binding.set(sliceVal)
+	return nil
 }
 
 type metaArg struct {
@@ -1360,14 +1429,20 @@ func (m metaH) Flags() []metaFlag {
 	return mFlags
 }
 
+func newMetaRef(field reftree.Node) *metaRef {
+	return &metaRef{Node: field, binding: bindingOf(field)}
+}
+
 type metaRef struct {
+	binding   fieldBinding
 	Node      reftree.Node
 	IsSet     bool
 	Raw       string
 	RawValues []string
 	Separator string
 
-	// loaded tells whether the field got a value of its own, from its input or its `default` tag.
+	// loaded distinguishes a bound value (even an explicit zero) from an absent input.
+	// For fields first reached after binding, only a non-empty decoded value is known to be present.
 	loaded bool
 }
 
@@ -1439,19 +1514,13 @@ func (ref *metaRef) asInvalidInput(rErr *error) {
 	})
 }
 
-// loadDefault sets the field to its `default` tag value, unless the field has a value already.
-// A field with an input skips it, since the input overwrites it anyway,
-// except a field taking a JSON object, since its JSON input is merged onto the default.
-func (ref *metaRef) loadDefault() (rErr error) {
+func (ref *metaRef) loadDefault(raw string) (rErr error) {
 	defer ref.asInvalidInput(&rErr)
-	typ, ok := ref.LookupType()
-	if !ok {
-		return fmt.Errorf("unable to determine type for %s", ref.InputName())
+	if err := ref.parseRaw(ref.Type(), raw); err != nil {
+		return err
 	}
-	if ref.HasInput() && !tagint.IsJSONObject(typ) {
-		return nil
-	}
-	return ref.useDefault(typ)
+	ref.loaded = true
+	return nil
 }
 
 // loadInput sets the field from its input, if it got one.
@@ -1490,13 +1559,13 @@ func (ref *metaRef) loadInput() (rErr error) {
 func (ref *metaRef) check(ctx context.Context) (rErr error) {
 	defer ref.asInvalidInput(&rErr)
 	if ref.loaded {
-		return ref.validate(ctx, ref.Node.Value)
+		return ref.validate(ctx, ref.binding.value())
 	}
 	typ, ok := ref.LookupType()
 	if !ok {
 		return fmt.Errorf("unable to determine type for %s", ref.InputName())
 	}
-	var isEmpty = reflectkit.IsEmpty(ref.Node.Value)
+	var isEmpty = reflectkit.IsEmpty(ref.binding.value())
 	if tag, ok := ref.ArgTag(); ok && tag.IsSlice() && isEmpty {
 		return ref.parseEmptySliceArg(ctx, typ, tag)
 	}
@@ -1517,7 +1586,7 @@ func (ref metaRef) parseEmptySliceArg(ctx context.Context, typ reflect.Type, tag
 		return nil
 	}
 	sliceVal := reflect.MakeSlice(typ, 0, 0)
-	ref.Node.Value.Set(sliceVal)
+	ref.binding.set(sliceVal)
 	// Validate the empty slice against any length constraints
 	return ref.validate(ctx, sliceVal)
 }
@@ -1536,21 +1605,6 @@ func (ref metaRef) validate(ctx context.Context, value reflect.Value) error {
 		}
 		return err
 	}
-	return nil
-}
-
-// useDefault sets the field to its `default` tag value when the field is still zero.
-// A non-zero field holds a value pre-set on the handler, or one from the default of its struct field,
-// which must not be overwritten.
-func (ref *metaRef) useDefault(typ reflect.Type) error {
-	defVal, ok := ref.LookupDefault()
-	if !ok || !reflectkit.IsZero(ref.Node.Value) {
-		return nil
-	}
-	if err := ref.parseRaw(typ, defVal); err != nil {
-		return err
-	}
-	ref.loaded = true
 	return nil
 }
 
@@ -1599,7 +1653,7 @@ func (ref metaRef) parseRaw(typ reflect.Type, raw string) error {
 		}
 	}
 
-	ref.Node.Value.Set(value)
+	ref.binding.set(value)
 	return nil
 }
 
@@ -1614,8 +1668,8 @@ func (ref metaRef) parseValue(typ reflect.Type, raw string) (reflect.Value, erro
 		Separator:  tagint.Separator(ref.Separator, raw),
 		TimeLayout: ref.TimeLayout(),
 	}
-	if typ == ref.Node.Value.Type() {
-		return tagint.ParseOnto(ref.Node.Value, raw, opts)
+	if typ == ref.Type() {
+		return tagint.ParseOnto(ref.binding.value(), raw, opts)
 	}
 	return convkit.ParseReflect(typ, raw, opts)
 }

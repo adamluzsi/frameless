@@ -1,11 +1,16 @@
 package cli_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/cli"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -78,6 +83,72 @@ func TestBuild(t *testing.T) {
 			assert.Equal(t, ptr.Get(t).Arg2, intArg.Get(t))
 			assert.Equal(t, ptr.Get(t).Arg3, true)
 		})
+	})
+
+	s.Describe("uint8 flag", func(s *testcase.Spec) {
+		act := func(t *testcase.T) (uint8, error) { return buildRequiredFlag[uint8](request.Get(t)) }
+
+		s.Test("binds 255", func(t *testcase.T) {
+			args.Set(t, []string{"-flag", "255"})
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, got, uint8(255))
+		})
+
+		s.Test("rejects 256", func(t *testcase.T) {
+			args.Set(t, []string{"-flag", "256"})
+			got, err := act(t)
+			assert.Error(t, err, assert.MessageF("bound -flag to %d", got))
+			var invalid cli.ErrInvalidInput
+			assert.True(t, errors.As(err, &invalid))
+		})
+	})
+
+	s.Describe("int8 flag", func(s *testcase.Spec) {
+		act := func(t *testcase.T) (int8, error) { return buildRequiredFlag[int8](request.Get(t)) }
+
+		for _, n := range []int8{-128, 127} {
+			s.Test(fmt.Sprintf("binds %d", n), func(t *testcase.T) {
+				args.Set(t, []string{"-flag", strconv.Itoa(int(n))})
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, got, n)
+			})
+		}
+
+		for _, raw := range []string{"-129", "128"} {
+			s.Test("rejects "+raw, func(t *testcase.T) {
+				args.Set(t, []string{"-flag", raw})
+				got, err := act(t)
+				assert.Error(t, err, assert.MessageF("bound -flag to %d", got))
+				var invalid cli.ErrInvalidInput
+				assert.True(t, errors.As(err, &invalid))
+			})
+		}
+	})
+
+	s.Test("a nil time pointer flag is allocated and bound to the RFC3339 instant", func(t *testcase.T) {
+		// A nil UnmarshalText receiver can fault without returning to Go. Isolate
+		// this spec so a timeout can't leave a stuck goroutine in the test suite.
+		const child = "FRAMELESS_CLI_TIME_POINTER_TEST"
+		if os.Getenv(child) != t.Name() {
+			exe, err := os.Executable()
+			assert.NoError(t, err)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, exe, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v", "-test.timeout=3s")
+			cmd.Env = append(os.Environ(), child+"="+t.Name())
+			out, err := cmd.CombinedOutput()
+			assert.NoError(t, err, assert.Message(out))
+			assert.Contains(t, string(out), "--- PASS: "+t.Name()+" ")
+			return
+		}
+
+		args.Set(t, []string{"-flag", "2025-01-02T03:04:05.123456789+02:00"})
+		got, err := buildRequiredFlag[*time.Time](request.Get(t))
+		assert.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Equal(t, *got, time.Date(2025, time.January, 2, 1, 4, 5, 123456789, time.UTC))
 	})
 
 	s.Describe("required flag", func(s *testcase.Spec) {
@@ -360,6 +431,67 @@ func TestBuild(t *testing.T) {
 		})
 	})
 
+	s.Describe("flags in nested fields", func(s *testcase.Spec) {
+		type settings struct {
+			Name string `flag:"name"`
+		}
+		type command struct {
+			cli.HandlerFunc
+			Settings any
+			private  struct {
+				Name string `flag:"private-name"`
+			}
+		}
+		ptr := let.Var(s, func(t *testcase.T) *command { return &command{Settings: settings{}} })
+		name := let.StringNC(s, 8, random.CharsetAlpha())
+		act := func(t *testcase.T) error {
+			_, err := cli.Build(ptr.Get(t), request.Get(t))
+			return err
+		}
+
+		args.Let(s, func(t *testcase.T) []string { return []string{"-name", name.Get(t)} })
+
+		s.Then("the exported interface holds the configured struct value", func(t *testcase.T) {
+			var err error
+			assert.NotPanic(t, func() { err = act(t) })
+			assert.NoError(t, err)
+			assert.Equal(t, ptr.Get(t).Settings, any(settings{Name: name.Get(t)}))
+		})
+
+		s.When("the flag belongs to a private named field's type", func(s *testcase.Spec) {
+			args.Let(s, func(t *testcase.T) []string { return []string{"-private-name", name.Get(t)} })
+
+			s.Then("the flag is not defined", func(t *testcase.T) {
+				var err error
+				assert.NotPanic(t, func() { err = act(t) })
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "not defined")
+				assert.Contains(t, err.Error(), "private-name")
+			})
+		})
+	})
+
+	s.Describe("zero values in a struct's JSON default", func(s *testcase.Spec) {
+		type settings struct {
+			Enabled bool `flag:"enabled" default:"true"`
+			Notify  bool `flag:"notify" default:"true"`
+		}
+		type command struct {
+			cli.HandlerFunc
+			Settings settings `flag:"settings" default:"{\"Enabled\":false}"`
+		}
+		ptr := let.Var(s, func(t *testcase.T) *command { return &command{} })
+		act := func(t *testcase.T) error {
+			_, err := cli.Build(ptr.Get(t), request.Get(t))
+			return err
+		}
+
+		s.Then("false overrides the inner default while an omitted key keeps its default", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.Equal(t, ptr.Get(t).Settings, settings{Enabled: false, Notify: true})
+		})
+	})
+
 	s.Describe("variadic arg tag", func(s *testcase.Spec) {
 		ptr := let.Var(s, func(t *testcase.T) *NonSliceTypeWithVariadicArgTag {
 			return &NonSliceTypeWithVariadicArgTag{}
@@ -413,6 +545,29 @@ func TestBuild(t *testing.T) {
 		})
 	})
 
+	s.Test("a fixed range arg binds two values and the following scalar binds the third", func(t *testcase.T) {
+		var cmd struct {
+			cli.HandlerFunc
+			Pair []string `arg:"0:2"`
+			Last string   `arg:"2"`
+		}
+		args.Set(t, []string{"first", "second", "third"})
+		_, err := cli.Build(&cmd, request.Get(t))
+		assert.NoError(t, err)
+		assert.Equal(t, cmd.Pair, []string{"first", "second"})
+		assert.Equal(t, cmd.Last, "third")
+	})
+
+	s.Test("a fixed range arg on a scalar panics instead of consuming two values and keeping only the first", func(t *testcase.T) {
+		var cmd struct {
+			cli.HandlerFunc
+			Pair string `arg:"0:2"`
+		}
+		args.Set(t, []string{"first", "second"})
+		req := request.Get(t)
+		assert.Panic(t, func() { _, _ = cli.Build(&cmd, req) })
+	})
+
 	s.Describe("range arg", func(s *testcase.Spec) {
 		var (
 			ptr = let.Var(s, func(t *testcase.T) *CommandWithVariadicArgRange03 {
@@ -454,4 +609,10 @@ func TestBuild(t *testing.T) {
 			})
 		})
 	})
+}
+
+func buildRequiredFlag[T any](req *cli.Request) (T, error) {
+	var cmd CommandWithFlagWithRequired[T]
+	_, err := cli.Build(&cmd, req)
+	return cmd.Flag, err
 }

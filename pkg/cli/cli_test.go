@@ -3121,6 +3121,56 @@ func TestServeCLI(t *testing.T) {
 		})
 	})
 
+	s.Context("pointer to a config with a required input", func(s *testcase.Spec) {
+		initial := let.VarOf[*AuthConfig](s, nil)
+		token := let.StringNC(s, 8, random.CharsetAlpha())
+		handler.Let(s, func(t *testcase.T) cli.Handler { return commandWithAuthPointer{Auth: initial.Get(t)} })
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			return &cli.Request{Args: []string{"-auth", fmt.Sprintf(`{"Token":%q}`, token.Get(t))}}
+		})
+		s.Before(func(t *testcase.T) { testcase.UnsetEnv(t, "CLI_TEST_AUTH_TOKEN_ENV") })
+
+		s.Then("the command receives the token from the JSON object even if the pointer was nil", func(t *testcase.T) {
+			act(t)
+			rr := response.Get(t)
+			assert.Equal(t, rr.Code, cli.ExitCodeOK, assert.Message(rr.Err.String()))
+			assert.Equal(t, rr.Out.String(), token.Get(t)+"\n")
+		})
+
+		rejectsMissingToken := func(t *testcase.T) {
+			act(t)
+			rr := response.Get(t)
+			assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
+			assert.Empty(t, rr.Out.String(), "the command must not run")
+			assert.Contains(t, rr.Err.String(), "missing")
+			assert.Contains(t, rr.Err.String(), "auth-token")
+		}
+		s.When("the JSON object omits the required token", func(s *testcase.Spec) {
+			request.Let(s, func(t *testcase.T) *cli.Request { return &cli.Request{Args: []string{"-auth={}"}} })
+
+			s.Then("the token is required when the JSON allocates the config", rejectsMissingToken)
+
+			s.And("the config was already allocated", func(s *testcase.Spec) {
+				initial.Let(s, func(t *testcase.T) *AuthConfig { return &AuthConfig{} })
+
+				s.Then("the token is still required", rejectsMissingToken)
+			})
+		})
+
+		s.When("a previous request supplied the token to the same value handler", func(s *testcase.Spec) {
+			initial.Let(s, func(t *testcase.T) *AuthConfig { return &AuthConfig{} })
+			request.Let(s, func(t *testcase.T) *cli.Request { return &cli.Request{} })
+			s.Before(func(t *testcase.T) {
+				var first cli.ResponseRecorder
+				cli.ServeCLI(handler.Get(t), &first, &cli.Request{Args: []string{"-auth-token", token.Get(t)}})
+				assert.Must(t).Equal(first.Code, cli.ExitCodeOK, assert.Message(first.Err.String()))
+				assert.Must(t).Equal(first.Out.String(), token.Get(t)+"\n")
+			})
+
+			s.Then("a fresh request cannot inherit that token", rejectsMissingToken)
+		})
+	})
+
 	s.Context(`struct fields with a JSON value in their default tag`, func(s *testcase.Spec) {
 		const (
 			replicaEnvKey      = "CLI_TEST_REPLICA_ENV"       // the env tag of CommandWithStructInputDefault.Replica
@@ -3747,6 +3797,14 @@ type DBConfig struct {
 // AuthConfig has a required inner field, which can be provided either by its own input or as part of a JSON value.
 type AuthConfig struct {
 	Token string `flag:"auth-token" env:"CLI_TEST_AUTH_TOKEN_ENV" required:"true"`
+}
+
+type commandWithAuthPointer struct {
+	Auth *AuthConfig `flag:"auth"`
+}
+
+func (cmd commandWithAuthPointer) ServeCLI(w cli.ResponseWriter, _ *cli.Request) {
+	fmt.Fprintln(w, cmd.Auth.Token)
 }
 
 type CommandWithStructInputs struct {
@@ -5191,4 +5249,47 @@ func TestMain_signalInterrupt(tt *testing.T) {
 		assert.Equal(t, atomic.LoadInt32(&handlerDone), 1)
 		assert.Equal(t, atomic.LoadInt32(&mainDone), 1)
 	})
+}
+
+type Baz struct{ Name string }
+
+func (baz *Baz) MiddlewareCLI(next cli.Handler) cli.Handler {
+	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		baz.Name = "Ada"
+		fmt.Fprintln(w, "Baz.Name:", baz.Name)
+		next.ServeCLI(w, r)
+	})
+}
+
+type Bar struct {
+	Baz      Baz
+	Greeting string
+}
+
+func (bar *Bar) MiddlewareCLI(next cli.Handler) cli.Handler {
+	return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+		bar.Greeting = "Hello, " + bar.Baz.Name
+		fmt.Fprintln(w, "Bar.Greeting:", bar.Greeting)
+		next.ServeCLI(w, r)
+	})
+}
+
+type Foo struct {
+	Bar
+	Message string
+}
+
+func (foo *Foo) ServeCLI(w cli.ResponseWriter, _ *cli.Request) {
+	fmt.Fprintln(w, "Foo Message:", foo.Bar.Greeting+"!")
+}
+
+func ExampleMiddleware_dependencyOrder() {
+	var response cli.ResponseRecorder
+	cli.ServeCLI(&Foo{}, &response, &cli.Request{})
+	fmt.Print(response.Out.String())
+
+	// Output:
+	// Baz.Name: Ada
+	// Bar.Greeting: Hello, Ada
+	// Foo Message: Hello, Ada!
 }

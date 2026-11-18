@@ -143,7 +143,7 @@ Rules:
 A config struct field can do more than hold inputs. The pipeline finds these interfaces on the handler's fields recursively, the same way it finds inputs: nested, embedded and behind pointers.
 
 - **`cli.Middleware`** (`MiddlewareCLI(next cli.Handler) cli.Handler`): wraps the command once the inputs are applied and validated. Use it to turn configuration into a dependency, like opening a client from the configured URL, so the command doesn't repeat it.
-  - Order: field declaration order, outer before inner. With fields `Foo`, `Bar`, `Baz`, it is `Foo -> Bar -> Baz -> command`.
+  - Request order: deepest fields first; siblings run in declaration order. If command `Foo` contains `Bar`, and `Bar` has a named middleware field `Baz`, the order is `Baz -> Bar -> Foo`. Set up dependencies inside the returned handler before calling `next`.
   - A pointer receiver works on a value field. What it sets on its own fields (even unexported ones) is visible to the command, even when the command has a value receiver.
   - It owns its reply. To fail, call `cli.Error(w, msg, code)` and don't call `next`. There's no error return. Do fallible work inside the returned handler, not while building it.
   - Returning a nil handler panics, because it is a programming error.

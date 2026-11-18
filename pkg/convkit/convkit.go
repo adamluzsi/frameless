@@ -163,21 +163,21 @@ func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
 		return reflect.ValueOf(val).Convert(typ), nil
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		num, err := strconv.ParseUint(string(val), 10, 64)
+		num, err := strconv.ParseUint(string(val), 10, typ.Bits())
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		num, err := strconv.ParseInt(string(val), 10, 64)
+		num, err := strconv.ParseInt(string(val), 10, typ.Bits())
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Float32, reflect.Float64:
-		num, err := strconv.ParseFloat(string(val), 64)
+		num, err := strconv.ParseFloat(string(val), typ.Bits())
 		if err != nil {
 			return reflect.Value{}, err
 		}
@@ -230,7 +230,7 @@ func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
 		}
 		ptr := reflect.New(typ.Elem())
 		ptr.Elem().Set(rv)
-		return ptr, nil
+		return ptr.Convert(typ), nil
 
 	default:
 		return reflect.Value{}, fmt.Errorf("unknown type: %s", typ.String())
@@ -586,11 +586,6 @@ func textUnmarshal(typ reflect.Type, data []byte) (reflect.Value, error, bool) {
 		err, _ := res[0].Interface().(error)
 		return ptr.Elem(), err, true
 	}
-	if ptr.Type().Elem().Implements(encodingTextUnmarshaler) {
-		value := ptr.Elem()
-		res := value.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf(data)})
-		err, _ := res[0].Interface().(error)
-		return value, err, true
-	}
+
 	return reflect.Value{}, nil, false
 }
