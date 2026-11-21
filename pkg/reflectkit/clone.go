@@ -38,6 +38,9 @@ func clone(g *reftree.RecursionGuard, value reflect.Value) reflect.Value {
 		// which rejects values reached through an unexported field.
 		return toExported(value)
 	}
+	// Only ancestors close a cycle; a sibling referencing the same value
+	// needs its own copy rather than an alias back to the source.
+	defer g.Forget(value)
 	if v, ok := toAccessible(value); ok {
 		value = v
 	}
@@ -74,6 +77,22 @@ func clone(g *reftree.RecursionGuard, value reflect.Value) reflect.Value {
 				continue
 			}
 			dst.Set(clone(g, value.Field(i)))
+		}
+		return out
+
+	case reflect.Array:
+		out := reflect.New(value.Type()).Elem()
+		if value.CanInterface() {
+			out.Set(value)
+			if !IsMutableType(value.Type().Elem()) {
+				return out
+			}
+			// Read from an addressable copy so private fields inside the
+			// elements remain accessible even when the array was passed by value.
+			value = out
+		}
+		for i := 0; i < value.Len(); i++ {
+			out.Index(i).Set(clone(g, value.Index(i)))
 		}
 		return out
 

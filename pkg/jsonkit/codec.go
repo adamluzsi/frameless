@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -168,7 +169,7 @@ func CodecRegister[T any](codec *Codec, id TypeID, tc ITypeCodec[T]) func() {
 		Marshal: func(c *Codec, v any) ([]byte, error) {
 			data, err := marshal(c, v)
 			if err != nil {
-				return nil, err
+				return nil, protectCodecError(err)
 			}
 			return compactCustomCodecOutput(baseT, data)
 		},
@@ -279,6 +280,12 @@ func (tc TypeCodec[T]) Unmarshal(c *Codec, data []byte, p *T) error {
 // as their plain JSON would be read back as an int or a float64.
 // A built-in type registered on the Codec itself is written with the $type of the registration.
 //
+// When an empty interface holds a value with no type ID, Marshal writes it as plain JSON.
+// For example, an unregistered struct reads back as a map[string]any, so its non-empty interface
+// fields may also hold unregistered values. Registered values held by interfaces keep their tags,
+// and errors from their codecs are returned. A concrete or tagged struct still needs type IDs
+// to reconstruct its non-empty interface fields.
+//
 // A slice or a map with string keys, held by an interface, whose type is not registered,
 // has a $type derived from the type IDs of its elements, the way Go spells its type,
 // like "[]item" for a []Item, or "map[string][]int" for a map[string][]int,
@@ -309,7 +316,7 @@ func (tc TypeCodec[T]) Unmarshal(c *Codec, data []byte, p *T) error {
 //
 // The members of the type envelope are named by the TypeKeyword, the ValueKeyword and the MapKeyword of the Codec,
 // $type, $value and $map by default.
-// Unmarshal reads a JSON object with a type member as a type envelope, so a value can't have a member of its own named like it
+// A reader can interpret a JSON object with a type member as a type envelope, so a value can't have a member of its own named like it
 // where it would be read back as a member of the envelope, instead of as a member of the value:
 //   - a map written as plain JSON, without an envelope, with a key named like the type member,
 //     like a map in a struct field of its own type, or a map without a type ID, like a map[string]any, held by an interface,
@@ -327,15 +334,19 @@ func (c Codec) Marshal(v any) ([]byte, error) {
 	if err := c.checkKeywords(); err != nil {
 		return nil, err
 	}
-	return newMarshaler(&c).marshal(v)
+	data, err := newMarshaler(&c).marshal(v)
+	return data, restoreCodecError(err)
 }
 
 // Unmarshal decodes data into the value ptr points to, like json.Unmarshal does:
 // a struct keeps the fields without a member in the JSON, a pointer keeps pointing to the value it points to,
 // a map keeps its other entries, and the elements of a slice or an array are decoded in place.
 //
-// Unlike with encoding/json, an interface value is decoded by its $type,
-// and it replaces the value the interface holds, instead of being decoded into it.
+// An interface value is decoded by its $type and replaces the value the interface holds.
+// If an object has no recognised $type, an empty interface (including a named one) receives
+// a map[string]any with all members intact. Nested values are decoded by the same rules.
+// For a non-empty interface, an unknown type ID returns ErrUnknownTypeID instead.
+// Errors decoding a recognised type are returned, not retried as a map.
 //
 // Unlike the members of a struct, which are matched case-insensitively, like with encoding/json,
 // the members of the type envelope are matched by their exact names, the keywords of the Codec,
@@ -369,6 +380,7 @@ func (c Codec) Marshal(v any) ([]byte, error) {
 // without the $type envelope the Codec wrote around it, like when an interface held it.
 // A custom codec registered with CodecRegister wins over both.
 func (c Codec) Unmarshal(data []byte, ptr any) error {
+
 	if ptr == nil {
 		return fmt.Errorf("Unmarshal: nil destination")
 	}
@@ -379,7 +391,30 @@ func (c Codec) Unmarshal(data []byte, ptr any) error {
 	if err := c.checkKeywords(); err != nil {
 		return err
 	}
-	return newUnmarshaler(&c).unmarshal(data, ptr)
+	return restoreCodecError(newUnmarshaler(&c).unmarshal(data, ptr))
+}
+
+// encoding/json/v2 treats errors.Is(err, errors.ErrUnsupported) as a request to
+// skip its hook. A registered codec's rejection is not such a request. Hide the
+// sentinel from the hooks, then restore the original error for the caller.
+type unsupportedCodecError struct{ error }
+
+func protectCodecError(err error) error {
+	if errors.Is(err, errors.ErrUnsupported) {
+		return unsupportedCodecError{err}
+	}
+	return err
+}
+
+func restoreCodecError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var rejected unsupportedCodecError
+	if errors.As(err, &rejected) {
+		return rejected.error
+	}
+	return err
 }
 
 func (c Codec) NewStreamEncoder(w io.Writer) codec.StreamEncoder {

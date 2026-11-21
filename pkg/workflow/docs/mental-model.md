@@ -202,7 +202,13 @@ Folding them in `EventID` order produces the bindings.
   `setOnce`/`declareOnce`/`deleteOnce`, which skip if an event of that type for
   that name already exists at the current path (`varMutationDone`). Because
   every loop round and iteration has its own path, the same `SetVar` inside a
-  loop records once per round, not once in total.
+  loop records once per round, not once in total. A set or delete that changed
+  nothing records `EventVarNoop` at the step's path. It guards that step on
+  replay but never creates, shadows or changes a binding.
+- **Record which positions to visit, not copies of their values.** A `ForEach`
+  records `EventForEachTraversal` before entering its first body, even when the
+  range is empty. Replay revisits these positions in order; a later change to
+  the collection cannot skip a suspended body or add new iterations.
 - **Derive, don't record, what can be re-derived.** `ForEach` K/V are not
   written to the log as variables. Each iteration records a *reference*
   instead (`EventForEachIteration`: the iteration's `Path`, the collection
@@ -324,7 +330,9 @@ just `EvaluateWith` under the fixed ID `template-condition`.
 Its rules:
 
 - **A cache hit** needs the same ID at the same `Path`, the same input values
-  (as the history saw them at that point), and matching input/output arity.
+  (as the history saw them on entry to the call), and matching input/output
+  arity. A new call allocates its event ID at this point, before the participant
+  can write to its own inputs; the success event is only appended on return.
 - **Only success is recorded.** A genuine failure rolls back the call's events.
   Its `EventError` audit is constructed at the failure point (`recordErrorEvent`)
   and written best-effort after the outermost executor transaction has finished,
@@ -334,7 +342,8 @@ Its rules:
   not crash-durable until written. A signal leaves no call record or failure audit.
 - **Transactions nest.** The events of a call and of the calls made inside it
   commit together (`commitEventsTx`). Signals commit what was recorded before
-  them. Ordinary errors roll it back.
+  them. An unwrapped `Break` keeps the work it exits in an enclosing loop;
+  outside a loop it is an error. Ordinary failures and panics roll back.
 
 **Idiom:** a new feature that needs "do this once and remember the answer"
 reuses `ExecuteWith`/`EvaluateWith` under a stable, namespaced ID.
@@ -455,7 +464,8 @@ This keeps "what was committed" aligned with "what the log says is done."
 - **The caller mints the `ProcessID`** and can therefore make `Bind`
   idempotent. `Bind` on an already bound process is a no-op.
 - **Lifecycle outcomes are events** (`EventCompleted`, `EventTerminated`), not
-  fields.
+  fields. `IsFinished` asks for either outcome in one read. If the log has both,
+  no outcome query reports success.
 - **Deferred definitions run LIFO** before the outcome is recorded.
 - **Child processes are identified by the `Path` of their `Spawn`** within the
   parent, so a `Spawn` in a loop body spawns a child per round. A `Join`

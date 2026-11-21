@@ -1104,6 +1104,30 @@ func TestCloneT(t *testing.T) {
 // they rely on the interaction between the generic type parameter
 // and Clone's reflect-driven recursion.
 func TestCloneT_regressions(t *testing.T) {
+	t.Run("array elements with mutable storage are isolated", func(t *testing.T) {
+		src := [1][]string{{"original"}}
+		cloned := reflectkit.CloneT(src)
+		cloned[0][0] = "edited"
+		assert.Equal(t, src[0][0], "original")
+	})
+
+	t.Run("array elements retain private fields when copied by value", func(t *testing.T) {
+		type entry struct {
+			active bool
+			Labels []string
+		}
+		src := [1]entry{{active: true, Labels: []string{"original"}}}
+		assert.Equal(t, reflectkit.CloneT(src), src)
+	})
+
+	t.Run("repeated noncyclic references are each isolated", func(t *testing.T) {
+		shared := []string{"original"}
+		cloned := reflectkit.CloneT([][]string{shared, shared})
+		cloned[1][0] = "edited"
+		assert.Equal(t, shared[0], "original")
+		assert.Equal(t, cloned[0][0], "original")
+	})
+
 	t.Run("CloneT of nil pointer returns typed nil", func(t *testing.T) {
 		var p *int
 		cloned := reflectkit.CloneT(p)

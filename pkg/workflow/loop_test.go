@@ -539,16 +539,63 @@ func TestFor(t *testing.T) {
 				"so an idempotent participant is not skipped as already executed")
 		})
 
-		s.Test("re-executing the Process replays the loop without calling the participant again", func(t *testcase.T) {
-			rt := c.Runtime.Get(t)
-
-			assert.NoError(t, rt.Execute(t.Context(), boundProcess.Get(t)))
-			assert.NoError(t, rt.Execute(t.Context(), boundProcess.Get(t)))
-
-			assert.Equal(t, rounds.Get(t), participantCalls.Get(t),
-				"a replay arrives at the same state,",
-				"it does not do the work a second time")
+		s.Test("executing a completed process does not even enter the loop", func(t *testcase.T) {
+			rt, pid := c.Runtime.Get(t), boundProcess.Get(t)
+			assert.NoError(t, rt.Execute(t.Context(), pid))
+			assert.True(t, c.IsCompleted(t, pid))
+			evaluations := condEvaluations.Get(t)
+			assert.NoError(t, rt.Execute(t.Context(), pid))
+			assert.Equal(t, condEvaluations.Get(t), evaluations)
+			assert.Equal(t, participantCalls.Get(t), rounds.Get(t))
 		})
+
+		testLoopReplay := func(s *testcase.Spec) {
+			gateCalls := let.VarOf(s, 0)
+			_, gate := wftest.LetParticipant(s, func(t *testcase.T) func(context.Context) error {
+				return func(context.Context) error {
+					gateCalls.Set(t, gateCalls.Get(t)+1)
+					if gateCalls.Get(t) == 1 {
+						return workflow.Suspend{}
+					}
+					return nil
+				}
+			})
+			definition.Let(s, func(t *testcase.T) workflow.Definition {
+				return workflow.Sequence{definition.Super(t), workflow.Execute{Participant: gate.Get(t)}}
+			})
+			s.Then("resumption re-enters the loop without repeating a participant or recording new loop events", func(t *testcase.T) {
+				rt, pid := c.Runtime.Get(t), boundProcess.Get(t)
+				loopEventIDs := func() []workflow.EventID {
+					var ids []workflow.EventID
+					for _, event := range c.ProcessEvents(t, pid) {
+						switch e := event.(type) {
+						case workflow.EventUseDefinition, workflow.EventCompleted:
+							continue
+						case workflow.EventParticipant:
+							if e.ParticipantID == gate.Get(t) {
+								continue
+							}
+						}
+						ids = append(ids, event.GetEventID())
+					}
+					return ids
+				}
+
+				assert.ErrorIs(t, rt.Execute(t.Context(), pid), workflow.Suspend{})
+				assert.False(t, c.IsCompleted(t, pid))
+				assert.Equal(t, gateCalls.Get(t), 1)
+				assert.Equal(t, participantCalls.Get(t), rounds.Get(t))
+				before, evaluations := loopEventIDs(), condEvaluations.Get(t)
+				assert.NotEmpty(t, before)
+				assert.NoError(t, rt.Execute(t.Context(), pid))
+				assert.True(t, c.IsCompleted(t, pid))
+				assert.True(t, condEvaluations.Get(t) > evaluations, "the loop must be re-entered")
+				assert.Equal(t, gateCalls.Get(t), 2)
+				assert.Equal(t, participantCalls.Get(t), rounds.Get(t))
+				assert.Equal(t, loopEventIDs(), before)
+			})
+		}
+		s.When("a gate after the loop suspends", testLoopReplay)
 
 		s.When("the loop has no condition and the body breaks out of it", func(s *testcase.Spec) {
 			definition.Let(s, func(t *testcase.T) workflow.Definition {
@@ -561,7 +608,7 @@ func TestFor(t *testing.T) {
 					Do: workflow.Sequence{
 						workflow.Execute{Participant: participantID.Get(t)},
 						workflow.If{
-							Cond: wftemplate.Condition(fmt.Sprintf("le %d .%s", rounds.Get(t)-1, counter.Get(t))),
+							Cond: bounded(t, wftemplate.Condition(fmt.Sprintf("le %d .%s", rounds.Get(t)-1, counter.Get(t)))),
 							Then: workflow.Break{},
 						},
 					},
@@ -574,16 +621,7 @@ func TestFor(t *testing.T) {
 				assert.Equal(t, rounds.Get(t), participantCalls.Get(t))
 			})
 
-			s.Then("the work done before the break is kept, so a replay does not repeat it", func(t *testcase.T) {
-				rt := c.Runtime.Get(t)
-
-				assert.NoError(t, rt.Execute(t.Context(), boundProcess.Get(t)))
-				assert.NoError(t, rt.Execute(t.Context(), boundProcess.Get(t)))
-
-				assert.Equal(t, rounds.Get(t), participantCalls.Get(t),
-					"breaking out of a loop is not a failure,",
-					"so the rounds it leaves behind stay recorded rather than being rolled back")
-			})
+			s.And("a gate after the loop suspends", testLoopReplay)
 		})
 
 		s.When("the body changes the variable its condition reads, and then suspends", func(s *testcase.Spec) {

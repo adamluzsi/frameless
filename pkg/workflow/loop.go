@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
@@ -49,6 +50,7 @@ var _ Definition = For{}
 
 func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 	ctx = WithVarScope(ctx, "for")
+	ctx = ctxEnclosingLoop.ContextWith(ctx, processID)
 
 	if loop.Init != nil {
 		if err := loop.Init.Execute(WithName(ctx, "init"), processID); err != nil {
@@ -83,6 +85,12 @@ func (loop For) Execute(ctx context.Context, processID ProcessID) error {
 		}
 	}
 }
+
+// A break target belongs to this execution, not to a persisted path. For
+// example, a deferred step can later run at a loop path with no loop to exit.
+var ctxEnclosingLoop contextkit.ValueHandler[ctxKeyEnclosingLoop, ProcessID]
+
+type ctxKeyEnclosingLoop struct{}
 
 // loopDone tells a Break apart from a failure.
 //
@@ -152,6 +160,8 @@ func (Break) Execute(context.Context, ProcessID) error { return Break{} }
 // They are visible to every step positioned within the iteration,
 // wherever and whenever it runs, like the hook of a Defer in the body,
 // as the iteration is on record (see EventForEachIteration).
+// The traversal records only the ordered iteration names before the body runs.
+// Replaying it visits the same positions, but still resolves K and V on read.
 type ForEach struct {
 	// Over is the VarName that ForEach uses to find the iterable collection
 	Over VarName
@@ -172,37 +182,204 @@ func (foreach ForEach) Execute(ctx context.Context, processID ProcessID) error {
 		return err
 	}
 
-	collVal, ok, err := vars.Lookup(ctx, foreach.Over)
+	names, err := foreach.traversal(ctx, vars)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return ErrFatal.F("workflow.ForEach#Execute: missing collection variable %q", foreach.Over)
-	}
-
-	var collection = reflect.ValueOf(collVal)
-	collection = reflectkit.BaseValue(collection)
-
-	switch collection.Kind() {
-	case reflect.Slice:
-		for i := range reflectkit.IterSlice(collection) {
-			if err := foreach.iterate(ctx, processID, sliceIterationName(i)); err != nil {
-				return loopDone(err)
-			}
+	ctx = ctxEnclosingLoop.ContextWith(ctx, processID)
+	for _, name := range names {
+		if err := foreach.iterate(ctx, processID, name); err != nil {
+			return loopDone(err)
 		}
-
-	case reflect.Map:
-		for key := range reflectkit.IterMap(collection) {
-			if err := foreach.iterate(ctx, processID, mapIterationName(key)); err != nil {
-				return loopDone(err)
-			}
-		}
-
-	default:
-		return nil
 	}
 	return nil
 }
+
+func (foreach ForEach) traversal(ctx context.Context, vars Vars) ([]string, error) {
+	events, err := vars.history(ctx)
+	if err != nil {
+		return nil, err
+	}
+	path := CurrentPath(ctx)
+	for _, e := range events {
+		if traversal, ok := e.(EventForEachTraversal); ok && traversal.Path.Equal(path) {
+			return traversal.Iterations, nil
+		}
+	}
+
+	names, err := foreach.initialIterations(ctx, path, events)
+	if err != nil {
+		return nil, err
+	}
+	id, err := MakeEventID()
+	if err != nil {
+		return nil, err
+	}
+	var event Event = EventForEachTraversal{
+		EventID: id, ProcessID: vars.ProcessID, Timestamp: timeNow(),
+		Path: path, Iterations: names,
+	}
+	return names, vars.EventsRepository.Create(ctx, &event)
+}
+
+// initialIterations uses the current collection on first entry. Old histories
+// have no traversal event, but body events witness visits. Recover membership
+// before the first witnessed visit (the body may itself have changed Over).
+func (foreach ForEach) initialIterations(ctx context.Context, path Path, events []Event) ([]string, error) {
+	sortEvents(events)
+	var names, visits []string
+	var isMap bool
+	members, visited := map[string]bool{}, map[string]bool{}
+	for i, e := range events {
+		name, ok := foreach.legacyVisit(path, e)
+		if !ok || visited[name] {
+			continue
+		}
+		if !members[name] {
+			// Before trusting an inferred visit, check that this position
+			// existed. An explicit iteration record is itself proof.
+			over, _, err := lookupVar(ctx, historyAt(events, i-1), foreach.Over)
+			if err != nil {
+				return nil, err
+			}
+			candidates, m := forEachIterationNames(over)
+			if !slices.Contains(candidates, name) {
+				if _, explicit := e.(EventForEachIteration); !explicit {
+					continue
+				}
+			} else if names == nil {
+				names, isMap = candidates, m
+				for _, n := range names {
+					members[n] = true
+				}
+			}
+		}
+		visited[name] = true
+		visits = append(visits, name)
+	}
+	historicSlice := names != nil && !isMap
+	if names == nil {
+		over, ok, err := lookupVar(ctx, events, foreach.Over)
+		if err != nil {
+			return nil, err
+		}
+		if !ok && len(visits) == 0 {
+			return nil, ErrFatal.F("workflow.ForEach#Execute: missing collection variable %q", foreach.Over)
+		}
+		names, isMap = forEachIterationNames(over)
+	}
+	if isMap {
+		slices.Sort(names)
+	}
+	if len(visits) == 0 {
+		return names, nil
+	}
+	if historicSlice {
+		// Slice order is known even when some visits left no events.
+		return appendRemainingIterations(names, visits), nil
+	}
+	// For a map or unknown original collection, the witnessed prefix
+	// (including the break key) takes precedence.
+	return appendRemainingIterations(visits, names), nil
+}
+
+func appendRemainingIterations(first, rest []string) []string {
+	seen := make(map[string]bool, len(first))
+	for _, n := range first {
+		seen[n] = true
+	}
+	for _, n := range rest {
+		if seen[n] {
+			delete(seen, n) // match only once: printed map keys can collide
+			continue
+		}
+		first = append(first, n)
+	}
+	return first
+}
+
+func forEachIterationNames(over any) (names []string, isMap bool) {
+	collection := reflectkit.BaseValue(reflect.ValueOf(over))
+	switch collection.Kind() {
+	case reflect.Slice:
+		for i := range collection.Len() {
+			names = append(names, sliceIterationName(i))
+		}
+	case reflect.Map:
+		for key := range reflectkit.IterMap(collection) {
+			names = append(names, mapIterationName(key))
+		}
+	}
+	return names, collection.Kind() == reflect.Map
+}
+
+func (foreach ForEach) legacyVisit(loop Path, e Event) (string, bool) {
+	step := legacyForEachStepPath(e)
+	n := len(loop)
+	if len(step) <= n || !step.MatchPrefix(loop) {
+		return "", false
+	}
+	pos := step[n]
+	if it, ok := e.(EventForEachIteration); ok && len(step) == n+1 {
+		return pos.Name, it.Over == foreach.Over && it.K == foreach.K && it.V == foreach.V
+	}
+	// A direct For.Post shares its round with Cond and the body block. An
+	// event under "body" or an unscoped condition step is not evidence for
+	// a map key of the same name. Only a binding record can disambiguate it.
+	if n >= 2 && loop[n-2] == (Scope{Name: "for", Var: true}) && loop[n-1].Var && (pos.Name == "body" || !pos.Var) {
+		return "", false
+	}
+	return pos.Name, true
+}
+
+// Loops without K/V (and histories predating iteration records) left no
+// EventForEachIteration. Their body steps still name the iteration, even a
+// write through to an outer variable whose path has its Var flags unmarked.
+func legacyForEachStepPath(e Event) Path {
+	switch e := e.(type) {
+	case EventForEachIteration:
+		return e.Path
+	case EventDeclareVar:
+		return e.Path
+	case EventSetVar:
+		return e.Path
+	case EventDeleteVar:
+		return e.Path
+	case EventParticipant:
+		return e.Path
+	case EventCondition:
+		return e.Path
+	case EventSleepCompleted:
+		return e.Path
+	case EventSpawn:
+		return e.Path
+	case EventJoin:
+		return e.Path
+	case EventDefer:
+		return e.Path
+	case EventError:
+		return e.Path
+	default:
+		return nil
+	}
+}
+
+// EventForEachTraversal fixes the ordered iteration coordinates of the loop at Path.
+// Iterations are child segment names, not copies of the keys or values. An empty
+// traversal is also a fact: replay must not enter a loop that had no iterations.
+type EventForEachTraversal struct {
+	EventID   EventID `ext:"id"`
+	ProcessID ProcessID
+	Timestamp time.Time
+
+	Path       Path
+	Iterations []string
+}
+
+func (e EventForEachTraversal) GetEventID() EventID     { return e.EventID }
+func (e EventForEachTraversal) GetProcessID() ProcessID { return e.ProcessID }
+func (e EventForEachTraversal) GetTimestamp() time.Time { return e.Timestamp }
+func (e EventForEachTraversal) EventType() EventType    { return "workflow:foreach:traversal" }
 
 // sliceIterationName is the name of the iteration over the i-th element of a slice.
 func sliceIterationName(i int) string { return fmt.Sprintf("[%d]", i) }

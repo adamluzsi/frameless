@@ -1142,6 +1142,42 @@ func filterEvents[E workflow.Event](t *testcase.T, events []workflow.Event) []E 
 	return out
 }
 
+func TestRuntime_Validate(t *testing.T) {
+	s := testcase.NewSpec(t)
+	rt := let.Var(s, func(t *testcase.T) workflow.Runtime {
+		return workflow.Runtime{
+			Events:        &memory.WorkflowEventRepository{},
+			Queue:         &memory.WorkflowQueue{},
+			Notifications: &memory.WorkflowNotificationBroadcast{},
+			Locks:         &memory.WorkflowProcessLocks{},
+		}
+	})
+	act := func(t *testcase.T) error { return rt.Get(t).Validate(t.Context()) }
+	s.Test("the four runtime ports are sufficient without capability registries", func(t *testcase.T) {
+		assert.NoError(t, act(t))
+	})
+	for field, omit := range map[string]func(*workflow.Runtime){
+		"Events":        func(rt *workflow.Runtime) { rt.Events = nil },
+		"Queue":         func(rt *workflow.Runtime) { rt.Queue = nil },
+		"Notifications": func(rt *workflow.Runtime) { rt.Notifications = nil },
+		"Locks":         func(rt *workflow.Runtime) { rt.Locks = nil },
+	} {
+		s.Test("a missing "+field+" names the field in a fatal configuration error", func(t *testcase.T) {
+			v := rt.Get(t)
+			omit(&v)
+			rt.Set(t, v)
+			err := act(t)
+			assert.ErrorIs(t, err, workflow.ErrFatal)
+			assert.Contains(t, err.Error(), field)
+		})
+	}
+	s.Test("a scheduling-only caller can still enqueue work without worker locks", func(t *testcase.T) {
+		v := rt.Get(t)
+		v.Locks = nil
+		assert.NoError(t, v.Schedule(t.Context(), mustProcessID(t)))
+	})
+}
+
 // TestRuntime_missingMandatoryDependencyFailsFast is a regression test for a
 // production bug where Runtime#Schedule (and any Runtime method that delegates
 // through withRetry) would burn the full retry budget on a configuration

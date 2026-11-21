@@ -178,16 +178,17 @@ func (vs Vars) Set(ctx context.Context, name VarName, val any) error {
 	if err != nil {
 		return err
 	}
-	return vs.set(ctx, events, name, val)
+	_, err = vs.set(ctx, visibleVarsOf(ctx, events), name, val)
+	return err
 }
 
-func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) error {
-	var vv = visibleVarsOf(ctx, events)
+// set reports whether the assignment changed a binding.
+func (vs Vars) set(ctx context.Context, vv visibleVars, name VarName, val any) (bool, error) {
 	// A value that can't be resolved is not the same value, so it doesn't make
 	// the assignment a no-op. The assignment itself doesn't need to resolve the
 	// previous value, which is why the error is not reported from here.
-	if prev, ok, err := vv.lookup(name); err == nil && ok && comp.Equal(prev.Value, val) { // idempotent execution
-		return nil
+	if prev, ok, err := vv.lookup(name); err == nil && ok && comp.Equal(prev.Value, val) {
+		return false, nil
 	}
 	// A set only applies to a variable whose declaration is already folded in,
 	// so the declaration has to come first. The fold orders by EventID, which is
@@ -213,12 +214,12 @@ func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) e
 			scope = ref.iteration.Path
 		}
 		if err := vs.recordDeclaration(ctx, name, scope, now); err != nil {
-			return err
+			return false, err
 		}
 	}
 	eventID, err := MakeEventID()
 	if err != nil {
-		return err
+		return false, err
 	}
 	var event Event = EventSetVar{
 		EventID:   eventID,
@@ -228,7 +229,10 @@ func (vs Vars) set(ctx context.Context, events []Event, name VarName, val any) e
 		Name:      name,
 		Value:     val,
 	}
-	return vs.EventsRepository.Create(ctx, &event)
+	if err := vs.EventsRepository.Create(ctx, &event); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (vs Vars) declareOnce(ctx context.Context, name VarName, global bool) error {
@@ -282,14 +286,9 @@ func declarationPath(path, scope Path) Path {
 // definition step. It is what workflow Definitions use, so that re-executing a
 // Process replays the assignment instead of appending it again.
 func (vs Vars) setOnce(ctx context.Context, name VarName, val any) error {
-	events, err := vs.history(ctx)
-	if err != nil {
-		return err
-	}
-	if vs.varMutationDone(events, EventSetVar{}.EventType(), CurrentPath(ctx), name) {
-		return nil
-	}
-	return vs.set(ctx, events, name, val)
+	return vs.mutateOnce(ctx, name, EventSetVar{}.EventType(), func(vv visibleVars) (bool, error) {
+		return vs.set(ctx, vv, name, val)
+	})
 }
 
 func (vs Vars) Delete(ctx context.Context, name VarName) error {
@@ -297,18 +296,15 @@ func (vs Vars) Delete(ctx context.Context, name VarName) error {
 	if err != nil {
 		return err
 	}
-	return vs.delete(ctx, events, name)
+	return vs.delete(ctx, visibleVarsOf(ctx, events).resolve(name), name)
 }
 
-func (vs Vars) delete(ctx context.Context, events []Event, name VarName) error {
+func (vs Vars) delete(ctx context.Context, ref varRef, name VarName) error {
 	// The deletion is recorded against the variable the name refers to from the
 	// current variable scope, and only when there is such a variable. This keeps
 	// a deletion from reaching variables the caller can't even see.
-	var (
-		now   = timeNow()
-		ref   = visibleVarsOf(ctx, events).resolve(name)
-		scope Path
-	)
+	now := timeNow()
+	var scope Path
 	switch {
 	case ref.declared():
 		scope = ref.decl.Scope
@@ -345,18 +341,48 @@ func (vs Vars) delete(ctx context.Context, events []Event, name VarName) error {
 // to hold at that point, which is wrong as soon as a later step reassigned it:
 // the deletion would then remove more than it originally did.
 func (vs Vars) deleteOnce(ctx context.Context, name VarName) error {
+	return vs.mutateOnce(ctx, name, EventDeleteVar{}.EventType(), func(vv visibleVars) (bool, error) {
+		// An iteration can still be on record after its element disappeared. A
+		// missing value needs no tombstone that would shadow a returning element.
+		ref := vv.resolve(name)
+		if ref.iteration != nil {
+			if _, found, err := vv.iterationValue(*ref.iteration, name); err != nil || !found {
+				return false, err
+			}
+		} else if !ref.declared() {
+			return false, nil
+		}
+		return true, vs.delete(ctx, ref, name)
+	})
+}
+
+// mutateOnce checks completion before the step reads or validates current state.
+// A mutation is its own completion record; only a successful no-op needs another kind of event.
+func (vs Vars) mutateOnce(ctx context.Context, name VarName, typ EventType, apply func(visibleVars) (changed bool, err error)) error {
 	events, err := vs.history(ctx)
 	if err != nil {
 		return err
 	}
-	if vs.varMutationDone(events, EventDeleteVar{}.EventType(), CurrentPath(ctx), name) {
+	path := CurrentPath(ctx)
+	if vs.varMutationDone(events, typ, path, name) {
 		return nil
 	}
-	return vs.delete(ctx, events, name)
+	changed, err := apply(visibleVarsOf(ctx, events))
+	if err != nil || changed {
+		return err
+	}
+	id, err := MakeEventID()
+	if err != nil {
+		return err
+	}
+	var event Event = EventVarNoop{
+		EventID: id, ProcessID: vs.ProcessID, Timestamp: timeNow(),
+		Path: path, Name: name, Mutation: typ,
+	}
+	return vs.EventsRepository.Create(ctx, &event)
 }
 
-// varMutationDone reports whether the Process event history already contains a
-// variable mutation event recorded for a given logical step.
+// varMutationDone accepts a mutation or a no-op for that kind of mutation at the same logical step.
 //
 // A step is identified by the pair of
 //
@@ -374,27 +400,23 @@ func (vs Vars) varMutationDone(events []Event, typ EventType, path Path, name Va
 		var (
 			eName VarName
 			ePath Path
+			eType EventType
 		)
 		switch e := e.(type) {
 		case EventDeclareVar:
-			eName, ePath = e.Name, e.Path
+			eName, ePath, eType = e.Name, e.Path, e.EventType()
 		case EventSetVar:
-			eName, ePath = e.Name, e.Path
+			eName, ePath, eType = e.Name, e.Path, e.EventType()
 		case EventDeleteVar:
-			eName, ePath = e.Name, e.Path
+			eName, ePath, eType = e.Name, e.Path, e.EventType()
+		case EventVarNoop:
+			eName, ePath, eType = e.Name, e.Path, e.Mutation
 		default:
 			continue
 		}
-		if e.EventType() != typ {
-			continue
+		if eType == typ && eName == name && ePath.Equal(path) {
+			return true
 		}
-		if eName != name {
-			continue
-		}
-		if !ePath.Equal(path) {
-			continue
-		}
-		return true
 	}
 	return false
 }

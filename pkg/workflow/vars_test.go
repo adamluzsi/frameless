@@ -121,6 +121,22 @@ func TestVars(t *testing.T) {
 		assert.NoError(t, eventRepository.Get(t).Create(t.Context(), &event))
 	}
 
+	s.Test("direct writes at one path skip only changes that are already satisfied", func(t *testcase.T) {
+		vars, ctx := subject.Get(t), t.Context()
+		assert.NoError(t, vars.Set(ctx, "x", 1))
+		before := getProcessEvents(t, vars.EventsRepository, vars.ProcessID)
+		assert.NoError(t, vars.Set(ctx, "x", 1))
+		assert.NoError(t, vars.Delete(ctx, "absent"))
+		assert.Equal(t, getProcessEvents(t, vars.EventsRepository, vars.ProcessID), before)
+
+		assert.NoError(t, vars.Set(ctx, "x", 2))
+		assert.NoError(t, vars.Set(ctx, "absent", 3))
+		assert.NoError(t, vars.Delete(ctx, "absent"))
+		got, err := vars.ToMap(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, got, map[workflow.VarName]any{"x": 2})
+	})
+
 	s.Describe("latest-state queries at an earlier execution path", func(s *testcase.Spec) {
 		ctx := let.Var(s, func(t *testcase.T) context.Context {
 			return workflow.WithName(workflow.WithName(t.Context(), "sequence"), "[2]")
@@ -1264,6 +1280,123 @@ func TestDeclareVar(t *testing.T) {
 
 			ThenExecutionIsIdempotent(s)
 		})
+	})
+}
+
+func TestVariableStepReplay(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+	ctx := c.LetContext(s)
+	pid := wftest.LetProcessID(s)
+
+	for _, tc := range []struct {
+		name  string
+		steps workflow.Sequence
+	}{
+		{"equal assignment", workflow.Sequence{
+			workflow.SetVar{Name: "x", Value: 1},
+			workflow.SetVar{Name: "x", Value: 1},
+		}},
+		{"absent deletion", workflow.Sequence{workflow.DeleteVar{Name: "x"}}},
+	} {
+		s.Test(tc.name+" leaves the later write intact on replay", func(t *testcase.T) {
+			seq := append(tc.steps, workflow.SetVar{Name: "x", Value: 2}, workflow.Sleep{})
+			run := func() {
+				t.Helper()
+				assert.ErrorIs(t, seq.Execute(ctx.Get(t), pid.Get(t)), workflow.Suspend{})
+				assert.Equal[any](t, getVar(t, c.Runtime.Get(t), pid.Get(t), "x"), 2)
+			}
+			run()
+			before := c.ProcessEvents(t, pid.Get(t))
+			run()
+			assert.Equal(t, c.ProcessEvents(t, pid.Get(t)), before)
+		})
+	}
+
+	s.Test("no-op steps still replay after a JSON round trip of the process history", func(t *testcase.T) {
+		rt, process := c.Runtime.Get(t), pid.Get(t)
+		seq := workflow.Sequence{
+			workflow.DeleteVar{Name: "x"},
+			workflow.SetVar{Name: "x", Value: 1},
+			workflow.SetVar{Name: "x", Value: 1},
+			workflow.SetVar{Name: "x", Value: 2},
+			workflow.Sleep{},
+		}
+		assert.ErrorIs(t, seq.Execute(workflow.WithVarScope(ctx.Get(t), "block"), process), workflow.Suspend{})
+		history := c.ProcessEvents(t, process)
+		rt.Events = &memory.WorkflowEventRepository{}
+		for _, event := range history {
+			data, err := rt.Codec.Marshal(&event)
+			assert.NoError(t, err)
+			var decoded workflow.Event
+			assert.NoError(t, rt.Codec.Unmarshal(data, &decoded))
+			if noop, ok := event.(workflow.EventVarNoop); ok {
+				assert.Contains(t, string(data), `"$type":"workflow:event:var:noop"`)
+				assert.Equal(t, decoded.(workflow.EventVarNoop).Path.VarScope(), noop.Path.VarScope())
+			}
+			assert.NoError(t, rt.Events.Create(t.Context(), &decoded))
+		}
+		block := workflow.WithVarScope(rt.Context(t.Context()), "block")
+		assert.ErrorIs(t, seq.Execute(block, process), workflow.Suspend{})
+		got, err := getVars(t, rt, process).Get(block, "x")
+		assert.NoError(t, err)
+		assert.Equal[any](t, got, 2)
+		assert.Equal(t, mustHistory(t, rt, process), history)
+	})
+
+	s.Test("an equal assignment leaves the iteration variable a live reference on replay", func(t *testcase.T) {
+		vars := getVars(t, c.Runtime.Get(t), pid.Get(t))
+		assert.NoError(t, vars.Set(ctx.Get(t), "items", []int{1}))
+		assert.NoError(t, vars.Set(ctx.Get(t), "item", "outer"))
+		loop := workflow.ForEach{Over: "items", V: "item", Do: workflow.SetVar{Name: "item", Value: 1}}
+		assert.NoError(t, loop.Execute(ctx.Get(t), pid.Get(t)))
+		assert.NoError(t, vars.Set(ctx.Get(t), "items", []int{2}))
+		iteration := workflow.WithVarScope(ctx.Get(t), "[0]")
+		assertItem := func() {
+			t.Helper()
+			got, err := vars.Get(iteration, "item")
+			assert.NoError(t, err)
+			assert.Equal[any](t, got, 2)
+		}
+		assertItem()
+		assert.NoError(t, loop.Execute(ctx.Get(t), pid.Get(t)))
+		assertItem()
+		assert.Equal[any](t, getVar(t, c.Runtime.Get(t), pid.Get(t), "item"), "outer")
+	})
+
+	s.Test("deleting a missing name in a block does not shadow a later outer binding", func(t *testcase.T) {
+		outer, process := ctx.Get(t), pid.Get(t)
+		inner := workflow.WithVarScope(outer, "block")
+		vars := getVars(t, c.Runtime.Get(t), process)
+		step := workflow.DeleteVar{Name: "x"}
+		assert.NoError(t, step.Execute(inner, process))
+		assert.NoError(t, vars.Set(outer, "x", 2))
+		for _, scope := range []context.Context{inner, outer} {
+			got, err := vars.Get(scope, "x")
+			assert.NoError(t, err)
+			assert.Equal[any](t, got, 2)
+		}
+		assert.NoError(t, step.Execute(inner, process))
+		got, err := vars.Get(inner, "x")
+		assert.NoError(t, err)
+		assert.Equal[any](t, got, 2)
+	})
+
+	s.Test("deleting a missing iteration element does not shadow it when it returns", func(t *testcase.T) {
+		root, process := ctx.Get(t), pid.Get(t)
+		vars := getVars(t, c.Runtime.Get(t), process)
+		assert.NoError(t, vars.Set(root, "items", []int{1}))
+		loop := workflow.ForEach{Over: "items", V: "item", Do: workflow.Sequence{
+			workflow.SetVar{Name: "items", Value: []int{}},
+			workflow.DeleteVar{Name: "item"},
+			workflow.SetVar{Name: "items", Value: []int{2}},
+		}}
+		for range 2 {
+			assert.NoError(t, loop.Execute(root, process))
+			got, err := vars.Get(workflow.WithVarScope(root, "[0]"), "item")
+			assert.NoError(t, err)
+			assert.Equal[any](t, got, 2)
+		}
 	})
 }
 

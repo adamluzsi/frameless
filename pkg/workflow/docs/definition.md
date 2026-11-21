@@ -207,6 +207,7 @@ call and replayed from there, so the tree grows by appending, not by editing.
 | `workflow.Sequence`           | Runs its child definitions in order.                                     |
 | `workflow.If`                 | Runs `Then` or `Else` based on a [Condition][CONDITION].                  |
 | `workflow.Sleep`              | Waits. Returns `Suspend{}` until its condition says otherwise.            |
+| `workflow.ForEach`            | Walks the recorded positions of a slice or map, until exhausted or `Break`. |
 | `workflow.SetVar`             | Assigns a process variable.                                              |
 | `workflow.DeclareVar`         | Brings a process variable into existence, without assigning a value.     |
 | `workflow.DeleteVar`          | Removes a process variable binding.                                      |
@@ -266,6 +267,39 @@ scopes nested in it. A variable a branch declares, including an `Execute`
 an assignment to a variable declared before the `If` writes through to it. So
 to keep a value a branch produces, declare its variable before the `If`. See
 [Variables § Branches](./vars.md#branches).
+
+### ForEach — fixed positions, live values
+
+`ForEach{Over: "items", K: "key", V: "item", Do: body}` records the positions
+it will visit **before** running the first body. Slices use index order; new
+map traversals use lexical order of the printed keys (so `"10"` precedes
+`"2"`). Replay walks those same positions, even if the collection was deleted
+or grew after the loop. An empty traversal stays empty. A suspension still
+reaches the unfinished body; a `Break` still ends the walk at the same key
+when the body replays the same decision.
+
+The traversal is **not** a copy of the collection. `K` and `V` are optional,
+iteration-local references: an uncached read sees the element currently at
+that index or key. If it was removed, or two map keys have the same printed
+name, neither reference supplies a value. A step that requires that missing
+input fails rather than receiving stale data.
+
+**Upgrading in-flight processes.** Iteration paths (`[i]` or the printed key)
+and the existing K/V binding events are unchanged. On the first replay without
+an `EventForEachTraversal`, the engine looks for earlier iteration references
+or body steps beneath this loop. Where they identify a visit, the collection
+just before it supplies the positions; map keys with recorded visits come
+first, in event-ID order. Unwitnessed keys follow in lexical order. The
+result is appended once; no old events are rewritten.
+
+An old empty traversal, an unrecorded visit, or work at indistinguishable
+paths may leave no way to recover the original membership or visit order.
+When the original collection cannot be reconstructed, the first upgraded pass
+uses the current collection and retains any visits the log still proves.
+If that fallback is unsafe, migrate the process explicitly before
+resuming it; replay cannot undo effects the old implementation already ran.
+Upgrade event readers and custom codecs to support `workflow:event:foreach:traversal`
+before allowing new workers to write it.
 
 ### Sleep — wait for something
 

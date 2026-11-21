@@ -26,8 +26,8 @@
 //     without an envelope would still pass the byte-equality check above
 //     for some shapes, but would silently break the decoder.
 //
-//  4. The snapshot, with the type IDs earlier versions wrote, still decodes to the same value.
-//     Those were spelt with a double colon, like workflow::sequence instead of workflow:sequence.
+//  4. The current envelope also accepts deprecated double-colon type ID aliases.
+//     TestCompat_v0_340_1_Sequence separately pins a released envelope.
 //
 // To regenerate the v1 baseline after an intentional, ratified format change:
 //
@@ -128,25 +128,21 @@ func assertMatchesV1Snapshot(t *testcase.T, c workflow.Codec, v any, expected st
 
 	assertHasTypeEnvelope(t, expected, string(reEmitted))
 
-	assertFormerTypeIDsDecode(t, c, v, expected)
+	assertTypeIDAliasesDecode(t, c, v, expected)
 }
 
-// assertFormerTypeIDsDecode asserts that expected, with the type IDs earlier versions wrote,
-// which were spelt with a double colon, like workflow::sequence instead of workflow:sequence,
-// is still read back as the same value, which is written with the current type IDs again.
-// Event logs and definitions written by earlier versions outlive the change.
-func assertFormerTypeIDsDecode(t *testcase.T, c workflow.Codec, v any, expected string) {
+// Only the IDs change here: these are alias checks in a $type envelope, not released fixtures.
+func assertTypeIDAliasesDecode(t *testcase.T, c workflow.Codec, v any, expected string) {
 	t.Helper()
-	former := typeIDMember.ReplaceAllStringFunc(expected, func(member string) string {
+	aliased := typeIDMember.ReplaceAllStringFunc(expected, func(member string) string {
 		id := strings.TrimSuffix(strings.TrimPrefix(member, `"$type":"`), `"`)
 		return `"$type":"` + strings.ReplaceAll(id, ":", "::") + `"`
 	})
-	assert.Must(t).NotEqual(expected, former,
-		"the snapshot is expected to carry a $type member with a namespaced type ID, else the former form would not differ from it")
+	assert.NotEqual(t, expected, aliased, "the snapshot must exercise a namespaced $type alias")
 
-	_, reEmitted := roundTripViaInterface(t, c, []byte(former), v)
+	_, reEmitted := roundTripViaInterface(t, c, []byte(aliased), v)
 	assert.Equal(t, expected, string(reEmitted),
-		assert.MessageF("the v1 wire format, with the type IDs an earlier version wrote, is not read back as the same %T:\nformer: %s", v, former))
+		assert.MessageF("reading a $type alias should re-emit the canonical ID for %T: %s", v, aliased))
 }
 
 // typeIDMember matches the $type members of the JSON written by the codec, which is compact.
@@ -212,6 +208,56 @@ func assertHasTypeEnvelope(t *testcase.T, expected, reEmitted string) {
 				"v1 wire format lost its $type envelope.\nexpected: %s\nactual:   %s",
 				expected, reEmitted))
 	}
+}
+
+func TestCompat_v0_340_1_Sequence(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	// From v0.340.1:pkg/workflow/wfjson/compat_test.go (Sequence (empty)).
+	const stored = `{"@type":"workflow::sequence","@value":[]}`
+	reader := let.Var(s, func(t *testcase.T) workflow.Codec {
+		c := wfjson.NewCodec()
+		c.TypeKeyword, c.ValueKeyword = "@type", "@value"
+		return c
+	})
+	decode := func(t *testcase.T) (workflow.Definition, error) {
+		var def workflow.Definition
+		err := reader.Get(t).Unmarshal([]byte(stored), &def)
+		return def, err
+	}
+
+	s.Test("the configured reader recovers the empty sequence for the current writer", func(t *testcase.T) {
+		def, err := decode(t)
+		assert.NoError(t, err)
+		assert.Equal[workflow.Definition](t, workflow.Sequence{}, def)
+
+		data, err := wfjson.NewCodec().Marshal(&def)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"$type":"workflow:sequence","$value":[]}`, string(data))
+	})
+
+	s.When("using the default reader", func(s *testcase.Spec) {
+		reader.Let(s, func(t *testcase.T) workflow.Codec { return wfjson.NewCodec() })
+
+		s.Then("the released envelope is not a tagged definition", func(t *testcase.T) {
+			_, err := decode(t)
+			assert.Error(t, err)
+		})
+	})
+}
+
+func TestCompat_ForEachTraversal(t *testing.T) {
+	// Unlike the v1 types, this event never had a double-colon type ID.
+	const stored = `{"$type":"workflow:event:foreach:traversal","event_id":"00000000-0000-4000-8000-000000000002","process_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-02T03:04:05Z","path":[{"name":"[0]","var":true}],"iterations":["z","a"]}`
+	codec := wfjson.NewCodec()
+	var event workflow.Event
+	assert.NoError(t, codec.Unmarshal([]byte(stored), &event))
+	traversal, ok := event.(workflow.EventForEachTraversal)
+	assert.True(t, ok)
+	assert.Equal(t, []string{"z", "a"}, traversal.Iterations)
+	data, err := codec.Marshal(&event)
+	assert.NoError(t, err)
+	assert.Equal(t, stored, string(data))
 }
 
 // TestCompat_v1WireFormat pins the wire format produced by wfjson.NewCodec()
@@ -319,6 +365,18 @@ func TestCompat_v1WireFormat(t *testing.T) {
 		assertMatchesV1Snapshot(t, codec.Get(t),
 			workflow.SetVar{Name: "x", Value: "hello"},
 			`{"$type":"workflow:var:set","name":"x","value":"hello"}`)
+	})
+
+	s.Test("SetVar preserves an application's @type field", func(t *testcase.T) {
+		var def workflow.Definition = workflow.SetVar{Name: "document", Value: map[string]any{"@type": "invoice"}}
+		c := codec.Get(t)
+		data, err := c.Marshal(&def)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"$type":"workflow:var:set","name":"document","value":{"@type":"invoice"}}`, string(data))
+
+		var got workflow.Definition
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal(t, def, got)
 	})
 
 	s.Test("DeleteVar", func(t *testcase.T) {

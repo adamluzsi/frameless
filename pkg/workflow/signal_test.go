@@ -1,7 +1,9 @@
 package workflow_test
 
 import (
+	"context"
 	"errors"
+	"iter"
 	"testing"
 	"time"
 
@@ -544,6 +546,88 @@ func TestIsCompleted(t *testing.T) {
 		assert.False(t, isTerminated, assert.MessageF(
 			"a completed Process is never terminated, regardless of what order "+
 				"the events landed in the log"))
+	})
+}
+
+type outcomeHistory struct {
+	workflow.EventRepository
+	reads int
+	err   error // if set, the read fails after yielding the stored events
+}
+
+func (r *outcomeHistory) FindByProcessID(ctx context.Context, pid workflow.ProcessID) iter.Seq2[workflow.Event, error] {
+	r.reads++
+	return func(yield func(workflow.Event, error) bool) {
+		for event, err := range r.EventRepository.FindByProcessID(ctx, pid) {
+			if !yield(event, err) || err != nil {
+				return
+			}
+		}
+		if r.err != nil {
+			yield(nil, r.err)
+		}
+	}
+}
+
+func TestIsFinished(t *testing.T) {
+	s := testcase.NewSpec(t)
+	c := wftest.LetC(s)
+	pid := c.ProcessID
+	history := let.Var(s, func(t *testcase.T) *outcomeHistory {
+		return &outcomeHistory{EventRepository: c.EventRepository.Get(t)}
+	})
+	act := func(t *testcase.T) (bool, error) {
+		return workflow.IsFinished(t.Context(), history.Get(t), pid.Get(t))
+	}
+
+	s.Test("completion is visible in one history read", func(t *testcase.T) {
+		assert.NoError(t, c.ActExecute(t))
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.True(t, got)
+		assert.Equal(t, history.Get(t).reads, 1)
+	})
+	s.Test("termination also finishes the process", func(t *testcase.T) {
+		assert.NoError(t, c.Runtime.Get(t).Terminate(t.Context(), pid.Get(t)))
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.True(t, got)
+	})
+	notFinished := func(t *testcase.T) {
+		got, err := act(t)
+		assert.NoError(t, err)
+		assert.False(t, got)
+	}
+	s.Test("a bound process with no outcome is not finished", notFinished)
+	s.Test("an unknown process is not finished", func(t *testcase.T) {
+		assert.NoError(t, c.ActExecute(t))
+		pid.Set(t, mustProcessID(t))
+		notFinished(t)
+	})
+	for _, signal := range []workflow.RuntimeSignal{workflow.Suspend{}, workflow.Halt{}} {
+		s.When("a participant returns "+signal.Error(), func(s *testcase.Spec) {
+			_, id := wftest.LetParticipant(s, func(*testcase.T) func(context.Context) error {
+				return func(context.Context) error { return signal }
+			})
+			c.Definition.Let(s, func(t *testcase.T) workflow.Definition { return workflow.Execute{Participant: id.Get(t)} })
+			s.Then("the paused process is not finished", func(t *testcase.T) {
+				assert.ErrorIs(t, c.ActExecute(t), signal)
+				notFinished(t)
+			})
+		})
+	}
+	s.Test("a history with contradictory outcomes has no unambiguous finish", func(t *testcase.T) {
+		seedEvent(t, history.Get(t), completionEventFor(t, pid.Get(t)))
+		seedEvent(t, history.Get(t), terminationEventFor(t, pid.Get(t)))
+		notFinished(t)
+	})
+	s.Test("a failed read is not a finish, even after seeing an outcome", func(t *testcase.T) {
+		assert.NoError(t, c.ActExecute(t))
+		cause := errors.New("history read interrupted")
+		history.Get(t).err = cause
+		got, err := act(t)
+		assert.ErrorIs(t, err, cause)
+		assert.False(t, got)
 	})
 }
 

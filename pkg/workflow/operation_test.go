@@ -276,6 +276,74 @@ func TestIncrement(t *testing.T) {
 	})
 
 	s.Context("as part of a Definition", func(s *testcase.Spec) {
+		for _, tc := range []struct {
+			name  string
+			later workflow.Definition
+			want  map[workflow.VarName]any
+		}{
+			{"deletion", workflow.DeleteVar{Name: "n"}, map[workflow.VarName]any{}},
+			{"type change", workflow.SetVar{Name: "n", Value: "done"}, map[workflow.VarName]any{"n": "done"}},
+		} {
+			s.Test("a completed increment survives a later "+tc.name+" on replay", func(t *testcase.T) {
+				rt, pid := c.Runtime.Get(t), wftest.MakeProcessID(t)
+				ctx := rt.Context(t.Context())
+				seq := workflow.Sequence{
+					workflow.SetVar{Name: "n", Value: 0},
+					workflow.If{Cond: wftest.Stub{}, Then: workflow.Increment{Name: "n"}},
+					tc.later,
+					workflow.Sleep{},
+				}
+				run := func() {
+					t.Helper()
+					assert.ErrorIs(t, seq.Execute(ctx, pid), workflow.Suspend{})
+					got, err := getVars(t, rt, pid).ToMap(ctx)
+					assert.NoError(t, err)
+					assert.Equal(t, got, tc.want)
+				}
+				run()
+				before := c.ProcessEvents(t, pid)
+				assert.OneOf(t, before, func(t testing.TB, ev workflow.Event) {
+					set, ok := ev.(workflow.EventSetVar)
+					assert.True(t, ok)
+					assert.Equal[any](t, set.Value, 1)
+				})
+				run()
+				assert.Equal(t, c.ProcessEvents(t, pid), before)
+				fresh := workflow.Increment{Name: "n"}
+				assert.ErrorIs(t, fresh.Execute(ctx, pid), workflow.ErrFatal,
+					"a different increment still needs a numeric binding")
+				assert.Equal(t, c.ProcessEvents(t, pid), before, "a failed increment is not a completed step")
+			})
+		}
+		s.Test("a rounded increment is complete even though its value did not change", func(t *testcase.T) {
+			rt, pid := c.Runtime.Get(t), wftest.MakeProcessID(t)
+			ctx := rt.Context(t.Context())
+			seq := workflow.Sequence{
+				workflow.SetVar{Name: "n", Value: float64(1 << 53)},
+				workflow.Increment{Name: "n"},
+				workflow.SetVar{Name: "n", Value: "done"},
+				workflow.Sleep{},
+			}
+			assert.ErrorIs(t, seq.Execute(ctx, pid), workflow.Suspend{})
+			before := c.ProcessEvents(t, pid)
+			assert.ErrorIs(t, seq.Execute(ctx, pid), workflow.Suspend{})
+			assert.Equal(t, c.ProcessEvents(t, pid), before)
+		})
+
+		s.Test("an existing write-through assignment at inc-op suffices without a separate completion record", func(t *testcase.T) {
+			rt, pid := c.Runtime.Get(t), wftest.MakeProcessID(t)
+			root := rt.Context(t.Context())
+			inner := workflow.WithVarScope(root, "block")
+			vars := getVars(t, rt, pid)
+			assert.NoError(t, vars.Set(root, "n", 0))
+			assert.NoError(t, vars.Set(workflow.WithName(inner, "inc-op"), "n", 1))
+			assert.NoError(t, vars.Delete(root, "n"))
+			before := c.ProcessEvents(t, pid)
+			inc := workflow.Increment{Name: "n"}
+			assert.NoError(t, inc.Execute(inner, pid))
+			assert.Equal(t, c.ProcessEvents(t, pid), before)
+		})
+
 		s.Test("a declared counter is incremented when the Process runs", func(t *testcase.T) {
 			def := workflow.Sequence{
 				workflow.DeclareVar{Name: "n"},

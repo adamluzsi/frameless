@@ -98,11 +98,9 @@ JSON-LD**: `$type` is not JSON-LD's `@type`, and a type ID like
 `workflow:` prefix only keeps the built-in type IDs apart from yours, so name
 yours with a prefix of your own, like `acme:charge-order`.
 
-Event logs and definitions written by earlier versions spell the type IDs
-with a double colon, like `workflow::sequence`. They are still read the same way.
-The members are matched by their exact names, so an `@type`, or an `@value`, is
-just a member of the value. That way a type can have a `json:"@type"` field of
-its own, like for a JSON-LD document.
+The default codec matches envelope members by their exact names. `@type` and
+`@value` are application fields, not alternative spellings of `$type` and
+`$value`. A workflow variable can hold `{"@type":"invoice"}` unchanged.
 
 The field names inside the envelope (`name`, `id`, `input`, …) come from private
 DTO structs in `wfjson`, **not** from struct tags on the `workflow` types. That
@@ -140,6 +138,11 @@ the value just comes back as a `map[string]any`:
 ```json
 { "$type": "workflow:event:var:set", "name": "plan", "value": { "$type": "acme:invoice", "customer_id": "cust-1" } }
 ```
+
+If a registered value codec rejects a value on write or read, the operation
+returns that error. It does not retry with plain JSON. A stored variable whose
+`$type` is unknown still reads as a map, keeping the `$type` member; values
+inside that map with a known `$type` are decoded normally.
 
 An object with an `@type` member, like a JSON-LD document which a participant
 returned, is read as a plain `map[string]any`, with the `@type` as one of its keys.
@@ -190,6 +193,7 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.EventDeclareVar`       | `workflow:event:var:declare`       |
 | `workflow.EventSetVar`           | `workflow:event:var:set`           |
 | `workflow.EventDeleteVar`        | `workflow:event:var:delete`        |
+| `workflow.EventVarNoop`          | `workflow:event:var:noop`          |
 | `workflow.EventParticipant`      | `workflow:event:participant`       |
 | `workflow.EventCondition`        | `workflow:event:condition`         |
 | `workflow.EventUseDefinition`    | `workflow:event:use-definition`    |
@@ -198,10 +202,16 @@ Everything `wfjson.NewCodec()` knows about, and the tag it writes:
 | `workflow.EventSleepCompleted`   | `workflow:event:sleep:completed`   |
 | `workflow.EventDefer`            | `workflow:event:defer`             |
 | `workflow.EventForEachIteration` | `workflow:event:foreach:iteration` |
+| `workflow.EventForEachTraversal` | `workflow:event:foreach:traversal` |
 | `workflow.EventError`            | `workflow:event:error`             |
 | `workflow.ExecutionRequest`      | `workflow:execution`               |
 | `workflow.ProcessSchedule`       | `workflow:schedule`                |
 | `workflow.ProcessCancel`         | `workflow:cancel`                  |
+
+For a rolling upgrade, deploy readers for `workflow:event:var:noop` and
+`workflow:event:foreach:traversal` before workers that write them. Neither tag
+replaces an older event. See [Variables](./vars.md) and [ForEach](./definition.md#foreach--fixed-positions-live-values)
+for the limits of reconstructing steps that older workers left unrecorded.
 
 The workflow interfaces have a tag too. It names no value, but the element type of
 a slice or map held as `any`, like `[]workflow:definition` for a `[]workflow.Definition`:
@@ -211,11 +221,10 @@ a slice or map held as `any`, like `[]workflow:definition` for a `[]workflow.Def
 | `workflow.Definition` | `workflow:definition` |
 | `workflow.Condition`  | `workflow:condition`  |
 
-The tags are compact IRIs in the sense of [JSON-LD](https://www.w3.org/TR/json-ld11/#compact-iris):
-a prefix, `workflow`, and a suffix, separated by the first colon.
-Until the first release, they were spelt with a double colon, like `workflow::sequence`.
-`wfjson.NewCodec()` still reads those, so history written with them still decodes,
-but it writes the current tags.
+The writer uses the single-colon tags listed above. The default reader also
+accepts registered double-colon aliases, such as `"$type":"workflow::sequence"`.
+The `::` spelling is deprecated. An alias changes which ID the reader accepts,
+not which JSON member it looks in.
 
 > Tags are part of your persisted data, so they are far harder to change than a
 > Go identifier. Pick namespaced tags (`myapp:send-invoice`) for your own
@@ -405,7 +414,7 @@ Failures are reproducible: fix `TESTCASE_SEED` and rerun.
 
 `wfjson.NewCodec()` produces a wire format that is persisted to a database,
 and stored event logs and definitions outlive any one version of the code. So
-the package promises that what it stored keeps working after an upgrade:
+for the `$type` envelope the package promises that:
 
 - a Definition stored as JSON still decodes to the same Definition, and
 - a Process that was in flight during the upgrade resumes on the new version,
@@ -474,9 +483,9 @@ codec registers, the test:
    value would still pass the byte-equality check for some shapes but would
    silently break the decoder.
 
-5. **Reads the snapshot with the type IDs earlier versions wrote**, spelt with
-   a double colon like `workflow::sequence`, and asserts it decodes to the same
-   value.
+5. **Checks type ID aliases in the current envelope.** Substituting the
+   deprecated `::` IDs in the snapshot's `$type` members must still produce
+   the same bytes when decoded and written again with the canonical IDs.
 
 The written format may change, as long as what was stored before still reads
 the same. A tag that is only renamed, with the same shape, stays readable by
@@ -494,6 +503,29 @@ go test -tags wfjsongen -run TestGenerateV1Snapshots ./pkg/workflow/wfjson/
 corresponding `assertMatchesV1Snapshot` call in `compat_test.go`, and commit
 the change with a note that calls out the format change. The
 promise fixtures stay as they are, and must still pass.
+
+### Upgrade boundary: the v0.340.1 empty sequence
+
+The `v0.340.1` empty-sequence fixture is `{"@type":"workflow::sequence","@value":[]}`.
+The default codec cannot read it into a `workflow.Definition`: it looks for
+`$type` before it can resolve the `workflow::sequence` alias. To migrate this
+fixture offline, configure a separate reader and use the default writer:
+
+```go
+reader := wfjson.NewCodec()
+reader.TypeKeyword, reader.ValueKeyword = "@type", "@value"
+
+var def workflow.Definition
+if err := reader.Unmarshal(stored, &def); err != nil {
+    return err
+}
+data, err := wfjson.NewCodec().Marshal(&def)
+// {"$type":"workflow:sequence","$value":[]}
+```
+
+This migration is tested for that sequence, not for arbitrary older histories.
+Do not rename keys throughout a document: an `@type` inside a variable may be
+application data.
 
 ### What the promise covers
 

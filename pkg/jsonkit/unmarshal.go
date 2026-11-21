@@ -169,7 +169,7 @@ func (u *unmarshaler) readCustom(dec *jsontext.Decoder, v reflect.Value) error {
 	dest := reflect.New(v.Type())
 	dest.Elem().Set(v)
 	if err := decode(u.codec, payload, dest.Interface()); err != nil {
-		return err
+		return protectCodecError(err)
 	}
 	v.Set(dest.Elem())
 	return nil
@@ -269,23 +269,27 @@ func parseNumber(raw []byte) (any, error) {
 }
 
 // readObject reads raw, a JSON object, as a value of the interface type target, by its type member.
-// An empty interface reads a JSON object without a type member as a map[string]any, like encoding/json does,
-// while a non-empty interface needs the type member to tell the type of the value.
+// An empty interface can hold the whole object as a map when its type member is absent or unrecognised.
+// A non-empty interface needs a type ID that identifies an implementation.
 func (u *unmarshaler) readObject(raw []byte, target reflect.Type) (reflect.Value, error) {
 	env, err := readEnvelope(raw, u.kw)
 	switch {
+	case env.TypeID == "" && isEmptyInterface(target):
+		return u.readMap(raw)
 	case err != nil:
 		return reflect.Value{}, err
-	case !env.Found && target.NumMethod() == 0:
-		var object map[string]any
-		err := u.readAsIs(raw, &object)
-		return reflect.ValueOf(object), err
 	case !env.Found, env.Null:
 		return reflect.Value{}, fmt.Errorf("%s is not set", u.kw.Type)
 	case env.TypeID == "":
 		return reflect.Value{}, fmt.Errorf("%s is empty", u.kw.Type)
 	}
 	return u.readTyped(raw, env, target)
+}
+
+func (u *unmarshaler) readMap(raw []byte) (reflect.Value, error) {
+	var object map[string]any
+	err := u.readAsIs(raw, &object)
+	return reflect.ValueOf(object), err
 }
 
 // readTyped reads raw, the type envelope env, as a value of the type it names, which is held by the target type.
@@ -297,6 +301,9 @@ func (u *unmarshaler) readTyped(raw []byte, env envelope, target reflect.Type) (
 	rType, ok := lookupTypeByIDForCodec(u.registry(), env.TypeID)
 	if !ok {
 		if TypeID(target.String()) != env.TypeID {
+			if isEmptyInterface(target) {
+				return u.readMap(raw)
+			}
 			return reflect.Value{}, errUnknownTypeID(u.registry(), env.TypeID)
 		}
 		data := raw
@@ -319,7 +326,7 @@ func (u *unmarshaler) readTyped(raw []byte, env envelope, target reflect.Type) (
 		value = value.Elem()
 	}
 	if decode := u.registry().lookupDecoder(rType, env.TypeID); decode != nil {
-		err = decode(u.codec, env.payload(raw, u.kw), value.Interface())
+		err = protectCodecError(decode(u.codec, env.payload(raw, u.kw), value.Interface()))
 	} else {
 		data := raw
 		switch {

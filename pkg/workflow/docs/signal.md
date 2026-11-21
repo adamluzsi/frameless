@@ -228,11 +228,15 @@ if err := rt.Terminate(ctx, pid); err != nil {
 }
 ```
 
-`rt.Terminate` acquires the process lock, publishes a `ProcessCancel` over the
-change broadcast if a worker is mid-flight (so the in-flight participant sees
-its `ctx` cancelled and unwinds), and then runs `Terminate{}.RuntimeSignalExecute`.
-That terminates the spawned children first, then runs the process's deferred
-definitions (see `workflow.Defer`), and finally appends one `EventTerminated`.
+While waiting for the process lock, `rt.Terminate` broadcasts `ProcessCancel`
+so an in-flight participant sees its `ctx` cancelled and can unwind. That
+notification interrupts the attempt; it does **not** mean the process is
+terminated. The scheduler keeps the work queued. If the caller times out
+before recording termination, a worker can resume without another `Schedule`.
+
+Once it has the lock, `rt.Terminate` terminates the spawned children first,
+then runs the process's deferred definitions (see `workflow.Defer`), and
+finally appends one `EventTerminated`.
 If a deferred definition fails, the error is returned and no `EventTerminated`
 is written, so calling `rt.Terminate` again resumes where it stopped.
 
@@ -252,15 +256,16 @@ the participant in?" to reconstruct, because nothing is allowed to run again.
 To check the outcome from elsewhere, pair it with the matching query:
 
 ```go
-done, err := workflow.IsCompleted(ctx, rt.Events, pid)  // ran to its end
-ended, err := workflow.IsTerminated(ctx, rt.Events, pid) // was called off
+completed, err := workflow.IsCompleted(ctx, rt.Events, pid)   // ran to its end
+terminated, err := workflow.IsTerminated(ctx, rt.Events, pid) // was called off
+finished, err := workflow.IsFinished(ctx, rt.Events, pid)     // either outcome, in one read
 ```
 
 A history that holds *both* an `EventCompleted` and an `EventTerminated` — which
 can only arise from outside the runtime, since `Complete` and `Terminate` each
-refuse to write over the other's outcome — answers `false` from *both* queries.
-The two outcomes are not ordered; whichever lands first is the answer the log
-gives. See [Getting Started][GETTING_STARTED] §7 for the short version.
+refuse to write over the other's outcome — answers `false` from all three
+queries, regardless of event order. Unknown, suspended, and halted processes
+also have no terminal outcome. A history read error is returned to the caller. See [Getting Started][GETTING_STARTED] §7 for the short version.
 
 > **Caution:** the package's supported path for terminating a process is the
 > external `rt.Terminate(ctx, pid)` method, which acquires the process lock and

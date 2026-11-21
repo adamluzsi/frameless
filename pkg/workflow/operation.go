@@ -22,23 +22,24 @@ func (Increment) Error() string { return "workflow:op:increment" }
 
 func (d Increment) Execute(ctx context.Context, pid ProcessID) error {
 	ctx = WithName(ctx, "inc-op")
-	repo, err := LookupEventsRepository(ctx)
+	vars, err := getVarsFor(ctx, pid)
 	if err != nil {
 		return err
 	}
-	var vars = Vars{ProcessID: pid, EventsRepository: repo}
-	v, ok, err := vars.Lookup(ctx, d.Name)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ErrFatal.F("%s var missing", d.Name)
-	}
-	v, err = d.increment(v)
-	if err != nil {
-		return err
-	}
-	return vars.setOnce(ctx, d.Name, v)
+	return vars.mutateOnce(ctx, d.Name, EventSetVar{}.EventType(), func(vv visibleVars) (bool, error) {
+		binding, ok, err := vv.lookup(d.Name)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, ErrFatal.F("%s var missing", d.Name)
+		}
+		v, err := d.increment(binding.Value)
+		if err != nil {
+			return false, err
+		}
+		return vars.set(ctx, vv, d.Name, v)
+	})
 }
 
 func (d Increment) increment(v any) (any, error) {

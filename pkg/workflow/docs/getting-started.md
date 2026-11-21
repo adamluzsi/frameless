@@ -291,6 +291,12 @@ just a consumer.
 
 ### When a worker cannot execute a step
 
+If another execution holds the process lock, the worker requeues after
+`WaitTime` without increasing `FailureCount`. This keeps the scheduled request
+alive even if the lock holder was a synchronous `Execute` that later suspends.
+If a participant panics, the unfinished delivery is NACKed for redelivery;
+`Run` does not turn the panic into a successful execution.
+
 Missing or incompatible participants skip tight local retries and requeue after
 `WaitTime`, incrementing `ExecutionRequest.FailureCount` without recording an
 `EventError` or discarding earlier work. `Runtime.ParticipantWarningInterval`
@@ -380,7 +386,7 @@ Three guarantees fall out of how the runtime treats it:
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **Idempotent**                           | Calling it on an already-terminated process is a no-op — no second `EventTerminated`, the log stays a reliable answer to *when* it stopped. |
 | **Refuses to overwrite a completed process** | If the process ran to its natural end first, the call does nothing. The two outcomes — *finished* and *called off* — stay distinct. |
-| **Cancels in-flight work**               | If a worker is mid-step, the process lock is acquired; the runtime publishes a `ProcessCancel` notification, and the in-flight participant sees its `ctx` cancelled and unwinds. |
+| **Cancels in-flight work**               | While waiting for the process lock, the runtime broadcasts `ProcessCancel` so the in-flight participant can unwind. Only a recorded `EventTerminated` means the process was called off. |
 
 Once terminated, the process keeps its full event history — `Bind`, every step
 that did record, and the trailing `EventTerminated`. Re-running `rt.Execute` on
@@ -399,11 +405,12 @@ and returns immediately, without re-invoking the definition. That is what makes
 To read the outcome from elsewhere, ask the log:
 
 ```go
-done, err := workflow.IsCompleted(ctx, rt.Events, pid)  // ran to its natural end
-ended, err := workflow.IsTerminated(ctx, rt.Events, pid) // was called off via Terminate
+completed, err := workflow.IsCompleted(ctx, rt.Events, pid)   // ran to its natural end
+terminated, err := workflow.IsTerminated(ctx, rt.Events, pid) // was called off via Terminate
+finished, err := workflow.IsFinished(ctx, rt.Events, pid)     // either outcome, in one read
 ```
 
-Both answers stay `false` for a Halted Process — a Halt is intentionally not
+All three answers stay `false` for a Halted Process — a Halt is intentionally not
 recorded as an outcome; "is this process done?" is not the right question for
 one. See [Signals][SIGNAL] for the full signal catalogue.
 

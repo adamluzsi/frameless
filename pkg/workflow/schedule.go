@@ -10,7 +10,7 @@ import (
 	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/reflectkit"
+
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -78,7 +78,7 @@ func (rt Runtime) Schedule(ctx context.Context, pid ProcessID, opts ...func(*Exe
 }
 
 func (rt Runtime) schedule(ctx context.Context, pid ProcessID, opts ...func(*ExecutionRequest)) error {
-	if err := rt.Validate(ctx); err != nil {
+	if err := rt.validateScheduler(ctx); err != nil {
 		return err
 	}
 
@@ -120,6 +120,7 @@ func (rt Runtime) Run(ctx context.Context) error {
 	}
 
 	var notificationsBC synckit.Broadcast[Notification]
+	defer notificationsBC.Close() // shared by every upstream subscription attempt
 
 	g.Go(ctx, func(ctx context.Context) (err error) {
 		return rt.withRetry(ctx, func() error {
@@ -187,7 +188,8 @@ func (rt Runtime) getNumQueueSubscriber() int {
 	return rt.NumQueueSubscriber
 }
 
-func (rt Runtime) withRetry(ctx context.Context, do func() error) (err error) {
+func (rt Runtime) withRetry(ctx context.Context, do func() error) error {
+	var err error
 	for range resilience.Retries(ctx, rt.RetryStrategy) {
 		err = do()
 		if err == nil {
@@ -224,7 +226,10 @@ func (rt Runtime) withRetry(ctx context.Context, do func() error) (err error) {
 			return err
 		}
 	}
-	return
+	if err == nil { // the strategy stopped before the first attempt
+		return ctx.Err()
+	}
+	return err
 }
 
 func (rt Runtime) runListenToScheduling(ctx context.Context, notifications <-chan Notification) error {
@@ -235,15 +240,14 @@ func (rt Runtime) runListenToScheduling(ctx context.Context, notifications <-cha
 		if err != nil {
 			return err
 		}
-		if err := rt.runSignalHandler(rt, msg, notifications); err != nil {
+		if err := rt.runSignalHandler(msg, notifications); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (rt Runtime) guardAgainstEarlyExecution(ctx context.Context, msg pubsub.Message[ExecutionRequest], notifications <-chan Notification) (ok bool) {
-	var sch = msg.Data()
+func (rt Runtime) guardAgainstEarlyExecution(ctx context.Context, sch ExecutionRequest, notifications <-chan Notification) (ok bool) {
 	if sch.StartTime.IsZero() {
 		return true
 	}
@@ -282,8 +286,7 @@ waiting:
 			return false
 		case (ProcessCancel{}).NotificationType():
 			if n.GetProcessID() == sch.ProcessID {
-				_ = msg.ACK() // process execution no longer needed
-				return false
+				return false // interruption is not proof of durable termination
 			}
 			goto waiting
 		default:
@@ -300,22 +303,26 @@ waiting:
 	}
 }
 
-func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionRequest], notifications <-chan Notification) (rErr error) {
-	var (
-		ctx = msg.Context()
-		sch = msg.Data()
-	)
+func (rt Runtime) runSignalHandler(msg pubsub.Message[ExecutionRequest], notifications <-chan Notification) (rErr error) {
+	// Only ACK after handling returns successfully. In particular, a panic
+	// leaves ack false and propagates after the unfinished delivery is NACKed.
+	var ack bool
+	defer func() {
+		if ack {
+			rErr = msg.ACK()
+		} else {
+			rErr = errorkitlite.Merge(rErr, msg.NACK())
+		}
+	}()
 
-	if !s.guardAgainstEarlyExecution(ctx, msg, notifications) {
-		// Re-queue the entry for later; it is not yet time to execute it.
-		// NOTE: FinishTx must be deferred only after this point, otherwise a
-		// nil rErr from a successful NACK would make FinishTx ACK (delete) the
-		// entry, dropping the scheduled process before its start time arrives.
-		return msg.NACK()
+	ctx, sch := msg.Context(), msg.Data()
+	if !rt.guardAgainstEarlyExecution(ctx, sch, notifications) {
+		return nil
 	}
 
 	const ErrProcessCancel errorkitlite.Error = "ErrProcessCancel"
 	executeCTX, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	var job = synckit.Go(ctx, func(ctx context.Context) error {
 	waiting:
@@ -331,10 +338,7 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 				goto waiting
 			case (ProcessCancel{}).NotificationType():
 				if sch.ProcessID == ch.GetProcessID() {
-					// Cancel before the ACK: an ACK may end msg.Context(), the parent of executeCTX,
-					// which would cancel executeCTX without ErrProcessCancel as its cause.
 					cancel(ErrProcessCancel)
-					_ = msg.ACK()
 					return nil
 				}
 				goto waiting
@@ -342,25 +346,28 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 		}
 		return nil
 	})
-	defer job.Cancel()
+	defer func() { job.Cancel(); job.Wait() }()
 
-	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
-
-	var err = rt.Execute(executeCTX, sch.ProcessID)
-	if errors.Is(context.Cause(executeCTX), ErrProcessCancel) {
-		// ProcessCancel is not a real problematic error,
-		// but a control flow, for process termination.
-		// Execute reports a cancellation with the context's error,
-		// so the termination is recognised by the context's cause.
-		return nil
+	err := rt.Execute(executeCTX, sch.ProcessID)
+	if err != nil && errors.Is(context.Cause(executeCTX), ErrProcessCancel) {
+		// Terminate still needs the lock. Immediate redelivery could reclaim
+		// it on every poll. Leave a durable retry even if the caller times out.
+		rErr = rt.requeue(ctx, sch, 2*cancelPropagationWait)
+	} else {
+		rErr = rt.handleExecutionResult(ctx, sch, err)
 	}
+	ack = rErr == nil
+	return rErr
+}
 
+func (rt Runtime) handleExecutionResult(ctx context.Context, sch ExecutionRequest, err error) error {
 	switch {
 	case err == nil:
 		return nil
 
 	case errors.Is(err, ErrAlreadyRunningProcess):
-		return nil // deduplication of the process execution
+		// The lock holder may be a synchronous Execute with no queue entry of
+		// its own. Retry later without counting contention as a failure.
 
 	case errors.Is(err, ErrNoProcessDefinition):
 		if rt.isBindGracePeriodExpired(sch) {
@@ -378,20 +385,9 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 				logging.Field("bind_grace_period", rt.getBindGracePeriod().String()))
 			return nil
 		}
-		return s.Queue.Publish(ctx, ExecutionRequest{
-			ProcessID:    sch.ProcessID,
-			StartTime:    rt.backoffStartTime(),
-			CreatedAt:    sch.CreatedAt,
-			FailureCount: sch.FailureCount,
-		})
 
 	case errors.Is(err, Suspend{}):
-		return s.Queue.Publish(ctx, ExecutionRequest{
-			ProcessID:    sch.ProcessID,
-			StartTime:    rt.backoffStartTime(),
-			FailureCount: sch.FailureCount,
-			CreatedAt:    sch.CreatedAt,
-		})
+		// Retry after WaitTime without counting the suspension as a failure.
 
 	case ErrIsFatal(err):
 		// A permanent execution error leaves the process inert, not complete.
@@ -405,19 +401,13 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 	case isParticipantNotFound(err), isParticipantSignatureMismatch(err):
 		// Another node may have a compatible participant. Count each deferred
 		// attempt for periodic warnings, but never impose a hard drop limit.
-		failureCount := sch.FailureCount + 1
-		if failureCount%rt.getParticipantWarningInterval() == 0 {
+		sch.FailureCount++
+		if sch.FailureCount%rt.getParticipantWarningInterval() == 0 {
 			logger.Warn(ctx, "a scheduled workflow process is waiting for a compatible participant",
 				logging.Field("process_id", sch.ProcessID.String()),
-				logging.Field("failure_count", failureCount),
+				logging.Field("failure_count", sch.FailureCount),
 				logging.Field("error", err.Error()))
 		}
-		return s.Queue.Publish(ctx, ExecutionRequest{
-			ProcessID:    sch.ProcessID,
-			StartTime:    rt.backoffStartTime(),
-			FailureCount: failureCount,
-			CreatedAt:    sch.CreatedAt,
-		})
 
 	// Halt is the no-reschedule signal: the participant asked the runtime to
 	// stop asking. The queue entry is acknowledged and dropped, no fresh
@@ -435,13 +425,9 @@ func (s Runtime) runSignalHandler(rt Runtime, msg pubsub.Message[ExecutionReques
 		return nil
 
 	default:
-		return s.Queue.Publish(ctx, ExecutionRequest{
-			ProcessID:    sch.ProcessID,
-			StartTime:    rt.backoffStartTime(),
-			FailureCount: sch.FailureCount + 1,
-			CreatedAt:    sch.CreatedAt,
-		})
+		sch.FailureCount++
 	}
+	return rt.requeue(ctx, sch, 0)
 }
 
 // isBindGracePeriodExpired tells whether a schedule entry has been waiting for
@@ -472,13 +458,14 @@ func (rt Runtime) getParticipantWarningInterval() int {
 	return rt.ParticipantWarningInterval
 }
 
-func (rt Runtime) backoffStartTime() time.Time {
+func (rt Runtime) requeue(ctx context.Context, sch ExecutionRequest, minDelay time.Duration) error {
 	var waitTime = rt.WaitTime
 	if waitTime <= 0 {
 		const defaultWaitTime = 30 * time.Second
 		waitTime = defaultWaitTime
 	}
-	return timeNow().Add(waitTime)
+	sch.StartTime = timeNow().Add(max(waitTime, minDelay))
+	return rt.Queue.Publish(ctx, sch)
 }
 
 type errOutdatedChange struct{}
@@ -488,10 +475,6 @@ func (errOutdatedChange) Error() string {
 }
 
 func (rt Runtime) runListenToNotifications(ctx context.Context, notifications *synckit.Broadcast[Notification]) error {
-	defer notifications.Close()
-	if rt.Notifications == nil {
-		return ErrFatal.F("missing %T", reflectkit.TypeOf[NotificationBroadcast]().String())
-	}
 	var handle = func(msg pubsub.Message[Notification]) (rerr error) {
 		defer comproto.FinishTx(&rerr, msg.ACK, msg.NACK)
 		return notifications.Publish(ctx, msg.Data())
@@ -508,20 +491,29 @@ func (rt Runtime) runListenToNotifications(ctx context.Context, notifications *s
 	return nil
 }
 
+// Validate checks the configuration needed to run a worker. Schedule alone does not need Locks.
 func (rt Runtime) Validate(ctx context.Context) error {
-	// Missing-dependency errors must be classified as fatal so that
-	// Runtime#withRetry does not consume the retry budget on configuration
-	// mistakes. A misconfigured Runtime otherwise blocks for up to ~20s
-	// (default resilience.Jitter: 5 attempts × up to 5s jitter) before the
-	// caller observes the error, which looks like a hang.
+	if err := rt.validateScheduler(ctx); err != nil {
+		return err
+	}
+	if rt.Locks == nil {
+		return ErrFatal.F("missing workflow.Runtime.Locks (ProcessLocks)")
+	}
+	return nil
+}
+
+func (rt Runtime) validateScheduler(ctx context.Context) error {
+	// A configuration error must not spend the runtime's retry budget.
 	if rt.Events == nil {
-		return ErrFatal.F("missing %T", reflectkit.TypeOf[EventRepository]().String())
+		return ErrFatal.F("missing workflow.Runtime.Events (EventRepository)")
 	}
 	if rt.Queue == nil {
-		return ErrFatal.F("missing %T", reflectkit.TypeOf[Queue]().String())
+		return ErrFatal.F("missing workflow.Runtime.Queue")
 	}
 	if rt.Notifications == nil {
-		return ErrFatal.F("missing %T", reflectkit.TypeOf[Notification]().String())
+		return ErrFatal.F("missing workflow.Runtime.Notifications (NotificationBroadcast)")
 	}
-	return validate.Value(ctx, rt)
+	// Validate the fields without invoking the worker's Validate method.
+	type fields Runtime
+	return validate.Value(ctx, fields(rt))
 }

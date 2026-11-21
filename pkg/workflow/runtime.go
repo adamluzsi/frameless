@@ -45,7 +45,9 @@ type Runtime struct {
 	//
 	// Default: number of CPU
 	NumQueueSubscriber int
-	// WaitTime [optional] is the time waited in case a workflow process requires rescheduling due to suspension.
+	// WaitTime [optional] is the delay before retrying a scheduled process,
+	// including on suspension or lock contention. After a cancellation notification,
+	// the worker also allows time for Terminate to acquire the released lock.
 	//
 	// Default: 30 seconds
 	WaitTime time.Duration

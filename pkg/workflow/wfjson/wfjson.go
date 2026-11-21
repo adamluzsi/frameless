@@ -23,9 +23,6 @@ func NewCodec() *jsonkit.Codec {
 
 	// The type IDs are namespaced, in the form of prefix:name, like workflow:sequence,
 	// where the workflow prefix keeps them apart from the type IDs of other packages.
-	// Each type ID was spelt with a double colon before, like workflow::sequence.
-	// The former type IDs are linked to the current ones as aliases at the end,
-	// so the event logs and definitions written with them are still read.
 
 	// Conditions: wftemplate.Condition is a named primitive (string)
 	// whose $type envelope is handled by jsonkit's reflect-based path,
@@ -67,6 +64,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.EventDeclareVar](&c, "workflow:event:var:declare", WorkflowEventDeclareVar{})
 	jsonkit.CodecRegister[workflow.EventSetVar](&c, "workflow:event:var:set", WorkflowEventSetVar{})
 	jsonkit.CodecRegister[workflow.EventDeleteVar](&c, "workflow:event:var:delete", WorkflowEventDeleteVar{})
+	jsonkit.CodecRegister[workflow.EventVarNoop](&c, "workflow:event:var:noop", WorkflowEventVarNoop{})
 	jsonkit.CodecRegister[workflow.EventParticipant](&c, "workflow:event:participant", WorkflowEventParticipant{})
 	jsonkit.CodecRegister[workflow.EventCondition](&c, "workflow:event:condition", WorkflowEventCondition{})
 	jsonkit.CodecRegister[workflow.EventUseDefinition](&c, "workflow:event:use-definition", WorkflowEventUseDefinition{})
@@ -74,6 +72,7 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.EventJoin](&c, "workflow:event:join", WorkflowEventJoin{})
 	jsonkit.CodecRegister[workflow.EventSleepCompleted](&c, "workflow:event:sleep:completed", WorkflowEventSleepCompleted{})
 	jsonkit.CodecRegister[workflow.EventDefer](&c, "workflow:event:defer", WorkflowEventDefer{})
+	jsonkit.CodecRegister[workflow.EventForEachTraversal](&c, "workflow:event:foreach:traversal", workflowEventForEachTraversal{})
 	jsonkit.CodecRegister[workflow.EventForEachIteration](&c, "workflow:event:foreach:iteration", WorkflowEventForEachIteration{})
 	jsonkit.CodecRegister[workflow.EventError](&c, "workflow:event:error", WorkflowEventError{})
 
@@ -83,9 +82,8 @@ func NewCodec() *jsonkit.Codec {
 	jsonkit.CodecRegister[workflow.ProcessSchedule](&c, "workflow:schedule", WorkflowProcessSchedule{})
 	jsonkit.CodecRegister[workflow.ProcessCancel](&c, "workflow:cancel", WorkflowEventProcessCancel{})
 
-	// Former type IDs: each type ID was spelt with a double colon before, like workflow::sequence.
-	// They are linked to the current type IDs as aliases, so the data written with them is read back as the same type,
-	// while the values are written with the current type IDs.
+	// Deprecated double-colon IDs are read aliases; writes use the single-colon IDs.
+	// Aliases apply to the ID in the configured type member ($type by default), not to the member name.
 	jsonkit.CodecRegisterTypeID[wftemplate.Condition](&c, "workflow:template:condition", "workflow::template::condition")
 	jsonkit.CodecRegisterTypeID[workflow.Sequence](&c, "workflow:sequence", "workflow::sequence")
 	jsonkit.CodecRegisterTypeID[workflow.If](&c, "workflow:if", "workflow::if")
@@ -1259,6 +1257,37 @@ func (WorkflowEventDefer) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.E
 	p.Timestamp = dto.Timestamp
 	p.Path = ToPath(dto.Path)
 	p.Definition = def
+	return nil
+}
+
+// ForEachTraversalEvent
+
+type workflowEventForEachTraversal struct{}
+
+type workflowForEachTraversalEventDTO struct {
+	EventID    workflow.EventID   `json:"event_id"`
+	ProcessID  workflow.ProcessID `json:"process_id"`
+	Timestamp  time.Time          `json:"timestamp"`
+	Path       PathDTO            `json:"path,omitempty"`
+	Iterations []string           `json:"iterations"`
+}
+
+func (workflowEventForEachTraversal) Marshal(c *jsonkit.Codec, v workflow.EventForEachTraversal) ([]byte, error) {
+	return json.Marshal(workflowForEachTraversalEventDTO{
+		EventID: v.EventID, ProcessID: v.ProcessID, Timestamp: v.Timestamp,
+		Path: ToPathDTO(v.Path), Iterations: v.Iterations,
+	})
+}
+
+func (workflowEventForEachTraversal) Unmarshal(c *jsonkit.Codec, data []byte, p *workflow.EventForEachTraversal) error {
+	var dto workflowForEachTraversalEventDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	*p = workflow.EventForEachTraversal{
+		EventID: dto.EventID, ProcessID: dto.ProcessID, Timestamp: dto.Timestamp,
+		Path: ToPath(dto.Path), Iterations: dto.Iterations,
+	}
 	return nil
 }
 

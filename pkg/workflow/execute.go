@@ -212,7 +212,7 @@ func (d Execute) executeStep(ctx context.Context, pid ProcessID, id ParticipantI
 				Definition: e.Definition,
 			}, true
 		},
-		MakeEvent: func(id ParticipantID, path Path, input, output []any) (EventParticipant, error) {
+		MakeEvent: func(path Path, input []any) (EventParticipant, error) {
 			eventID, err := MakeEventID()
 			if err != nil {
 				return EventParticipant{}, err
@@ -224,8 +224,10 @@ func (d Execute) executeStep(ctx context.Context, pid ProcessID, id ParticipantI
 				ParticipantID: id,
 				Path:          path,
 				Input:         input,
-				Output:        output,
 			}, nil
+		},
+		SetOutput: func(e *EventParticipant, output []any) {
+			e.Output = output
 		},
 		AcceptDefinition: func(e *EventParticipant, def Definition) {
 			e.Definition = def
@@ -317,7 +319,7 @@ func (d Execute) evaluate(ctx context.Context, pid ProcessID, id ConditionID, do
 				Result: []any{e.Answer},
 			}, true
 		},
-		MakeEvent: func(id ConditionID, path Path, input, output []any) (EventCondition, error) {
+		MakeEvent: func(path Path, input []any) (EventCondition, error) {
 			eventID, err := MakeEventID()
 			if err != nil {
 				return EventCondition{}, err
@@ -328,9 +330,11 @@ func (d Execute) evaluate(ctx context.Context, pid ProcessID, id ConditionID, do
 				ConditionID: id,
 				Path:        path,
 				Input:       input,
-				Answer:      output[0].(bool),
 				Timestamp:   timeNow(),
 			}, nil
+		},
+		SetOutput: func(e *EventCondition, output []any) {
+			e.Answer = output[0].(bool)
 		},
 	}
 

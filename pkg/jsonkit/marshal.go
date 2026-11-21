@@ -35,6 +35,8 @@ type marshaler struct {
 	// entries is the map whose entries are written as the map member of its type envelope,
 	// where their keys are just data, so they are not checked against the type member, see marshaler.checkMapKeys.
 	entries uintptr
+	// generic is true inside untagged data held by an empty interface, but not inside a type envelope.
+	generic bool
 	// err is the first error of the hook, which is returned as it is,
 	// instead of how encoding/json/v2 reports the error of a hook.
 	err error
@@ -210,16 +212,24 @@ func (m *marshaler) writeHeld(enc *jsontext.Encoder, iv reflect.Value) error {
 // The keys of a map are checked when the map is written, see checkMapKeys.
 func (m *marshaler) writePlain(enc *jsontext.Encoder, iv reflect.Value) error {
 	concrete := iv.Elem()
-	kind := base(concrete.Type()).Kind()
-	if iv.Type().NumMethod() != 0 {
-		switch kind {
+	t := base(concrete.Type())
+	enterGeneric := !m.generic && isEmptyInterface(iv.Type())
+	if enterGeneric {
+		m.generic = true
+		defer func() { m.generic = false }()
+	} else if !m.generic {
+		switch t.Kind() {
 		case reflect.Slice, reflect.Array, reflect.Map, reflect.Chan, reflect.Interface:
 		default:
 			return errMissingTypeID(concrete.Interface(), m.kw)
 		}
 	}
-	if kind != reflect.Struct || hasOwnMarshaler(concrete.Type()) || isJSONKitWrapper(base(concrete.Type())) ||
-		!hasJSONMember(base(concrete.Type()), m.kw.Type) {
+	if t.Kind() != reflect.Struct || hasOwnMarshaler(concrete.Type()) || isJSONKitWrapper(t) || !hasJSONMember(t, m.kw.Type) {
+		if enterGeneric {
+			// Write to the same encoder before restoring the outer scope. Returning
+			// ErrUnsupported would visit the children after the scope ends.
+			return jsonv2.MarshalEncode(enc, concrete.Interface())
+		}
 		return errors.ErrUnsupported
 	}
 	var data []byte
@@ -243,6 +253,9 @@ func (m *marshaler) writePlain(enc *jsontext.Encoder, iv reflect.Value) error {
 // A value with a custom codec is written by it, and the null it writes is written as it is, without an envelope.
 // The entries of a map are the map member of the envelope, where their keys are just data, so they may be named like anything.
 func (m *marshaler) envelope(iv reflect.Value, typeID TypeID) ([]byte, error) {
+	// A reader will rebuild this Go type, so its non-empty interface fields need their type IDs.
+	defer func(outer bool) { m.generic = outer }(m.generic)
+	m.generic = false
 	concrete := iv.Elem()
 	var (
 		data   []byte

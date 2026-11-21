@@ -42,33 +42,37 @@ func (sig Complete) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pro
 	return rt.Events.Create(ctx, &event)
 }
 
-// IsCompleted reports whether pid has completed — it ran to its natural end
-// and has not subsequently been terminated.
-//
-// A Process' outcome is recorded in the event log as either EventCompleted
-// (it ran to its end) or EventTerminated (it was called off). When the log
-// holds both for one Process — which can only arise from outside the runtime
-// because Complete and Terminate refuse to write over an outcome already on
-// record — IsCompleted answers false: the Process has been called off, and
-// the trailing completion does not undo that. Symmetrically, IsTerminated
-// answers false in the same history.
+// IsCompleted reports whether pid ran to its natural end without being terminated.
 func IsCompleted(ctx context.Context, events EventRepository, pid ProcessID) (bool, error) {
-	var (
-		completed  bool
-		terminated bool
-	)
+	o, err := readOutcome(ctx, events, pid)
+	return o.completed && !o.terminated, err
+}
+
+// IsFinished reports whether pid completed or was terminated, in one history read.
+// An unknown, suspended or halted process has no outcome and is not finished.
+// If both outcomes are present, the history is inconsistent: like IsCompleted and
+// IsTerminated, IsFinished reports false. A failed read returns false and the error.
+func IsFinished(ctx context.Context, events EventRepository, pid ProcessID) (bool, error) {
+	o, err := readOutcome(ctx, events, pid)
+	return o.completed != o.terminated, err
+}
+
+type processOutcome struct{ completed, terminated bool }
+
+func readOutcome(ctx context.Context, events EventRepository, pid ProcessID) (processOutcome, error) {
+	var o processOutcome
 	for event, err := range events.FindByProcessID(ctx, pid) {
 		if err != nil {
-			return false, err
+			return processOutcome{}, err
 		}
 		switch event.(type) {
 		case EventCompleted:
-			completed = true
+			o.completed = true
 		case EventTerminated:
-			terminated = true
+			o.terminated = true
 		}
 	}
-	return completed && !terminated, nil
+	return o, nil
 }
 
 // EventCompleted is emitted when a workflow definition successfully completes execution.
@@ -97,6 +101,9 @@ func (sig Terminate) RuntimeSignalExecute(ctx context.Context, rt Runtime, id Pr
 	return sig.sigTERM(ctx, rt, id)
 }
 
+// How often Terminate rechecks the lock after asking its holder to unwind.
+const cancelPropagationWait = 10 * time.Millisecond
+
 func (sig Terminate) sigTERM(ctx context.Context, rt Runtime, id ProcessID) (rerr error) {
 	if id == (ProcessID{}) {
 		return ErrZeroProcessID.F("terminate")
@@ -112,7 +119,6 @@ func (sig Terminate) sigTERM(ctx context.Context, rt Runtime, id ProcessID) (rer
 	// observe it and release the lock. The wait here is what lets the
 	// worker drain its current step, write its outcome, and return from
 	// Execute so the lock becomes available.
-	const cancelPropagationWait = 10 * time.Millisecond
 	for {
 		var (
 			acquired bool
@@ -205,33 +211,10 @@ func (sig Terminate) inspect(ctx context.Context, rt Runtime, id ProcessID) (end
 	return false, children, nil
 }
 
-// IsTerminated reports whether pid was called off — terminated without
-// completing — and has not subsequently completed.
-//
-// A Process' outcome is recorded in the event log as either EventCompleted
-// (it ran to its end) or EventTerminated (it was called off). When the log
-// holds both for one Process — which can only arise from outside the runtime
-// because Complete and Terminate refuse to write over an outcome already on
-// record — IsTerminated answers false: the Process ran to its end, and a
-// trailing termination does not undo that. Symmetrically, IsCompleted answers
-// false in the same history.
+// IsTerminated reports whether pid was called off without completing.
 func IsTerminated(ctx context.Context, events EventRepository, pid ProcessID) (bool, error) {
-	var (
-		completed  bool
-		terminated bool
-	)
-	for event, err := range events.FindByProcessID(ctx, pid) {
-		if err != nil {
-			return false, err
-		}
-		switch event.(type) {
-		case EventCompleted:
-			completed = true
-		case EventTerminated:
-			terminated = true
-		}
-	}
-	return terminated && !completed, nil
+	o, err := readOutcome(ctx, events, pid)
+	return o.terminated && !o.completed, err
 }
 
 type EventTerminated struct {

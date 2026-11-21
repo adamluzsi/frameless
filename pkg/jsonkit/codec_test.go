@@ -802,7 +802,8 @@ func TestCodec(t *testing.T) {
 			})
 		})
 
-		s.When("the JSON value is a $type envelope of a type ID which the Codec doesn't know", func(s *testcase.Spec) {
+		s.When("a non-empty interface receives an object whose $type names no concrete type", func(s *testcase.Spec) {
+			ptr.Let(s, func(t *testcase.T) any { return new(testent.Fooer) })
 			typeID := let.Var(s, func(t *testcase.T) jsonkit.TypeID {
 				return jsonkit.TypeID("unknown-" + t.Random.HexN(8))
 			})
@@ -1022,6 +1023,22 @@ func TestCodec(t *testing.T) {
 			}
 
 			s.Then("JSON without $type is rejected with an error", thenItFails)
+
+			for _, tc := range []struct{ name, data, message string }{
+				{"missing", `{}`, "$type is not set"},
+				{"null", `{"$type":null}`, "$type is not set"},
+				{"empty", `{"$type":""}`, "$type is empty"},
+				{"non-string", `{"$type":12}`, "unable to unmarshal $type field"},
+			} {
+				s.And("the type member is "+tc.name, func(s *testcase.Spec) {
+					value.LetValue(s, tc.data)
+					s.Then("the type member validation error is returned", func(t *testcase.T) {
+						err := act(t)
+						assert.Error(t, err)
+						assert.Contains(t, err.Error(), tc.message)
+					})
+				})
+			}
 
 			s.And("the JSON value is a bare array", func(s *testcase.Spec) {
 				value.Let(s, makeUntypedJSONArray)
@@ -1659,6 +1676,15 @@ func TestCodec(t *testing.T) {
 					s.Then("it is read back the way encoding/json reads it back, as a map[string]any", thenItIsReadBackLikeEncodingJSON)
 				})
 
+				s.And("it holds an unregistered implementation in a non-empty interface field", func(s *testcase.Spec) {
+					value.Let(s, func(t *testcase.T) any {
+						return struct{ Name MT_Namer }{Name: MT_NoTypeID{Name: t.Random.String()}}
+					})
+
+					s.Then("the implementation is written as plain JSON", thenItIsWrittenAsExpected)
+					s.Then("the object and its field are read back as maps", thenItIsReadBackLikeEncodingJSON)
+				})
+
 				s.And("it holds a value of a registered type in an `any` of its own", func(s *testcase.Spec) {
 					inner := let.Var(s, func(t *testcase.T) MT_Text {
 						return MT_Text(t.Random.String())
@@ -2174,6 +2200,132 @@ func TestCodec(t *testing.T) {
 	})
 }
 
+func TestCodec_genericData(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type Box struct{ Name MT_Namer }
+	box := Box{Name: MT_NoTypeID{Name: "Ada"}}
+
+	s.Test("an unregistered marshaler can write a non-empty interface field as generic data", func(t *testcase.T) {
+		var c jsonkit.Codec
+		var v any = MT_NameDTO("Ada")
+		data, err := c.Marshal(&v)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"Name":{"Name":"Ada","Count":0}}`, string(data))
+	})
+
+	s.Test("a concrete root still needs type IDs for its non-empty interface fields", func(t *testcase.T) {
+		var c jsonkit.Codec
+		_, err := c.Marshal(box)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing $type id alias")
+	})
+
+	s.Test("an untagged any field does not relax a concrete sibling", func(t *testcase.T) {
+		var c jsonkit.Codec
+		_, err := c.Marshal(struct {
+			Generic any
+			Typed   Box
+		}{Generic: box, Typed: box})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing $type id alias")
+	})
+
+	s.Test("a tagged object inside generic data still needs type IDs for its non-empty interface fields", func(t *testcase.T) {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[Box](&c, "box"))
+		var v any = struct{ Tagged any }{Tagged: box}
+		_, err := c.Marshal(&v)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing $type id alias")
+	})
+
+	s.Test("an any field in a tagged object can itself be read back as a map", func(t *testcase.T) {
+		type Record struct{ Value any }
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[Record](&c, "record"))
+		var v any = Record{Value: box}
+		data, err := c.Marshal(&v)
+		assert.NoError(t, err)
+		var got any
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal[any](t, Record{Value: map[string]any{"Name": map[string]any{"Name": "Ada", "Count": 0}}}, got)
+	})
+
+	for _, tc := range []struct{ name, data string }{
+		{"missing", `{"$value":5,"$map":{"k":1}}`},
+		{"unknown", `{"$type":"retired","$value":5,"$map":{"k":1},"name":"Ada"}`},
+		{"non-string", `{"$type":12,"name":"Ada"}`},
+		{"null", `{"$type":null,"name":"Ada"}`},
+		{"empty", `{"$type":"","name":"Ada"}`},
+	} {
+		s.Test("empty interfaces keep every member when the type ID is "+tc.name, func(t *testcase.T) {
+			var c jsonkit.Codec
+			data := []byte(tc.data)
+			var want map[string]any
+			unmarshalPlainJSON(t, data, &want)
+
+			var got any
+			assert.NoError(t, c.Unmarshal(data, &got))
+			assert.Equal[any](t, want, got)
+
+			var named MT_Any
+			assert.NoError(t, c.Unmarshal(data, &named))
+			assert.Equal[MT_Any](t, want, named)
+		})
+	}
+
+	s.Test("nested empty interfaces keep unrecognised type members and decode known children", func(t *testcase.T) {
+		c := jsonkit.Codec{TypeKeyword: "kind"}
+		var got struct {
+			Field   MT_Any
+			Items   []any
+			Wrapped jsonkit.Interface[any]
+			Array   jsonkit.Array[MT_Any]
+		}
+		data := []byte(`{
+			"Field":{"kind":"retired","items":[{"kind":"int64","$value":12}]},
+			"Items":[{"kind":null,"k":3}],
+			"Wrapped":{"kind":false,"$value":7},
+			"Array":[{"kind":"","$map":{}}]
+		}`)
+		assert.NoError(t, c.Unmarshal(data, &got))
+		assert.Equal[MT_Any](t, map[string]any{"kind": "retired", "items": []any{int64(12)}}, got.Field)
+		assert.Equal(t, []any{map[string]any{"kind": nil, "k": 3}}, got.Items)
+		assert.Equal[any](t, map[string]any{"kind": false, "$value": 7}, got.Wrapped.V)
+		assert.Equal(t, jsonkit.Array[MT_Any]{map[string]any{"kind": "", "$map": map[string]any{}}}, got.Array)
+	})
+
+	s.Test("an invalid payload for a known type is not read as a map", func(t *testcase.T) {
+		var c jsonkit.Codec
+		err := c.Unmarshal([]byte(`{"$type":"int64","$value":"not a number"}`), new(any))
+		assert.Error(t, err)
+	})
+
+	s.Test("a known object decoded into any still requires a known type for its non-empty interface field", func(t *testcase.T) {
+		var c jsonkit.Codec
+		t.Defer(jsonkit.CodecRegisterTypeID[Box](&c, "box"))
+		err := c.Unmarshal([]byte(`{"$type":"box","Name":{"$type":"retired"}}`), new(any))
+		assert.ErrorIs(t, err, jsonkit.ErrUnknownTypeID)
+	})
+
+	s.Test("a registered codec returning errors.ErrUnsupported does not opt out of encoding or decoding its type", func(t *testcase.T) {
+		type T struct{}
+		var c jsonkit.Codec
+		jsonkit.CodecRegister(&c, "item", jsonkit.TypeCodec[T]{
+			MarshalFunc:   func(*jsonkit.Codec, T) ([]byte, error) { return nil, errors.ErrUnsupported },
+			UnmarshalFunc: func(*jsonkit.Codec, []byte, *T) error { return errors.ErrUnsupported },
+		})
+		var v any = T{}
+		_, err := c.Marshal(&v)
+		assert.Should(t).ErrorIs(err, errors.ErrUnsupported)
+		err = c.Unmarshal([]byte(`{"$type":"item"}`), new(any))
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+		err = c.Unmarshal([]byte(`{"$type":"retired","child":{"$type":"item"}}`), new(MT_Any))
+		assert.ErrorIs(t, err, errors.ErrUnsupported)
+	})
+}
+
 // MT_List and MT_Bag are a slice and a map type, which hold their values as `any`.
 type (
 	MT_List []any
@@ -2193,6 +2345,13 @@ func (v MT_NoTypeID) GetName() string { return v.Name }
 
 // MT_Namer is a non-empty interface, which MT_NoTypeID implements.
 type MT_Namer interface{ GetName() string }
+
+// MT_NameDTO has an interface field in its wire representation but none in its Go type.
+type MT_NameDTO string
+
+func (name MT_NameDTO) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return jsonv2.MarshalEncode(enc, struct{ Name MT_Namer }{Name: MT_NoTypeID{Name: string(name)}})
+}
 
 // MT_SharedReferences references the same values more than once, without a reference cycle.
 type MT_SharedReferences struct {
@@ -2409,8 +2568,8 @@ func mustMarshalJSON(t *testcase.T, v any) string {
 	return string(data)
 }
 
-// unmarshalPlainJSON reads data, JSON without a $type, into the value ptr points to,
-// the way the Codec is expected to read it: the way encoding/json reads it,
+// unmarshalPlainJSON treats every object member as data, including a $type that names no concrete type.
+// It reads into the value ptr points to the way encoding/json does,
 // except that a number held by an empty interface is an int when it is only digits and fits an int, and a float64 otherwise.
 // The numbers are read with json.Decoder.UseNumber, and parsed from their text,
 // so an int which a float64 can't hold is read exactly.
@@ -6047,7 +6206,7 @@ func TestCodecRegister(t *testing.T) {
 	})
 
 	// Codecs which register the same type under different type IDs write it with their own type ID,
-	// so neither of them reads what the other one writes.
+	// so neither reconstructs the registered type from the other Codec's data.
 	s.Test("two codecs with different TypeIDs for the same type are isolated", func(t *testcase.T) {
 		type T struct{ V string }
 
@@ -6089,8 +6248,10 @@ func TestCodecRegister(t *testing.T) {
 		assert.NoError(t, cA.Unmarshal(dataA, &got))
 		assert.Equal(t, exp, got)
 
-		assert.ErrorIs(t, cB.Unmarshal(dataA, new(any)), jsonkit.ErrUnknownTypeID)
-		assert.ErrorIs(t, cA.Unmarshal(dataB, new(any)), jsonkit.ErrUnknownTypeID)
+		assert.NoError(t, cB.Unmarshal(dataA, &got))
+		assert.Equal[any](t, map[string]any{"$type": "a_t", "side": "a", "v": exp.(T).V}, got)
+		assert.NoError(t, cA.Unmarshal(dataB, &got))
+		assert.Equal[any](t, map[string]any{"$type": "b_t", "side": "b", "v": exp.(T).V}, got)
 	})
 
 	// A custom codec only applies to the Codec it was registered on.
@@ -7761,10 +7922,13 @@ func TestCodec_typedContainers(t *testing.T) {
 			return got.V, err
 		}
 
-		thenItFails := func(s *testcase.Spec) {
-			s.Then("it fails with ErrUnknownTypeID, as the $type names no type of a value", func(t *testcase.T) {
-				_, err := act(t)
-				assert.ErrorIs(t, err, jsonkit.ErrUnknownTypeID)
+		thenItKeepsTheObject := func(s *testcase.Spec) {
+			s.Then("the interface holds the whole object as a map", func(t *testcase.T) {
+				var want MT_TC_Box
+				unmarshalPlainJSON(t, data.Get(t), &want)
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, want.V, got)
 			})
 		}
 
@@ -7803,7 +7967,7 @@ func TestCodec_typedContainers(t *testing.T) {
 				return []byte(`{"V":{"$type":"[]tc-unknown","$value":[]}}`)
 			})
 
-			thenItFails(s)
+			thenItKeepsTheObject(s)
 		})
 
 		s.When("the key type of the map is not a string", func(s *testcase.Spec) {
@@ -7811,7 +7975,7 @@ func TestCodec_typedContainers(t *testing.T) {
 				return []byte(`{"V":{"$type":"map[int]tc-item","$map":{}}}`)
 			})
 
-			thenItFails(s)
+			thenItKeepsTheObject(s)
 		})
 
 		// The Codec doesn't build types without a limit for any $type it is given.
@@ -7820,7 +7984,7 @@ func TestCodec_typedContainers(t *testing.T) {
 				return []byte(`{"V":{"$type":"` + strings.Repeat("[]", 64) + `tc-item","$value":[]}}`)
 			})
 
-			thenItFails(s)
+			thenItKeepsTheObject(s)
 		})
 
 		s.When("the type ID names an interface type", func(s *testcase.Spec) {
@@ -7829,7 +7993,7 @@ func TestCodec_typedContainers(t *testing.T) {
 				return []byte(`{"V":{"$type":"tc-greeter","V":` + mustMarshalJSON(t, t.Random.String()) + `}}`)
 			})
 
-			thenItFails(s)
+			thenItKeepsTheObject(s)
 		})
 
 		s.When("the type ID is the Go name of the interface, and the envelope has no $value", func(s *testcase.Spec) {

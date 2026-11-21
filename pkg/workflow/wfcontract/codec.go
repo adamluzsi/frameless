@@ -930,6 +930,17 @@ func Codec(codec workflow.Codec) contract.Contract {
 		}
 	})
 
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventVarNoop {
+		return workflow.EventVarNoop{
+			EventID:   randomEventID(t),
+			ProcessID: randomEventProcessID(t),
+			Timestamp: randomEventTimestamp(t),
+			Path:      randomPath(t),
+			Name:      workflow.VarName(t.Random.String()),
+			Mutation:  random.Pick(t.Random, workflow.EventSetVar{}.EventType(), workflow.EventDeleteVar{}.EventType()),
+		}
+	})
+
 	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventParticipant {
 		return workflow.EventParticipant{
 			EventID:       randomEventID(t),
@@ -998,6 +1009,23 @@ func Codec(codec workflow.Codec) contract.Contract {
 			Timestamp:  randomEventTimestamp(t),
 			Path:       randomPath(t),
 			Definition: MakeDefinition(t),
+		}
+	})
+
+	s.Test("an empty ForEach traversal is still a recorded event", func(t *testcase.T) {
+		assertRoundTripEvent(t, codec, workflow.EventForEachTraversal{
+			EventID: randomEventID(t), ProcessID: randomEventProcessID(t), Timestamp: randomEventTimestamp(t),
+			Path: randomPath(t),
+		})
+	})
+
+	specTypeCodec(s, codec, func(t *testcase.T) workflow.EventForEachTraversal {
+		return workflow.EventForEachTraversal{
+			EventID:    randomEventID(t),
+			ProcessID:  randomEventProcessID(t),
+			Timestamp:  randomEventTimestamp(t),
+			Path:       randomPath(t),
+			Iterations: []string{"[0]", t.Random.UUID(), ""},
 		}
 	})
 

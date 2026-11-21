@@ -334,17 +334,13 @@ func TestDefer(t *testing.T) {
 			return nil
 		})
 		record := func(t *testcase.T, ctx context.Context, name string) error {
-			completed, err := workflow.IsCompleted(ctx, c.EventRepository.Get(t), c.ProcessID.Get(t))
-			if err != nil {
-				return err
-			}
-			terminated, err := workflow.IsTerminated(ctx, c.EventRepository.Get(t), c.ProcessID.Get(t))
+			finished, err := workflow.IsFinished(ctx, c.EventRepository.Get(t), c.ProcessID.Get(t))
 			if err != nil {
 				return err
 			}
 			executions.Set(t, append(executions.Get(t), deferredExecution{
 				Name:  name,
-				Ended: completed || terminated,
+				Ended: finished,
 			}))
 			return nil
 		}

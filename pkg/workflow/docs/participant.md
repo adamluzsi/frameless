@@ -129,10 +129,18 @@ A recorded call is only reused when the step is genuinely the same:
 - the same **number** of inputs and outputs, and
 - the same **input values**, evaluated as of that point in the history.
 
-That last one is subtler than it looks: the comparison uses the values as they
-were *when the call was recorded*, not as they are now. Assigning a new value to
-an input variable later in the process does not invalidate an earlier recorded
-call — which is exactly what keeps a replay stable.
+The comparison uses the mapped values **on entry to the call**, not on return
+or on replay. For example, if a participant reads `n=0` and sets `n=1` through
+`Vars.Set`, replay keeps `n=1` without calling it again. Sorting a slice argument
+or editing a map argument in place does not change the recorded input or write
+back to the variable; use an output mapping or `Vars.Set` to persist the change.
+
+The call takes its `EventID` and timestamp on entry, but nothing is appended
+until it succeeds. No event migration is required. Older calls keep their
+original position in history. If an old call already had an inconsistent input
+snapshot (for example, it was recorded *after* writing back to its input), it
+can miss once after upgrade. Replay reuses the new matching success rather
+than guessing which earlier writes belonged to the old call.
 
 ### The trap it does not save you from
 
@@ -193,10 +201,13 @@ So a function can register an undo step for what it just did:
 | Outcome                                      | Undo steps run? |
 | -------------------------------------------- | --------------- |
 | the call is recorded                         | No              |
-| the function returns an error                | Yes             |
+| the function returns an ordinary error or panics | Yes         |
 | the event history fails to persist the call  | Yes             |
 | the function returns a signal (`Suspend`, …) | No              |
 | the call is replayed from the history        | No (the function isn't called) |
+
+A panic propagates after rollback. An attempt that panics in a follow-up also
+rolls back the enclosing call's uncommitted events and runs its rollback hooks.
 
 This is a **courtesy, not a guarantee**. It is not a distributed transaction:
 a crash, a failing undo step, or a failure after the commit leaves the effect in
@@ -366,6 +377,13 @@ On a cache hit, the runtime skips the producer function but **walks the recorded
 follow-up definition again**, under the original path. Recorded nested steps
 reuse their results, and unfinished or suspended steps resume; the outer
 sequence continues only when the follow-up succeeds. Dispatch is not exactly once.
+
+An unwrapped `Break{}` raised by a follow-up inside any `For` clause or a
+`ForEach` body ends the nearest loop. The producer's call stays recorded, so
+replay exits the loop again without repeating the producer. Outside a loop,
+`Break{}` is an error: the producer's new call event and variable writes roll
+back, and retry can run a corrected participant. A wrapped break is an error
+even inside a loop. `Break` is not a runtime signal.
 
 The follow-up still runs inside the producer's event transaction. `Suspend`
 and participant availability errors preserve earlier work when that transaction

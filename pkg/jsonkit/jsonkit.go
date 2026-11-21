@@ -127,8 +127,8 @@ func isNull(data []byte) bool {
 
 const ErrNotInterfaceType errorkit.Error = "jsonkit.ErrNotInterfaceType"
 
-// ErrUnknownTypeID is the error of decoding data whose $type names no type of a value that the Codec knows.
-// Either no type is registered under the type ID, or the type ID names an interface type, which no value is of.
+// ErrUnknownTypeID means an object decoded into a non-empty interface has a $type
+// that names no known concrete type. An empty interface can hold the object as a map instead.
 const ErrUnknownTypeID errorkit.Error = "jsonkit: unknown $type"
 
 // ErrKeywordCollision is the error of writing a value whose own member is named like a keyword of the Codec,

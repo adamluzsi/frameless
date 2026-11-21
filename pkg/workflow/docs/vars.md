@@ -74,7 +74,7 @@ process' variables after a `Spawn`.
 
 ## 2. Why it is not a key-value store
 
-Three event types make up the whole model:
+Three event types change bindings:
 
 | Event             | Analogous Go                   |
 | ----------------- | ------------------------------ |
@@ -283,23 +283,29 @@ should see regardless of where it sits in the tree.
 
 ## 4. Writes are idempotent
 
-The runtime may replay any step. Variable mutations are guarded so a replay does
-not apply them twice:
+`SetVar`, `DeclareVar`, `DeleteVar`, and `Increment` run once per step path and
+variable name. A matching declaration, assignment, or deletion in the process
+history is sufficient evidence that the step ran. `Increment` checks for its
+recorded assignment **before** reading the counter: if a later step deleted it
+or assigned a string, replay leaves that state alone. A *fresh* increment of a
+missing or non-numeric variable still fails.
 
-- `SetVar` / `DeclareVar` / `DeleteVar` record the **Path** of the step that performed them.
-  A replay that finds a matching *(event type, path, name)* triple in the
-  history skips the write entirely.
-- `Vars#Set` additionally short-circuits when the value is already equal to what
-  is stored, so it appends nothing.
+A successful step that changed nothing records `EventVarNoop` **instead of** a
+mutation. For example, `Set x=1; Set x=1; Set x=2` leaves `x=2` on replay: the
+second set remembers it ran. Deleting a missing name likewise records completion
+without declaring a variable or hiding a future outer binding. An equal set of a
+`ForEach` iteration variable leaves it a live reference, not a local copy.
+`wfjson.NewCodec` registers this event as `workflow:event:var:noop`. Update any
+custom codecs and readers before workers start writing it.
 
-The guard on `DeleteVar` matters more than it looks: without it, a replay would
-delete whatever the variable holds *at that point*, which is wrong as soon as a
-later step reassigned it — the deletion would remove more than it originally
-did.
+Direct `Vars.Set` and `Vars.Delete` are not step executions. They do not write
+completion records; a later call at the same path can still change a binding.
 
-The guard on `DeclareVar` is sharp for the same reason. A declaration folds into
-a *fresh binding that carries no value*, so a replayed declaration would not
-merely duplicate an event — it would erase whatever the steps after it assigned.
+**Existing histories:** previously recorded mutations keep their original paths
+and replay without a new event. Older versions left no evidence of a successful
+no-op. On the first replay after upgrade such a step runs against current state;
+if that could undo a later write, migrate the affected in-flight process before
+resuming it. The engine does not infer past execution from a later write.
 
 ---
 

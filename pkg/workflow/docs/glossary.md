@@ -296,7 +296,7 @@ runtime. It records a single `EventTerminated` and returns, so the next
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | **Idempotent on a terminated process**              | A duplicate call does not grow a second `EventTerminated`; the log stays a reliable answer to *when* the process was stopped.             |
 | **Refuses to overwrite a completed process**        | A process that already ran to its natural end keeps its `EventCompleted`; the call returns without appending `EventTerminated`.         |
-| **Cancels in-flight work**                          | The runtime acquires the process lock and publishes a `ProcessCancel` over the change broadcast; the in-flight participant sees its `ctx` cancelled and unwinds. |
+| **Cancels in-flight work**                          | While waiting for the process lock, the runtime publishes `ProcessCancel` so the in-flight participant can unwind. The notification alone does not terminate the process. |
 | **Append-only**                                     | Termination never removes prior events; the full history (`Bind`, every step that did record, then `EventTerminated`) stays auditable. |
 
 The two outcomes — *finished* and *called off* — stay distinct on the log:

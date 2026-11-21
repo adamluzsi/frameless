@@ -45,7 +45,8 @@ data, _ := c.Marshal(&v)
 // {"$type":"person","@type":"Person","name":"Ada"}
 ```
 
-A type ID which is not registered can't be read into an interface, so it fails with `jsonkit.ErrUnknownTypeID`.
+An unknown type ID is an error (`jsonkit.ErrUnknownTypeID`) when the destination interface requires methods.
+An empty interface can hold the object as a `map[string]any` instead, including the `$type` member.
 
 #### Naming the members, and collisions
 
@@ -69,8 +70,8 @@ data, _ = c.Marshal(struct{ V any }{V: map[string]Item{"a": {Name: "a"}}})
 // {"V":{"@kind":"map[string]item","@entries":{"a":{"Name":"a"}}}}
 ```
 
-The reader treats any JSON object with a type member as a type envelope.
-So a value can't have a member of its own named like a keyword in a place where it would be read back as part of the envelope:
+A reader that recognises a type ID treats the object as a type envelope.
+To avoid ambiguity, `Marshal` rejects a member named like a keyword wherever it could be read back as part of the envelope:
 
 - a map written as plain JSON, without an envelope, with a key named like the type member,
   like a map in a field of its own type, or a `map[string]any{"$type": "x"}`, which has no type ID, in an `any` field;
@@ -274,11 +275,28 @@ data, _ = c.Marshal(struct{ V any }{V: Person{Name: "Ada"}})
 // {"V":{"Name":"Ada"}}, read back as a map[string]any
 ```
 
-The values it holds in its own interface fields still carry their `$type`.
-Register the type to read it back as the very same type.
+Because the unregistered struct is read back as a map, `Marshal` can also write an
+unregistered implementation in one of its non-empty interface fields as plain JSON.
+Registered values held by interfaces still carry their `$type`, and an error from
+a registered codec is returned rather than retried as plain JSON.
 
-A value held by a non-empty interface can only be read back with its `$type`,
-so its type has to be registered, otherwise `Marshal` fails with `missing $type id alias`.
+Register the struct to read it back as its original type. In that case, just as
+when marshaling the struct directly, `Marshal` needs a type ID to reconstruct a
+non-empty interface field and reports `missing $type id alias` if it is missing.
+
+At the top level, use `var v any = value; c.Marshal(&v)` to encode the value as
+interface-held. `c.Marshal(v)` sees only its concrete type.
+
+When decoding into `any`, an unknown `$type` is ordinary map data. This applies
+at the root, in struct fields and collections, and to named empty interfaces.
+Known tags still select their Go type, even inside an otherwise unknown object;
+an invalid payload for a known tag is still an error.
+
+```go
+var v any
+err := c.Unmarshal([]byte(`{"$type":"retired:order","id":7}`), &v)
+// v is map[string]any{"$type": "retired:order", "id": 7} if the tag is unknown.
+```
 
 ### Slices and maps held by an interface
 
